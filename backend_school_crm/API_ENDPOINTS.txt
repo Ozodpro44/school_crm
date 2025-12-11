@@ -1,0 +1,367 @@
+================================================================================
+SCHOOL CRM - GOLANG BACKEND API ENDPOINTS
+================================================================================
+
+BASE URL: http://localhost:8080/api
+
+================================================================================
+AUTHENTICATION ENDPOINTS
+================================================================================
+
+POST /auth/login
+  Description: User login
+  Body: { email, password }
+  Returns: { token, user }
+
+POST /auth/register
+  Description: Register new user
+  Body: { email, password, fullName, role, branchId }
+  Returns: { id, email, fullName, role, branchId }
+
+================================================================================
+STUDENT ENDPOINTS (Protected)
+================================================================================
+
+POST /students
+  Description: Create new student
+  Body: { fullName, classId, phone, parentPhone, monthlyPayment, status, branchId, enrollmentDate }
+  Returns: Student object
+
+GET /students
+  Query: branchId (required)
+  Description: List all students by branch
+  Returns: Array of Student objects
+
+GET /students/:id
+  Description: Get student by ID
+  Returns: Student object
+
+PUT /students/:id
+  Description: Update student
+  Body: { any student fields }
+  Returns: Updated student object
+
+DELETE /students/:id
+  Description: Delete student
+  Returns: { message: "student deleted" }
+
+================================================================================
+PAYMENT ENDPOINTS (Protected)
+================================================================================
+
+POST /payments
+  Description: Record new payment
+  Body: { studentId, amount, month, year, paymentMethod, status, invoiceNumber, notes, paidDate, branchId }
+  Returns: Payment object
+
+GET /payments
+  Query: branchId OR (studentId, month, year)
+  Description: List payments
+  Returns: Array of Payment objects
+
+GET /payments/:id
+  Description: Get payment by ID
+  Returns: Payment object
+
+GET /payments/branch/:branchId/summary
+  Description: Get payment summary for branch
+  Returns: { totalPaid, totalUnpaid, totalPartial, byMethod }
+
+PUT /payments/:id
+  Description: Update payment
+  Body: { any payment fields }
+  Returns: Updated payment object
+
+DELETE /payments/:id
+  Description: Delete payment
+  Returns: { message: "payment deleted" }
+
+================================================================================
+CLASS ENDPOINTS (Protected)
+================================================================================
+
+POST /classes
+  Description: Create new class
+  Body: { name, teacherId, branchId }
+  Returns: Class object
+
+GET /classes
+  Query: branchId (required)
+  Description: List classes by branch
+  Returns: Array of Class objects
+
+GET /classes/:id
+  Description: Get class by ID
+  Returns: Class object
+
+PUT /classes/:id
+  Description: Update class
+  Body: { name, teacherId }
+  Returns: Updated class object
+
+DELETE /classes/:id
+  Description: Delete class
+  Returns: { message: "class deleted" }
+
+================================================================================
+BRANCH ENDPOINTS (Protected)
+================================================================================
+
+POST /branches
+  Description: Create new branch
+  Body: { name, address, phone, monthlyPayment, adminId }
+  Returns: Branch object
+
+GET /branches
+  Description: List all branches
+  Returns: Array of Branch objects
+
+GET /branches/:id
+  Description: Get branch by ID
+  Returns: Branch object
+
+PUT /branches/:id
+  Description: Update branch
+  Body: { name, address, phone, monthlyPayment, adminId }
+  Returns: Updated branch object
+
+DELETE /branches/:id
+  Description: Delete branch
+  Returns: { message: "branch deleted" }
+
+================================================================================
+TEACHER ENDPOINTS (Protected)
+================================================================================
+
+POST /teachers
+  Description: Create new teacher
+  Body: { fullName, subjects, monthlySalary, phone, email, branchId, joinedDate }
+  Returns: Teacher object
+
+GET /teachers
+  Query: branchId (required)
+  Description: List teachers by branch
+  Returns: Array of Teacher objects
+
+GET /teachers/:id
+  Description: Get teacher by ID
+  Returns: Teacher object
+
+PUT /teachers/:id
+  Description: Update teacher
+  Body: { fullName, subjects, monthlySalary, phone, email, joinedDate }
+  Returns: Updated teacher object
+
+DELETE /teachers/:id
+  Description: Delete teacher
+  Returns: { message: "teacher deleted" }
+
+================================================================================
+SALARY ENDPOINTS (Protected)
+================================================================================
+
+POST /salaries
+  Description: Create salary record
+  Body: { teacherId, amount, month, year, paymentMethod, status, notes, paidDate, branchId }
+  Returns: Salary object
+
+GET /salaries
+  Query: branchId (required)
+  Description: List salaries by branch
+  Returns: Array of Salary objects
+
+GET /salaries/:id
+  Description: Get salary by ID
+  Returns: Salary object
+
+PUT /salaries/:id
+  Description: Update salary
+  Body: { amount, status, paymentMethod, notes, paidDate }
+  Returns: Updated salary object
+
+DELETE /salaries/:id
+  Description: Delete salary record
+  Returns: { message: "salary deleted" }
+
+================================================================================
+EXPENSE ENDPOINTS (Protected)
+================================================================================
+
+POST /expenses
+  Description: Create expense
+  Body: { title, description, amount, category, paymentMethod, date, branchId, notes }
+  Returns: Expense object
+
+GET /expenses
+  Query: branchId (required)
+  Description: List expenses by branch
+  Returns: Array of Expense objects
+
+GET /expenses/:id
+  Description: Get expense by ID
+  Returns: Expense object
+
+DELETE /expenses/:id
+  Description: Delete expense
+  Returns: { message: "expense deleted" }
+
+================================================================================
+USER ENDPOINTS (Protected)
+================================================================================
+
+GET /users
+  Description: List all users
+  Returns: Array of User objects
+
+GET /users/:id
+  Description: Get user by ID
+  Returns: User object
+
+PUT /users/:id
+  Description: Update user (own profile or admin only)
+  Body: { email, fullName, role, branchId }
+  Returns: Updated user object
+
+DELETE /users/:id
+  Description: Delete user (admin only)
+  Returns: { message: "user deleted" }
+
+================================================================================
+SPECIAL ENDPOINTS
+================================================================================
+
+GET /health
+  Description: Health check
+  Returns: { status: "healthy" }
+
+================================================================================
+RESPONSE CODES
+================================================================================
+
+200 OK              - Successful GET/PUT request
+201 Created         - Successful POST request
+204 No Content      - Successful DELETE request
+400 Bad Request     - Invalid input data
+401 Unauthorized    - Missing or invalid token
+403 Forbidden       - Insufficient permissions
+404 Not Found       - Resource not found
+500 Internal Error  - Server error
+
+================================================================================
+AUTHENTICATION HEADER
+================================================================================
+
+All protected endpoints require:
+Authorization: Bearer <token>
+
+Example:
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+================================================================================
+DATA TYPES
+================================================================================
+
+PaymentMethod: "cash" | "card" | "bank"
+PaymentStatus: "paid" | "unpaid" | "partial"
+StudentStatus: "active" | "left" | "suspended"
+UserRole: "admin" | "branch_admin" | "manager" | "accountant" | "teacher" | "student" | "parent"
+Month: "01" to "12"
+
+================================================================================
+EXAMPLE REQUESTS
+================================================================================
+
+1. Login
+   curl -X POST http://localhost:8080/api/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"email":"admin@example.com","password":"password123"}'
+
+2. Create Student
+   curl -X POST http://localhost:8080/api/students \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "fullName":"Ahmed Ali",
+       "classId":"uuid",
+       "phone":"998901234567",
+       "parentPhone":"998909876543",
+       "monthlyPayment":100000,
+       "status":"active",
+       "branchId":"uuid"
+     }'
+
+3. Record Payment
+   curl -X POST http://localhost:8080/api/payments \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "studentId":"uuid",
+       "amount":100000,
+       "month":"01",
+       "year":2024,
+       "paymentMethod":"cash",
+       "status":"paid",
+       "invoiceNumber":"INV-12345",
+       "branchId":"uuid"
+     }'
+
+4. Get Payment Summary
+   curl -H "Authorization: Bearer $TOKEN" \
+     http://localhost:8080/api/payments/branch/{branchId}/summary
+
+5. List Students
+   curl -H "Authorization: Bearer $TOKEN" \
+     http://localhost:8080/api/students?branchId={branchId}
+
+================================================================================
+DATABASE SCHEMA
+================================================================================
+
+Tables automatically created:
+- users (user accounts and roles)
+- branches (school branches)
+- students (enrolled students)
+- classes (school classes)
+- teachers (teaching staff)
+- teacher_classes (teacher-to-class assignments)
+- payments (student payments)
+- salaries (teacher salaries)
+- expenses (school expenses)
+- incomes (other income sources)
+- settings (system settings)
+- permissions (user permissions)
+- branch_managers (branch manager assignments)
+
+================================================================================
+FRONTEND INTEGRATION
+================================================================================
+
+Configure frontend API client:
+
+const API_BASE_URL = 'http://localhost:8080/api';
+
+// Login example
+async function login(email, password) {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+  const data = await response.json();
+  localStorage.setItem('token', data.token);
+  return data;
+}
+
+// Authenticated request example
+async function getStudents(branchId) {
+  const token = localStorage.getItem('token');
+  const response = await fetch(
+    `${API_BASE_URL}/students?branchId=${branchId}`,
+    {
+      headers: { 'Authorization': `Bearer ${token}` }
+    }
+  );
+  return response.json();
+}
+
+================================================================================

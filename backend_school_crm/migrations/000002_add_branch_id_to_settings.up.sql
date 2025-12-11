@@ -1,0 +1,2 @@
+-- This migration is no longer needed - settings table has been removed and merged into branches
+-- Migration skipped
