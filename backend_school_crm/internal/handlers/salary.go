@@ -8,13 +8,14 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterSalaryRoutes(router *gin.RouterGroup, salaryService *service.SalaryService) {
+func RegisterSalaryRoutes(router *gin.RouterGroup, salaryService *service.SalaryService, userService *service.UserService) {
 	salaries := router.Group("/salaries")
-	salaries.POST("", createSalary(salaryService))
-	salaries.GET("/:id", getSalary(salaryService))
-	salaries.GET("", listSalaries(salaryService))
-	salaries.PUT("/:id", updateSalary(salaryService))
-	salaries.DELETE("/:id", deleteSalary(salaryService))
+	// Authenticated users can view and edit salaries
+	salaries.POST("", middleware.PermissionChecker(userService, "canCreateSalaries"), createSalary(salaryService))
+	salaries.GET("/:id", middleware.PermissionChecker(userService, "canViewSalaries"), getSalary(salaryService))
+	salaries.GET("", middleware.PermissionChecker(userService, "canViewSalaries"), listSalaries(salaryService))
+	salaries.PUT("/:id", middleware.PermissionChecker(userService, "canEditSalaries"), updateSalary(salaryService))
+	salaries.DELETE("/:id", middleware.PermissionChecker(userService, "canEditSalaries"), deleteSalary(salaryService))
 }
 
 func createSalary(salaryService *service.SalaryService) gin.HandlerFunc {

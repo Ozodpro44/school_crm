@@ -8,12 +8,14 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterExpenseRoutes(router *gin.RouterGroup, expenseService *service.ExpenseService) {
+func RegisterExpenseRoutes(router *gin.RouterGroup, expenseService *service.ExpenseService, userService *service.UserService) {
 	expenses := router.Group("/expenses")
-	expenses.POST("", createExpense(expenseService))
-	expenses.GET("/:id", getExpense(expenseService))
-	expenses.GET("", listExpenses(expenseService))
-	expenses.DELETE("/:id", deleteExpense(expenseService))
+	// Authenticated users can view and edit expenses
+	expenses.POST("", middleware.PermissionChecker(userService, "canCreateExpenses"), createExpense(expenseService))
+	expenses.GET("/:id", middleware.PermissionChecker(userService, "canViewExpenses"), getExpense(expenseService))
+	expenses.GET("", middleware.PermissionChecker(userService, "canViewExpenses"), listExpenses(expenseService))
+	expenses.PUT("/:id", middleware.PermissionChecker(userService, "canEditExpenses"), updateExpense(expenseService))
+	expenses.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteExpenses"), deleteExpense(expenseService))
 }
 
 func createExpense(expenseService *service.ExpenseService) gin.HandlerFunc {
@@ -67,6 +69,26 @@ func listExpenses(expenseService *service.ExpenseService) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, expenses)
+	}
+}
+
+func updateExpense(expenseService *service.ExpenseService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+
+		var req service.UpdateExpenseRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		expense, err := expenseService.Update(c.Request.Context(), id, &req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, expense)
 	}
 }
 

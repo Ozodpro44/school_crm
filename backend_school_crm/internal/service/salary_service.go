@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
+	"github.com/school-crm/backend/internal/utils"
 )
 
 type SalaryService struct {
@@ -21,15 +22,15 @@ func NewSalaryService(database *db.Database) *SalaryService {
 }
 
 type CreateSalaryRequest struct {
-	TeacherID     string `json:"teacherId" binding:"required"`
-	Amount        float64 `json:"amount" binding:"required,gt=0"`
-	Month         string `json:"month" binding:"required"`
-	Year          int `json:"year" binding:"required"`
-	PaymentMethod string `json:"paymentMethod" binding:"required"`
-	Status        string `json:"status" binding:"required"`
-	Notes         *string `json:"notes"`
+	TeacherID     string     `json:"teacherId" binding:"required"`
+	Amount        float64    `json:"amount" binding:"required,gt=0"`
+	Month         string     `json:"month" binding:"required"`
+	Year          int        `json:"year" binding:"required"`
+	PaymentMethod string     `json:"paymentMethod" binding:"required"`
+	Status        string     `json:"status" binding:"required"`
+	Notes         *string    `json:"notes"`
 	PaidDate      *time.Time `json:"paidDate"`
-	BranchID      string `json:"branchId" binding:"required"`
+	BranchID      string     `json:"branchId" binding:"required"`
 }
 
 func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, createdBy string) (*models.Salary, error) {
@@ -45,7 +46,7 @@ func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, cr
 		PaidDate:      req.PaidDate,
 		BranchID:      req.BranchID,
 		CreatedBy:     &createdBy,
-		CreatedAt:     time.Now(),
+		CreatedAt:     time.Now().UTC(),
 	}
 
 	query := `INSERT INTO salaries (id, teacher_id, amount, month, year, payment_method, status, notes, paid_date, branch_id, created_by, created_at)
@@ -97,6 +98,8 @@ func (s *SalaryService) GetByBranchID(ctx context.Context, branchID string) ([]m
 }
 
 func (s *SalaryService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Salary, error) {
+	updates = utils.ConvertKeysToSnakeCase(updates)
+
 	query := `UPDATE salaries SET `
 	args := []interface{}{}
 	argCount := 1

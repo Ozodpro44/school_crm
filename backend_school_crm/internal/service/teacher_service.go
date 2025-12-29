@@ -23,12 +23,12 @@ func NewTeacherService(database *db.Database) *TeacherService {
 }
 
 type CreateTeacherRequest struct {
-	FullName      string   `json:"fullName" binding:"required"`
-	Subjects      []string `json:"subjects" binding:"required"`
-	MonthlySalary float64  `json:"monthlySalary" binding:"required,gt=0"`
-	Phone         string   `json:"phone" binding:"required"`
-	Email         string   `json:"email" binding:"required,email"`
-	BranchID      string   `json:"branchId" binding:"required"`
+	FullName      string     `json:"fullName" binding:"required"`
+	Subjects      []string   `json:"subjects" binding:"required"`
+	MonthlySalary float64    `json:"monthlySalary" binding:"required,gt=0"`
+	Phone         string     `json:"phone" binding:"required"`
+	Email         string     `json:"email" binding:"required,email"`
+	BranchID      string     `json:"branchId" binding:"required"`
 	JoinedDate    *time.Time `json:"joinedDate"`
 }
 
@@ -42,8 +42,8 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 		Email:         req.Email,
 		BranchID:      req.BranchID,
 		JoinedDate:    req.JoinedDate,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
 	}
 
 	query := `INSERT INTO teachers (id, full_name, subjects, monthly_salary, phone, email, branch_id, joined_date, created_at, updated_at)
@@ -71,6 +71,13 @@ func (s *TeacherService) GetByID(ctx context.Context, id string) (*models.Teache
 		return nil, err
 	}
 
+	// Load assigned classes from classes table
+	classIDs, err := s.getTeacherClasses(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	teacher.AssignedClasses = classIDs
+
 	return teacher, nil
 }
 
@@ -89,6 +96,14 @@ func (s *TeacherService) GetByBranchID(ctx context.Context, branchID string) ([]
 		if err := rows.Scan(&teacher.ID, &teacher.FullName, pq.Array(&teacher.Subjects), &teacher.MonthlySalary, &teacher.Phone, &teacher.Email, &teacher.BranchID, &teacher.JoinedDate, &teacher.CreatedAt, &teacher.UpdatedAt); err != nil {
 			return nil, err
 		}
+
+		// Load assigned classes from classes table
+		classIDs, err := s.getTeacherClasses(ctx, teacher.ID)
+		if err != nil {
+			return nil, err
+		}
+		teacher.AssignedClasses = classIDs
+
 		teachers = append(teachers, teacher)
 	}
 
@@ -125,4 +140,25 @@ func (s *TeacherService) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM teachers WHERE id = $1`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
 	return err
+}
+
+// Helper method to get assigned classes for a teacher (from classes table where teacher_id matches)
+func (s *TeacherService) getTeacherClasses(ctx context.Context, teacherID string) ([]string, error) {
+	query := `SELECT id FROM classes WHERE teacher_id = $1 ORDER BY name`
+	rows, err := s.db.GetConn().QueryContext(ctx, query, teacherID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var classIDs []string
+	for rows.Next() {
+		var classID string
+		if err := rows.Scan(&classID); err != nil {
+			return nil, err
+		}
+		classIDs = append(classIDs, classID)
+	}
+
+	return classIDs, rows.Err()
 }

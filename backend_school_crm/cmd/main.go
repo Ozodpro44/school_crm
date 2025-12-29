@@ -62,6 +62,7 @@ func main() {
 	teacherService := service.NewTeacherService(database)
 	salaryService := service.NewSalaryService(database)
 	expenseService := service.NewExpenseService(database)
+	reportService := service.NewReportService(database)
 
 	// Initialize router
 	if cfg.Environment == "production" {
@@ -91,28 +92,31 @@ func main() {
 	handlers.RegisterUserRoutes(protected, userService)
 
 	// Students
-	handlers.RegisterStudentRoutes(protected, studentService, classService)
+	handlers.RegisterStudentRoutes(protected, studentService, classService, userService)
 
 	// Payments
-	handlers.RegisterPaymentRoutes(protected, paymentService)
+	handlers.RegisterPaymentRoutes(protected, paymentService, userService)
 
 	// Classes
-	handlers.RegisterClassRoutes(protected, classService)
+	handlers.RegisterClassRoutes(protected, classService, userService)
 
 	// Branches
-	handlers.RegisterBranchRoutes(protected, branchService)
+	handlers.RegisterBranchRoutes(protected, branchService, userService)
 
 	// Teachers
-	handlers.RegisterTeacherRoutes(protected, teacherService)
+	handlers.RegisterTeacherRoutes(protected, teacherService, userService)
 
 	// Salaries
-	handlers.RegisterSalaryRoutes(protected, salaryService)
+	handlers.RegisterSalaryRoutes(protected, salaryService, userService)
 
 	// Expenses
-	handlers.RegisterExpenseRoutes(protected, expenseService)
+	handlers.RegisterExpenseRoutes(protected, expenseService, userService)
+
+	// Reports
+	handlers.RegisterReportRoutes(protected, reportService, userService)
 
 	// Settings
-	handlers.RegisterSettingsRoutes(protected, branchService)
+	handlers.RegisterSettingsRoutes(protected, branchService, userService)
 
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)

@@ -8,14 +8,15 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.PaymentService) {
+func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.PaymentService, userService *service.UserService) {
 	payments := router.Group("/payments")
-	payments.POST("", createPayment(paymentService))
-	payments.GET("/:id", getPayment(paymentService))
-	payments.GET("", listPayments(paymentService))
-	payments.PUT("/:id", updatePayment(paymentService))
-	payments.DELETE("/:id", deletePayment(paymentService))
-	payments.GET("/branch/:branchId/summary", getPaymentSummary(paymentService))
+	// Authenticated users can view and edit payments
+	payments.POST("", middleware.PermissionChecker(userService, "canCreatePayments"), createPayment(paymentService))
+	payments.GET("/:id", middleware.PermissionChecker(userService, "canViewPayments"), getPayment(paymentService))
+	payments.GET("", middleware.PermissionChecker(userService, "canViewPayments"), listPayments(paymentService))
+	payments.PUT("/:id", middleware.PermissionChecker(userService, "canEditPayments"), updatePayment(paymentService))
+	payments.DELETE("/:id", middleware.PermissionChecker(userService, "canEditPayments"), deletePayment(paymentService))
+	payments.GET("/branch/:branchId/summary", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentSummary(paymentService))
 }
 
 func createPayment(paymentService *service.PaymentService) gin.HandlerFunc {
@@ -62,7 +63,20 @@ func listPayments(paymentService *service.PaymentService) gin.HandlerFunc {
 		year := c.Query("year")
 
 		if branchID != "" {
-			payments, err := paymentService.GetByBranchID(c.Request.Context(), branchID)
+			// If month and year are provided, filter by those; otherwise return current month only
+			if month != "" && year != "" {
+				payments, err := paymentService.GetByBranchIDAndPeriod(c.Request.Context(), branchID, month, year)
+				if err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+					return
+				}
+				c.JSON(http.StatusOK, payments)
+				return
+			}
+			
+			// Default: return current month payments only
+			currentMonth, currentYear := paymentService.GetCurrentMonthYear()
+			payments, err := paymentService.GetByBranchIDAndPeriod(c.Request.Context(), branchID, currentMonth, currentYear)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return

@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
+	"github.com/school-crm/backend/internal/utils"
 )
 
 type PaymentService struct {
@@ -21,16 +22,16 @@ func NewPaymentService(database *db.Database) *PaymentService {
 }
 
 type CreatePaymentRequest struct {
-	StudentID     string `json:"studentId" binding:"required"`
-	Amount        float64 `json:"amount" binding:"required,gt=0"`
-	Month         string `json:"month" binding:"required"`
-	Year          int `json:"year" binding:"required"`
-	PaymentMethod string `json:"paymentMethod" binding:"required"`
-	Status        string `json:"status" binding:"required"`
-	InvoiceNumber string `json:"invoiceNumber" binding:"required"`
-	Notes         *string `json:"notes"`
+	StudentID     string     `json:"studentId" binding:"required"`
+	Amount        float64    `json:"amount" binding:"required,gt=0"`
+	Month         string     `json:"month" binding:"required"`
+	Year          int        `json:"year" binding:"required"`
+	PaymentMethod string     `json:"paymentMethod" binding:"required"`
+	Status        string     `json:"status" binding:"required"`
+	InvoiceNumber string     `json:"invoiceNumber" binding:"required"`
+	Notes         *string    `json:"notes"`
 	PaidDate      *time.Time `json:"paidDate"`
-	BranchID      string `json:"branchId" binding:"required"`
+	BranchID      string     `json:"branchId" binding:"required"`
 }
 
 func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, createdBy string) (*models.Payment, error) {
@@ -47,7 +48,7 @@ func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, 
 		PaidDate:      req.PaidDate,
 		BranchID:      req.BranchID,
 		CreatedBy:     &createdBy,
-		CreatedAt:     time.Now(),
+		CreatedAt:     time.Now().UTC(),
 	}
 
 	query := `INSERT INTO payments (id, student_id, amount, month, year, payment_method, status, invoice_number, notes, paid_date, branch_id, created_by, created_at)
@@ -61,12 +62,14 @@ func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, 
 
 func (s *PaymentService) GetByID(ctx context.Context, id string) (*models.Payment, error) {
 	payment := &models.Payment{}
-	query := `SELECT id, student_id, amount, month, year, payment_method, status, invoice_number, notes, paid_date, branch_id, created_by, created_at
-	         FROM payments WHERE id = $1`
+	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
+	         FROM payments p
+	         LEFT JOIN users u ON p.created_by = u.id
+	         WHERE p.id = $1`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&payment.ID, &payment.StudentID, &payment.Amount, &payment.Month, &payment.Year,
-		&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt,
+		&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName,
 	)
 
 	if err == sql.ErrNoRows {
@@ -76,8 +79,10 @@ func (s *PaymentService) GetByID(ctx context.Context, id string) (*models.Paymen
 }
 
 func (s *PaymentService) GetByBranchID(ctx context.Context, branchID string) ([]models.Payment, error) {
-	query := `SELECT id, student_id, amount, month, year, payment_method, status, invoice_number, notes, paid_date, branch_id, created_by, created_at
-	         FROM payments WHERE branch_id = $1 ORDER BY created_at DESC`
+	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
+	         FROM payments p
+	         LEFT JOIN users u ON p.created_by = u.id
+	         WHERE p.branch_id = $1 ORDER BY p.created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
 	if err != nil {
@@ -89,7 +94,32 @@ func (s *PaymentService) GetByBranchID(ctx context.Context, branchID string) ([]
 	for rows.Next() {
 		var payment models.Payment
 		if err := rows.Scan(&payment.ID, &payment.StudentID, &payment.Amount, &payment.Month, &payment.Year,
-			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt); err != nil {
+			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName); err != nil {
+			return nil, err
+		}
+		payments = append(payments, payment)
+	}
+
+	return payments, rows.Err()
+}
+
+func (s *PaymentService) GetByBranchIDAndPeriod(ctx context.Context, branchID, month, year string) ([]models.Payment, error) {
+	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
+	         FROM payments p
+	         LEFT JOIN users u ON p.created_by = u.id
+	         WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 ORDER BY p.created_at DESC`
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var payments []models.Payment
+	for rows.Next() {
+		var payment models.Payment
+		if err := rows.Scan(&payment.ID, &payment.StudentID, &payment.Amount, &payment.Month, &payment.Year,
+			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName); err != nil {
 			return nil, err
 		}
 		payments = append(payments, payment)
@@ -99,8 +129,10 @@ func (s *PaymentService) GetByBranchID(ctx context.Context, branchID string) ([]
 }
 
 func (s *PaymentService) GetByStudentIDAndPeriod(ctx context.Context, studentID, month string, year int) ([]models.Payment, error) {
-	query := `SELECT id, student_id, amount, month, year, payment_method, status, invoice_number, notes, paid_date, branch_id, created_by, created_at
-	         FROM payments WHERE student_id = $1 AND month = $2 AND year = $3`
+	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
+	         FROM payments p
+	         LEFT JOIN users u ON p.created_by = u.id
+	         WHERE p.student_id = $1 AND p.month = $2 AND p.year = $3`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, studentID, month, year)
 	if err != nil {
@@ -112,7 +144,7 @@ func (s *PaymentService) GetByStudentIDAndPeriod(ctx context.Context, studentID,
 	for rows.Next() {
 		var payment models.Payment
 		if err := rows.Scan(&payment.ID, &payment.StudentID, &payment.Amount, &payment.Month, &payment.Year,
-			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt); err != nil {
+			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName); err != nil {
 			return nil, err
 		}
 		payments = append(payments, payment)
@@ -121,7 +153,22 @@ func (s *PaymentService) GetByStudentIDAndPeriod(ctx context.Context, studentID,
 	return payments, rows.Err()
 }
 
+func (s *PaymentService) GetCurrentMonthYear() (string, string) {
+	now := time.Now().UTC()
+	month := fmt.Sprintf("%02d", now.Month())
+	year := fmt.Sprintf("%d", now.Year())
+	return month, year
+}
+
 func (s *PaymentService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Payment, error) {
+	// Check if payment exists
+	_, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	updates = utils.ConvertKeysToSnakeCase(updates)
+
 	query := `UPDATE payments SET `
 	args := []interface{}{}
 	argCount := 1
@@ -138,7 +185,7 @@ func (s *PaymentService) Update(ctx context.Context, id string, updates map[stri
 	query += fmt.Sprintf(" WHERE id = $%d", argCount)
 	args = append(args, id)
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, args...)
+	_, err = s.db.GetConn().ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -147,8 +194,14 @@ func (s *PaymentService) Update(ctx context.Context, id string, updates map[stri
 }
 
 func (s *PaymentService) Delete(ctx context.Context, id string) error {
+	// Check if payment exists
+	_, err := s.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
 	query := `DELETE FROM payments WHERE id = $1`
-	_, err := s.db.GetConn().ExecContext(ctx, query, id)
+	_, err = s.db.GetConn().ExecContext(ctx, query, id)
 	return err
 }
 
@@ -172,9 +225,9 @@ func (s *PaymentService) GetPaymentSummary(ctx context.Context, branchID string)
 	}
 
 	return map[string]interface{}{
-		"totalPaid":     totalPaid.Float64,
-		"totalUnpaid":   totalUnpaid.Float64,
-		"totalPartial":  totalPartial.Float64,
+		"totalPaid":    totalPaid.Float64,
+		"totalUnpaid":  totalUnpaid.Float64,
+		"totalPartial": totalPartial.Float64,
 		"byMethod": map[string]float64{
 			"card": card.Float64,
 			"cash": cash.Float64,

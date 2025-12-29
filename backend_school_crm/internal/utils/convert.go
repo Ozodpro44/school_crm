@@ -3,6 +3,7 @@ package utils
 import (
 	// "regexp"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -27,4 +28,14 @@ func ConvertKeysToSnakeCase(updates map[string]interface{}) map[string]interface
 		converted[ToSnakeCase(key)] = value
 	}
 	return converted
+}
+
+// GetLocalTime returns the current time in Asia/Tashkent timezone (UTC+5)
+func GetLocalTime() time.Time {
+	loc, err := time.LoadLocation("Asia/Tashkent")
+	if err != nil {
+		// Fallback to UTC if timezone cannot be loaded
+		return time.Now().UTC()
+	}
+	return time.Now().In(loc)
 }

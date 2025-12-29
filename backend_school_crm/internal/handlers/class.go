@@ -4,16 +4,18 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/school-crm/backend/internal/middleware"
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterClassRoutes(router *gin.RouterGroup, classService *service.ClassService) {
+func RegisterClassRoutes(router *gin.RouterGroup, classService *service.ClassService, userService *service.UserService) {
 	classes := router.Group("/classes")
-	classes.POST("", createClass(classService))
-	classes.GET("/:id", getClass(classService))
-	classes.GET("", listClasses(classService))
-	classes.PUT("/:id", updateClass(classService))
-	classes.DELETE("/:id", deleteClass(classService))
+	// Authenticated users can view and edit
+	classes.POST("", middleware.PermissionChecker(userService, "canCreateClasses"), createClass(classService))
+	classes.GET("/:id", middleware.PermissionChecker(userService, "canViewClasses"), getClass(classService))
+	classes.GET("", middleware.PermissionChecker(userService, "canViewClasses"), listClasses(classService))
+	classes.PUT("/:id", middleware.PermissionChecker(userService, "canEditClasses"), updateClass(classService))
+	classes.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteClasses"), deleteClass(classService))
 }
 
 func createClass(classService *service.ClassService) gin.HandlerFunc {

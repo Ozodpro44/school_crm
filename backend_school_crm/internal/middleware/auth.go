@@ -45,6 +45,13 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 
 		c.Set("user_id", claims.UserID)
 		c.Set("userID", claims.UserID) // Keep for backward compatibility
+
+		// Get branch ID from X-Branch-ID header (set by frontend on branch switch)
+		branchID := c.GetHeader("X-Branch-ID")
+		if branchID != "" {
+			c.Set("branch_id", branchID)
+		}
+
 		c.Next()
 	}
 }

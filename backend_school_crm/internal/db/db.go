@@ -45,10 +45,10 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		createUsersTable,
 		createBranchesTable,
 		addBranchAdminForeignKey,
+		addBranchMissingColumns,
+		createTeachersTable,
 		createClassesTable,
 		createStudentsTable,
-		dropTeachersTable,
-		createTeachersTable,
 		createTeacherClassesTable,
 		createPaymentsTable,
 		createSalariesTable,
@@ -58,6 +58,8 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		createSettingsTable,
 		createPermissionsTable,
 		createBranchManagersTable,
+
+		grantTablePermissions,
 		createIndexes,
 	}
 

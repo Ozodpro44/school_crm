@@ -22,9 +22,9 @@ func NewClassService(database *db.Database) *ClassService {
 }
 
 type CreateClassRequest struct {
-	Name     string  `json:"name" binding:"required"`
+	Name      string  `json:"name" binding:"required"`
 	TeacherID *string `json:"teacherId"`
-	BranchID string  `json:"branchId" binding:"required"`
+	BranchID  string  `json:"branchId" binding:"required"`
 }
 
 func (s *ClassService) Create(ctx context.Context, req *CreateClassRequest) (*models.Class, error) {
@@ -33,8 +33,8 @@ func (s *ClassService) Create(ctx context.Context, req *CreateClassRequest) (*mo
 		Name:      req.Name,
 		TeacherID: req.TeacherID,
 		BranchID:  req.BranchID,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: time.Now().UTC(),
+		UpdatedAt: time.Now().UTC(),
 	}
 
 	query := `INSERT INTO classes (id, name, teacher_id, branch_id, created_at, updated_at)
@@ -56,7 +56,14 @@ func (s *ClassService) GetByID(ctx context.Context, id string) (*models.Class, e
 	if err == sql.ErrNoRows {
 		return nil, errors.New("class not found")
 	}
-	return class, err
+	if err != nil {
+		return nil, err
+	}
+
+	// Load student IDs for this class
+	s.loadStudentIDs(ctx, class)
+
+	return class, nil
 }
 
 func (s *ClassService) GetByBranchID(ctx context.Context, branchID string) ([]models.Class, error) {
@@ -74,6 +81,8 @@ func (s *ClassService) GetByBranchID(ctx context.Context, branchID string) ([]mo
 		if err := rows.Scan(&class.ID, &class.Name, &class.TeacherID, &class.BranchID, &class.CreatedAt, &class.UpdatedAt); err != nil {
 			return nil, err
 		}
+		// Load student IDs for each class
+		s.loadStudentIDs(ctx, &class)
 		classes = append(classes, class)
 	}
 
@@ -110,4 +119,26 @@ func (s *ClassService) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM classes WHERE id = $1`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
 	return err
+}
+
+// loadStudentIDs loads all student IDs for a given class
+func (s *ClassService) loadStudentIDs(ctx context.Context, class *models.Class) error {
+	query := `SELECT id FROM students WHERE class_id = $1 AND status = $2`
+	rows, err := s.db.GetConn().QueryContext(ctx, query, class.ID, "active")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var studentIDs []string
+	for rows.Next() {
+		var studentID string
+		if err := rows.Scan(&studentID); err != nil {
+			return err
+		}
+		studentIDs = append(studentIDs, studentID)
+	}
+
+	class.StudentID = studentIDs
+	return rows.Err()
 }

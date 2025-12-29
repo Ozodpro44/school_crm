@@ -20,14 +20,24 @@ func NewExpenseService(database *db.Database) *ExpenseService {
 }
 
 type CreateExpenseRequest struct {
-	Title         string `json:"title" binding:"required"`
-	Description   string `json:"description" binding:"required"`
-	Amount        float64 `json:"amount" binding:"required,gt=0"`
-	Category      string `json:"category" binding:"required"`
-	PaymentMethod string `json:"paymentMethod" binding:"required"`
+	Title         string    `json:"title" binding:"required"`
+	Description   string    `json:"description"`
+	Amount        float64   `json:"amount" binding:"required,gt=0"`
+	Category      string    `json:"category" binding:"required"`
+	PaymentMethod string    `json:"paymentMethod" binding:"required"`
 	Date          time.Time `json:"date" binding:"required"`
-	BranchID      string `json:"branchId" binding:"required"`
-	Notes         *string `json:"notes"`
+	BranchID      string    `json:"branchId" binding:"required"`
+	Notes         *string   `json:"notes"`
+}
+
+type UpdateExpenseRequest struct {
+	Title         *string    `json:"title"`
+	Description   *string    `json:"description"`
+	Amount        *float64   `json:"amount"`
+	Category      *string    `json:"category"`
+	PaymentMethod *string    `json:"paymentMethod"`
+	Date          *time.Time `json:"date"`
+	Notes         *string    `json:"notes"`
 }
 
 func (s *ExpenseService) Create(ctx context.Context, req *CreateExpenseRequest, createdBy string) (*models.Expense, error) {
@@ -42,7 +52,7 @@ func (s *ExpenseService) Create(ctx context.Context, req *CreateExpenseRequest, 
 		BranchID:      req.BranchID,
 		CreatedBy:     createdBy,
 		Notes:         req.Notes,
-		CreatedAt:     time.Now(),
+		CreatedAt:     time.Now().UTC(),
 	}
 
 	query := `INSERT INTO expenses (id, title, description, amount, category, payment_method, date, branch_id, created_by, notes, created_at)
@@ -91,6 +101,49 @@ func (s *ExpenseService) GetByBranchID(ctx context.Context, branchID string) ([]
 	}
 
 	return expenses, rows.Err()
+}
+
+func (s *ExpenseService) Update(ctx context.Context, id string, req *UpdateExpenseRequest) (*models.Expense, error) {
+	// Get existing expense
+	expense, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update fields if provided
+	if req.Title != nil {
+		expense.Title = *req.Title
+	}
+	if req.Description != nil {
+		expense.Description = *req.Description
+	}
+	if req.Amount != nil {
+		expense.Amount = *req.Amount
+	}
+	if req.Category != nil {
+		expense.Category = *req.Category
+	}
+	if req.PaymentMethod != nil {
+		expense.PaymentMethod = models.PaymentMethod(*req.PaymentMethod)
+	}
+	if req.Date != nil {
+		expense.Date = *req.Date
+	}
+	if req.Notes != nil {
+		expense.Notes = req.Notes
+	}
+
+	query := `UPDATE expenses SET title = $1, description = $2, amount = $3, category = $4, 
+	         payment_method = $5, date = $6, notes = $7 WHERE id = $8`
+
+	_, err = s.db.GetConn().ExecContext(ctx, query, expense.Title, expense.Description, expense.Amount,
+		expense.Category, expense.PaymentMethod, expense.Date, expense.Notes, id)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return expense, nil
 }
 
 func (s *ExpenseService) Delete(ctx context.Context, id string) error {

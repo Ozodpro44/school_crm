@@ -83,6 +83,8 @@ db-drop:
 	@echo "✓ Database dropped"
 
 db-reset: db-drop db-create
+	@echo "Setting up permissions..."
+	@echo "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ${POSTGRES_USER}; GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ${POSTGRES_USER}; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO ${POSTGRES_USER}; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO ${POSTGRES_USER};" | sudo -u postgres psql -d ${POSTGRES_DATABASE} 2>/dev/null || true
 	@echo "✓ Database reset complete"
 
 migrate-create:

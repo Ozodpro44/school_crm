@@ -7,14 +7,13 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterBranchRoutes(router *gin.RouterGroup, branchService *service.BranchService) {
+func RegisterBranchRoutes(router *gin.RouterGroup, branchService *service.BranchService, userService *service.UserService) {
 	branches := router.Group("/branches")
 	branches.POST("", createBranch(branchService))
 	branches.GET("/:id", getBranch(branchService))
 	branches.GET("", listBranches(branchService))
 	branches.PUT("/:id", updateBranch(branchService))
 	branches.DELETE("/:id", deleteBranch(branchService))
-	
 
 }
 

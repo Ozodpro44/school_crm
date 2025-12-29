@@ -12,6 +12,11 @@ CREATE TABLE IF NOT EXISTS users (
 );
 `
 
+const addUserBranchColumn = `
+-- This migration is deprecated. Use branch_managers table instead.
+SELECT 1;
+`
+
 const createBranchesTable = `
 CREATE TABLE IF NOT EXISTS branches (
 	id UUID PRIMARY KEY,
@@ -19,6 +24,7 @@ CREATE TABLE IF NOT EXISTS branches (
 	address TEXT NOT NULL,
 	phone VARCHAR(20) NOT NULL,
 	monthly_payment DECIMAL(10, 2) NOT NULL,
+	currency VARCHAR(10) DEFAULT 'UZS',
 	admin_id UUID,
 	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -31,6 +37,17 @@ BEGIN
 	IF NOT EXISTS (SELECT 1 FROM information_schema.table_constraints WHERE constraint_name = 'branches_admin_id_fkey') THEN
 		ALTER TABLE branches ADD CONSTRAINT branches_admin_id_fkey 
 			FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE SET NULL;
+	END IF;
+END $$;
+`
+
+
+
+const addBranchMissingColumns = `
+DO $$ 
+BEGIN
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'branches' AND column_name = 'currency') THEN
+		ALTER TABLE branches ADD COLUMN currency VARCHAR(10) DEFAULT 'UZS';
 	END IF;
 END $$;
 `
@@ -75,10 +92,6 @@ CREATE TABLE IF NOT EXISTS classes (
 );
 `
 
-const dropTeachersTable = `
-DROP TABLE IF EXISTS teachers CASCADE;
-`
-
 const createTeachersTable = `
 CREATE TABLE IF NOT EXISTS teachers (
 	id UUID PRIMARY KEY,
@@ -117,6 +130,7 @@ CREATE TABLE IF NOT EXISTS payments (
 	notes TEXT,
 	paid_date TIMESTAMP,
 	branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+
 	created_by UUID REFERENCES users(id) ON DELETE SET NULL,
 	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -134,6 +148,7 @@ CREATE TABLE IF NOT EXISTS salaries (
 	notes TEXT,
 	paid_date TIMESTAMP,
 	branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+
 	created_by UUID REFERENCES users(id) ON DELETE SET NULL,
 	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -149,6 +164,7 @@ CREATE TABLE IF NOT EXISTS expenses (
 	payment_method VARCHAR(50) NOT NULL,
 	date TIMESTAMP NOT NULL,
 	branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+
 	created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 	notes TEXT,
 	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -209,10 +225,14 @@ CREATE TABLE IF NOT EXISTS permissions (
 	can_edit_expenses BOOLEAN DEFAULT FALSE,
 	can_delete_expenses BOOLEAN DEFAULT FALSE,
 	can_view_reports BOOLEAN DEFAULT FALSE,
-	can_finish_month BOOLEAN DEFAULT FALSE,
+
 	can_view_settings BOOLEAN DEFAULT FALSE,
 	can_edit_settings BOOLEAN DEFAULT FALSE
 );
+`
+
+const grantTablePermissions = `
+SELECT 1;
 `
 
 const createIndexes = `

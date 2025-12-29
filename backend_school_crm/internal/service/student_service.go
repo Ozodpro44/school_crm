@@ -22,13 +22,13 @@ func NewStudentService(database *db.Database) *StudentService {
 }
 
 type CreateStudentRequest struct {
-	FullName       string    `json:"fullName" binding:"required"`
-	ClassID        string    `json:"classId" binding:"required"`
-	Phone          string    `json:"phone" binding:"required"`
-	ParentPhone    string    `json:"parentPhone" binding:"required"`
-	MonthlyPayment float64   `json:"monthlyPayment" binding:"required,gt=0"`
-	Status         string    `json:"status" binding:"required"`
-	BranchID       string    `json:"branchId" binding:"required"`
+	FullName       string     `json:"fullName" binding:"required"`
+	ClassID        string     `json:"classId" binding:"required"`
+	Phone          string     `json:"phone" binding:"required"`
+	ParentPhone    string     `json:"parentPhone" binding:"required"`
+	MonthlyPayment float64    `json:"monthlyPayment" binding:"required,gt=0"`
+	Status         string     `json:"status" binding:"required"`
+	BranchID       string     `json:"branchId" binding:"required"`
 	EnrollmentDate *time.Time `json:"enrollmentDate"`
 }
 
@@ -43,8 +43,8 @@ func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) 
 		Status:         models.StudentStatus(req.Status),
 		BranchID:       req.BranchID,
 		EnrollmentDate: req.EnrollmentDate,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
 	}
 
 	query := `INSERT INTO students (id, full_name, class_id, phone, parent_phone, monthly_payment, status, branch_id, enrollment_date, created_at, updated_at)
