@@ -33,6 +33,9 @@ export interface LoginResponse {
     email: string;
     fullName: string;
     role: string;
+    branchId?: string;
+    branchIds?: string[];
+    permissions?: Permissions;
   };
 }
 
@@ -90,35 +93,35 @@ export interface Payment {
   month: string;
   year: number;
   paymentMethod: "cash" | "card" | "bank";
-  status: "paid" | "unpaid" | "partial";
+  status: "paid" | "partial";
   invoiceNumber: string;
   notes?: string;
   paidDate?: string;
   branchId: string;
   createdBy?: string;
   createdAt: string;
-}
+  }
 
-export interface CreatePaymentRequest {
+  export interface CreatePaymentRequest {
   studentId: string;
   amount: number;
   month: string;
   year: number;
   paymentMethod: "cash" | "card" | "bank";
-  status: "paid" | "unpaid" | "partial";
+  status: "paid" | "partial";
   invoiceNumber: string;
   notes?: string;
   paidDate?: string;
   branchId: string;
-}
+  }
 
-export interface UpdatePaymentRequest {
-  status?: "paid" | "unpaid" | "partial";
+  export interface UpdatePaymentRequest {
+  status?: "paid" | "partial";
   paymentMethod?: "cash" | "card" | "bank";
   amount?: number;
   notes?: string;
   paidDate?: string;
-}
+  }
 
 export interface PaymentSummary {
   totalPaid: number;
@@ -201,28 +204,28 @@ export interface Salary {
   month: string;
   year: number;
   paymentMethod: "cash" | "card" | "bank";
-  status: "paid" | "unpaid" | "partial";
+  status: "paid" | "partial";
   notes?: string;
   paidDate?: string;
   branchId: string;
   createdBy?: string;
   createdAt: string;
-}
+  }
 
-export interface CreateSalaryRequest {
+  export interface CreateSalaryRequest {
   teacherId: string;
   amount: number;
   month: string;
   year: number;
   paymentMethod: "cash" | "card" | "bank";
-  status: "paid" | "unpaid" | "partial";
+  status: "paid" | "partial";
   notes?: string;
   paidDate?: string;
   branchId: string;
-}
+  }
 
-export interface UpdateSalaryRequest {
-  status?: "paid" | "unpaid" | "partial";
+  export interface UpdateSalaryRequest {
+  status?: "paid" | "partial";
   paymentMethod?: "cash" | "card" | "bank";
   amount?: number;
   notes?: string;
@@ -304,6 +307,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const { timeout = 10000, ...fetchOptions } = options;
   const token = getAuthToken();
+  const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -312,6 +316,11 @@ export async function apiRequest<T>(
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Add current branch ID to header for all requests
+  if (branchId) {
+    headers["X-Branch-ID"] = branchId;
   }
 
   const controller = new AbortController();
@@ -329,7 +338,28 @@ export async function apiRequest<T>(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `API Error: ${response.status}`);
+      const errorMessage = errorData.error || `API Error: ${response.status}`;
+      
+      // Check for invalid token error and logout if needed (only 401, not 403)
+      const isInvalidToken = (errorMessage.toLowerCase().includes("invalid token") || 
+                             errorMessage.toLowerCase().includes("unauthorized")) &&
+                             response.status === 401;
+      
+      if (isInvalidToken) {
+        // Clear auth data from localStorage
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("auth_token");
+          localStorage.removeItem("school_auth_user");
+          localStorage.removeItem("current_user");
+          localStorage.removeItem("selectedBranchId");
+        }
+        // Redirect to login
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
@@ -449,9 +479,30 @@ export function logout(): void {
 /**
  * List all users (admin only)
  */
-export async function listUsers(): Promise<User[]> {
-  const response = await apiRequest<User[]>("/users");
+export async function listUsers(branchId?: string): Promise<User[]> {
+  const endpoint = branchId ? `/users?branchId=${branchId}` : "/users";
+  const response = await apiRequest<User[]>(endpoint);
   return Array.isArray(response) ? response : [];
+}
+
+/**
+ * Create a new user
+ */
+export async function createUser(
+  email: string,
+  password: string,
+  fullName: string,
+  role: string
+): Promise<User> {
+  return apiRequest<User>("/users", {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      password,
+      fullName,
+      role,
+    }),
+  });
 }
 
 /**
@@ -480,6 +531,19 @@ export async function updateUser(
 export async function deleteUser(id: string): Promise<{ success: boolean }> {
   return apiRequest<{ success: boolean }>(`/users/${id}`, {
     method: "DELETE",
+  });
+}
+
+/**
+ * Update user permissions
+ */
+export async function updateUserPermissions(
+  userId: string,
+  permissions: Record<string, boolean>
+): Promise<any> {
+  return apiRequest<any>(`/users/${userId}/permissions`, {
+    method: "PUT",
+    body: JSON.stringify(permissions),
   });
 }
 
@@ -854,6 +918,19 @@ export async function getExpense(id: string): Promise<Expense> {
 }
 
 /**
+ * Update expense
+ */
+export async function updateExpense(
+  id: string,
+  request: CreateExpenseRequest
+): Promise<Expense> {
+  return apiRequest<Expense>(`/expenses/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(request),
+  });
+}
+
+/**
  * List expenses by branch
  */
 export async function listExpenses(branchId: string): Promise<Expense[]> {
@@ -910,6 +987,164 @@ export async function deleteIncome(id: string): Promise<{ success: boolean }> {
   return apiRequest<{ success: boolean }>(`/incomes/${id}`, {
     method: "DELETE",
   });
+}
+
+// ============================================================================
+// REPORT TYPES
+// ============================================================================
+
+export interface PaymentReportItem {
+  id: string;
+  studentId: string;
+  studentName: string;
+  className: string;
+  amount: number;
+  month: string;
+  year: number;
+  status: string;
+  paymentMethod: string;
+  paidDate?: string;
+  createdBy?: string;
+  createdAt: string;
+}
+
+export interface SalaryReportItem {
+  id: string;
+  teacherId: string;
+  teacherName: string;
+  amount: number;
+  month: string;
+  year: number;
+  status: string;
+  paymentMethod: string;
+  paidDate?: string;
+  createdBy?: string;
+  createdAt: string;
+}
+
+export interface DebtorReportItem {
+  id: string;
+  studentId: string;
+  studentName: string;
+  className: string;
+  month: string;
+  year: number;
+  monthlyPayment: number;
+  paidAmount: number;
+  dueAmount: number;
+  status: string;
+}
+
+export interface ExpenseReportItem {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  amount: number;
+  paymentMethod: string;
+  date: string;
+  createdBy: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface FinancialSummary {
+  totalIncome: number;
+  totalSalaries: number;
+  totalExpenses: number;
+  netProfit: number;
+  paymentsByMethod: Record<string, number>;
+  salariesByStatus: Record<string, number>;
+}
+
+// ============================================================================
+// REPORT ENDPOINTS
+// ============================================================================
+
+/**
+ * Get payment report with optional filtering
+ */
+export async function getPaymentReport(
+  branchId: string,
+  startDate: string,
+  endDate: string,
+  status?: string,
+  classId?: string
+): Promise<PaymentReportItem[]> {
+  let query = `?branchId=${branchId}&startDate=${startDate}&endDate=${endDate}`;
+  if (status && status !== "all") query += `&status=${status}`;
+  if (classId && classId !== "all") query += `&classId=${classId}`;
+
+  const response = await apiRequest<PaymentReportItem[]>(
+    `/reports/payments${query}`
+  );
+  return Array.isArray(response) ? response : [];
+}
+
+/**
+ * Get salary report with optional filtering
+ */
+export async function getSalaryReport(
+  branchId: string,
+  startDate: string,
+  endDate: string,
+  status?: string
+): Promise<SalaryReportItem[]> {
+  let query = `?branchId=${branchId}&startDate=${startDate}&endDate=${endDate}`;
+  if (status && status !== "all") query += `&status=${status}`;
+
+  const response = await apiRequest<SalaryReportItem[]>(
+    `/reports/salaries${query}`
+  );
+  return Array.isArray(response) ? response : [];
+}
+
+/**
+ * Get debtors report for specific month/year
+ */
+export async function getDebtorsReport(
+  branchId: string,
+  month: string,
+  year: number,
+  classId?: string
+): Promise<DebtorReportItem[]> {
+  let query = `?branchId=${branchId}&month=${month}&year=${year}`;
+  if (classId && classId !== "all") query += `&classId=${classId}`;
+
+  const response = await apiRequest<DebtorReportItem[]>(
+    `/reports/debtors${query}`
+  );
+  return Array.isArray(response) ? response : [];
+}
+
+/**
+ * Get expenses report with optional filtering
+ */
+export async function getExpensesReport(
+  branchId: string,
+  startDate: string,
+  endDate: string,
+  category?: string
+): Promise<ExpenseReportItem[]> {
+  let query = `?branchId=${branchId}&startDate=${startDate}&endDate=${endDate}`;
+  if (category && category !== "all") query += `&category=${category}`;
+
+  const response = await apiRequest<ExpenseReportItem[]>(
+    `/reports/expenses${query}`
+  );
+  return Array.isArray(response) ? response : [];
+}
+
+/**
+ * Get financial summary for date range
+ */
+export async function getFinancialSummary(
+  branchId: string,
+  startDate: string,
+  endDate: string
+): Promise<FinancialSummary> {
+  const query = `?branchId=${branchId}&startDate=${startDate}&endDate=${endDate}`;
+  return apiRequest<FinancialSummary>(`/reports/financial-summary${query}`);
 }
 
 // ============================================================================

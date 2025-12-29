@@ -1,6 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { LanguageProvider } from "@/context/LanguageContext";
+import { BranchProvider } from "@/context/BranchContext";
 import { Layout } from "@/components/Layout";
 import "@/styles/globals.css";
 import type { AppProps } from "next/app";
@@ -18,17 +19,19 @@ export default function App({ Component, pageProps }: AppProps) {
       disableTransitionOnChange
     >
       <LanguageProvider>
-        {isAuthPage ? (
-          <>
-            <Component {...pageProps} />
-            <Toaster />
-          </>
-        ) : (
-          <Layout>
-            <Component {...pageProps} />
-            <Toaster />
-          </Layout>
-        )}
+        <BranchProvider>
+          {isAuthPage ? (
+            <>
+              <Component {...pageProps} />
+              <Toaster />
+            </>
+          ) : (
+            <Layout>
+              <Component {...pageProps} />
+              <Toaster />
+            </Layout>
+          )}
+        </BranchProvider>
       </LanguageProvider>
     </ThemeProvider>
   );

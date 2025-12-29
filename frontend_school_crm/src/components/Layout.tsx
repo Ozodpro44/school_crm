@@ -5,30 +5,31 @@ import { Button } from "@/components/ui/button";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  LayoutDashboard,
-  Users,
-  GraduationCap,
-  BookOpen,
-  DollarSign,
-  Wallet,
-  FileText,
-  HelpCircle,
-  LogOut,
-  Menu,
-  X,
-  TrendingDown,
-  Building2,
-  Settings,
-  Globe,
-  ChevronLeft,
-  UserCog,
-} from "lucide-react";
+    LayoutDashboard,
+    Users,
+    GraduationCap,
+    BookOpen,
+    DollarSign,
+    Wallet,
+    FileText,
+    HelpCircle,
+    LogOut,
+    Menu,
+    X,
+    TrendingDown,
+    Building2,
+    Settings,
+    Globe,
+    ChevronLeft,
+    UserCog,
+    Calendar,
+    Clock,
+  } from "lucide-react";
 import { getCurrentUser, logout, hasPermission } from "@/lib/auth";
 import { User, Language } from "@/types";
-import { Branch } from "@/lib/api";
-import * as api from "@/lib/api";
 import { getTranslation } from "@/lib/translations";
 import { useLanguage, useSetLanguage } from "@/hooks/use-language";
+import { useBranch } from "@/context/BranchContext";
 
 interface LayoutProps {
   children: ReactNode;
@@ -39,10 +40,10 @@ export function Layout({ children }: LayoutProps) {
   const [user, setUser] = useState<User | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const language = useLanguage();
   const setLanguage = useSetLanguage();
-  const [selectedBranchId, setSelectedBranchId] = useState<string>("");
-  const [branches, setBranches] = useState<Branch[]>([]);
+  const { currentBranch, branches, setCurrentBranchById, clearBranches } = useBranch();
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -52,31 +53,27 @@ export function Layout({ children }: LayoutProps) {
       router.push("/login");
       return;
     }
-
-    if (currentUser) {
-      // Fetch branches from backend API
-       const loadBranches = async () => {
-         try {
-           const allBranches = await api.listBranches();
-           setBranches(allBranches);
-           
-           // Check localStorage first for previously selected branch
-           const savedBranchId = localStorage.getItem("selectedBranchId");
-           if (savedBranchId && allBranches.find(b => b.id === savedBranchId)) {
-             setSelectedBranchId(savedBranchId);
-           } else if (allBranches.length > 0) {
-             setSelectedBranchId(allBranches[0].id);
-           }
-         } catch (error) {
-           console.error("Failed to load branches:", error);
-         }
-       };
-      
-      loadBranches();
+    
+    // Auto-set manager's branch when they login
+    if (currentUser && (currentUser.role === "manager" || currentUser.role === "branch_admin") && currentUser.branchId && branches.length > 0) {
+      const userBranch = branches.find(b => b.id === currentUser.branchId);
+      if (userBranch) {
+        setCurrentBranchById(currentUser.branchId);
+      }
     }
-  }, [router.pathname, router]); // Re-run when route changes to refresh branches
+  }, [router.pathname, router, branches, setCurrentBranchById]);
+
+  // Update current date and time every second
+  useEffect(() => {
+    setCurrentDate(new Date());
+    const timer = setInterval(() => {
+      setCurrentDate(new Date());
+    }, 1000); // Update every second
+    return () => clearInterval(timer);
+  }, []);
 
   const handleLogout = () => {
+    clearBranches();
     logout();
     router.push("/login");
   };
@@ -86,8 +83,7 @@ export function Layout({ children }: LayoutProps) {
   };
 
   const handleBranchChange = (branchId: string) => {
-    setSelectedBranchId(branchId);
-    localStorage.setItem("selectedBranchId", branchId);
+    setCurrentBranchById(branchId);
     // Refresh the page data without full reload
     router.replace(router.asPath);
   };
@@ -116,8 +112,6 @@ export function Layout({ children }: LayoutProps) {
     { name: t("settings"), href: "/settings", icon: Settings, show: user?.role === "admin" },
     { name: t("help"), href: "/help", icon: HelpCircle, show: true },
   ].filter((item) => item.show);
-
-  const currentBranch = branches.find(b => b.id === selectedBranchId);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
@@ -151,28 +145,83 @@ export function Layout({ children }: LayoutProps) {
           </div>
 
           {/* Branch Selector */}
-          {branches.length > 0 && sidebarOpen && (
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800">
-              <Select value={selectedBranchId} onValueChange={handleBranchChange}>
-                <SelectTrigger className="w-full">
-                  <Building2 className="w-4 h-4 mr-2" />
-                  <SelectValue placeholder={t("selectBranch")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.id} value={branch.id}>
-                      {branch.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {currentBranch && (
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                  {currentBranch.address}
-                </p>
-              )}
-            </div>
-          )}
+           {branches.length > 0 && sidebarOpen && (
+             <div className="p-4 border-b border-slate-200 dark:border-slate-800">
+               {branches.length === 1 ? (
+                 // For managers with single branch, show as info
+                 <div className="space-y-2">
+                   <div className="flex items-center gap-2 text-sm font-medium">
+                     <Building2 className="w-4 h-4" />
+                     {currentBranch?.name}
+                   </div>
+                   {currentBranch && (
+                     <p className="text-xs text-slate-500 dark:text-slate-400">
+                       {currentBranch.address}
+                     </p>
+                   )}
+                 </div>
+               ) : (
+                 // For admins with multiple branches, show dropdown
+                 <>
+                   <Select value={currentBranch?.id || ""} onValueChange={handleBranchChange}>
+                     <SelectTrigger className="w-full">
+                       <Building2 className="w-4 h-4 mr-2" />
+                       <SelectValue placeholder={t("selectBranch")} />
+                     </SelectTrigger>
+                     <SelectContent>
+                       {[...branches].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).map((branch) => (
+                         <SelectItem key={branch.id} value={branch.id}>
+                           {branch.name}
+                         </SelectItem>
+                       ))}
+                     </SelectContent>
+                   </Select>
+                   {currentBranch && (
+                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                       {currentBranch.address}
+                     </p>
+                   )}
+                 </>
+               )}
+             </div>
+           )}
+
+           {/* Current Date & Time Display */}
+           {sidebarOpen && (
+             <div className="p-4 border-b border-slate-200 dark:border-slate-800 space-y-3">
+               <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                 <Calendar className="w-4 h-4 flex-shrink-0" />
+                 <span className="font-medium">
+                   {(() => {
+                     const months = {
+                       en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+                       uz: ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentabr", "Oktabr", "Noyabr", "Dekabr"]
+                     };
+                     const day = currentDate.getDate();
+                     const month = months[language === "en" ? "en" : "uz"][currentDate.getMonth()];
+                     const year = currentDate.getFullYear();
+                     return `${day} ${month} ${year}`;
+                   })()}
+                 </span>
+               </div>
+               <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-500">
+                 <Clock className="w-4 h-4 flex-shrink-0" />
+                 <span>
+                   {(() => {
+                     const weekdays = {
+                       en: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+                       uz: ["Yakshanba", "Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba"]
+                     };
+                     const dayName = weekdays[language === "en" ? "en" : "uz"][currentDate.getDay()];
+                     const hours = String(currentDate.getHours()).padStart(2, "0");
+                     const minutes = String(currentDate.getMinutes()).padStart(2, "0");
+                     const seconds = String(currentDate.getSeconds()).padStart(2, "0");
+                     return `${dayName}, ${hours}:${minutes}:${seconds}`;
+                   })()}
+                 </span>
+               </div>
+             </div>
+           )}
 
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto p-2">
@@ -324,13 +373,13 @@ export function Layout({ children }: LayoutProps) {
                   <label className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                     {t("selectBranch")}
                   </label>
-                  <Select value={selectedBranchId} onValueChange={handleBranchChange}>
+                  <Select value={currentBranch?.id || ""} onValueChange={handleBranchChange}>
                     <SelectTrigger className="w-full h-11">
                       <Building2 className="w-4 h-4 mr-2" />
                       <SelectValue placeholder={t("selectBranch")} />
                     </SelectTrigger>
                     <SelectContent>
-                      {branches.map((branch) => (
+                      {[...branches].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).map((branch) => (
                         <SelectItem key={branch.id} value={branch.id}>
                           {branch.name}
                         </SelectItem>

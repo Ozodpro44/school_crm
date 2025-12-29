@@ -1,28 +1,35 @@
 export type UserRole = "admin" | "branch_admin" | "manager" | "accountant" | "teacher" | "student" | "parent";
 export type PaymentMethod = "card" | "cash" | "bank";
 export type StudentStatus = "active" | "left" | "suspended";
-export type PaymentStatus = "paid" | "unpaid" | "partial";
+export type PaymentStatus = "paid" | "partial";
 export type Language = "uz-cyrl" | "uz-latn" | "en";
 
 export interface Permission {
+  id?: string;
+  userId?: string;
   canViewStudents: boolean;
+  canCreateStudents: boolean;
   canEditStudents: boolean;
   canDeleteStudents: boolean;
   canViewTeachers: boolean;
+  canCreateTeachers: boolean;
   canEditTeachers: boolean;
   canDeleteTeachers: boolean;
   canViewClasses: boolean;
+  canCreateClasses: boolean;
   canEditClasses: boolean;
   canDeleteClasses: boolean;
   canViewPayments: boolean;
+  canCreatePayments: boolean;
   canEditPayments: boolean;
   canViewSalaries: boolean;
+  canCreateSalaries: boolean;
   canEditSalaries: boolean;
   canViewExpenses: boolean;
+  canCreateExpenses: boolean;
   canEditExpenses: boolean;
   canDeleteExpenses: boolean;
   canViewReports: boolean;
-  canFinishMonth: boolean;
   canViewSettings: boolean;
   canEditSettings: boolean;
 }
@@ -42,10 +49,12 @@ export interface Branch {
 export interface User {
   id: string;
   email: string;
-  password: string;
+  password?: string;
   role: UserRole;
   fullName: string;
   permissions?: Permission;
+  branchId?: string;
+  branchIds?: string[];
   createdAt: string;
 }
 
@@ -103,6 +112,7 @@ export interface Payment {
   paidDate?: string;
   branchId: string;
   createdBy?: string;
+  createdByName?: string;
   createdAt: string;
 }
 

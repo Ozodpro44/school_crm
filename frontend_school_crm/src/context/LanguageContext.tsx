@@ -6,7 +6,8 @@ import React, {
   ReactNode,
 } from "react";
 import { Language, Settings } from "@/types";
-import { getSettings, updateSettings } from "@/lib/api";
+import { getSettings } from "@/lib/api";
+import { getCurrentUser } from "@/lib/auth";
 
 interface LanguageContextType {
   language: Language;
@@ -38,16 +39,11 @@ export function subscribeToLanguageChange(
 
 // Default settings
 const DEFAULT_SETTINGS: Settings = {
-  id: "default",
-  branchId: "default",
-  defaultMonthlyPayment: 500000,
-  defaultTeacherSalary: 3000000,
+  name: "School CRM",
+  monthlyPayment: 500000,
   currency: "UZS",
-  language: "uz-latn",
-  schoolName: "School CRM",
-  currentMonth: "01",
-  currentYear: new Date().getFullYear(),
-  updatedAt: new Date().toISOString(),
+  updatedDate: new Date().toISOString(),
+  createdDate: new Date().toISOString(),
 };
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
@@ -56,17 +52,29 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
+    // Load language from localStorage
+    const savedLanguage = localStorage.getItem("language") as Language | null;
+    if (savedLanguage && ["uz-cyrl", "uz-latn", "en"].includes(savedLanguage)) {
+      setLanguageState(savedLanguage);
+    }
+
     // Load settings from backend on mount and when branch changes
     const loadSettings = async () => {
       try {
-        // Call without branchId - it will be extracted from JWT by backend
+        // Only fetch settings if user is authenticated
+        const user = getCurrentUser();
+        if (!user) {
+          // User not logged in, use defaults and mark as initialized
+          setSettings(DEFAULT_SETTINGS);
+          setIsInitialized(true);
+          return;
+        }
+
         const data = await getSettings();
         setSettings(data);
-        setLanguageState(data.language);
       } catch (error) {
         // Fallback to defaults if loading fails
         setSettings(DEFAULT_SETTINGS);
-        setLanguageState("uz-latn");
         console.warn("Failed to load settings from backend:", error);
       } finally {
         setIsInitialized(true);
@@ -99,10 +107,8 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   const setLanguage = (newLanguage: Language) => {
     setLanguageState(newLanguage);
-    // Update language on backend (without branchId - uses JWT)
-    updateSettings({ language: newLanguage }).catch(() => {
-      // Silently fail - language will still update locally
-    });
+    // Store language preference in localStorage
+    localStorage.setItem("language", newLanguage);
     notifyLanguageChange(newLanguage);
   };
 

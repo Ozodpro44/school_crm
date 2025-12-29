@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { classesDB, studentsDB, teachersDB, paymentsDB } from "@/lib/storage";
+import { classesDB, studentsDB, teachersDB } from "@/lib/storage";
 import { Class, Student, Teacher } from "@/types";
 import {
   ArrowLeft,
@@ -39,6 +39,8 @@ import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/exportUtils";
+import { listStudents as apiListStudents, listClasses as apiListClasses, listTeachers as apiListTeachers, listPayments as apiListPayments } from "@/lib/api";
+import type { Payment } from "@/lib/api";
 
 export default function ClassDetailsPage() {
   const router = useRouter();
@@ -49,6 +51,7 @@ export default function ClassDetailsPage() {
   const [classStudents, setClassStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [allClasses, setAllClasses] = useState<Class[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [teacherName, setTeacherName] = useState("");
   const [targetClassId, setTargetClassId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -92,9 +95,10 @@ export default function ClassDetailsPage() {
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    const payments = paymentsDB.getByStudentId(studentId);
+    // Use backend payments instead of localStorage
     return payments.some(
       (payment) =>
+        payment.studentId === studentId &&
         Number(payment.month) === currentMonth &&
         Number(payment.year) === currentYear
     );
@@ -112,28 +116,55 @@ export default function ClassDetailsPage() {
     return () => clearTimeout(timer);
   }, [id]);
 
-  const loadData = () => {
-    const classDataFetched = classesDB.getById(id as string);
-    if (classDataFetched) {
-      setClassData(classDataFetched);
-      const allStudents = studentsDB.getAll();
-      setStudents(allStudents);
-      const studentsInClass = allStudents.filter(
-        (s) => s.classId === classDataFetched.id
-      );
-      setClassStudents(studentsInClass);
+  // Reload data when branch changes
+  useEffect(() => {
+    const handleBranchChange = () => {
+      loadData();
+    };
+    window.addEventListener("branchChange", handleBranchChange);
+    return () => window.removeEventListener("branchChange", handleBranchChange);
+  }, []);
 
-      if (classDataFetched.teacherId) {
-        const teacher = teachersDB.getById(classDataFetched.teacherId);
-        setTeacherName(teacher?.fullName || "Unknown");
-      } else {
-        setTeacherName("No teacher assigned");
-      }
-    }
+  const loadData = async () => {
+    try {
+      const branchId = localStorage.getItem("selectedBranchId");
+      if (!branchId) return;
 
-    setAllClasses(classesDB.getAll());
-    setTeachers(teachersDB.getAll());
-  };
+      // Load class from API
+      const classList = await apiListClasses(branchId);
+      const classDataFetched = classList.find((c) => c.id === id);
+      
+      if (classDataFetched) {
+        setClassData(classDataFetched);
+        setAllClasses(classList);
+        
+        // Load students from API
+        const allStudents = await apiListStudents(branchId);
+        setStudents(allStudents);
+        const studentsInClass = allStudents.filter(
+          (s) => s.classId === classDataFetched.id
+        );
+        setClassStudents(studentsInClass);
+
+        // Load teachers from API
+        const teachersList = await apiListTeachers(branchId);
+        setTeachers(teachersList);
+        
+        // Load payments from API
+        const paymentsList = await apiListPayments({ branchId });
+        setPayments(paymentsList);
+        
+        if (classDataFetched.teacherId) {
+          const teacher = teachersList.find((t) => t.id === classDataFetched.teacherId);
+          setTeacherName(teacher?.fullName || "Unknown");
+        } else {
+          setTeacherName("No teacher assigned");
+        }
+        }
+        } catch (error) {
+        console.error("Failed to load class data:", error);
+        }
+        };
 
   const handleRemoveStudent = (studentId: string) => {
     if (!canEditClasses) {

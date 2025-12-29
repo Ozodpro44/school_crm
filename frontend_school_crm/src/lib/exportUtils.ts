@@ -29,7 +29,7 @@ export function formatCurrency(amount: number, currency?: string): string {
   const settings = typeof window !== "undefined" ? settingsDB.get() : undefined;
   const cur = currency || settings?.currency || "USD";
   let locale = "en-US";
-  const lang = settings?.language;
+  const lang = typeof window !== "undefined" ? localStorage.getItem("language") : null;
   
   if (lang) {
     if (lang.startsWith("uz")) {

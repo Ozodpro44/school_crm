@@ -198,7 +198,7 @@ export const commonTranslations: Partial<Translation> = {
   // Drag and drop
   dragToMove: {
     "uz-cyrl": "Ҳарвочун сўрдинг",
-    "uz-latn": "Harvoчun surding",
+    "uz-latn": "Harvoqchun surding",
     en: "Drag to move",
   },
 
@@ -225,18 +225,19 @@ export const commonTranslations: Partial<Translation> = {
     en: "Permissions",
   },
   canView: { "uz-cyrl": "Кўриш", "uz-latn": "Ko'rish", en: "View" },
+  canCreate: { "uz-cyrl": "Яратиш", "uz-latn": "Yaratish", en: "Create" },
   canEdit: { "uz-cyrl": "Таҳрирлаш", "uz-latn": "Tahrirlash", en: "Edit" },
   canDelete: { "uz-cyrl": "Ўчириш", "uz-latn": "O'chirish", en: "Delete" },
 
   // Managers specific
   managers: {
     "uz-cyrl": "Мўдирийатчилар",
-    "uz-latn": "Mudir oyatchilar",
+    "uz-latn": "Mudiriyatchilar",
     en: "Managers",
   },
   manageManagersPermissions: {
     "uz-cyrl": "Мўдирийатчилар ва уларнинг рухсатларини бошқариш",
-    "uz-latn": "Mudir oyatchilar va ularning ruhsatlarini boshqarish",
+    "uz-latn": "Mudiriyatchilar va ularning ruhsatlarini boshqarish",
     en: "Manage managers and their permissions",
   },
   addManager: {
@@ -261,7 +262,7 @@ export const commonTranslations: Partial<Translation> = {
   },
   noManagersYet: {
     "uz-cyrl": "Ҳали мўдир йўқ",
-    "uz-latn": "Hali mudir yoq",
+    "uz-latn": "Hali mudir yo'q",
     en: "No managers yet",
   },
   managerDeleted: {
@@ -306,22 +307,22 @@ export const commonTranslations: Partial<Translation> = {
   // Common dialog/form messages
   permissionDenied: {
     "uz-cyrl": "Рухсат сўғи",
-    "uz-latn": "Ruhsat sogi",
+    "uz-latn": "Ruhsat sugi",
     en: "Permission Denied",
   },
   noPermissionCreate: {
     "uz-cyrl": "Қўшиш ҳуқуқи йўқ",
-    "uz-latn": "Qo'shish haqqi yoq",
+    "uz-latn": "Qo'shish haqqi yo'q",
     en: "You don't have permission to create or edit",
   },
   noPermissionDelete: {
     "uz-cyrl": "Ўчириш ҳуқуқи йўқ",
-    "uz-latn": "O'chirish haqqi yoq",
+    "uz-latn": "O'chirish haqqi yo'q",
     en: "You don't have permission to delete",
   },
   noPermissionEdit: {
     "uz-cyrl": "Таҳрирлаш ҳуқуқи йўқ",
-    "uz-latn": "Tahrirlash haqqi yoq",
+    "uz-latn": "Tahrirlash haqqi yo'q",
     en: "You don't have permission to edit",
   },
   confirmDeleteItem: {
@@ -387,7 +388,7 @@ export const commonTranslations: Partial<Translation> = {
   },
   noStudentsYet: {
     "uz-cyrl": "Ҳали ўқувчи йўқ",
-    "uz-latn": "Hali o'quvchi yoq",
+    "uz-latn": "Hali o'quvchi yo'q",
     en: "No students found",
   },
   downloadTemplate: {
@@ -460,17 +461,17 @@ export const commonTranslations: Partial<Translation> = {
   },
   errorOccurred: {
     "uz-cyrl": "Хато юз берди. Ўтадимиз, қайта уринибғой",
-    "uz-latn": "Xato yuz berdi. Utadimiz, qayta urinibghoy",
+    "uz-latn": "Xato yuz berdi. O'tadimiz, qayta urinib gʻoy",
     en: "An error occurred. Please try again.",
   },
   enterEmail: {
     "uz-cyrl": "Электрон почтаңизни киритинг",
-    "uz-latn": "Elektron pochtangizni kiritinq",
+    "uz-latn": "Elektron pochtangizni kiritinг",
     en: "Enter your email",
   },
   enterPassword: {
     "uz-cyrl": "Паролингизни киритинг",
-    "uz-latn": "Parolingizni kiritinq",
+    "uz-latn": "Parolingizni kiritinг",
     en: "Enter your password",
   },
 
@@ -1402,3 +1403,4 @@ export const commonTranslations: Partial<Translation> = {
     en: "Next",
   },
   };
+

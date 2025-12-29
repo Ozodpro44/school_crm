@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -231,12 +232,12 @@ export default function RegisterPage() {
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
               Already have an account?{" "}
-              <a
+              <Link
                 href="/login"
                 className="text-indigo-600 hover:text-indigo-700 font-semibold"
               >
                 Sign In
-              </a>
+              </Link>
             </p>
           </div>
         </CardContent>

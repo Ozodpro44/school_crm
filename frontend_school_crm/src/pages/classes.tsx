@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { classesDB, studentsDB, teachersDB } from "@/lib/storage";
+import { classesDB, studentsDB } from "@/lib/storage";
 import { Class, Student, Teacher } from "@/types";
 import {
   Plus,
@@ -38,7 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { createClass, updateClass, deleteClass, listClasses } from "@/lib/api";
+import { createClass, updateClass, deleteClass, listClasses, listTeachers, listStudents } from "@/lib/api";
 
 export default function ClassesPage() {
   const router = useRouter();
@@ -78,22 +78,46 @@ export default function ClassesPage() {
   });
 
   useEffect(() => {
-    const user = getCurrentUser();
     setIsLoading(true);
     loadData();
-  }, [getCurrentUser()?.branchId]);
+  }, []);
+
+  useEffect(() => {
+    // Listen for branch changes
+    const handleBranchChange = () => {
+      loadData();
+    };
+
+    window.addEventListener("branchChange", handleBranchChange);
+    return () => window.removeEventListener("branchChange", handleBranchChange);
+  }, []);
 
   const t = (key: string) => getTranslation(key, language);
 
   const loadData = async () => {
+    const user = getCurrentUser();
+    
+    // If not authenticated, don't try to load data
+    if (!user) {
+      setClasses([]);
+      setTeachers([]);
+      setStudents([]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const user = getCurrentUser();
-      if (user?.branchId) {
-        const classList = await listClasses(user.branchId);
+      const branchId = localStorage.getItem("selectedBranchId");
+      if (branchId) {
+        const classList = await listClasses(branchId);
         setClasses(classList);
+        const teachersList = await listTeachers(branchId);
+        setTeachers(teachersList);
+        const studentsList = await listStudents(branchId);
+        setStudents(studentsList);
+      } else {
+        setStudents([]);
       }
-      setStudents(studentsDB.getAll());
-      setTeachers(teachersDB.getAll());
     } catch (error) {
       console.error("Failed to load classes:", error);
       toast({
@@ -106,6 +130,7 @@ export default function ClassesPage() {
     }
   };
 
+  const canCreateClasses = hasPermission("canCreateClasses");
   const canEditClasses = hasPermission("canEditClasses");
   const canDeleteClasses = hasPermission("canDeleteClasses");
 
@@ -120,8 +145,8 @@ export default function ClassesPage() {
       return;
     }
 
-    const user = getCurrentUser();
-    if (!user?.branchId) return;
+    const branchId = localStorage.getItem("selectedBranchId");
+    if (!branchId) return;
 
     try {
       if (editingClass) {
@@ -138,7 +163,7 @@ export default function ClassesPage() {
         await createClass({
           name: formData.name,
           teacherId: formData.teacherId || undefined,
-          branchId: user.branchId,
+          branchId: branchId,
         });
         toast({
           title: "Success",
@@ -604,12 +629,24 @@ export default function ClassesPage() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog 
+            open={isDialogOpen} 
+            onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (open) {
+                const branchId = localStorage.getItem("selectedBranchId");
+                if (branchId) {
+                  listTeachers(branchId).then(setTeachers);
+                }
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button
                 className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 w-full sm:w-auto"
                 onClick={() => resetForm()}
-                disabled={!canEditClasses}
+                disabled={!canCreateClasses}
+                title={!canCreateClasses ? t("noPermission") || "No permission to create classes" : ""}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 {t("addClass")}
@@ -638,31 +675,31 @@ export default function ClassesPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="teacherId">Class Teacher</Label>
-                  <Select
-                    value={formData.teacherId || "none"}
-                    onValueChange={(value) =>
-                      setFormData({
-                        ...formData,
-                        teacherId: value === "none" ? "" : value,
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t("selectTeacherOptional")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">
-                        {t("noTeacherAssigned")}
-                      </SelectItem>
-                      {teachers.map((teacher) => (
-                        <SelectItem key={teacher.id} value={teacher.id}>
-                          {teacher.fullName} - {teacher.subjects.join(", ")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                   <Label htmlFor="teacherId">Class Teacher</Label>
+                   <Select
+                     value={formData.teacherId || "none"}
+                     onValueChange={(value) =>
+                       setFormData({
+                         ...formData,
+                         teacherId: value === "none" ? "" : value,
+                       })
+                     }
+                   >
+                     <SelectTrigger>
+                       <SelectValue placeholder={t("selectTeacherOptional")} />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="none">
+                         {t("noTeacherAssigned")}
+                       </SelectItem>
+                       {teachers.map((teacher) => (
+                         <SelectItem key={teacher.id} value={teacher.id}>
+                           {teacher.fullName} - {teacher.subjects.join(", ")}
+                         </SelectItem>
+                       ))}
+                     </SelectContent>
+                   </Select>
+                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
                   <Button

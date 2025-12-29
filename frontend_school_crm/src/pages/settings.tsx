@@ -26,6 +26,8 @@ import { useRouter } from "next/router";
 import { useSetLanguage } from "@/hooks/use-language";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { getSettings, updateSettings, UpdateSettingsRequest } from "@/lib/api";
+import { useBranch } from "@/context/BranchContext";
+import { formatDateTimeInTashkent } from "@/lib/timezone";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -39,35 +41,12 @@ export default function SettingsPage() {
   const setLanguage = useSetLanguage();
   const t = (key: string) => getTranslation(key, language);
   const router = useRouter();
-
-  useEffect(() => {
-    if (!hasPermission("canViewSettings")) {
-      router.push("/");
-      return;
-    }
-
-    fetchSettings();
-  }, [router]);
-
-  useEffect(() => {
-    // Reload settings when branch changes
-    const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === "selectedBranchId") {
-        fetchSettings();
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-    return () => {
-      window.removeEventListener("storage", handleStorageChange);
-    };
-  }, []);
+  const { currentBranch } = useBranch();
 
   const fetchSettings = async () => {
     try {
       setLoading(true);
-      const selectedBranchId = localStorage.getItem("selectedBranchId");
-      const data = await getSettings(selectedBranchId || undefined);
+      const data = await getSettings();
       setSettings(data);
       setOriginalSettings(data);
     } catch (error) {
@@ -80,6 +59,22 @@ export default function SettingsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!hasPermission("canViewSettings")) {
+      router.push("/");
+      return;
+    }
+
+    fetchSettings();
+  }, [router]);
+
+  // Reload settings when branch changes
+  useEffect(() => {
+    if (currentBranch) {
+      fetchSettings();
+    }
+  }, [currentBranch?.id]);
 
   const handleSave = async () => {
     if (!settings) return;
@@ -129,11 +124,10 @@ export default function SettingsPage() {
   const handleChange = (field: keyof Settings, value: string | number) => {
     if (!settings) return;
     setSettings({ ...settings, [field]: value });
+  };
 
-    // Trigger language context update if language changes
-    if (field === "language" && typeof value === "string") {
-      setLanguage(value as any);
-    }
+  const handleLanguageChange = (value: Language) => {
+    setLanguage(value);
   };
 
   const hasChanges = () => {
@@ -258,7 +252,9 @@ export default function SettingsPage() {
                   {t("created")}
                 </Label>
                 <p className="text-sm font-medium">
-                  {new Date(settings.createdDate).toLocaleString("uz-UZ")}
+                  {new Date(settings.createdDate).toLocaleString("sv-SE", {
+                    timeZone: "Asia/Tashkent",
+                  })}
                 </p>
               </div>
               <div className="space-y-2">
@@ -266,7 +262,9 @@ export default function SettingsPage() {
                   {t("lastUpdated")}
                 </Label>
                 <p className="text-sm font-medium">
-                  {new Date(settings.updatedDate).toLocaleString("uz-UZ")}
+                  {new Date(settings.updatedDate).toLocaleString("sv-SE", {
+                    timeZone: "Asia/Tashkent",
+                  })}
                 </p>
               </div>
             </div>

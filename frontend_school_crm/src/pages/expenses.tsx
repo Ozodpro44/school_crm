@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { expensesDB, usersDB } from "@/lib/storage";
+import { usersDB } from "@/lib/storage";
 import { Expense, PaymentMethod } from "@/types";
 import {
   Plus,
@@ -36,6 +36,13 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
+import {
+  createExpense,
+  listExpenses,
+  deleteExpense,
+  updateExpense,
+  getUser,
+} from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -56,6 +63,7 @@ export default function ExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
+  const [userCache, setUserCache] = useState<{ [key: string]: string }>({});
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -71,6 +79,7 @@ export default function ExpensesPage() {
   });
   const language = useLanguage();
   const { toast } = useToast();
+  const canCreateExpenses = hasPermission("canCreateExpenses");
   const canEditExpenses = hasPermission("canEditExpenses");
   const canDeleteExpenses = hasPermission("canDeleteExpenses");
   const {
@@ -108,7 +117,9 @@ export default function ExpensesPage() {
   useEffect(() => {
     // Set currentPage from URL query params
     if (router.isReady) {
-      const page = router.query.page ? parseInt(router.query.page as string, 10) : 1;
+      const page = router.query.page
+        ? parseInt(router.query.page as string, 10)
+        : 1;
       setCurrentPage(Math.max(1, page));
     }
   }, [router.isReady, router.query.page]);
@@ -122,68 +133,139 @@ export default function ExpensesPage() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Refetch when branch changes
+  useEffect(() => {
+    const handleBranchChange = () => {
+      setIsLoading(true);
+      setCurrentPage(1); // Reset to first page when branch changes
+      loadData().finally(() => setIsLoading(false));
+    };
+
+    window.addEventListener("branchChange", handleBranchChange);
+    return () => window.removeEventListener("branchChange", handleBranchChange);
+  }, []);
+
   const t = (key: string) => getTranslation(key, language);
 
-  const loadData = () => {
-    setExpenses(expensesDB.getAll());
+  const loadData = async () => {
+    try {
+      const branchId = localStorage.getItem("selectedBranchId") || "";
+      const data = await listExpenses(branchId);
+      setExpenses(data);
+
+      // Fetch user names for all unique creators
+      const creatorIds = [
+        ...new Set(data.map((e) => e.createdBy).filter(Boolean)),
+      ];
+      for (const userId of creatorIds) {
+        await fetchAndCacheUserName(userId);
+      }
+    } catch (error) {
+      console.error("Failed to load expenses:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load expenses",
+        variant: "destructive",
+      });
+    }
   };
 
   const getUserName = (userId: string) => {
-    const user = usersDB.getAll().find((u) => u.id === userId);
-    return user?.fullName || "-";
+    if (!userId) return "-";
+
+    // Check cache first
+    if (userCache[userId]) {
+      return userCache[userId];
+    }
+
+    // Try local storage fallback
+    const localUser = usersDB.getAll().find((u) => u.id === userId);
+    if (localUser?.fullName) {
+      return localUser.fullName;
+    }
+
+    // Return loading state and fetch from API
+    return "-";
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const fetchAndCacheUserName = async (userId: string) => {
+    if (!userId || userCache[userId]) return;
+
+    try {
+      const user = await getUser(userId);
+      setUserCache((prev) => ({ ...prev, [userId]: user.fullName }));
+    } catch (error) {
+      console.error(`Failed to fetch user ${userId}:`, error);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const user = getCurrentUser();
     if (!user) return;
 
-    if (editingExpense) {
-      expensesDB.update(editingExpense.id, {
-        title: formData.description, // Mapped from description
-        category: formData.category,
-        description: formData.notes, // Mapped from notes
-        amount: parseFloat(formData.amount),
-        paymentMethod: formData.paymentMethod,
-        date: formData.date,
-      });
+    try {
+      // Convert date string (YYYY-MM-DD) to ISO timestamp (YYYY-MM-DDTHH:mm:ssZ)
+      const dateTimestamp = new Date(
+        formData.date + "T00:00:00Z"
+      ).toISOString();
+
+      if (editingExpense) {
+        await updateExpense(editingExpense.id, {
+          title: formData.description, // Mapped from description
+          category: formData.category,
+          description: formData.notes, // Mapped from notes
+          amount: parseFloat(formData.amount),
+          paymentMethod: formData.paymentMethod,
+          date: dateTimestamp,
+          branchId: editingExpense.branchId,
+        });
+        toast({
+          title: "Updated",
+          description: "Expense updated successfully",
+          variant: "success",
+        });
+      } else {
+        await createExpense({
+          title: formData.description, // Mapped from description
+          category: formData.category,
+          description: formData.notes, // Mapped from notes
+          amount: parseFloat(formData.amount),
+          paymentMethod: formData.paymentMethod,
+          date: dateTimestamp,
+          branchId: localStorage.getItem("selectedBranchId") || "",
+        });
+        toast({
+          title: t("created"),
+          description: t("expenseCreatedSuccess"),
+          variant: "success",
+        });
+      }
+
+      resetForm();
+      await loadData();
+      setIsDialogOpen(false);
+    } catch (error) {
+      console.error("Failed to save expense:", error);
       toast({
-        title: "Updated",
-        description: "Expense updated successfully",
-        variant: "success",
-      });
-    } else {
-      expensesDB.create({
-        title: formData.description, // Mapped from description
-        category: formData.category,
-        description: formData.notes, // Mapped from notes
-        amount: parseFloat(formData.amount),
-        paymentMethod: formData.paymentMethod,
-        date: formData.date,
-        createdBy: user.id,
-        branchId: user.branchId || "",
-      });
-      toast({
-        title: t("created"),
-        description: t("expenseCreatedSuccess"),
-        variant: "success",
+        title: "Error",
+        description: "Failed to save expense",
+        variant: "destructive",
       });
     }
-
-    resetForm();
-    loadData();
-    setIsDialogOpen(false);
   };
 
   const handleEdit = (expense: Expense) => {
     setEditingExpense(expense);
+    // Extract YYYY-MM-DD from ISO timestamp
+    const dateOnly = new Date(expense.date).toISOString().split("T")[0];
     setFormData({
       category: expense.category,
       description: expense.title, // Mapped to title
       amount: expense.amount.toString(),
       paymentMethod: expense.paymentMethod,
-      date: expense.date,
+      date: dateOnly,
       notes: expense.description || "", // Mapped to description
     });
     setIsDialogOpen(true);
@@ -194,15 +276,24 @@ export default function ExpensesPage() {
       isOpen: true,
       title: t("deleteExpense"),
       message: t("confirmDeleteExpenseMessage"),
-      onConfirm: () => {
-        expensesDB.delete(id);
-        loadData();
-        toast({
-          title: t("deletedItem"),
-          description: t("expenseDeleted"),
-          variant: "success",
-        });
-        setConfirmDialog({ ...confirmDialog, isOpen: false });
+      onConfirm: async () => {
+        try {
+          await deleteExpense(id);
+          await loadData();
+          toast({
+            title: t("deletedItem"),
+            description: t("expenseDeleted"),
+            variant: "success",
+          });
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        } catch (error) {
+          console.error("Failed to delete expense:", error);
+          toast({
+            title: "Error",
+            description: "Failed to delete expense",
+            variant: "destructive",
+          });
+        }
       },
       onCancel: () => {
         setConfirmDialog({ ...confirmDialog, isOpen: false });
@@ -218,18 +309,27 @@ export default function ExpensesPage() {
       isOpen: true,
       title: t("deleteMultipleExpenses"),
       message: t("confirmDeleteMultipleExpensesMessage"),
-      onConfirm: () => {
-        selectedIds.forEach((id) => expensesDB.delete(id));
-        clearSelection();
-        loadData();
-        toast({
-          title: t("deleted"),
-          description: `${selectedIds.length} ${
-            t("expensesDeleted") || "expenses deleted"
-          }`,
-          variant: "success",
-        });
-        setConfirmDialog({ ...confirmDialog, isOpen: false });
+      onConfirm: async () => {
+        try {
+          await Promise.all(selectedIds.map((id) => deleteExpense(id)));
+          clearSelection();
+          await loadData();
+          toast({
+            title: t("deleted"),
+            description: `${selectedIds.length} ${
+              t("expensesDeleted") || "expenses deleted"
+            }`,
+            variant: "success",
+          });
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        } catch (error) {
+          console.error("Failed to delete expenses:", error);
+          toast({
+            title: "Error",
+            description: "Failed to delete expenses",
+            variant: "destructive",
+          });
+        }
       },
       onCancel: () => {
         setConfirmDialog({ ...confirmDialog, isOpen: false });
@@ -288,7 +388,10 @@ export default function ExpensesPage() {
 
   const totalPages = Math.ceil(filteredExpenses.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedExpenses = filteredExpenses.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedExpenses = filteredExpenses.slice(
+    startIndex,
+    startIndex + itemsPerPage
+  );
 
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
   const totalByMethod = {
@@ -409,6 +512,8 @@ export default function ExpensesPage() {
             <Button
               className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
               onClick={() => resetForm()}
+              disabled={!canCreateExpenses}
+              title={!canCreateExpenses ? t("noPermission") || "No permission to create expenses" : ""}
             >
               <Plus className="w-4 h-4 mr-2" />
               {t("addExpense")}
@@ -708,10 +813,10 @@ export default function ExpensesPage() {
                   <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
                     {t("actions")}
                   </th>
-                  </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedExpenses.map((expense) => (
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedExpenses.map((expense) => (
                   <tr
                     key={expense.id}
                     className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 ${
@@ -755,7 +860,11 @@ export default function ExpensesPage() {
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      <span className="text-sm">{expense.createdBy ? getUserName(expense.createdBy) : "-"}</span>
+                      <span className="text-sm">
+                        {expense.createdBy
+                          ? getUserName(expense.createdBy)
+                          : "-"}
+                      </span>
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center justify-end gap-2">
@@ -785,56 +894,71 @@ export default function ExpensesPage() {
             </table>
 
             {filteredExpenses.length === 0 && (
-               <div className="text-center py-12">
-                 <p className="text-slate-500 dark:text-slate-400">
-                   {t("noExpensesFound")}
-                 </p>
-               </div>
-             )}
+              <div className="text-center py-12">
+                <p className="text-slate-500 dark:text-slate-400">
+                  {t("noExpensesFound")}
+                </p>
+              </div>
+            )}
 
-             {/* Pagination */}
-             {filteredExpenses.length > 0 && (
-               <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
-                 <div className="text-sm text-slate-600 dark:text-slate-400">
-                   {t("showing")} {startIndex + 1} - {Math.min(startIndex + itemsPerPage, filteredExpenses.length)} {t("of")} {filteredExpenses.length}
-                 </div>
-                 <div className="flex gap-2">
-                   <Button
-                     variant="outline"
-                     size="sm"
-                     onClick={() => router.push(`/expenses?page=${Math.max(1, currentPage - 1)}`)}
-                     disabled={currentPage === 1}
-                   >
-                     <ChevronLeft className="w-4 h-4 mr-1" />
-                     {t("previous")}
-                   </Button>
-                   <div className="flex items-center gap-2">
-                     {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                       <Button
-                         key={page}
-                         variant={currentPage === page ? "default" : "outline"}
-                         size="sm"
-                         onClick={() => router.push(`/expenses?page=${page}`)}
-                       >
-                         {page}
-                       </Button>
-                     ))}
-                   </div>
-                   <Button
-                     variant="outline"
-                     size="sm"
-                     onClick={() => router.push(`/expenses?page=${Math.min(totalPages, currentPage + 1)}`)}
-                     disabled={currentPage === totalPages}
-                   >
-                     {t("next")}
-                     <ChevronRight className="w-4 h-4 ml-1" />
-                   </Button>
-                 </div>
-               </div>
-             )}
-            </div>
-            </CardContent>
-            </Card>
+            {/* Pagination */}
+            {filteredExpenses.length > 0 && (
+              <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
+                <div className="text-sm text-slate-600 dark:text-slate-400">
+                  {t("showing")} {startIndex + 1} -{" "}
+                  {Math.min(startIndex + itemsPerPage, filteredExpenses.length)}{" "}
+                  {t("of")} {filteredExpenses.length}
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      router.push(
+                        `/expenses?page=${Math.max(1, currentPage - 1)}`
+                      )
+                    }
+                    disabled={currentPage === 1}
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-1" />
+                    {t("previous")}
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                      (page) => (
+                        <Button
+                          key={page}
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => router.push(`/expenses?page=${page}`)}
+                        >
+                          {page}
+                        </Button>
+                      )
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      router.push(
+                        `/expenses?page=${Math.min(
+                          totalPages,
+                          currentPage + 1
+                        )}`
+                      )
+                    }
+                    disabled={currentPage === totalPages}
+                  >
+                    {t("next")}
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Custom Confirmation Dialog */}
       <Dialog

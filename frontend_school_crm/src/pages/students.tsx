@@ -23,9 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   studentsDB,
-  classesDB,
   branchesDB,
-  paymentsDB,
 } from "@/lib/storage";
 import { Student, StudentStatus } from "@/types";
 import {
@@ -49,7 +47,7 @@ import {
   listBranches as apiListBranches,
   listPayments as apiListPayments,
 } from "@/lib/api";
-import type { Student as ApiStudent } from "@/lib/api";
+import type { Student as ApiStudent, Payment } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -74,6 +72,7 @@ export default function StudentsPage() {
   const [importData, setImportData] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [payments, setPayments] = useState<Payment[]>([]);
   const [isBulkChangeClassOpen, setIsBulkChangeClassOpen] = useState(false);
   const [bulkChangeClassId, setBulkChangeClassId] = useState<string>("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -107,8 +106,8 @@ export default function StudentsPage() {
 
   useEffect(() => {
      setIsLoading(true);
-     const timer = setTimeout(() => {
-       loadData();
+     const timer = setTimeout(async () => {
+       await loadData();
        setIsLoading(false);
      }, 300);
      return () => clearTimeout(timer);
@@ -116,38 +115,56 @@ export default function StudentsPage() {
 
    // Reload data when branch is switched
    useEffect(() => {
-     const handleStorageChange = () => {
-       loadData();
+     const handleBranchChange = async () => {
+       await loadData();
      };
-     window.addEventListener("storage", handleStorageChange);
-     return () => window.removeEventListener("storage", handleStorageChange);
+     window.addEventListener("branchChange", handleBranchChange);
+     return () => window.removeEventListener("branchChange", handleBranchChange);
    }, []);
 
   const t = (key: string) => getTranslation(key, language);
 
-  const loadData = () => {
+  const loadData = async () => {
     const user = getCurrentUser();
+    
+    // If not authenticated, don't try to load data
+    if (!user) {
+      setStudents([]);
+      setClasses([]);
+      setPayments([]);
+      return;
+    }
+
     const selectedBranchId = localStorage.getItem("selectedBranchId");
     
-    if (user?.role === "admin" || user?.role === "branch_admin") {
-      // Admins and branch_admins can view all data, but filter by selected branch
+    try {
       if (selectedBranchId) {
-        setStudents(studentsDB.getByBranch(selectedBranchId));
-        setClasses(classesDB.getByBranch(selectedBranchId));
+        const [studentsList, classList, paymentsList] = await Promise.all([
+          apiListStudents(selectedBranchId),
+          apiListClasses(selectedBranchId),
+          apiListPayments({ branchId: selectedBranchId }),
+        ]);
+        setStudents(studentsList);
+        setClasses(classList);
+        setPayments(paymentsList);
       } else {
-        setStudents(studentsDB.getAll());
-        setClasses(classesDB.getAll());
+        setStudents([]);
+        setClasses([]);
+        setPayments([]);
       }
-    } else if (user?.branchId) {
-      // Other users see only their branch
-      setStudents(studentsDB.getByBranch(user.branchId));
-      setClasses(classesDB.getByBranch(user.branchId));
-    } else {
-      setStudents(studentsDB.getAll());
-      setClasses(classesDB.getAll());
+    } catch (error) {
+      console.error("Failed to load data:", error);
+      toast({
+        title: t("error"),
+        description: "Failed to load students data",
+        variant: "destructive",
+      });
+      setClasses([]);
+      setPayments([]);
     }
   };
 
+  const canCreateStudents = hasPermission("canCreateStudents");
   const canEditStudents = hasPermission("canEditStudents");
   const canDeleteStudents = hasPermission("canDeleteStudents");
 
@@ -156,9 +173,10 @@ export default function StudentsPage() {
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
 
-    const payments = paymentsDB.getByStudentId(studentId);
+    // Use backend payments instead of localStorage
     return payments.some(
       (payment) =>
+        payment.studentId === studentId &&
         Number(payment.month) === currentMonth &&
         Number(payment.year) === currentYear
     );
@@ -168,14 +186,14 @@ export default function StudentsPage() {
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
-    const monthStr = String(currentMonth).padStart(2, '0');
 
     const student = students.find(s => s.id === studentId);
     if (!student) return "unpaid";
 
-    const payments = paymentsDB.getByStudentId(studentId);
+    // Use backend payments instead of localStorage
     const currentMonthPayments = payments.filter(
       (payment) =>
+        payment.studentId === studentId &&
         Number(payment.month) === currentMonth &&
         Number(payment.year) === currentYear
     );
@@ -184,22 +202,25 @@ export default function StudentsPage() {
 
     const paidTotal = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0);
     const monthly = student.monthlyPayment;
+    const hasPartialPayment = currentMonthPayments.some(p => p.status === "partial");
 
     if (paidTotal >= monthly) {
       return "paid";
+    } else if (hasPartialPayment) {
+      return "partial";
     } else if (paidTotal > 0) {
       return "partial";
     }
     return "unpaid";
   };
 
-  const processCSVData = (csvText: string) => {
+  const processCSVData = async (csvText: string) => {
     try {
       const lines = csvText.trim().split("\n");
-      const user = getCurrentUser();
-      const branch = user?.branchId ? branchesDB.getById(user.branchId) : null;
+      const branchId = localStorage.getItem("selectedBranchId");
+      const branch = branchId ? branchesDB.getById(branchId) : null;
       const defaultPayment =
-        branch?.monthlyPayment || settings?.defaultMonthlyPayment || 500000;
+        branch?.monthlyPayment || settings?.monthlyPayment || 500000;
 
       let importedCount = 0;
       const warnings: string[] = [];
@@ -263,33 +284,38 @@ export default function StudentsPage() {
             }
           }
 
-          studentsDB.create({
-            fullName,
-            classId: classId || undefined,
-            phone,
-            parentPhone,
-            monthlyPayment,
-            status: "active",
-            enrollmentDate: new Date().toISOString(),
-            branchId: user?.branchId || "",
-          });
+          try {
+            await apiCreateStudent({
+              fullName,
+              classId: classId || undefined,
+              phone,
+              parentPhone,
+              monthlyPayment,
+              status: "active",
+              enrollmentDate: new Date().toISOString(),
+              branchId: branchId || "",
+            });
+            importedCount++;
+          } catch (err) {
+            warnings.push(
+              `Row ${i + 1}: Failed to import "${fullName}" - ${(err as any)?.message || "Unknown error"}`
+            );
+          }
+          }
+          }
 
-          importedCount++;
-        }
-      }
-
-      if (importedCount > 0) {
-        toast({
+          if (importedCount > 0) {
+          toast({
           title: t("importComplete"),
           description: `${t("successfullyImported")} ${importedCount} ${t(
             "students"
           )}`,
           variant: "success",
-        });
-      }
+          });
+          }
 
-      if (warnings.length > 0) {
-        toast({
+          if (warnings.length > 0) {
+          toast({
           title: "Import Completed with Warnings",
           description:
             warnings.slice(0, 3).join("\n") +
@@ -297,24 +323,24 @@ export default function StudentsPage() {
               ? `\n... and ${warnings.length - 3} more`
               : ""),
           variant: "default",
-        });
-      }
+          });
+          }
 
-      setImportData("");
-      setIsImportDialogOpen(false);
-      setCurrentPage(1);
-      loadData();
-    } catch (error) {
-      toast({
-        title: t("importError"),
-        description: t("errorCheckFormat"),
-        variant: "destructive",
-      });
-      console.error(error);
-    }
-  };
+          setImportData("");
+          setIsImportDialogOpen(false);
+          setCurrentPage(1);
+          await loadData();
+          } catch (error) {
+          toast({
+          title: t("importError"),
+          description: t("errorCheckFormat"),
+          variant: "destructive",
+          });
+          console.error(error);
+          }
+          };
 
-  const handleImport = () => {
+  const handleImport = async () => {
     processCSVData(importData);
   };
 
@@ -372,7 +398,7 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
     URL.revokeObjectURL(url);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEditStudents) {
       toast({
@@ -383,36 +409,50 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
       return;
     }
 
-    const user = getCurrentUser();
-    const branch = user?.branchId ? branchesDB.getById(user.branchId) : null;
+    const branchId = localStorage.getItem("selectedBranchId");
+    const branch = branchId ? branchesDB.getById(branchId) : null;
     const monthlyPayment =
-      branch?.monthlyPayment || settings?.defaultMonthlyPayment || 500000;
+      branch?.monthlyPayment || settings?.monthlyPayment || 500000;
 
-    if (editingStudent) {
-      studentsDB.update(editingStudent.id, {
-        fullName: formData.fullName,
-        classId: formData.classId,
-        phone: formData.phone,
-        parentPhone: formData.parentPhone,
-        status: formData.status,
-        monthlyPayment,
+    try {
+      if (editingStudent) {
+        await apiUpdateStudent(editingStudent.id, {
+          fullName: formData.fullName,
+          classId: formData.classId || undefined,
+          phone: formData.phone,
+          parentPhone: formData.parentPhone,
+          status: formData.status,
+          monthlyPayment,
+        });
+      } else {
+        await apiCreateStudent({
+          fullName: formData.fullName,
+          classId: formData.classId || undefined,
+          phone: formData.phone,
+          parentPhone: formData.parentPhone,
+          status: formData.status,
+          monthlyPayment,
+          enrollmentDate: new Date().toISOString(),
+          branchId: branchId || "",
+        });
+      }
+
+      resetForm();
+      await loadData();
+      setIsDialogOpen(false);
+      toast({
+        title: editingStudent ? t("updated") : t("created"),
+        description: editingStudent ? t("studentUpdatedSuccessfully") : t("studentCreatedSuccessfully"),
+        variant: "success",
       });
-    } else {
-      studentsDB.create({
-        fullName: formData.fullName,
-        classId: formData.classId,
-        phone: formData.phone,
-        parentPhone: formData.parentPhone,
-        status: formData.status,
-        monthlyPayment,
-        enrollmentDate: new Date().toISOString(),
-        branchId: user?.branchId || "",
+    } catch (error) {
+      console.error("Failed to save student:", error);
+      toast({
+        title: t("error"),
+        description: "Failed to save student",
+        variant: "destructive",
       });
     }
-
-    resetForm();
-    loadData();
-    setIsDialogOpen(false);
   };
 
   const handleEdit = (student: Student) => {
@@ -451,17 +491,26 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
     setDeleteConfirmOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteStudentId) {
-      studentsDB.delete(deleteStudentId);
-      loadData();
-      toast({
-        title: t("deleted"),
-        description: t("successfullyDeleted"),
-        variant: "success",
-      });
-      setDeleteConfirmOpen(false);
-      setDeleteStudentId(null);
+      try {
+        await apiDeleteStudent(deleteStudentId);
+        await loadData();
+        toast({
+          title: t("deleted"),
+          description: t("successfullyDeleted"),
+          variant: "success",
+        });
+        setDeleteConfirmOpen(false);
+        setDeleteStudentId(null);
+      } catch (error) {
+        console.error("Failed to delete student:", error);
+        toast({
+          title: t("error"),
+          description: "Failed to delete student",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -481,21 +530,30 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
     setBulkDeleteConfirmOpen(true);
   };
 
-  const confirmBulkDelete = () => {
+  const confirmBulkDelete = async () => {
     const selectedIds = getSelectedIds();
-    selectedIds.forEach((id) => studentsDB.delete(id));
-    clearSelection();
-    loadData();
-    setCurrentPage(1);
-    toast({
-      title: t("deleted"),
-      description: `${selectedIds.length} ${t("students")} ${t("deletedSuccessfully")}`,
-      variant: "success",
-    });
-    setBulkDeleteConfirmOpen(false);
+    try {
+      await Promise.all(selectedIds.map((id) => apiDeleteStudent(id)));
+      clearSelection();
+      await loadData();
+      setCurrentPage(1);
+      toast({
+        title: t("deleted"),
+        description: `${selectedIds.length} ${t("students")} ${t("deletedSuccessfully")}`,
+        variant: "success",
+      });
+      setBulkDeleteConfirmOpen(false);
+    } catch (error) {
+      console.error("Failed to delete students:", error);
+      toast({
+        title: t("error"),
+        description: "Failed to delete some students",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleBulkChangeClass = () => {
+  const handleBulkChangeClass = async () => {
     if (!canEditStudents) {
       toast({
         title: "Permission Denied",
@@ -513,7 +571,7 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
     });
 
     clearSelection();
-    loadData();
+    await loadData();
     setIsBulkChangeClassOpen(false);
     setBulkChangeClassId("");
     toast({
@@ -530,20 +588,29 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
     setMarkLeftConfirmOpen(true);
   };
 
-  const confirmMarkLeft = () => {
+  const confirmMarkLeft = async () => {
     if (markLeftStudentId) {
-      studentsDB.update(markLeftStudentId, {
-        status: "left",
-        leftDate: new Date().toISOString(),
-      });
-      loadData();
-      toast({
-        title: t("updated"),
-        description: t("statusUpdated"),
-        variant: "success",
-      });
-      setMarkLeftConfirmOpen(false);
-      setMarkLeftStudentId(null);
+      try {
+        await apiUpdateStudent(markLeftStudentId, {
+          status: "left",
+          leftDate: new Date().toISOString(),
+        });
+        await loadData();
+        toast({
+          title: t("updated"),
+          description: t("statusUpdated"),
+          variant: "success",
+        });
+        setMarkLeftConfirmOpen(false);
+        setMarkLeftStudentId(null);
+      } catch (error) {
+        console.error("Failed to mark student as left:", error);
+        toast({
+          title: t("error"),
+          description: "Failed to update student status",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -587,7 +654,7 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
     const matchesPaymentStatus =
       filterPaymentStatus === "all" ||
       (filterPaymentStatus === "paid" && hasPaid) ||
-      (filterPaymentStatus === "unpaid" && !hasPaid);
+      (filterPaymentStatus === "partial" && !hasPaid);
 
     return (
       matchesSearch && matchesStatus && matchesClass && matchesPaymentStatus
@@ -773,13 +840,14 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button
-                  className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-                  onClick={handleOpenDialog}
-                  disabled={!canEditStudents}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  {t("addStudent")}
-                </Button>
+                    className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                    onClick={handleOpenDialog}
+                    disabled={!canCreateStudents}
+                    title={!canCreateStudents ? t("noPermission") || "No permission to create students" : ""}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    {t("addStudent")}
+                  </Button>
               </DialogTrigger>
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
@@ -942,10 +1010,10 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                      <SelectValue placeholder={t("paymentStatus")} />
                    </SelectTrigger>
                    <SelectContent>
-                     <SelectItem value="all">{t("allPayments")}</SelectItem>
-                     <SelectItem value="paid">{t("paidThisMonth")}</SelectItem>
-                     <SelectItem value="unpaid">{t("unpaidThisMonth")}</SelectItem>
-                  </SelectContent>
+                      <SelectItem value="all">{t("allPayments")}</SelectItem>
+                      <SelectItem value="paid">{t("paidThisMonth")}</SelectItem>
+                      <SelectItem value="partial">{t("partialPayment")}</SelectItem>
+                   </SelectContent>
                 </Select>
               </div>
             </div>
@@ -1100,7 +1168,12 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                 </thead>
                 <tbody>
                   {paginatedStudents.map((student) => {
-                    const hasPaid = hasCurrentMonthPayment(student.id);
+                    const paymentStatus = getCurrentMonthPaymentStatus(student.id);
+                    const paymentStatusColor = paymentStatus === "paid" 
+                      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                      : paymentStatus === "partial"
+                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                      : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
                     return (
                       <tr
                         key={student.id}
@@ -1125,13 +1198,13 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                                 )
                               }
                             >
-                             <p className="font-medium text-slate-900 dark:text-slate-100 text-blue-600 dark:text-blue-400 hover:underline">
-                               {student.fullName}
-                             </p>
-                             <p className="text-sm text-slate-500 dark:text-slate-400">
-                               {formatPhoneNumber(student.parentPhone)}
-                             </p>
-                           </div>
+                              <p className="font-medium text-slate-900 dark:text-slate-100 text-blue-600 dark:text-blue-400 hover:underline">
+                                {student.fullName}
+                              </p>
+                              <p className="text-sm text-slate-500 dark:text-slate-400">
+                                {formatPhoneNumber(student.parentPhone)}
+                              </p>
+                            </div>
                         </td>
                         <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
                           {getClassName(student.classId)}
@@ -1148,14 +1221,8 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                           </Badge>
                         </td>
                         <td className="py-3 px-4">
-                          <Badge
-                            className={
-                              hasPaid
-                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                                : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                            }
-                          >
-                            {hasPaid ? t("paid") : t("unpaid")}
+                          <Badge className={paymentStatusColor}>
+                            {t(paymentStatus)}
                           </Badge>
                         </td>
                         <td className="py-3 px-4">
@@ -1204,7 +1271,12 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
             {/* Mobile Card View */}
             <div className="md:hidden space-y-4">
               {paginatedStudents.map((student) => {
-                const hasPaid = hasCurrentMonthPayment(student.id);
+                const paymentStatus = getCurrentMonthPaymentStatus(student.id);
+                const paymentStatusColor = paymentStatus === "paid" 
+                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                  : paymentStatus === "partial"
+                  ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                  : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
                 return (
                   <div
                     key={student.id}
@@ -1273,14 +1345,8 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                       </div>
                       <div className="flex justify-between items-center text-sm gap-2">
                         <span className="text-slate-600 dark:text-slate-400">{t("payment")}:</span>
-                        <Badge
-                          className={
-                            hasPaid
-                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                              : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                          }
-                        >
-                          {hasPaid ? t("paid") : t("unpaid")}
+                        <Badge className={paymentStatusColor}>
+                          {t(paymentStatus)}
                         </Badge>
                       </div>
                     </div>

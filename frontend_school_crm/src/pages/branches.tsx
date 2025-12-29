@@ -15,6 +15,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneNumber } from "@/lib/utils";
+import { useBranch } from "@/context/BranchContext";
 
 export default function BranchesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -27,6 +28,7 @@ export default function BranchesPage() {
   const router = useRouter();
   const currentUser = getCurrentUser();
   const t = (key: string) => getTranslation(key, language);
+  const { refreshBranches } = useBranch();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -56,6 +58,15 @@ export default function BranchesPage() {
   }, [hasCheckedAuth, currentUser, router]);
 
   const loadData = async () => {
+    const user = getCurrentUser();
+    
+    // If not authenticated, don't try to load data
+    if (!user) {
+      setBranches([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       const branchList = await api.listBranches();
       setBranches(branchList);
@@ -107,12 +118,15 @@ export default function BranchesPage() {
           variant: "success",
         });
       } else {
+        // Set current user as admin if no admin is specified
+        const adminId = formData.adminId || currentUser?.id;
+        
         await api.createBranch({
           name: formData.name,
           address: formData.address,
           phone: formData.phone,
           monthlyPayment: formData.monthlyPayment,
-          adminId: formData.adminId || undefined,
+          adminId: adminId,
         });
         toast({
           title: t("success"),
@@ -124,6 +138,7 @@ export default function BranchesPage() {
       setIsDialogOpen(false);
       resetForm();
       await loadData();
+      await refreshBranches();
     } catch (error) {
       console.error("Error saving branch:", error);
       toast({
@@ -156,6 +171,7 @@ export default function BranchesPage() {
           variant: "success",
         });
         await loadData();
+        await refreshBranches();
       } catch (error) {
         console.error("Error deleting branch:", error);
         toast({
@@ -202,7 +218,6 @@ export default function BranchesPage() {
         password,
         fullName,
         role: "branch_admin",
-        branchId,
       });
 
       await api.updateBranch(branchId, { adminId: newUser.user.id });

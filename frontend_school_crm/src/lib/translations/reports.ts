@@ -82,4 +82,5 @@ export const reportTranslations: Partial<Translation> = {
   allClasses: { "uz-cyrl": "Барча синфлар", "uz-latn": "Barcha sinflar", en: "All Classes" },
   allStatus: { "uz-cyrl": "Барча ҳолатлар", "uz-latn": "Barcha holatlar", en: "All Status" },
   unpaid: { "uz-cyrl": "Тўланмади", "uz-latn": "To'lanmadi", en: "Unpaid" },
-};
+  addedBy: { "uz-cyrl": "Киритган шахс", "uz-latn": "Kiritgan shaxs", en: "Added By" },
+  };

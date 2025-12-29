@@ -33,11 +33,4 @@ export const settingsTranslations: Partial<Translation> = {
   failedToLoadSettings: { "uz-cyrl": "Созламаларни юклашда хатолик", "uz-latn": "Sozlamalarni yuklashda xatolik", en: "Failed to load settings" },
   failedToSaveSettings: { "uz-cyrl": "Созламаларни сақлашда хатолик", "uz-latn": "Sozlamalarni saqlashda xatolik", en: "Failed to save settings" },
   saving: { "uz-cyrl": "Сақланмоқда...", "uz-latn": "Saqlannmoqda...", en: "Saving..." },
-  finishMonth: { "uz-cyrl": "Ойни якунлаш", "uz-latn": "Oyni yakunlash", en: "Finish Month" },
-  finishMonthDescription: { "uz-cyrl": "Жорий ойнинг маълумотларини архивлаш ва кейинги ойга ўтиш", "uz-latn": "Joriy oyning ma'lumotlarini arxivlash va keyingi oyga o'tish", en: "Archive current month data and reset for next month" },
-  finishMonthWarning: { "uz-cyrl": "Бу жорий ойнинг барча тўловлари, маошлари ва харажатларини архивлаб сақляди ва тизимдан ўчириб юбориб", "uz-latn": "Bu joriy oyning barcha to'lovlari, maoshlari va xarajatlarini arxivlab saqlyadi va tizimdun o'chirib yuborilib", en: "This will archive all payments, salaries, and expenses for the current month and clear them from the system. This action cannot be undone." },
-  finishMonthButton: { "uz-cyrl": "Жорий ойни якунлаш", "uz-latn": "Joriy oyni yakunlash", en: "Finish Current Month" },
-  confirmFinishMonth: { "uz-cyrl": "Ойни якунлашни тасдиқланг", "uz-latn": "Oyni yakunlashni tasdiqlanq", en: "Confirm Finish Month" },
-  finishMonthConfirmMessage: { "uz-cyrl": "Жорий ойни якунлашга анчалик юғурсизми? Барча маълумотлар архивланиб, тизимдан ўчирилади", "uz-latn": "Joriy oyni yakunlashga anchaliq yug'ursizmi? Barcha ma'lumotlar arxivlanib, tizimdun o'chiriladi", en: "Are you sure you want to finish the current month? All data will be archived and cleared." },
-  finishMonthConfirmWarning: { "uz-cyrl": "Бу амали қайтарилмас. Жорий ойнинг барча тўловлари, маошлари ва харажатлари архивланиб қолади", "uz-latn": "Bu amali qaytarilmas. Joriy oyning barcha to'lovlari, maoshlari va xarajatlari arxivlanib qoladi", en: "This action cannot be undone. All payments, salaries, and expenses for the current month will be archived." },
   };

@@ -2,18 +2,15 @@ import { useEffect, useState, useContext } from "react";
 import { getSettings } from "@/lib/api";
 import { Settings } from "@/types";
 import { LanguageContext } from "@/context/LanguageContext";
+import { getCurrentUser } from "@/lib/auth";
 
 // Default settings fallback
 const DEFAULT_SETTINGS: Settings = {
-  id: "default",
-  defaultMonthlyPayment: 500000,
-  defaultTeacherSalary: 3000000,
+  name: "School CRM",
+  monthlyPayment: 500000,
   currency: "UZS",
-  language: "uz-cyrl",
-  schoolName: "School CRM",
-  currentMonth: "01",
-  currentYear: new Date().getFullYear(),
-  updatedAt: new Date().toISOString(),
+  updatedDate: new Date().toISOString(),
+  createdDate: new Date().toISOString(),
 };
 
 export function useSettings() {
@@ -36,6 +33,17 @@ export function useSettings() {
     const fetchSettings = async () => {
       try {
         setLoading(true);
+        
+        // Check if user is authenticated before fetching
+        const user = getCurrentUser();
+        if (!user) {
+          // User not logged in, use defaults
+          setSettings(DEFAULT_SETTINGS);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+
         const data = await getSettings();
         setSettings(data);
         setError(null);

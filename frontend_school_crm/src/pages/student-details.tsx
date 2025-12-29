@@ -40,6 +40,7 @@ import { formatCurrency } from "@/lib/exportUtils";
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission } from "@/lib/auth";
 import { formatPhoneNumber } from "@/lib/utils";
+import { getStudent, listPayments, listClasses } from "@/lib/api";
 
 export default function StudentDetailsPage() {
   const router = useRouter();
@@ -87,19 +88,50 @@ export default function StudentDetailsPage() {
     }
   }, [from, router.query.classId]);
 
+  // Reload data when branch changes
+  useEffect(() => {
+    const handleBranchChange = () => {
+      loadData();
+    };
+    window.addEventListener("branchChange", handleBranchChange);
+    return () => window.removeEventListener("branchChange", handleBranchChange);
+  }, []);
+
   const t = (key: string) => getTranslation(key, language);
 
-  const loadData = () => {
-    const studentData = studentsDB.getById(id as string);
-    if (studentData) {
-      setStudent(studentData);
-      const classData = classesDB.getById(studentData.classId);
-      setClassName(classData?.name || "N/A");
-      setPayments(paymentsDB.getByStudentId(id as string));
+  const loadData = async () => {
+    try {
+      // Fetch student data from backend
+      const studentData = await getStudent(id as string);
+      if (studentData) {
+        setStudent(studentData);
+        const classData = classesDB.getById(studentData.classId);
+        setClassName(classData?.name || "N/A");
+        
+        // Fetch payments from backend
+         const branchId = localStorage.getItem("selectedBranchId");
+         if (branchId) {
+           const paymentsData = await listPayments({ branchId });
+           // Filter payments for this student
+           const studentPayments = paymentsData.filter((p: Payment) => p.studentId === studentData.id);
+           setPayments(studentPayments);
+         }
+      }
+      
+      // Load classes for edit form
+      const branchId = localStorage.getItem("selectedBranchId");
+      if (branchId) {
+        const classesData = await listClasses(branchId);
+        setClasses(classesData);
+      }
+    } catch (error) {
+      console.error("Failed to load student details:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load student details",
+        variant: "destructive",
+      });
     }
-    // Load classes for edit form
-    const classesData = classesDB.getAll();
-    setClasses(classesData);
   };
 
   const getStatusColor = (status: string) => {
@@ -119,8 +151,6 @@ export default function StudentDetailsPage() {
     switch (status) {
       case "paid":
         return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-      case "unpaid":
-        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
       case "partial":
         return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
       default:
@@ -131,7 +161,6 @@ export default function StudentDetailsPage() {
   const getPaymentStatusLabel = (status: string) => {
     const statusMap: { [key: string]: string } = {
       paid: "paid",
-      unpaid: "unpaid",
       partial: "partial",
     };
     return t(statusMap[status] || status) || status;
@@ -142,7 +171,7 @@ export default function StudentDetailsPage() {
     .reduce((sum, p) => sum + p.amount, 0);
 
   const totalPending = payments
-    .filter((p) => p.status === "unpaid")
+    .filter((p) => p.status === "partial")
     .reduce((sum, p) => sum + p.amount, 0);
 
   const handleEdit = () => {

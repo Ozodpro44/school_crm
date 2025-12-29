@@ -25,7 +25,7 @@ export const helpTranslations: Partial<Translation> = {
   version: { "uz-cyrl": "Версия", "uz-latn": "Versiya", en: "Version" },
   helpDescription: {
     "uz-cyrl": "Мактаб бошқарув тизимидан фойдаланишнинг тўлиқ қўлланмаси",
-    "uz-latn": "Maktab boshqaruv tiziamdan foydalanishning to'liq qo'llanmasi",
+    "uz-latn": "Maktab boshqaruv tizimdan foydalanishning to'liq qo'llanmasi",
     en: "Complete guide to using the School Management System",
   },
   gettingStarted: {
@@ -37,7 +37,7 @@ export const helpTranslations: Partial<Translation> = {
     "uz-cyrl":
       "Мактаб бошқарув тизимига хуш келибсиз! Бу кўп функционалли платформа сизга мактабнинг барча жихатларини бошқариш, шунингдек ўқувчилар, ўқитувчилар, синфлар, тўловлар ва молиявиятни ўқитиш ёрдам беради.",
     "uz-latn":
-      "Maktab boshqaruv tiziamga xush kelibsiz! Bu ko'p funktsionalli platforma sizga maktabning barcha jihatlarini boshqarish, shuningdek o'quvchilar, o'qituvchilar, sinflar, to'lovlar va moliyaviyatni o'qitish yordam beradi.",
+      "Maktab boshqaruv tizimga xush kelibsiz! Bu ko'p funktsionalli platforma sizga maktabning barcha jihatlarini boshqarish, shuningdek o'quvchilar, o'qituvchilar, sinflar, to'lovlar va moliyaviyatni o'qitish yordam beradi.",
     en: "Welcome to the Private School Management System! This comprehensive platform helps you manage all aspects of your school operations including students, teachers, classes, payments, and finances.",
   },
   featureGuide: {
@@ -84,7 +84,7 @@ export const helpTranslations: Partial<Translation> = {
   },
   suspendedDesc: {
     "uz-cyrl": "Вақтинчалик тўхтатилган",
-    "uz-latn": "Vaqtinchlik to'xtatilgan",
+    "uz-latn": "Vaqtinchalik to'xtatilgan",
     en: "Temporarily suspended",
   },
   markingStudentsAsLeft: {
@@ -96,7 +96,7 @@ export const helpTranslations: Partial<Translation> = {
     "uz-cyrl":
       '"Чиқиб кетган деб белгилаш" тугмасини ишлатинг, ўқувчилар мактабдан чиқиб кетсалар, тўловларни қайд қилишни avtomatik то\'хтатинг.',
     "uz-latn":
-      "\"Chiqib ketgan deb belgilash\" tugmasini ishlating, o'quvchilar maktabdan chiqib ketsalar, to'lovlarni qayd qilishni avtomatik to'xtatinq.",
+      "\"Chiqib ketgan deb belgilash\" tugmasini ishlating, o'quvchilar maktabdan chiqib ketsalar, to'lovlarni qayd qilishni avtomatik to'xtatinг.",
     en: 'Use the "Mark as Left" button to automatically stop payment tracking for students who have left the school.',
   },
   teacherManagement: {
@@ -113,7 +113,7 @@ export const helpTranslations: Partial<Translation> = {
     "uz-cyrl":
       "Ўқитувчи маълумотларини қайд қилинг, шунда исм, фанлар, алоқа маълумотлари ва ойлик иш ҳақи. Бир ўқитувчига бирнеча фан назарида қўйиш мумкин.",
     "uz-latn":
-      "O'qituvchi ma'lumotlarini qayd qilinq, shunda ism, fanlar, aloqa ma'lumotlari va oylik ish haqi. Bir o'qituvchiga birnecha fan nazarida qo'yish mumkin.",
+      "O'qituvchi ma'lumotlarini qayd qilinг, shunda ism, fanlar, aloqa ma'lumotlari va oylik ish haqi. Bir o'qituvchiga birnecha fan nazarida qo'yish mumkin.",
     en: "Record teacher information including name, subjects, contact details, and monthly salary. You can assign multiple subjects to each teacher.",
   },
   assigningClasses: {
@@ -142,7 +142,7 @@ export const helpTranslations: Partial<Translation> = {
     "uz-cyrl":
       "Синф бўлимларини (мис. 7A, 8B, 9C) яратинг ва бир ўқитувчини бир ўқитувчига назарида қўйинг. Система avtomatik ҳар bir синфда ўқувчиларнинг рўйхатдан ўтиш жарёнини қайд қилади.",
     "uz-latn":
-      "Sinf bo'limlarini (mis. 7A, 8B, 9C) yaratinq va bir o'qituvchini bir o'qituvchiga nazarida qo'yinq. Sistema avtomatik har bir sinfda o'quvchilarning royxatdan o'tish jaryo nini qayd qiladi.",
+      "Sinf bo'limlarini (mis. 7A, 8B, 9C) yaratinг va bir o'qituvchini bir o'qituvchiga nazarida qo'yinг. Sistema avtomatik har bir sinfda o'quvchilarning royxatdan o'tish jaryoni qayd qiladi.",
     en: "Create class sections (e.g., 7A, 8B, 9C) and assign a class teacher to each. The system automatically tracks student enrollment per class.",
   },
   switchingStudents: {
@@ -208,7 +208,7 @@ export const helpTranslations: Partial<Translation> = {
     "uz-cyrl":
       "Ўқитувчи иш ҳақи тўловларни ойлик қайд қилинг. Система avtomatik сумма ўқитувчинг ойлик иш ҳақи асосида тўлдиради, лекин қажириш керак бўлса ўзгартириш мумкин.",
     "uz-latn":
-      "O'qituvchi ish haqi to'lovlarni oylik qayd qilinq. Sistema avtomatik summa o'qituvchning oylik ish haqi asosida to'ldiradii, lekin qajirish kerak bo'lsa o'zgartiirsh mumkin.",
+      "O'qituvchi ish haqi to'lovlarni oylik qayd qilinг. Sistema avtomatik summa o'qituvchning oylik ish haqi asosida to'ldiradi, lekin tahrif kerak bo'lsa o'zgartirish mumkin.",
     en: "Track teacher salary payments monthly. The system auto-fills the amount based on the teacher's monthly salary but allows manual adjustments if needed.",
   },
   reportsExport: {
@@ -225,7 +225,7 @@ export const helpTranslations: Partial<Translation> = {
     "uz-cyrl":
       "Ойлик ёки йиллик молиявий ҳисоботларни яратинг, даромад, харажатлар ва фойдани кўрсатув. Қайта риёя давридан танланг ва PDF ёки CSV форматига экспорт қилинг.",
     "uz-latn":
-      "Oylik yoki yillik moliyaviy hisobotlarni yaratinq, daromad, xarajatlar va foyni ko'rsutuv. Qayta riya davriddan tanlang va PDF yoki CSV formatiga eksport qilinq.",
+      "Oylik yoki yillik moliyaviy hisobotlarni yaratinг, daromad, xarajatlar va foyni ko'rinish. Qayta davridан tanlang va PDF yoki CSV formatiga eksport qilinг.",
     en: "Generate monthly or yearly financial reports showing income, expenses, and profit. Select the reporting period and export to PDF or CSV format.",
   },
   exportOptions: {
@@ -257,7 +257,7 @@ export const helpTranslations: Partial<Translation> = {
     "uz-cyrl":
       "Маълумотларни muntazam CSV форматига экспорт қилинг. Бу тизим браузер сақловидан фойдаланади, шунинг учун браузер маълумотларини тозалаш барча ҳисоботлар ўчириб юборади.",
     "uz-latn":
-      "Ma'lumotlarni muntazam CSV formatiga eksport qilinq. Bu tizim brauzer saqlonvidан foydalanadi, shuning uchun brauzer ma'lumotlarini tozalash barcha hisobotlar o'chirib yubor adi.",
+      "Ma'lumotlarni muntazam CSV formatiga eksport qilinг. Bu tizim brauzer saqloshidan foydalanadi, shuning uchun brauzer ma'lumotlarini tozalash barcha hisobotlar o'chirib yuboradi.",
     en: "Export your data regularly to CSV format as a backup. This system uses browser storage, so clearing browser data will remove all records.",
   },
   useSearchFeatures: {
@@ -269,7 +269,7 @@ export const helpTranslations: Partial<Translation> = {
     "uz-cyrl":
       "Har bir саҳифада қидириш функцияси бор. Ўқувчилар, ўқитувчилар ёки ҳисоботларни тез топишг ишлатинг.",
     "uz-latn":
-      "Har bir sahifada qidirish funktsiyasi bor. O'quvchilar, o'qituvchilar yoki hisobotlarni tez topishg ishlating.",
+      "Har bir sahifada qidirish funktsiyasi bor. O'quvchilar, o'qituvchilar yoki hisobotlarni tez topish uchun ishlating.",
     en: "Every page has search functionality. Use it to quickly find students, teachers, or records.",
   },
   monitorDashboard: {
@@ -281,7 +281,7 @@ export const helpTranslations: Partial<Translation> = {
     "uz-cyrl":
       "Кутилаётган тўловлар, тўланмаган иш ҳақи ва умумий молиявий соғлиғи ҳақида тез маълумотлар учун har bir kun информацион панельни tekshiring.",
     "uz-latn":
-      "Kutilaytgan to'lovlar, to'lanmagan ish haqi va umumiy moliyaviy sog'ligi haqida tez ma'lumotlar uchun har bir kun informatsion panelni tekshirinq.",
+      "Kutilayotgan to'lovlar, to'lanmagan ish haqi va umumiy moliyaviy sog'ligi haqida tez ma'lumotlar uchun har bir kun informatsion panelni tekshirinг.",
     en: "Check the dashboard daily for quick insights into pending payments, unpaid salaries, and overall financial health.",
   },
   needMoreHelp: {
@@ -297,21 +297,21 @@ export const helpTranslations: Partial<Translation> = {
     en: "If you need additional assistance or have questions about specific features:",
   },
   checkReadme: {
-    "uz-cyrl": "Техник ҳужжатлар учун README.md файлини tekshiring",
-    "uz-latn": "Texnik hujjatlar uchun README.md faylini tekshirinq",
+    "uz-cyrl": "Техник ҳужјатлар учун README.md файлини tekshiring",
+    "uz-latn": "Texnik hujjatlar uchun README.md faylini tekshirinг",
     en: "Check the README.md file for technical documentation",
   },
   reviewSampleData: {
     "uz-cyrl": "Тизим қандай ишлашини кўриш учун намуна маълумотларини куруниз",
     "uz-latn":
-      "Tizim qanday ishlavni ko'rish uchun namuna ma'lumotlarini kuruuniz",
+      "Tizim qanday ishlavni ko'rish uchun namuna ma'lumotlarini ko'rinг",
     en: "Review the sample data to see how the system works",
   },
   contactAdmin: {
     "uz-cyrl":
       "Мактаб бўйича o'rnatish учун сизнинг система админист ratortiga bog'laniing",
     "uz-latn":
-      "Maktab bo'ycha o'rnatish uchun sizning sistema administrator iga bog'laniiing",
+      "Maktab bo'ycha o'rnatish uchun sizning sistema administratorga bog'laning",
     en: "Contact your system administrator for school-specific setup",
   },
 };

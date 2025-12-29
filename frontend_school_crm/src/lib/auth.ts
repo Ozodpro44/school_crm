@@ -241,16 +241,9 @@ export function getUserBranches(): Branch[] {
   const user = getCurrentUser();
   if (!user) return [];
   
-  if (user.role === "admin") {
-    return branchesDB.getAll();
-  }
-  
-  if (user.branchId) {
-    const branch = branchesDB.getById(user.branchId);
-    return branch ? [branch] : [];
-  }
-  
-  return [];
+  // All users can see all branches for now
+  // Branch access control should be done on the backend
+  return branchesDB.getAll();
 }
 
 export function createUser(userData: Omit<User, "id" | "createdAt">): User {
@@ -297,7 +290,9 @@ export function getAllUsers(): User[] {
 }
 
 export function getUsersByBranch(branchId: string): User[] {
-  return usersDB.getAll().filter((u) => u.branchId === branchId);
+  // User-branch relationship is managed by backend via branch_managers table
+  // This function returns all users for now - filtering should be done on backend
+  return usersDB.getAll();
 }
 
 export function updateUserPassword(userId: string, newPassword: string): boolean {

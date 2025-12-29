@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { teachersDB, classesDB } from "@/lib/storage";
 import { Teacher } from "@/types";
 import { Plus, Search, Edit2, Trash2, BookOpen } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
@@ -25,7 +24,7 @@ import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
-import { createTeacher, updateTeacher, deleteTeacher, listTeachers } from "@/lib/api";
+import { createTeacher, updateTeacher, deleteTeacher, listTeachers, listClasses } from "@/lib/api";
 
 export default function TeachersPage() {
   const [isLoading, setIsLoading] = useState(true);
@@ -59,18 +58,38 @@ export default function TeachersPage() {
     const user = getCurrentUser();
     setIsLoading(true);
     loadData();
-  }, [getCurrentUser()?.branchId]);
+  }, []);
+
+  // Reload data when branch changes
+  useEffect(() => {
+    const handleBranchChange = () => {
+      loadData();
+    };
+    window.addEventListener("branchChange", handleBranchChange);
+    return () => window.removeEventListener("branchChange", handleBranchChange);
+  }, []);
 
   const t = (key: string) => getTranslation(key, language);
 
   const loadData = async () => {
+    const user = getCurrentUser();
+    
+    // If not authenticated, don't try to load data
+    if (!user) {
+      setTeachers([]);
+      setClasses([]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const user = getCurrentUser();
-      if (user?.branchId) {
-        const teacherList = await listTeachers(user.branchId);
+      const branchId = localStorage.getItem("selectedBranchId");
+      if (branchId) {
+        const teacherList = await listTeachers(branchId);
         setTeachers(teacherList);
+        const classList = await listClasses(branchId);
+        setClasses(classList);
       }
-      setClasses(classesDB.getAll());
     } catch (error) {
       console.error("Failed to load teachers:", error);
       toast({
@@ -83,6 +102,7 @@ export default function TeachersPage() {
     }
   };
 
+  const canCreateTeachers = hasPermission("canCreateTeachers");
   const canEditTeachers = hasPermission("canEditTeachers");
   const canDeleteTeachers = hasPermission("canDeleteTeachers");
 
@@ -93,8 +113,8 @@ export default function TeachersPage() {
       return;
     }
     const subjectsArray = formData.subjects.split(",").map((s) => s.trim()).filter(Boolean);
-    const user = getCurrentUser();
-    if (!user?.branchId) return;
+    const branchId = localStorage.getItem("selectedBranchId");
+    if (!branchId) return;
 
     try {
       if (editingTeacher) {
@@ -117,7 +137,7 @@ export default function TeachersPage() {
           monthlySalary: parseFloat(formData.monthlySalary),
           phone: formData.phone,
           email: formData.email,
-          branchId: user.branchId,
+          branchId: branchId,
         });
         toast({
           title: "Success",
@@ -281,7 +301,8 @@ export default function TeachersPage() {
               <Button
                 className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
                 onClick={() => resetForm()}
-                disabled={!canEditTeachers}
+                disabled={!canCreateTeachers}
+                title={!canCreateTeachers ? t("noPermission") || "No permission to create teachers" : ""}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 {t("addTeacher")}

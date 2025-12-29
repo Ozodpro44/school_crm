@@ -20,8 +20,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { branchesDB } from "@/lib/storage";
-import { createUser, getAllUsers, updateUserPermissions, deleteUser, getCurrentUser } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
+import { listUsers, deleteUser as deleteUserAPI, listBranches, getAuthToken, updateUserPermissions } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { User, Permission, Branch } from "@/types";
@@ -29,6 +29,7 @@ import { Plus, Edit2, Trash2, Shield, UserCog, Lock } from "lucide-react";
 import { getTranslation } from "@/lib/translations";
 import { updateUserPassword } from "@/lib/auth";
 import { useMultiSelect } from "@/hooks/use-multi-select";
+import { useBranch } from "@/context/BranchContext";
 
 export default function ManagersPage() {
   const [isLoading, setIsLoading] = useState(true);
@@ -42,17 +43,18 @@ export default function ManagersPage() {
      confirmPassword: "",
    });
    const language = useLanguage();
-    const { toast } = useToast();
-    const {
-      toggleSelect,
-      toggleSelectAll,
-      clearSelection,
-      isSelected,
-      getSelectedCount,
-      getSelectedIds,
-      areAllSelected,
-      areSomeSelected,
-    } = useMultiSelect<User>();
+     const { toast } = useToast();
+     const { currentBranch } = useBranch();
+     const {
+       toggleSelect,
+       toggleSelectAll,
+       clearSelection,
+       isSelected,
+       getSelectedCount,
+       getSelectedIds,
+       areAllSelected,
+       areSomeSelected,
+     } = useMultiSelect<User>();
 
    const [formData, setFormData] = useState({
     fullName: "",
@@ -63,23 +65,28 @@ export default function ManagersPage() {
 
   const [permissions, setPermissions] = useState<Permission>({
     canViewStudents: true,
+    canCreateStudents: false,
     canEditStudents: false,
     canDeleteStudents: false,
     canViewTeachers: true,
+    canCreateTeachers: false,
     canEditTeachers: false,
     canDeleteTeachers: false,
     canViewClasses: true,
+    canCreateClasses: false,
     canEditClasses: false,
     canDeleteClasses: false,
     canViewPayments: true,
+    canCreatePayments: false,
     canEditPayments: false,
     canViewSalaries: true,
+    canCreateSalaries: false,
     canEditSalaries: false,
     canViewExpenses: true,
+    canCreateExpenses: false,
     canEditExpenses: false,
     canDeleteExpenses: false,
     canViewReports: true,
-    canFinishMonth: false,
     canViewSettings: false,
     canEditSettings: false,
   });
@@ -87,49 +94,147 @@ export default function ManagersPage() {
   const [originalPermissions, setOriginalPermissions] = useState<Permission | null>(null);
 
   useEffect(() => {
-    setIsLoading(true);
-    const timer = setTimeout(() => {
-      loadData();
-      setIsLoading(false);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const loadData = () => {
-    const allUsers = getAllUsers();
-    const user = getCurrentUser();
+    const loadWithDelay = async () => {
+      setIsLoading(true);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      await loadData();
+    };
     
-    if (user?.role === "admin") {
-      setManagers(allUsers.filter(u => u.role === "manager" || u.role === "branch_admin"));
-      setBranches(branchesDB.getAll());
-    } else if (user?.role === "branch_admin" && user.branchId) {
-      setManagers(allUsers.filter(u => u.role === "manager" && u.branchId === user.branchId));
-      const branch = branchesDB.getById(user.branchId);
-      setBranches(branch ? [branch] : []);
-    }
-  };
+    loadWithDelay();
+  }, [currentBranch]);
+
+  const loadData = async () => {
+     const user = getCurrentUser();
+     
+     // If not authenticated, don't try to load data
+     if (!user) {
+       setManagers([]);
+       setBranches([]);
+       setIsLoading(false);
+       return;
+     }
+
+     try {
+       const allBranches = await listBranches();
+       const branchId = currentBranch?.id || localStorage.getItem("selectedBranchId");
+       
+       // Transform API branches to include managerIds
+       const transformedBranches = allBranches.map(branch => ({
+         ...branch,
+         managerIds: []
+       }));
+       
+       if (!branchId) {
+         setManagers([]);
+         setBranches(transformedBranches);
+         return;
+       }
+
+       // Fetch managers for the current branch from backend
+       const branchManagers = await listUsers(branchId);
+       
+       // Filter to get only managers and branch_admins
+       const filteredManagers = branchManagers.filter(u => 
+         u.role === "manager" || u.role === "branch_admin"
+       ).map(u => ({
+         ...u,
+         role: u.role as any,
+         branchIds: [branchId]
+       }));
+
+       setManagers(filteredManagers as User[]);
+
+       if (user?.role === "admin") {
+         setBranches(transformedBranches);
+       } else if (user?.role === "branch_admin") {
+         const branch = transformedBranches.find(b => b.id === branchId);
+         setBranches(branch ? [branch] : []);
+       }
+     } catch (error) {
+       console.error("Failed to load managers:", error);
+       toast({
+         title: "Error",
+         description: "Failed to load managers",
+         variant: "destructive",
+       });
+     } finally {
+       setIsLoading(false);
+     }
+   };
 
   const t = (key: string) => getTranslation(key, language);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (editingManager) {
-      const updated = updateUserPermissions(editingManager.id, permissions);
-      if (updated) {
+      try {
+        // Update permissions via backend API
+        // Convert Permission object to Record<string, boolean>
+        const permissionsPayload: Record<string, boolean> = {};
+        Object.entries(permissions).forEach(([key, value]) => {
+          permissionsPayload[key] = value;
+        });
+        await updateUserPermissions(editingManager.id, permissionsPayload);
         toast({ title: t("permissionsUpdatedSuccess") || "Permissions updated successfully", variant: "success" });
-      } else {
-        toast({ title: t("permissionsUpdateError") || "Error updating permissions", variant: "destructive" });
+        await loadData();
+      } catch (error) {
+        console.error("Failed to update permissions:", error);
+        toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
       }
-      loadData();
     } else {
-      createUser({
-        ...formData,
-        role: "manager",
-        permissions: permissions,
-      });
-      loadData();
-      toast({ title: t("managerCreated") || "Manager created", variant: "success" });
+      try {
+        if (!formData.fullName || !formData.email || !formData.password || !formData.branchId) {
+          toast({ title: "Error", description: "Please fill in all required fields including branch", variant: "destructive" });
+          return;
+        }
+        
+        // Create user with branchId
+        const userData = {
+          email: formData.email,
+          password: formData.password,
+          fullName: formData.fullName,
+          role: "manager",
+          branchId: formData.branchId,
+        };
+        
+        // Get auth token
+        const token = getAuthToken();
+        
+        if (!token) {
+          throw new Error('No authentication token found');
+        }
+        
+        // API call will handle adding to branch_managers table
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api'}/users`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(userData),
+        });
+        
+        let responseData;
+        try {
+          responseData = await response.json();
+        } catch (e) {
+          console.error("Failed to parse response:", e);
+          throw new Error(`Server error: ${response.status} ${response.statusText}`);
+        }
+        
+        if (!response.ok) {
+          const errorMsg = responseData?.error || responseData?.message || `Server error: ${response.status}`;
+          console.error("Manager creation failed:", errorMsg, responseData);
+          throw new Error(errorMsg);
+        }
+        
+        toast({ title: t("success") || "Success", description: "Manager created successfully", variant: "success" });
+        await loadData();
+      } catch (error) {
+        console.error("Failed to create manager:", error);
+        toast({ title: "Error", description: "Failed to create manager", variant: "destructive" });
+      }
     }
 
     resetForm();
@@ -142,7 +247,7 @@ export default function ManagersPage() {
       fullName: manager.fullName,
       email: manager.email,
       password: "",
-      branchId: manager.branchId || "",
+      branchId: currentBranch?.id || localStorage.getItem("selectedBranchId") || "",
     });
     const perms = manager.permissions || getDefaultPermissions();
     setPermissions(perms);
@@ -150,27 +255,37 @@ export default function ManagersPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (confirm(t("confirmDelete") || "Are you sure you want to delete this manager?")) {
-      deleteUser(id);
-      loadData();
-      toast({ title: t("deleted") || "Deleted", description: t("managerDeleted") || "Manager deleted", variant: "success" });
+      try {
+        await deleteUserAPI(id);
+        await loadData();
+        toast({ title: t("deleted") || "Deleted", description: t("managerDeleted") || "Manager deleted", variant: "success" });
+      } catch (error) {
+        console.error("Failed to delete manager:", error);
+        toast({ title: "Error", description: "Failed to delete manager", variant: "destructive" });
+      }
     }
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     const selectedIds = getSelectedIds();
     if (selectedIds.length === 0) return;
 
     if (confirm(`${t("confirmDelete") || "Are you sure?"} (${selectedIds.length} ${t("items")})`)) {
-      selectedIds.forEach((id) => deleteUser(id));
-      clearSelection();
-      loadData();
-      toast({
-        title: t("deleted"),
-        description: `${selectedIds.length} ${t("managersDeleted") || "managers deleted"}`,
-        variant: "success",
-      });
+      try {
+        await Promise.all(selectedIds.map((id) => deleteUserAPI(id)));
+        clearSelection();
+        await loadData();
+        toast({
+          title: t("deleted"),
+          description: `${selectedIds.length} ${t("managersDeleted") || "managers deleted"}`,
+          variant: "success",
+        });
+      } catch (error) {
+        console.error("Failed to delete managers:", error);
+        toast({ title: "Error", description: "Failed to delete managers", variant: "destructive" });
+      }
     }
   };
 
@@ -214,7 +329,7 @@ export default function ManagersPage() {
       fullName: "",
       email: "",
       password: "",
-      branchId: "",
+      branchId: currentBranch?.id || "",
     });
     setPermissions(getDefaultPermissions());
     setOriginalPermissions(null);
@@ -223,23 +338,28 @@ export default function ManagersPage() {
 
   const getDefaultPermissions = (): Permission => ({
     canViewStudents: true,
+    canCreateStudents: false,
     canEditStudents: false,
     canDeleteStudents: false,
     canViewTeachers: true,
+    canCreateTeachers: false,
     canEditTeachers: false,
     canDeleteTeachers: false,
     canViewClasses: true,
+    canCreateClasses: false,
     canEditClasses: false,
     canDeleteClasses: false,
     canViewPayments: true,
+    canCreatePayments: false,
     canEditPayments: false,
     canViewSalaries: true,
+    canCreateSalaries: false,
     canEditSalaries: false,
     canViewExpenses: true,
+    canCreateExpenses: false,
     canEditExpenses: false,
     canDeleteExpenses: false,
     canViewReports: true,
-    canFinishMonth: false,
     canViewSettings: false,
     canEditSettings: false,
   });
@@ -259,11 +379,22 @@ export default function ManagersPage() {
     return branch?.name || "N/A";
   };
 
+  const getManagerBranches = (manager: User) => {
+    const branchIds = (manager as any).branchIds || [];
+    if (branchIds.length === 0) return "N/A";
+    const allBranches = branches;
+    return branchIds
+      .map(id => allBranches.find(b => b.id === id)?.name || "")
+      .filter(name => name)
+      .join(", ");
+  };
+
   const permissionGroups = [
     {
       title: t("students"),
       permissions: [
         { key: "canViewStudents" as keyof Permission, label: t("canView") },
+        { key: "canCreateStudents" as keyof Permission, label: t("canCreate") || "Create" },
         { key: "canEditStudents" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteStudents" as keyof Permission, label: t("canDelete") },
       ],
@@ -272,6 +403,7 @@ export default function ManagersPage() {
       title: t("teachers"),
       permissions: [
         { key: "canViewTeachers" as keyof Permission, label: t("canView") },
+        { key: "canCreateTeachers" as keyof Permission, label: t("canCreate") || "Create" },
         { key: "canEditTeachers" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteTeachers" as keyof Permission, label: t("canDelete") },
       ],
@@ -280,6 +412,7 @@ export default function ManagersPage() {
       title: t("classes"),
       permissions: [
         { key: "canViewClasses" as keyof Permission, label: t("canView") },
+        { key: "canCreateClasses" as keyof Permission, label: t("canCreate") || "Create" },
         { key: "canEditClasses" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteClasses" as keyof Permission, label: t("canDelete") },
       ],
@@ -288,6 +421,7 @@ export default function ManagersPage() {
       title: t("payments"),
       permissions: [
         { key: "canViewPayments" as keyof Permission, label: t("canView") },
+        { key: "canCreatePayments" as keyof Permission, label: t("canCreate") || "Create" },
         { key: "canEditPayments" as keyof Permission, label: t("canEdit") },
       ],
     },
@@ -295,6 +429,7 @@ export default function ManagersPage() {
       title: t("salaries"),
       permissions: [
         { key: "canViewSalaries" as keyof Permission, label: t("canView") },
+        { key: "canCreateSalaries" as keyof Permission, label: t("canCreate") || "Create" },
         { key: "canEditSalaries" as keyof Permission, label: t("canEdit") },
       ],
     },
@@ -302,6 +437,7 @@ export default function ManagersPage() {
       title: t("expenses"),
       permissions: [
         { key: "canViewExpenses" as keyof Permission, label: t("canView") },
+        { key: "canCreateExpenses" as keyof Permission, label: t("canCreate") || "Create" },
         { key: "canEditExpenses" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteExpenses" as keyof Permission, label: t("canDelete") },
       ],
@@ -310,7 +446,6 @@ export default function ManagersPage() {
       title: t("reports"),
       permissions: [
         { key: "canViewReports" as keyof Permission, label: t("canView") },
-        { key: "canFinishMonth" as keyof Permission, label: t("finishMonth") || "Finish Month" },
       ],
     },
     {
@@ -499,6 +634,11 @@ export default function ManagersPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {!editingManager && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Manager can only manage this assigned branch
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -647,8 +787,8 @@ export default function ManagersPage() {
                         {manager.email}
                       </td>
                       <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                        {getBranchName(manager.branchId)}
-                      </td>
+                         {getManagerBranches(manager)}
+                       </td>
                       <td className="py-3 px-4">
                         <Badge className="capitalize">
                           {manager.role.replace("_", " ")}

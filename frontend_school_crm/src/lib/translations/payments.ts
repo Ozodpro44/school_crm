@@ -1,6 +1,18 @@
 import { Translation } from "@/types";
 
 export const paymentTranslations: Partial<Translation> = {
+  january: { "uz-cyrl": "Январь", "uz-latn": "Yanvar", en: "January" },
+  february: { "uz-cyrl": "Февраль", "uz-latn": "Fevral", en: "February" },
+  march: { "uz-cyrl": "Март", "uz-latn": "Mart", en: "March" },
+  april: { "uz-cyrl": "Апрель", "uz-latn": "Aprel", en: "April" },
+  may: { "uz-cyrl": "Май", "uz-latn": "May", en: "May" },
+  june: { "uz-cyrl": "Июнь", "uz-latn": "Iyun", en: "June" },
+  july: { "uz-cyrl": "Июль", "uz-latn": "Iyul", en: "July" },
+  august: { "uz-cyrl": "Август", "uz-latn": "Avgust", en: "August" },
+  september: { "uz-cyrl": "Сентябрь", "uz-latn": "Sentyabr", en: "September" },
+  october: { "uz-cyrl": "Октябрь", "uz-latn": "Oktyabr", en: "October" },
+  november: { "uz-cyrl": "Ноябрь", "uz-latn": "Noyabr", en: "November" },
+  december: { "uz-cyrl": "Декабрь", "uz-latn": "Dekabr", en: "December" },
   paymentMethod: { "uz-cyrl": "Тўлов усули", "uz-latn": "To'lov usuli", en: "Payment Method" },
   card: { "uz-cyrl": "Карта", "uz-latn": "Karta", en: "Card" },
   cash: { "uz-cyrl": "Нақд", "uz-latn": "Naqd", en: "Cash" },
@@ -30,6 +42,6 @@ export const paymentTranslations: Partial<Translation> = {
   selectStudentPlaceholder: { "uz-cyrl": "Ўқувчини танланг", "uz-latn": "O'quvchini tanlang", en: "Select student" },
   searchPayments: { "uz-cyrl": "Тўловлар бўйича қидириш...", "uz-latn": "To'lovlar boʻyicha qidirish...", en: "Search payments..." },
   invoice: { "uz-cyrl": "Ҳисоб-фактура", "uz-latn": "Hisob-faktura", en: "Invoice" },
-  noPaymentsFound: { "uz-cyrl": "Ҳеч қандай тўлов топилмади", "uz-latn": "Hech қандай to'lov topilmadi", en: "No payments found" },
+  noPaymentsFound: { "uz-cyrl": "Ҳеч қандай тўлов топилмади", "uz-latn": "Hech qanday to'lov topilmadi", en: "No payments found" },
   whoAddedPayment: { "uz-cyrl": "Киритган шахс", "uz-latn": "Kiritgan shaxs", en: "Added by" },
 };

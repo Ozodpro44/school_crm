@@ -47,11 +47,17 @@ export default function SalariesPage() {
      const itemsPerPage = 10;
     const language = useLanguage();
     const { toast } = useToast();
+    const canCreateSalaries = hasPermission("canCreateSalaries");
     const canEditSalaries = hasPermission("canEditSalaries");
     const canDeleteSalaries = canEditSalaries && getCurrentUser()?.role !== "manager";
 
     const getDefaultYear = () => {
-      return settings?.currentYear.toString() || new Date().getFullYear().toString();
+      return new Date().getFullYear().toString();
+    };
+
+    const getDefaultMonth = () => {
+      const month = new Date().getMonth() + 1;
+      return month.toString().padStart(2, "0");
     };
 
     const currentUser = getCurrentUser();
@@ -67,7 +73,7 @@ export default function SalariesPage() {
      const [formData, setFormData] = useState({
      teacherId: "",
      amount: "",
-     month: "",
+     month: getDefaultMonth(),
      year: getDefaultYear(),
      status: "unpaid" as PaymentStatus,
      paymentMethod: "bank" as PaymentMethod,
@@ -89,6 +95,15 @@ export default function SalariesPage() {
       setIsLoading(false);
     }, 300);
     return () => clearTimeout(timer);
+  }, []);
+
+  // Reload data when branch changes
+  useEffect(() => {
+    const handleBranchChange = () => {
+      loadData();
+    };
+    window.addEventListener("branchChange", handleBranchChange);
+    return () => window.removeEventListener("branchChange", handleBranchChange);
   }, []);
 
   const t = (key: string) => getTranslation(key, language);
@@ -174,7 +189,7 @@ export default function SalariesPage() {
     setFormData({
       teacherId: "",
       amount: "",
-      month: "",
+      month: getDefaultMonth(),
       year: getDefaultYear(),
       status: "unpaid",
       paymentMethod: "bank",
@@ -252,14 +267,15 @@ export default function SalariesPage() {
     .filter((s) => s.status === "unpaid")
     .reduce((sum, s) => sum + s.amount, 0);
 
-  const months = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-  ];
+  const months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
 
-  const getMonthName = (monthName: string) => {
-    const monthKey = monthName as keyof typeof monthName;
-    return t(monthName) || monthName;
+  const getMonthName = (monthNumber: string) => {
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const index = parseInt(monthNumber) - 1;
+    return t(monthNames[index] ? monthNames[index].toLowerCase() : "unknown") || monthNames[index] || "Unknown";
   };
 
   if (isLoading) {
@@ -332,6 +348,8 @@ export default function SalariesPage() {
               <Button
                 className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
                 onClick={() => resetForm()}
+                disabled={!canCreateSalaries}
+                title={!canCreateSalaries ? t("noPermission") || "No permission to create salaries" : ""}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 {t("recordSalaryPayment")}

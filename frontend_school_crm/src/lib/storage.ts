@@ -96,21 +96,12 @@ export const settingsDB = {
   get: (): Settings => {
     // Settings are now fetched from backend via useSettings() hook
     // This is kept for backwards compatibility but should not be used
-    const now = new Date();
-    const defaultMonth = (now.getMonth() + 1).toString().padStart(2, "0");
-    const defaultYear = now.getFullYear();
-
-    // Return default values WITHOUT initializing localStorage
     return {
-      id: "settings-default",
-      defaultMonthlyPayment: 500000,
-      defaultTeacherSalary: 3000000,
+      name: "School CRM",
+      monthlyPayment: 500000,
       currency: "UZS",
-      language: "uz-latn",
-      schoolName: "School CRM",
-      currentMonth: defaultMonth,
-      currentYear: defaultYear,
-      updatedAt: new Date().toISOString(),
+      updatedDate: new Date().toISOString(),
+      createdDate: new Date().toISOString(),
     };
   },
 
@@ -616,9 +607,9 @@ export const finishMonth = (
   userId: string
 ): { success: boolean; message: string } => {
   try {
-    const settings = settingsDB.get();
-    const currentMonth = settings.currentMonth;
-    const currentYear = settings.currentYear;
+    const now = new Date();
+    const currentMonth = (now.getMonth() + 1).toString().padStart(2, "0");
+    const currentYear = now.getFullYear();
 
     // Check if already archived
     if (monthArchivesDB.getByMonth(currentMonth, currentYear)) {

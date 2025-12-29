@@ -11,19 +11,25 @@ const AUTH_USER_KEY = "school_auth_user";
 const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   admin: {
     canViewStudents: true,
+    canCreateStudents: true,
     canEditStudents: true,
     canDeleteStudents: true,
     canViewTeachers: true,
+    canCreateTeachers: true,
     canEditTeachers: true,
     canDeleteTeachers: true,
     canViewClasses: true,
+    canCreateClasses: true,
     canEditClasses: true,
     canDeleteClasses: true,
     canViewPayments: true,
+    canCreatePayments: true,
     canEditPayments: true,
     canViewSalaries: true,
+    canCreateSalaries: true,
     canEditSalaries: true,
     canViewExpenses: true,
+    canCreateExpenses: true,
     canEditExpenses: true,
     canDeleteExpenses: true,
     canViewReports: true,
@@ -33,19 +39,25 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   },
   branch_admin: {
     canViewStudents: true,
+    canCreateStudents: true,
     canEditStudents: true,
     canDeleteStudents: true,
     canViewTeachers: true,
+    canCreateTeachers: true,
     canEditTeachers: true,
     canDeleteTeachers: true,
     canViewClasses: true,
+    canCreateClasses: true,
     canEditClasses: true,
     canDeleteClasses: true,
     canViewPayments: true,
+    canCreatePayments: true,
     canEditPayments: true,
     canViewSalaries: true,
+    canCreateSalaries: true,
     canEditSalaries: true,
     canViewExpenses: true,
+    canCreateExpenses: true,
     canEditExpenses: true,
     canDeleteExpenses: true,
     canViewReports: true,
@@ -55,20 +67,26 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   },
   manager: {
     canViewStudents: true,
+    canCreateStudents: true,
     canEditStudents: true,
     canDeleteStudents: false,
     canViewTeachers: true,
+    canCreateTeachers: true,
     canEditTeachers: true,
     canDeleteTeachers: false,
     canViewClasses: true,
+    canCreateClasses: true,
     canEditClasses: true,
     canDeleteClasses: false,
     canViewPayments: true,
-    canEditPayments: true,
+    canCreatePayments: false,
+    canEditPayments: false,
     canViewSalaries: true,
-    canEditSalaries: true,
+    canCreateSalaries: false,
+    canEditSalaries: false,
     canViewExpenses: true,
-    canEditExpenses: true,
+    canCreateExpenses: false,
+    canEditExpenses: false,
     canDeleteExpenses: false,
     canViewReports: true,
     canFinishMonth: true,
@@ -77,19 +95,25 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   },
   accountant: {
     canViewStudents: true,
+    canCreateStudents: false,
     canEditStudents: false,
     canDeleteStudents: false,
     canViewTeachers: true,
+    canCreateTeachers: false,
     canEditTeachers: false,
     canDeleteTeachers: false,
     canViewClasses: true,
+    canCreateClasses: false,
     canEditClasses: false,
     canDeleteClasses: false,
     canViewPayments: true,
+    canCreatePayments: true,
     canEditPayments: true,
     canViewSalaries: true,
+    canCreateSalaries: true,
     canEditSalaries: true,
     canViewExpenses: true,
+    canCreateExpenses: true,
     canEditExpenses: true,
     canDeleteExpenses: false,
     canViewReports: true,
@@ -99,19 +123,25 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   },
   teacher: {
     canViewStudents: true,
+    canCreateStudents: false,
     canEditStudents: false,
     canDeleteStudents: false,
     canViewTeachers: false,
+    canCreateTeachers: false,
     canEditTeachers: false,
     canDeleteTeachers: false,
     canViewClasses: true,
+    canCreateClasses: false,
     canEditClasses: false,
     canDeleteClasses: false,
     canViewPayments: false,
+    canCreatePayments: false,
     canEditPayments: false,
     canViewSalaries: false,
+    canCreateSalaries: false,
     canEditSalaries: false,
     canViewExpenses: false,
+    canCreateExpenses: false,
     canEditExpenses: false,
     canDeleteExpenses: false,
     canViewReports: false,
@@ -121,19 +151,25 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   },
   student: {
     canViewStudents: false,
+    canCreateStudents: false,
     canEditStudents: false,
     canDeleteStudents: false,
     canViewTeachers: false,
+    canCreateTeachers: false,
     canEditTeachers: false,
     canDeleteTeachers: false,
     canViewClasses: true,
+    canCreateClasses: false,
     canEditClasses: false,
     canDeleteClasses: false,
     canViewPayments: true,
+    canCreatePayments: false,
     canEditPayments: false,
     canViewSalaries: false,
+    canCreateSalaries: false,
     canEditSalaries: false,
     canViewExpenses: false,
+    canCreateExpenses: false,
     canEditExpenses: false,
     canDeleteExpenses: false,
     canViewReports: false,
@@ -143,19 +179,25 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   },
   parent: {
     canViewStudents: true,
+    canCreateStudents: false,
     canEditStudents: false,
     canDeleteStudents: false,
     canViewTeachers: true,
+    canCreateTeachers: false,
     canEditTeachers: false,
     canDeleteTeachers: false,
     canViewClasses: true,
+    canCreateClasses: false,
     canEditClasses: false,
     canDeleteClasses: false,
     canViewPayments: true,
+    canCreatePayments: false,
     canEditPayments: false,
     canViewSalaries: false,
+    canCreateSalaries: false,
     canEditSalaries: false,
     canViewExpenses: false,
+    canCreateExpenses: false,
     canEditExpenses: false,
     canDeleteExpenses: false,
     canViewReports: false,
@@ -174,20 +216,29 @@ export async function login(email: string, password: string): Promise<User> {
     const response = await api.login({ email, password });
 
     // Transform backend response to frontend User type
+    const branchIds = (response.user as any).branchIds || [];
+    const branchId = branchIds.length > 0 ? branchIds[0] : (response.user as any).branchId;
+    
     const user: User = {
       id: response.user.id,
       email: response.user.email,
-      password: "", // Don't store password in frontend
+      password: "",
       role: response.user.role as UserRole,
       fullName: response.user.fullName,
-      branchId: response.user.branchId,
       permissions: DEFAULT_PERMISSIONS[response.user.role as UserRole],
+      branchId: branchId,
+      branchIds: branchIds.length > 0 ? branchIds : undefined,
       createdAt: new Date().toISOString(),
     };
 
     // Store user in localStorage (without password)
     if (typeof window !== "undefined") {
       localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+      
+      // Set selectedBranchId if user has a branch assigned
+      if (user.branchId) {
+        localStorage.setItem("selectedBranchId", user.branchId);
+      }
     }
 
     return user;
@@ -204,8 +255,7 @@ export async function register(
   email: string,
   password: string,
   fullName: string,
-  role: UserRole,
-  branchId?: string
+  role: UserRole
 ): Promise<User> {
   try {
     const response = await api.register({
@@ -213,7 +263,6 @@ export async function register(
       password,
       fullName,
       role,
-      branchId,
     });
 
     const user: User = {
@@ -222,7 +271,6 @@ export async function register(
       password: "",
       role: response.user.role as UserRole,
       fullName: response.user.fullName,
-      branchId: response.user.branchId,
       permissions: DEFAULT_PERMISSIONS[response.user.role as UserRole],
       createdAt: new Date().toISOString(),
     };
@@ -248,6 +296,7 @@ export function logout(): void {
     localStorage.removeItem("school_auth_user");
     localStorage.removeItem("current_user");
     localStorage.removeItem("auth_token");
+    localStorage.removeItem("selectedBranchId");
   }
 }
 

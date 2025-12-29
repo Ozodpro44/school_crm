@@ -1,16 +1,14 @@
 import { useCallback } from "react";
-import { useSettings } from "./use-settings";
 
 export function useSystemDate() {
-  const { settings } = useSettings();
-
   const getSystemMonth = useCallback(() => {
-    return settings?.currentMonth || "01";
-  }, [settings]);
+    const month = new Date().getMonth() + 1;
+    return month.toString().padStart(2, "0");
+  }, []);
 
   const getSystemYear = useCallback(() => {
-    return settings?.currentYear || new Date().getFullYear();
-  }, [settings]);
+    return new Date().getFullYear();
+  }, []);
 
   const getSystemYearString = useCallback(() => {
     return getSystemYear().toString();
