@@ -45,6 +45,8 @@ export default function BranchesPage() {
     password: "",
     fullName: "",
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAdminSubmitting, setIsAdminSubmitting] = useState(false);
 
   useEffect(() => {
     if (!hasCheckedAuth) {
@@ -84,6 +86,7 @@ export default function BranchesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
     if (!formData.name || !formData.address || !formData.phone) {
       toast({
@@ -91,6 +94,7 @@ export default function BranchesPage() {
         description: t("fillAllFields"),
         variant: "destructive",
       });
+      setIsSubmitting(false);
       return;
     }
 
@@ -100,6 +104,7 @@ export default function BranchesPage() {
         description: "Monthly payment must be greater than 0",
         variant: "destructive",
       });
+      setIsSubmitting(false);
       return;
     }
 
@@ -139,15 +144,17 @@ export default function BranchesPage() {
       resetForm();
       await loadData();
       await refreshBranches();
-    } catch (error) {
+      } catch (error) {
       console.error("Error saving branch:", error);
       toast({
         title: t("error"),
         description: t("failedToSaveBranch") || "Failed to save branch",
         variant: "destructive",
       });
-    }
-  };
+      } finally {
+      setIsSubmitting(false);
+      }
+      };
 
   const handleEdit = (branch: Branch) => {
     setEditingBranch(branch);
@@ -201,6 +208,7 @@ export default function BranchesPage() {
 
   const handleCreateBranchAdminSubmit = async (e?: React.FormEvent) => {
     if (e && typeof e.preventDefault === "function") e.preventDefault();
+    setIsAdminSubmitting(true);
 
     const { branchId, email, password, fullName } = adminForm;
     if (!email || !password || !fullName) {
@@ -209,6 +217,7 @@ export default function BranchesPage() {
         description: t("fillAllFields"),
         variant: "destructive",
       });
+      setIsAdminSubmitting(false);
       return;
     }
 
@@ -231,15 +240,17 @@ export default function BranchesPage() {
       setIsCreateAdminOpen(false);
       setAdminForm({ branchId: "", email: "", password: "", fullName: "" });
       await loadData();
-    } catch (error) {
+      } catch (error) {
       console.error("Error creating branch admin:", error);
       toast({
         title: t("error"),
         description: t("failedToCreateAdmin") || "Failed to create admin",
         variant: "destructive",
       });
-    }
-  };
+      } finally {
+      setIsAdminSubmitting(false);
+      }
+      };
 
   if (loading) {
     return (
@@ -333,13 +344,20 @@ export default function BranchesPage() {
                   </div>
 
                   <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isSubmitting}>
                     {t("cancel")}
                   </Button>
-                  <Button type="submit">
-                    {t("save")}
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                        {editingBranch ? t("updating") : t("creating")}
+                      </>
+                    ) : (
+                      t("save")
+                    )}
                   </Button>
-                </DialogFooter>
+                  </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
@@ -371,8 +389,17 @@ export default function BranchesPage() {
                   </div>
 
                   <DialogFooter>
-                    <Button type="button" variant="outline" onClick={() => setIsCreateAdminOpen(false)}>{t("cancel")}</Button>
-                    <Button type="submit">{t("create")}</Button>
+                    <Button type="button" variant="outline" onClick={() => setIsCreateAdminOpen(false)} disabled={isAdminSubmitting}>{t("cancel")}</Button>
+                    <Button type="submit" disabled={isAdminSubmitting}>
+                      {isAdminSubmitting ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                          {t("creating")}
+                        </>
+                      ) : (
+                        t("create")
+                      )}
+                    </Button>
                   </DialogFooter>
                 </form>
               </DialogContent>

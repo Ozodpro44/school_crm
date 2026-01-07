@@ -42,6 +42,7 @@ export default function ManagersPage() {
      newPassword: "",
      confirmPassword: "",
    });
+   const [isSubmitting, setIsSubmitting] = useState(false);
    const language = useLanguage();
      const { toast } = useToast();
      const { currentBranch } = useBranch();
@@ -166,6 +167,7 @@ export default function ManagersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
     if (editingManager) {
       try {
@@ -181,11 +183,14 @@ export default function ManagersPage() {
       } catch (error) {
         console.error("Failed to update permissions:", error);
         toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
+      } finally {
+        setIsSubmitting(false);
       }
     } else {
       try {
         if (!formData.fullName || !formData.email || !formData.password || !formData.branchId) {
           toast({ title: "Error", description: "Please fill in all required fields including branch", variant: "destructive" });
+          setIsSubmitting(false);
           return;
         }
         
@@ -231,14 +236,16 @@ export default function ManagersPage() {
         
         toast({ title: t("success") || "Success", description: "Manager created successfully", variant: "success" });
         await loadData();
-      } catch (error) {
+        } catch (error) {
         console.error("Failed to create manager:", error);
         toast({ title: "Error", description: "Failed to create manager", variant: "destructive" });
-      }
-    }
+        } finally {
+        setIsSubmitting(false);
+        }
+        }
 
-    resetForm();
-    setIsDialogOpen(false);
+        resetForm();
+        setIsDialogOpen(false);
   };
 
   const handleEdit = (manager: User) => {
@@ -682,14 +689,22 @@ export default function ManagersPage() {
                      type="button"
                      variant="outline"
                      onClick={() => setIsDialogOpen(false)}
+                     disabled={isSubmitting}
                    >
                      {t("cancel")}
                    </Button>
                    <Button 
                      type="submit"
-                     disabled={editingManager && !hasPermissionsChanged()}
+                     disabled={isSubmitting || (editingManager && !hasPermissionsChanged())}
                    >
-                     {editingManager ? t("update") : t("create")}
+                     {isSubmitting ? (
+                       <>
+                         <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                         {editingManager ? t("updating") : t("creating")}
+                       </>
+                     ) : (
+                       editingManager ? t("update") : t("create")
+                     )}
                    </Button>
                  </div>
               </form>

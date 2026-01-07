@@ -49,6 +49,7 @@ export default function ClassesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<Class | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedClassId, setSelectedClassId] = useState<string>("");
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isBulkAddOpen, setIsBulkAddOpen] = useState(false);
@@ -56,7 +57,6 @@ export default function ClassesPage() {
   const [draggedStudent, setDraggedStudent] = useState<Student | null>(null);
   const [draggedOverClass, setDraggedOverClass] = useState<string | null>(null);
   const [draggedStudentIds, setDraggedStudentIds] = useState<string[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -137,16 +137,17 @@ export default function ClassesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     if (!canEditClasses) {
       toast({
         title: "Permission Denied",
         description: "You don't have permission to create or edit classes.",
         variant: "destructive",
       });
+      setIsSubmitting(false);
       return;
     }
 
-    setIsSubmitting(true);
     const branchId = localStorage.getItem("selectedBranchId");
     if (!branchId) {
       setIsSubmitting(false);
@@ -180,16 +181,16 @@ export default function ClassesPage() {
       resetForm();
       await loadData();
       setIsDialogOpen(false);
-    } catch (error) {
+      } catch (error) {
       toast({
         title: "Error",
         description: editingClass ? "Failed to update class" : "Failed to create class",
         variant: "destructive",
       });
-    } finally {
+      } finally {
       setIsSubmitting(false);
-    }
-  };
+      }
+      };
 
   const handleEdit = (classData: Class) => {
     if (!canEditClasses) {
@@ -720,13 +721,13 @@ export default function ClassesPage() {
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? (
                       <>
-                        <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        {t("saving")}
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                        {editingClass ? t("updating") : t("creating")}
                       </>
-                    ) : editingClass ? (
-                      `${t("update")} ${t("class")}`
                     ) : (
-                      `${t("create")} ${t("class")}`
+                      <>
+                        {editingClass ? t("update") : t("create")} {t("class")}
+                      </>
                     )}
                   </Button>
                 </div>

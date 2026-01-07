@@ -33,6 +33,7 @@ export default function TeachersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const language = useLanguage();
   const { toast } = useToast();
   const {
@@ -108,13 +109,18 @@ export default function TeachersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     if (!canEditTeachers) {
       toast({ title: t("permissionDenied"), description: t("noPermissionCreate"), variant: "destructive" });
+      setIsSubmitting(false);
       return;
     }
     const subjectsArray = formData.subjects.split(",").map((s) => s.trim()).filter(Boolean);
     const branchId = localStorage.getItem("selectedBranchId");
-    if (!branchId) return;
+    if (!branchId) {
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       if (editingTeacher) {
@@ -149,14 +155,16 @@ export default function TeachersPage() {
       resetForm();
       await loadData();
       setIsDialogOpen(false);
-    } catch (error) {
+      } catch (error) {
       toast({
         title: "Error",
         description: editingTeacher ? "Failed to update teacher" : "Failed to create teacher",
         variant: "destructive",
       });
-    }
-  };
+      } finally {
+      setIsSubmitting(false);
+      }
+      };
 
   const handleEdit = (teacher: Teacher) => {
     if (!canEditTeachers) {
@@ -390,13 +398,21 @@ export default function TeachersPage() {
                     type="button"
                     variant="outline"
                     onClick={() => setIsDialogOpen(false)}
+                    disabled={isSubmitting}
                   >
                     {t("cancel")}
                   </Button>
-                  <Button type="submit">
-                    {editingTeacher ? t("update") : t("create")}
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                        {editingTeacher ? t("updating") : t("creating")}
+                      </>
+                    ) : (
+                      editingTeacher ? t("update") : t("create")
+                    )}
                   </Button>
-                </div>
+                  </div>
               </form>
             </DialogContent>
           </Dialog>

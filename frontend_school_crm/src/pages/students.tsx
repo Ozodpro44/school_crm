@@ -15,6 +15,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -73,6 +74,7 @@ export default function StudentsPage() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [importData, setImportData] = useState("");
   const [isImporting, setIsImporting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [branchData, setBranchData] = useState<Branch | null>(null);
@@ -83,7 +85,6 @@ export default function StudentsPage() {
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [markLeftConfirmOpen, setMarkLeftConfirmOpen] = useState(false);
   const [markLeftStudentId, setMarkLeftStudentId] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const itemsPerPage = 10;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const language = useLanguage();
@@ -411,16 +412,17 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     if (!canEditStudents) {
       toast({
         title: "Permission Denied",
         description: "You don't have permission to create or edit students.",
         variant: "destructive",
       });
+      setIsSubmitting(false);
       return;
     }
 
-    setIsSubmitting(true);
     const branchId = localStorage.getItem("selectedBranchId");
     const branch = branchId ? branchesDB.getById(branchId) : null;
     const monthlyPayment =
@@ -968,13 +970,11 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                     <Button type="submit" disabled={isSubmitting}>
                       {isSubmitting ? (
                         <>
-                          <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          {t("saving")}
+                          <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                          {editingStudent ? t("updating") : t("creating")}
                         </>
-                      ) : editingStudent ? (
-                        t("update")
                       ) : (
-                        t("create")
+                        editingStudent ? t("update") : t("create")
                       )}
                     </Button>
                   </div>

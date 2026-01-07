@@ -79,6 +79,7 @@ export default function PaymentsPage() {
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isBulkPaymentOpen, setIsBulkPaymentOpen] = useState(false);
   const [bulkSearchTerm, setBulkSearchTerm] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<number>(0);
@@ -257,8 +258,12 @@ export default function PaymentsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     const user = getCurrentUser();
-    if (!user) return;
+    if (!user) {
+      setIsSubmitting(false);
+      return;
+    }
 
     const invoiceNumber = `INV-${Date.now()}`;
 
@@ -296,12 +301,13 @@ export default function PaymentsPage() {
             )}`,
             variant: "destructive",
           });
+          setIsSubmitting(false);
           return;
-        }
-      }
+          }
+          }
 
-      // Update via backend API
-      try {
+          // Update via backend API
+          try {
         await apiUpdatePayment(editingPaymentId, {
           amount: newAmount,
           status: formData.status as PaymentStatus,
@@ -325,9 +331,10 @@ export default function PaymentsPage() {
           description: "Failed to update payment",
           variant: "destructive",
         });
+        setIsSubmitting(false);
         return;
       }
-    } else {
+      } else {
       // Create new payment
       // Use backend payments instead of localStorage
       const periodPaidTotal = payments
@@ -348,10 +355,11 @@ export default function PaymentsPage() {
           )}`,
           variant: "destructive",
         });
+        setIsSubmitting(false);
         return;
-      }
+        }
 
-      // Create via backend API
+        // Create via backend API
       try {
         const student = students.find((s) => s.id === formData.studentId);
         await apiCreatePayment({
@@ -381,13 +389,15 @@ export default function PaymentsPage() {
           description: "Failed to create payment",
           variant: "destructive",
         });
+        setIsSubmitting(false);
         return;
       }
-    }
+      }
 
-    resetForm();
-    loadData();
-    setIsDialogOpen(false);
+      resetForm();
+      loadData();
+      setIsDialogOpen(false);
+      setIsSubmitting(false);
   };
 
   const handleMarkPaid = async (
@@ -1417,10 +1427,20 @@ export default function PaymentsPage() {
                     type="button"
                     variant="outline"
                     onClick={() => setIsDialogOpen(false)}
+                    disabled={isSubmitting}
                   >
                     {t("cancel")}
                   </Button>
-                  <Button type="submit">{t("recordPayment")}</Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                        {t("recording")}
+                      </>
+                    ) : (
+                      t("recordPayment")
+                    )}
+                  </Button>
                 </div>
               </form>
             </DialogContent>

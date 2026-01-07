@@ -45,6 +45,7 @@ export default function SalariesPage() {
      const [isDialogOpen, setIsDialogOpen] = useState(false);
      const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
      const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+     const [isSubmitting, setIsSubmitting] = useState(false);
      const [currentPage, setCurrentPage] = useState(1);
      const itemsPerPage = 10;
      const [branchData, setBranchData] = useState<Branch | null>(null);
@@ -168,10 +169,15 @@ export default function SalariesPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     const user = getCurrentUser();
-    if (!user) return;
+    if (!user) {
+      setIsSubmitting(false);
+      return;
+    }
 
-    if (editingSalaryId) {
+    try {
+      if (editingSalaryId) {
       salariesDB.update(editingSalaryId, {
         teacherId: formData.teacherId,
         amount: parseFloat(formData.amount),
@@ -200,7 +206,17 @@ export default function SalariesPage() {
     resetForm();
     loadData();
     setIsDialogOpen(false);
-  };
+    } catch (error) {
+      console.error("Failed to save salary:", error);
+      toast({
+        title: "Error",
+        description: "Failed to save salary",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+    };
 
   const handleMarkPaid = (id: string) => {
     salariesDB.update(id, {
@@ -564,10 +580,20 @@ export default function SalariesPage() {
                     type="button"
                     variant="outline"
                     onClick={() => setIsDialogOpen(false)}
+                    disabled={isSubmitting}
                   >
                     {t("cancel")}
                   </Button>
-                  <Button type="submit">{t("recordSalaryPayment")}</Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                        {t("recording")}
+                      </>
+                    ) : (
+                      t("recordSalaryPayment")
+                    )}
+                  </Button>
                 </div>
               </form>
             </DialogContent>

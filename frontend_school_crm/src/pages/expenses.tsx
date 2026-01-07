@@ -64,6 +64,7 @@ export default function ExpensesPage() {
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [userCache, setUserCache] = useState<{ [key: string]: string }>({});
@@ -242,9 +243,13 @@ export default function ExpensesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
 
     const user = getCurrentUser();
-    if (!user) return;
+    if (!user) {
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       // Convert date string (YYYY-MM-DD) to ISO timestamp (YYYY-MM-DDTHH:mm:ssZ)
@@ -287,15 +292,17 @@ export default function ExpensesPage() {
       resetForm();
       await loadData();
       setIsDialogOpen(false);
-    } catch (error) {
+      } catch (error) {
       console.error("Failed to save expense:", error);
       toast({
         title: "Error",
         description: "Failed to save expense",
         variant: "destructive",
       });
-    }
-  };
+      } finally {
+      setIsSubmitting(false);
+      }
+      };
 
   const handleEdit = (expense: Expense) => {
     setEditingExpense(expense);
@@ -685,17 +692,25 @@ export default function ExpensesPage() {
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
-                >
-                  {t("cancel")}
-                </Button>
-                <Button type="submit">
-                  {editingExpense ? t("update") : t("addExpense")}
-                </Button>
-              </div>
+                 <Button
+                   type="button"
+                   variant="outline"
+                   onClick={() => setIsDialogOpen(false)}
+                   disabled={isSubmitting}
+                 >
+                   {t("cancel")}
+                 </Button>
+                 <Button type="submit" disabled={isSubmitting}>
+                   {isSubmitting ? (
+                     <>
+                       <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                       {editingExpense ? t("updating") : t("creating")}
+                     </>
+                   ) : (
+                     editingExpense ? t("update") : t("addExpense")
+                   )}
+                 </Button>
+               </div>
             </form>
           </DialogContent>
         </Dialog>
