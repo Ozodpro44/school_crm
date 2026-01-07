@@ -68,6 +68,7 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 
 		grantTablePermissions,
 		createIndexes,
+		seedSampleData,
 	}
 
 	for _, migration := range migrations {
