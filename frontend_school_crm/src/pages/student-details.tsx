@@ -301,33 +301,83 @@ export default function StudentDetailsPage() {
 
   if (isLoading) {
     return (
-      
-        <div className="space-y-6">
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-64 w-full" />
+      <div className="space-y-6">
+        {/* Header Skeleton */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Skeleton className="w-10 h-10 rounded" />
+            <div className="flex-1">
+              <Skeleton className="w-48 h-8 rounded mb-2" />
+              <Skeleton className="w-32 h-4 rounded" />
+            </div>
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Skeleton className="flex-1 sm:flex-none h-10 w-24 rounded" />
+            <Skeleton className="flex-1 sm:flex-none h-10 w-24 rounded" />
+          </div>
         </div>
-      
+
+        {/* Info Cards Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <Skeleton className="w-1/3 h-6 rounded" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i}>
+                  <Skeleton className="w-1/4 h-4 rounded mb-2" />
+                  <Skeleton className="w-3/4 h-5 rounded" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <Skeleton className="w-1/3 h-6 rounded" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i}>
+                  <Skeleton className="w-1/4 h-4 rounded mb-2" />
+                  <Skeleton className="w-1/2 h-5 rounded" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Payment History Skeleton */}
+        <Card>
+          <CardHeader>
+            <Skeleton className="w-1/3 h-6 rounded" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="w-full h-16 rounded" />
+            ))}
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   if (!student) {
     return (
-      
-        <div className="text-center py-12">
-          <p className="text-slate-500 dark:text-slate-400">
-            {t("noStudentsYet")}
-          </p>
-          <Button onClick={() => router.push(backRoute)} className="mt-4">
-            {t("backToStudents")}
-          </Button>
-        </div>
-      
+      <div className="text-center py-12">
+        <p className="text-slate-500 dark:text-slate-400">
+          {t("noStudentsYet")}
+        </p>
+        <Button onClick={() => router.push(backRoute)} className="mt-4">
+          {t("backToStudents")}
+        </Button>
+      </div>
     );
   }
 
   return (
-    
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <Button
