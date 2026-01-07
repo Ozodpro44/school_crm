@@ -56,6 +56,7 @@ export default function ClassesPage() {
   const [draggedStudent, setDraggedStudent] = useState<Student | null>(null);
   const [draggedOverClass, setDraggedOverClass] = useState<string | null>(null);
   const [draggedStudentIds, setDraggedStudentIds] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -145,8 +146,12 @@ export default function ClassesPage() {
       return;
     }
 
+    setIsSubmitting(true);
     const branchId = localStorage.getItem("selectedBranchId");
-    if (!branchId) return;
+    if (!branchId) {
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       if (editingClass) {
@@ -181,6 +186,8 @@ export default function ClassesPage() {
         description: editingClass ? "Failed to update class" : "Failed to create class",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -706,11 +713,21 @@ export default function ClassesPage() {
                     type="button"
                     variant="outline"
                     onClick={() => setIsDialogOpen(false)}
+                    disabled={isSubmitting}
                   >
                     {t("cancel")}
                   </Button>
-                  <Button type="submit">
-                    {editingClass ? t("update") : t("create")} {t("class")}
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        {t("saving")}
+                      </>
+                    ) : editingClass ? (
+                      `${t("update")} ${t("class")}`
+                    ) : (
+                      `${t("create")} ${t("class")}`
+                    )}
                   </Button>
                 </div>
               </form>
