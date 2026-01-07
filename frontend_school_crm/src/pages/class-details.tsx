@@ -305,6 +305,16 @@ export default function ClassDetailsPage() {
     );
   }
 
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-60 w-full" />
+      </div>
+    );
+  }
+
   if (!classData) {
     return (
       <div className="text-center py-12">

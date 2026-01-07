@@ -363,6 +363,16 @@ export default function StudentDetailsPage() {
     );
   }
 
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-12 w-full" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-60 w-full" />
+      </div>
+    );
+  }
+
   if (!student) {
     return (
       <div className="text-center py-12">

@@ -47,4 +47,5 @@ export const paymentTranslations: Partial<Translation> = {
   deletePayment: { "uz-cyrl": "Тўловни ўчириш", "uz-latn": "To'lovni o'chirish", en: "Delete Payment" },
   deletePaymentConfirmation: { "uz-cyrl": "Бу тўловни ўчириб ташламоқчимисиз?", "uz-latn": "Bu to'lovni o'chirib tashlmoqchimisiz?", en: "Are you sure you want to delete this payment?" },
   paymentDeleted: { "uz-cyrl": "Тўлов ўчирилди", "uz-latn": "To'lov o'chirildi", en: "Payment deleted" },
+  partialPayment: { "uz-cyrl": "Қисман тўлов", "uz-latn": "Qisman to'lov", en: "Partial Payment" },
   };

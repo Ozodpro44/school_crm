@@ -666,11 +666,12 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
     const matchesClass =
       filterClass === "all" || student.classId === filterClass;
 
-    const hasPaid = hasCurrentMonthPayment(student.id);
+    const paymentStatus = getCurrentMonthPaymentStatus(student.id);
     const matchesPaymentStatus =
       filterPaymentStatus === "all" ||
-      (filterPaymentStatus === "paid" && hasPaid) ||
-      (filterPaymentStatus === "partial" && !hasPaid);
+      (filterPaymentStatus === "paid" && paymentStatus === "paid") ||
+      (filterPaymentStatus === "partial" && paymentStatus === "partial") ||
+      (filterPaymentStatus === "unpaid" && paymentStatus === "unpaid");
 
     return (
       matchesSearch && matchesStatus && matchesClass && matchesPaymentStatus
@@ -1037,6 +1038,7 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                       <SelectItem value="all">{t("allPayments")}</SelectItem>
                       <SelectItem value="paid">{t("paidThisMonth")}</SelectItem>
                       <SelectItem value="partial">{t("partialPayment")}</SelectItem>
+                      <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
                    </SelectContent>
                 </Select>
               </div>
