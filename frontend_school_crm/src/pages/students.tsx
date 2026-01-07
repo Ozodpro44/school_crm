@@ -73,7 +73,6 @@ export default function StudentsPage() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [importData, setImportData] = useState("");
   const [isImporting, setIsImporting] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [branchData, setBranchData] = useState<Branch | null>(null);
@@ -84,6 +83,7 @@ export default function StudentsPage() {
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [markLeftConfirmOpen, setMarkLeftConfirmOpen] = useState(false);
   const [markLeftStudentId, setMarkLeftStudentId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const itemsPerPage = 10;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const language = useLanguage();
@@ -833,7 +833,6 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                     <Button
                       variant="outline"
                       onClick={() => setIsImportDialogOpen(false)}
-                      disabled={isImporting}
                     >
                       {t("cancel")}
                     </Button>
@@ -845,14 +844,7 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                            !fileInputRef.current?.files?.length)
                        }
                      >
-                       {isImporting ? (
-                         <>
-                           <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
-                           {t("importing")}
-                         </>
-                       ) : (
-                         t("importStudents")
-                       )}
+                       {isImporting ? t("importing") : t("importStudents")}
                      </Button>
                   </div>
                 </div>
@@ -976,11 +968,13 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                     <Button type="submit" disabled={isSubmitting}>
                       {isSubmitting ? (
                         <>
-                          <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
-                          {editingStudent ? t("updating") : t("creating")}
+                          <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          {t("saving")}
                         </>
+                      ) : editingStudent ? (
+                        t("update")
                       ) : (
-                        editingStudent ? t("update") : t("create")
+                        t("create")
                       )}
                     </Button>
                   </div>
