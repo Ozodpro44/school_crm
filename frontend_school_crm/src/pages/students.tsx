@@ -73,6 +73,7 @@ export default function StudentsPage() {
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [importData, setImportData] = useState("");
   const [isImporting, setIsImporting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [branchData, setBranchData] = useState<Branch | null>(null);
@@ -419,6 +420,7 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
       return;
     }
 
+    setIsSubmitting(true);
     const branchId = localStorage.getItem("selectedBranchId");
     const branch = branchId ? branchesDB.getById(branchId) : null;
     const monthlyPayment =
@@ -462,6 +464,8 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
         description: "Failed to save student",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -829,6 +833,7 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                     <Button
                       variant="outline"
                       onClick={() => setIsImportDialogOpen(false)}
+                      disabled={isImporting}
                     >
                       {t("cancel")}
                     </Button>
@@ -840,7 +845,14 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                            !fileInputRef.current?.files?.length)
                        }
                      >
-                       {isImporting ? t("importing") : t("importStudents")}
+                       {isImporting ? (
+                         <>
+                           <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
+                           {t("importing")}
+                         </>
+                       ) : (
+                         t("importStudents")
+                       )}
                      </Button>
                   </div>
                 </div>
@@ -957,11 +969,19 @@ Jane Smith,8B,+998901234569,+998901234570,55000`;
                       type="button"
                       variant="outline"
                       onClick={() => setIsDialogOpen(false)}
+                      disabled={isSubmitting}
                     >
                       Cancel
                     </Button>
-                    <Button type="submit">
-                      {editingStudent ? t("update") : t("create")}
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting ? (
+                        <>
+                          <div className="animate-spin h-4 w-4 mr-2 border-2 border-white border-t-transparent rounded-full" />
+                          {editingStudent ? t("updating") : t("creating")}
+                        </>
+                      ) : (
+                        editingStudent ? t("update") : t("create")
+                      )}
                     </Button>
                   </div>
                 </form>
