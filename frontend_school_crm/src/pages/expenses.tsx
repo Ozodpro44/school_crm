@@ -832,7 +832,7 @@ export default function ExpensesPage() {
                 <SelectItem value="all">{t("allCategories")}</SelectItem>
                 {categories.map((category) => (
                   <SelectItem key={category} value={category}>
-                    {category}
+                    {t(category)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -910,7 +910,7 @@ export default function ExpensesPage() {
                       {new Date(expense.date).toLocaleDateString()}
                     </td>
                     <td className="py-3 px-4">
-                      <Badge variant="outline">{expense.category}</Badge>
+                      <Badge variant="outline">{t(expense.category)}</Badge>
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
                       {expense.title}

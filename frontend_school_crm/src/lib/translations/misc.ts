@@ -61,4 +61,18 @@ export const miscTranslations: Partial<Translation> = {
   // Table
   showing: { "uz-cyrl": "Кўрсатилмоқда", "uz-latn": "Ko'rsatilmoqda", en: "Showing" },
   results: { "uz-cyrl": "натижалар", "uz-latn": "natijalar", en: "results" },
-};
+
+  // Month abbreviations
+  Jan: { "uz-cyrl": "Янв", "uz-latn": "Yanv", en: "Jan" },
+  Feb: { "uz-cyrl": "Фев", "uz-latn": "Fev", en: "Feb" },
+  Mar: { "uz-cyrl": "Мар", "uz-latn": "Mar", en: "Mar" },
+  Apr: { "uz-cyrl": "Апр", "uz-latn": "Apr", en: "Apr" },
+  May: { "uz-cyrl": "Май", "uz-latn": "May", en: "May" },
+  Jun: { "uz-cyrl": "Июн", "uz-latn": "Iyun", en: "Jun" },
+  Jul: { "uz-cyrl": "Июл", "uz-latn": "Iyul", en: "Jul" },
+  Aug: { "uz-cyrl": "Авг", "uz-latn": "Aug", en: "Aug" },
+  Sep: { "uz-cyrl": "Сен", "uz-latn": "Sen", en: "Sep" },
+  Oct: { "uz-cyrl": "Окт", "uz-latn": "Okt", en: "Oct" },
+  Nov: { "uz-cyrl": "Ноя", "uz-latn": "Noya", en: "Nov" },
+  Dec: { "uz-cyrl": "Дек", "uz-latn": "Dek", en: "Dec" },
+  };

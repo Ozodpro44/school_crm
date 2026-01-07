@@ -67,6 +67,11 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Matematika, Fizika, Ximiya",
     en: "Mathematics, Physics, Chemistry",
   },
+  commaSeparated: {
+    "uz-cyrl": "пуллиқ ажратилган",
+    "uz-latn": "vergul bilan ajratilgan",
+    en: "comma separated",
+  },
   contact: { "uz-cyrl": "Алоқа", "uz-latn": "Aloqa", en: "Contact" },
   searchTeachers: {
     "uz-cyrl": "Ўқитувчиларни қидириш...",
@@ -309,6 +314,11 @@ export const commonTranslations: Partial<Translation> = {
     "uz-cyrl": "Рухсат сўғи",
     "uz-latn": "Ruhsat sugi",
     en: "Permission Denied",
+  },
+  noPermission: {
+    "uz-cyrl": "Ҳуқуқи йўқ",
+    "uz-latn": "Haqqi yo'q",
+    en: "No permission",
   },
   noPermissionCreate: {
     "uz-cyrl": "Қўшиш ҳуқуқи йўқ",
