@@ -1,0 +1,18 @@
+{
+  "build": {
+    "steps": [
+      {
+        "name": "install",
+        "command": "go mod download"
+      },
+      {
+        "name": "build",
+        "command": "go build -ldflags='-w -s' -o out cmd/main.go"
+      }
+    ]
+  },
+  "run": {
+    "command": "./out",
+    "port": 8080
+  }
+}
