@@ -327,6 +327,24 @@ BEGIN
 END $$;
 `
 
+const addUpdatedAtToPayments = `
+DO $$ 
+BEGIN
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'payments' AND column_name = 'updated_at') THEN
+		ALTER TABLE payments ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+	END IF;
+END $$;
+`
+
+const addUpdatedAtToSalaries = `
+DO $$ 
+BEGIN
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'salaries' AND column_name = 'updated_at') THEN
+		ALTER TABLE salaries ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+	END IF;
+END $$;
+`
+
 const createIndexes = `
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_students_branch_id ON students(branch_id);

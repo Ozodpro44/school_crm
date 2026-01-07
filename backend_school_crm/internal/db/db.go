@@ -65,6 +65,8 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		addFinancialMonthIdToExpenses,
 		populateFinancialMonths,
 		removeCurrentMonthYearFromBranches,
+		addUpdatedAtToPayments,
+		addUpdatedAtToSalaries,
 
 		grantTablePermissions,
 		createIndexes,
