@@ -60,11 +60,6 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Seed database with initial data
-	if err := database.SeedData(context.Background()); err != nil {
-		log.Fatalf("Failed to seed database: %v", err)
-	}
-
 	// Initialize Redis (optional but recommended for OTP)
 	var redisClient *utils.RedisClient
 	if cfg.RedisURL != "" {
