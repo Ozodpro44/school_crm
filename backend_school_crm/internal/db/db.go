@@ -57,6 +57,7 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		dropSettingsTable,
 		createSettingsTable,
 		createPermissionsTable,
+		addMissingPermissionColumns,
 		createBranchManagersTable,
 		createFinancialMonthsTable,
 		addCurrentFinancialMonthToBranches,

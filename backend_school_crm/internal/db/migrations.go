@@ -209,23 +209,28 @@ CREATE TABLE IF NOT EXISTS permissions (
 	id UUID PRIMARY KEY,
 	user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
 	can_view_students BOOLEAN DEFAULT FALSE,
+	can_create_students BOOLEAN DEFAULT FALSE,
 	can_edit_students BOOLEAN DEFAULT FALSE,
 	can_delete_students BOOLEAN DEFAULT FALSE,
 	can_view_teachers BOOLEAN DEFAULT FALSE,
+	can_create_teachers BOOLEAN DEFAULT FALSE,
 	can_edit_teachers BOOLEAN DEFAULT FALSE,
 	can_delete_teachers BOOLEAN DEFAULT FALSE,
 	can_view_classes BOOLEAN DEFAULT FALSE,
+	can_create_classes BOOLEAN DEFAULT FALSE,
 	can_edit_classes BOOLEAN DEFAULT FALSE,
 	can_delete_classes BOOLEAN DEFAULT FALSE,
 	can_view_payments BOOLEAN DEFAULT FALSE,
+	can_create_payments BOOLEAN DEFAULT FALSE,
 	can_edit_payments BOOLEAN DEFAULT FALSE,
 	can_view_salaries BOOLEAN DEFAULT FALSE,
+	can_create_salaries BOOLEAN DEFAULT FALSE,
 	can_edit_salaries BOOLEAN DEFAULT FALSE,
 	can_view_expenses BOOLEAN DEFAULT FALSE,
+	can_create_expenses BOOLEAN DEFAULT FALSE,
 	can_edit_expenses BOOLEAN DEFAULT FALSE,
 	can_delete_expenses BOOLEAN DEFAULT FALSE,
 	can_view_reports BOOLEAN DEFAULT FALSE,
-
 	can_view_settings BOOLEAN DEFAULT FALSE,
 	can_edit_settings BOOLEAN DEFAULT FALSE
 );
@@ -323,6 +328,21 @@ BEGIN
 	END IF;
 	IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'branches' AND column_name = 'current_year') THEN
 		ALTER TABLE branches DROP COLUMN current_year;
+	END IF;
+END $$;
+`
+
+const addMissingPermissionColumns = `
+DO $$ 
+BEGIN
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'permissions' AND column_name = 'can_create_students') THEN
+		ALTER TABLE permissions 
+			ADD COLUMN can_create_students BOOLEAN DEFAULT FALSE,
+			ADD COLUMN can_create_teachers BOOLEAN DEFAULT FALSE,
+			ADD COLUMN can_create_classes BOOLEAN DEFAULT FALSE,
+			ADD COLUMN can_create_payments BOOLEAN DEFAULT FALSE,
+			ADD COLUMN can_create_salaries BOOLEAN DEFAULT FALSE,
+			ADD COLUMN can_create_expenses BOOLEAN DEFAULT FALSE;
 	END IF;
 END $$;
 `
