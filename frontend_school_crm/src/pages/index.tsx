@@ -259,10 +259,10 @@ export default function HomePage() {
         return;
       }
 
-      // Fetch branch data to get current month/year
+      // Fetch branch data to get current financial month
       const branch = await api.getBranch(branchId);
-      const branchMonth = branch?.currentMonth || String(new Date().getMonth() + 1).padStart(2, "0");
-      const branchYear = branch?.currentYear || new Date().getFullYear();
+      const branchMonth = branch?.currentFinancialMonth?.month?.toString().padStart(2, "0") || String(new Date().getMonth() + 1).padStart(2, "0");
+      const branchYear = branch?.currentFinancialMonth?.year || new Date().getFullYear();
 
       console.log(
         "[Dashboard.calculateStats] Fetching data for branch:",

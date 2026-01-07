@@ -1,7 +1,8 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { Branch, listBranches, getAuthToken } from "@/lib/api";
+import { listBranches, getAuthToken } from "@/lib/api";
+import { Branch } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
 
 interface BranchContextType {

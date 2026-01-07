@@ -4,6 +4,8 @@
  * Handles all HTTP requests with authentication, error handling, and data marshalling
  */
 
+import { Branch } from "@/types";
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
 // ============================================================================
@@ -152,18 +154,7 @@ export interface CreateClassRequest {
 }
 
 // Branch Types
-export interface Branch {
-  id: string;
-  name: string;
-  address: string;
-  phone: string;
-  monthlyPayment: number;
-  adminId?: string;
-  currentMonth: string;
-  currentYear: number;
-  createdAt: string;
-  updatedAt: string;
-}
+
 
 export interface CreateBranchRequest {
   name: string;

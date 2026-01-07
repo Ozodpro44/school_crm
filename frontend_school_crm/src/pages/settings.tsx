@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Settings, Language } from "@/types";
+import { Settings, Language, Branch } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -25,7 +25,7 @@ import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { useSetLanguage } from "@/hooks/use-language";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
-import { getSettings, updateSettings, UpdateSettingsRequest, switchBranchMonth, getBranch, Branch } from "@/lib/api";
+import { getSettings, updateSettings, UpdateSettingsRequest, switchBranchMonth, getBranch } from "@/lib/api";
 import { useBranch } from "@/context/BranchContext";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
 import {
@@ -130,7 +130,7 @@ export default function SettingsPage() {
       
       toast({
         title: t("success"),
-        description: t("monthSwitched") || `Месяц переключён на ${getMonthName(updatedBranch.currentMonth)} ${updatedBranch.currentYear}`,
+        description: t("monthSwitched") || `Месяц переключён на ${updatedBranch.currentFinancialMonth ? getMonthName(updatedBranch.currentFinancialMonth.month) : "неизвестный"} ${updatedBranch.currentFinancialMonth?.year || ""}`,
         variant: "success",
       });
     } catch (error) {

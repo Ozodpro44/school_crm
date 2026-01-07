@@ -47,8 +47,8 @@ import {
    listBranches as apiListBranches,
    listPayments as apiListPayments,
    getBranch,
-   Branch,
  } from "@/lib/api";
+import { Branch } from "@/types";
 import type { Student as ApiStudent, Payment } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";

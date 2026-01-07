@@ -18,8 +18,6 @@ export function initializeSampleData() {
     phone: "+998 90 123 45 67",
     monthlyPayment: 500000,
     managerIds: [],
-    currentMonth,
-    currentYear,
   });
 
   const branch2 = branchesDB.create({
@@ -28,8 +26,6 @@ export function initializeSampleData() {
     phone: "+998 90 234 56 78",
     monthlyPayment: 450000,
     managerIds: [],
-    currentMonth,
-    currentYear,
   });
 
   // Create sample teachers with branch assignment

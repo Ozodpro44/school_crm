@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { studentsDB, classesDB, paymentsDB } from "@/lib/storage";
-import { Student, Payment } from "@/types";
+import { Student, Payment, Branch } from "@/types";
 import {
   ArrowLeft,
   Phone,
@@ -40,7 +40,7 @@ import { formatCurrency } from "@/lib/exportUtils";
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { formatPhoneNumber } from "@/lib/utils";
-import { getStudent, listPayments, listClasses, getStudentPaymentHistory, getBranch, Branch } from "@/lib/api";
+import { getStudent, listPayments, listClasses, getStudentPaymentHistory, getBranch } from "@/lib/api";
 
 export default function StudentDetailsPage() {
   const router = useRouter();

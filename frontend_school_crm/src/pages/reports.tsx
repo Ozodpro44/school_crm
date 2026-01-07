@@ -39,9 +39,8 @@ import {
   getFinancialSummary,
   getBranch,
   listClasses,
-  Branch,
 } from "@/lib/api";
-import { Payment, Salary } from "@/types";
+import { Payment, Salary, Branch } from "@/types";
 import { Download, FileText, AlertCircle, CheckCircle } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";

@@ -56,8 +56,8 @@ import {
   listStudents as apiListStudents,
   listClasses as apiListClasses,
   getBranch,
-  Branch,
 } from "@/lib/api";
+import { Branch } from "@/types";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
@@ -198,12 +198,12 @@ export default function PaymentsPage() {
         const branch = await getBranch(selectedBranchId);
         setBranchData(branch);
 
-        // Use financial month data if available, otherwise fall back to branch's current month
+        // Use financial month data if available, otherwise fall back to current date
         const currentMonth =
           branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
-          branch.currentMonth;
+          String(new Date().getMonth() + 1).padStart(2, "0");
         const currentYear =
-          branch.currentFinancialMonth?.year || branch.currentYear;
+          branch.currentFinancialMonth?.year || new Date().getFullYear();
 
         // Set selected month to branch's current month if not already set
         if (!selectedMonth) {

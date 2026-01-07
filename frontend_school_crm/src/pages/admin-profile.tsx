@@ -457,10 +457,10 @@ export default function AdminProfilePage() {
             <div className="space-y-2 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
               <p className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
-                {t("lastUpdated") || "Last Updated"}
+                {t("createdDate") || "Created Date"}
               </p>
               <p className="font-semibold text-slate-900 dark:text-slate-100">
-                {formatDate(user.updatedAt)}
+                {formatDate(user.createdAt)}
               </p>
             </div>
           </div>

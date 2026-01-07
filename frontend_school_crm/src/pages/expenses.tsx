@@ -43,8 +43,8 @@ import {
   updateExpense,
   getUser,
   getBranch,
-  Branch,
 } from "@/lib/api";
+import { Branch } from "@/types";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";

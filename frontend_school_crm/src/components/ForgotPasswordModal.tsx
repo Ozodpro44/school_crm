@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 import { getTranslation } from "@/lib/translations";
+import { Language } from "@/types";
 import {
   forgotPassword,
   verifyOTP,
@@ -22,7 +23,7 @@ import {
 interface ForgotPasswordModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  language: string;
+  language: Language;
 }
 
 type Step = "email" | "otp" | "reset-password";

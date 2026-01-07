@@ -22,11 +22,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { salariesDB, teachersDB, usersDB, monthArchivesDB, branchesDB } from "@/lib/storage";
-import { Salary, PaymentStatus, Teacher, PaymentMethod } from "@/types";
+import { Salary, PaymentStatus, Teacher, PaymentMethod, Branch } from "@/types";
 import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
-import { listSalaries, getBranch, Branch } from "@/lib/api";
+import { listSalaries, getBranch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -137,9 +137,9 @@ export default function SalariesPage() {
         const branch = await getBranch(branchId);
         setBranchData(branch);
         
-        // Use financial month data if available, otherwise fall back to branch's current month
-        const currentMonth = branch.currentFinancialMonth?.month?.toString().padStart(2, '0') || branch.currentMonth;
-        const currentYear = branch.currentFinancialMonth?.year || branch.currentYear;
+        // Use financial month data if available, otherwise fall back to current date
+        const currentMonth = branch.currentFinancialMonth?.month?.toString().padStart(2, '0') || String(new Date().getMonth() + 1).padStart(2, '0');
+        const currentYear = branch.currentFinancialMonth?.year || new Date().getFullYear();
         
         // Set selected month to branch's current month if not already set and not provided
         const targetMonth = month || selectedMonth || currentMonth;
