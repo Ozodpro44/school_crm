@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -31,8 +32,10 @@ type CreateBranchRequest struct {
 
 func (s *BranchService) Create(ctx context.Context, req *CreateBranchRequest) (*models.Branch, error) {
 	now := time.Now().UTC()
+	branchID := uuid.New().String()
+	
 	branch := &models.Branch{
-		ID:             uuid.New().String(),
+		ID:             branchID,
 		Name:           req.Name,
 		Address:        req.Address,
 		Phone:          req.Phone,
@@ -51,25 +54,53 @@ func (s *BranchService) Create(ctx context.Context, req *CreateBranchRequest) (*
 		return nil, err
 	}
 
+	// Create initial financial month for the branch
+	financialMonthService := NewFinancialMonthService(s.db)
+	financialMonth, err := financialMonthService.Create(ctx, branchID, now.Year(), int(now.Month()))
+	if err != nil {
+		// Log error but don't fail the branch creation
+		fmt.Printf("Warning: failed to create initial financial month for branch %s: %v\n", branchID, err)
+	} else {
+		// Update branch with current_financial_month_id
+		_, err = s.db.GetConn().ExecContext(ctx, 
+			"UPDATE branches SET current_financial_month_id = $1 WHERE id = $2",
+			financialMonth.ID, branchID)
+		if err != nil {
+			fmt.Printf("Warning: failed to update branch current_financial_month_id: %v\n", err)
+		}
+		branch.CurrentFinancialMonthID = &financialMonth.ID
+		branch.CurrentFinancialMonth = financialMonth
+	}
+
 	return branch, nil
 }
 
 func (s *BranchService) GetByID(ctx context.Context, id string) (*models.Branch, error) {
 	branch := &models.Branch{}
-	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at FROM branches WHERE id = $1`
+	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE id = $1`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
-		&branch.ID, &branch.Name, &branch.Address, &branch.Phone, &branch.MonthlyPayment, &branch.Currency, &branch.AdminID, &branch.CreatedAt, &branch.UpdatedAt,
+		&branch.ID, &branch.Name, &branch.Address, &branch.Phone, &branch.MonthlyPayment, &branch.Currency, &branch.AdminID, &branch.CurrentFinancialMonthID, &branch.CreatedAt, &branch.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
 		return nil, errors.New("branch not found")
 	}
+
+	// Load current financial month if ID exists
+	if branch.CurrentFinancialMonthID != nil {
+		financialMonthService := NewFinancialMonthService(s.db)
+		fm, err := financialMonthService.GetByID(ctx, *branch.CurrentFinancialMonthID)
+		if err == nil {
+			branch.CurrentFinancialMonth = fm
+		}
+	}
+
 	return branch, err
 }
 
 func (s *BranchService) GetAll(ctx context.Context) ([]models.Branch, error) {
-	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at FROM branches ORDER BY name`
+	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches ORDER BY name`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query)
 	if err != nil {
@@ -80,9 +111,19 @@ func (s *BranchService) GetAll(ctx context.Context) ([]models.Branch, error) {
 	var branches []models.Branch
 	for rows.Next() {
 		var branch models.Branch
-		if err := rows.Scan(&branch.ID, &branch.Name, &branch.Address, &branch.Phone, &branch.MonthlyPayment, &branch.Currency, &branch.AdminID, &branch.CreatedAt, &branch.UpdatedAt); err != nil {
+		if err := rows.Scan(&branch.ID, &branch.Name, &branch.Address, &branch.Phone, &branch.MonthlyPayment, &branch.Currency, &branch.AdminID, &branch.CurrentFinancialMonthID, &branch.CreatedAt, &branch.UpdatedAt); err != nil {
 			return nil, err
 		}
+
+		// Load current financial month if ID exists
+		if branch.CurrentFinancialMonthID != nil {
+			financialMonthService := NewFinancialMonthService(s.db)
+			fm, err := financialMonthService.GetByID(ctx, *branch.CurrentFinancialMonthID)
+			if err == nil {
+				branch.CurrentFinancialMonth = fm
+			}
+		}
+
 		branches = append(branches, branch)
 	}
 
@@ -133,4 +174,41 @@ func (s *BranchService) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM branches WHERE id = $1`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
 	return err
+}
+
+// SwitchMonth advances the branch to the next month (Admin only)
+func (s *BranchService) SwitchMonth(ctx context.Context, id string) (*models.Branch, error) {
+	// Get current branch
+	branch, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Use financial month service to close the month
+	if branch.CurrentFinancialMonthID == nil {
+		return nil, fmt.Errorf("branch has no current financial month")
+	}
+
+	financialMonthService := NewFinancialMonthService(s.db)
+	_, err = financialMonthService.CloseMonth(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, id)
+}
+
+// GetCurrentMonth returns the current month and year for a branch
+func (s *BranchService) GetCurrentMonth(ctx context.Context, id string) (string, int, error) {
+	branch, err := s.GetByID(ctx, id)
+	if err != nil {
+		return "", 0, err
+	}
+
+	if branch.CurrentFinancialMonth == nil {
+		return "", 0, fmt.Errorf("branch has no current financial month")
+	}
+
+	monthStr := fmt.Sprintf("%02d", branch.CurrentFinancialMonth.Month)
+	return monthStr, branch.CurrentFinancialMonth.Year, nil
 }

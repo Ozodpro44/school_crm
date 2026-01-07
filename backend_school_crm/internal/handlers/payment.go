@@ -1,25 +1,30 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.PaymentService, userService *service.UserService) {
+func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.PaymentService, branchService *service.BranchService, userService *service.UserService) {
 	payments := router.Group("/payments")
 	// Authenticated users can view and edit payments
-	payments.POST("", middleware.PermissionChecker(userService, "canCreatePayments"), createPayment(paymentService))
+	payments.POST("", middleware.PermissionChecker(userService, "canCreatePayments"), createPayment(paymentService, branchService))
 	payments.GET("/:id", middleware.PermissionChecker(userService, "canViewPayments"), getPayment(paymentService))
-	payments.GET("", middleware.PermissionChecker(userService, "canViewPayments"), listPayments(paymentService))
-	payments.PUT("/:id", middleware.PermissionChecker(userService, "canEditPayments"), updatePayment(paymentService))
-	payments.DELETE("/:id", middleware.PermissionChecker(userService, "canEditPayments"), deletePayment(paymentService))
-	payments.GET("/branch/:branchId/summary", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentSummary(paymentService))
+	payments.GET("", middleware.PermissionChecker(userService, "canViewPayments"), listPayments(paymentService, branchService, userService))
+	payments.PUT("/:id", middleware.PermissionChecker(userService, "canEditPayments"), updatePayment(paymentService, branchService, userService))
+	payments.DELETE("/:id", middleware.PermissionChecker(userService, "canEditPayments"), deletePayment(paymentService, branchService, userService))
+	payments.GET("/branch/:branchId/summary", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentSummary(paymentService, branchService))
+	// Student payment history - separate endpoint for viewing all payments for a student
+	payments.GET("/student/:studentId/history", middleware.PermissionChecker(userService, "canViewPayments"), getStudentPaymentHistory(paymentService, userService))
 }
 
-func createPayment(paymentService *service.PaymentService) gin.HandlerFunc {
+func createPayment(paymentService *service.PaymentService, branchService *service.BranchService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := middleware.GetUserID(c)
 		if err != nil {
@@ -30,6 +35,19 @@ func createPayment(paymentService *service.PaymentService) gin.HandlerFunc {
 		var req service.CreatePaymentRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Validate that payment is for the branch's current month
+		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), req.BranchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+			return
+		}
+
+		// Only allow creating payments for the current month of the branch
+		if req.Month != currentMonth || req.Year != currentYear {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("can only create payments for current month (%s/%d)", currentMonth, currentYear)})
 			return
 		}
 
@@ -55,16 +73,27 @@ func getPayment(paymentService *service.PaymentService) gin.HandlerFunc {
 	}
 }
 
-func listPayments(paymentService *service.PaymentService) gin.HandlerFunc {
+func listPayments(paymentService *service.PaymentService, branchService *service.BranchService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		branchID := c.Query("branchId")
 		studentID := c.Query("studentId")
 		month := c.Query("month")
 		year := c.Query("year")
 
+		// Get user role for access control
+		userRole, _ := middleware.GetUserRole(c, userService)
+		isAdmin := userRole == models.RoleAdmin || userRole == models.RoleBranchAdmin
+
 		if branchID != "" {
-			// If month and year are provided, filter by those; otherwise return current month only
-			if month != "" && year != "" {
+			// Get branch's current month
+			currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), branchID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+				return
+			}
+
+			// If month and year are provided and user is admin, allow viewing any month
+			if month != "" && year != "" && isAdmin {
 				payments, err := paymentService.GetByBranchIDAndPeriod(c.Request.Context(), branchID, month, year)
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -73,10 +102,9 @@ func listPayments(paymentService *service.PaymentService) gin.HandlerFunc {
 				c.JSON(http.StatusOK, payments)
 				return
 			}
-			
-			// Default: return current month payments only
-			currentMonth, currentYear := paymentService.GetCurrentMonthYear()
-			payments, err := paymentService.GetByBranchIDAndPeriod(c.Request.Context(), branchID, currentMonth, currentYear)
+
+			// For managers or when no specific period requested: return branch's current month only
+			payments, err := paymentService.GetByBranchIDAndPeriod(c.Request.Context(), branchID, currentMonth, strconv.Itoa(currentYear))
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
@@ -86,10 +114,7 @@ func listPayments(paymentService *service.PaymentService) gin.HandlerFunc {
 		}
 
 		if studentID != "" && month != "" && year != "" {
-			var yearInt int
-			if _, err := c.Cookie("year"); err == nil {
-				// Parse year from query
-			}
+			yearInt, _ := strconv.Atoi(year)
 			payments, err := paymentService.GetByStudentIDAndPeriod(c.Request.Context(), studentID, month, yearInt)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -103,9 +128,33 @@ func listPayments(paymentService *service.PaymentService) gin.HandlerFunc {
 	}
 }
 
-func updatePayment(paymentService *service.PaymentService) gin.HandlerFunc {
+func updatePayment(paymentService *service.PaymentService, branchService *service.BranchService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
+
+		// Get the existing payment to check its month
+		existingPayment, err := paymentService.GetByID(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Get branch's current month
+		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), existingPayment.BranchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+			return
+		}
+
+		// Check if payment is from a past month - only Admin can edit past months
+		userRole, _ := middleware.GetUserRole(c, userService)
+		isAdmin := userRole == models.RoleAdmin
+
+		isPastMonth := existingPayment.Month != currentMonth || existingPayment.Year != currentYear
+		if isPastMonth && !isAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "cannot modify payments from past months"})
+			return
+		}
 
 		var updates map[string]interface{}
 		if err := c.ShouldBindJSON(&updates); err != nil {
@@ -123,9 +172,33 @@ func updatePayment(paymentService *service.PaymentService) gin.HandlerFunc {
 	}
 }
 
-func deletePayment(paymentService *service.PaymentService) gin.HandlerFunc {
+func deletePayment(paymentService *service.PaymentService, branchService *service.BranchService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
+
+		// Get the existing payment to check its month
+		existingPayment, err := paymentService.GetByID(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Get branch's current month
+		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), existingPayment.BranchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+			return
+		}
+
+		// Check if payment is from a past month - only Admin can delete past months
+		userRole, _ := middleware.GetUserRole(c, userService)
+		isAdmin := userRole == models.RoleAdmin
+
+		isPastMonth := existingPayment.Month != currentMonth || existingPayment.Year != currentYear
+		if isPastMonth && !isAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "cannot delete payments from past months"})
+			return
+		}
 
 		if err := paymentService.Delete(c.Request.Context(), id); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -136,16 +209,54 @@ func deletePayment(paymentService *service.PaymentService) gin.HandlerFunc {
 	}
 }
 
-func getPaymentSummary(paymentService *service.PaymentService) gin.HandlerFunc {
+func getPaymentSummary(paymentService *service.PaymentService, branchService *service.BranchService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		branchID := c.Param("branchId")
 
-		summary, err := paymentService.GetPaymentSummary(c.Request.Context(), branchID)
+		// Get branch's current month for summary
+		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), branchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+			return
+		}
+
+		summary, err := paymentService.GetPaymentSummaryForPeriod(c.Request.Context(), branchID, currentMonth, currentYear)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
 		c.JSON(http.StatusOK, summary)
+	}
+}
+
+// getStudentPaymentHistory returns all payment history for a student
+// Admin sees all history, Manager sees only current month
+func getStudentPaymentHistory(paymentService *service.PaymentService, userService *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		studentID := c.Param("studentId")
+
+		// Get user role for access control
+		userRole, _ := middleware.GetUserRole(c, userService)
+		isAdmin := userRole == models.RoleAdmin || userRole == models.RoleBranchAdmin
+
+		if isAdmin {
+			// Admin sees all payment history
+			payments, err := paymentService.GetByStudentID(c.Request.Context(), studentID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, payments)
+		} else {
+			// Manager sees only current month - needs branchId to get current month
+			branchID := c.Query("branchId")
+			if branchID == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required for non-admin users"})
+				return
+			}
+			// For managers, we return empty - they should use the main listPayments endpoint
+			c.JSON(http.StatusOK, []interface{}{})
+		}
 	}
 }

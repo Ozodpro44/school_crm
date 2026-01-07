@@ -55,7 +55,10 @@ import {
   deletePayment as apiDeletePayment,
   listStudents as apiListStudents,
   listClasses as apiListClasses,
+  getBranch,
+  Branch,
 } from "@/lib/api";
+import MonthYearSelector from "@/components/MonthYearSelector";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -76,6 +79,9 @@ export default function PaymentsPage() {
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isBulkPaymentOpen, setIsBulkPaymentOpen] = useState(false);
   const [bulkSearchTerm, setBulkSearchTerm] = useState("");
+  const [branchData, setBranchData] = useState<Branch | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedYear, setSelectedYear] = useState<number>(0);
   const getDefaultMonth = () => {
     const month = new Date().getMonth() + 1;
     return month.toString().padStart(2, "0");
@@ -114,7 +120,16 @@ export default function PaymentsPage() {
     className: string;
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(null);
+  const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(
+    null
+  );
+  const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
+    isOpen: boolean;
+    paymentId: string | null;
+  }>({
+    isOpen: false,
+    paymentId: null,
+  });
 
   // useAsync hook will manage loading state and show toast on errors
   const { isLoading: asyncLoading, run } = useAsync();
@@ -140,6 +155,9 @@ export default function PaymentsPage() {
   // Reload data when branch changes
   useEffect(() => {
     const handleBranchChange = () => {
+      // Reset selectedMonth to force reload from new branch
+      setSelectedMonth("");
+      setCurrentPage(1);
       loadData();
     };
     window.addEventListener("branchChange", handleBranchChange);
@@ -158,13 +176,12 @@ export default function PaymentsPage() {
     currentUser?.role === "admin" || currentUser?.role === "branch_admin";
 
   const isMonthVisible = (month: string, year: number): boolean => {
-    // Admins can see all data including archived
-    if (isAdmin) return true;
-    // Non-admins can't see archived months
-    return !monthArchivesDB.isMonthArchived(month, year);
+    // The backend API handles filtering of archived months per branch
+    // So we allow all months here and let the backend handle visibility
+    return true;
   };
 
-  const loadData = async () => {
+  const loadData = async (month?: string, year?: number) => {
     try {
       setIsLoading(true);
       const user = getCurrentUser();
@@ -177,9 +194,33 @@ export default function PaymentsPage() {
 
       const selectedBranchId = localStorage.getItem("selectedBranchId");
       if (selectedBranchId) {
+        // Load branch data to get current month
+        const branch = await getBranch(selectedBranchId);
+        setBranchData(branch);
+
+        // Use financial month data if available, otherwise fall back to branch's current month
+        const currentMonth =
+          branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
+          branch.currentMonth;
+        const currentYear =
+          branch.currentFinancialMonth?.year || branch.currentYear;
+
+        // Set selected month to branch's current month if not already set
+        if (!selectedMonth) {
+          setSelectedMonth(currentMonth);
+          setSelectedYear(currentYear);
+        }
+
+        // Always use the current branch month for filtering
+        const queryMonth = month || selectedMonth || currentMonth;
+        const queryYear = year || selectedYear || currentYear;
+
         const [paymentsList, studentsList, classesList] = await Promise.all([
-          // Backend automatically returns current month payments by default
-          apiListPayments({ branchId: selectedBranchId }),
+          apiListPayments({
+            branchId: selectedBranchId,
+            month: queryMonth,
+            year: queryYear,
+          }),
           apiListStudents(selectedBranchId),
           apiListClasses(selectedBranchId),
         ]);
@@ -208,6 +249,12 @@ export default function PaymentsPage() {
     }
   };
 
+  const handleMonthChange = (month: string, year: number) => {
+    setSelectedMonth(month);
+    setSelectedYear(year);
+    loadData(month, year);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const user = getCurrentUser();
@@ -228,7 +275,7 @@ export default function PaymentsPage() {
       if (existingPayment) {
         const targetMonth = formData.month;
         const targetYear = parseInt(formData.year);
-        
+
         // Calculate total excluding this payment to check if new amount exceeds remaining
         const paidTotalExcludingCurrent = payments
           .filter(
@@ -242,9 +289,11 @@ export default function PaymentsPage() {
 
         // Allow if: existing other payments + new amount <= monthly payment
         if (paidTotalExcludingCurrent + newAmount > monthlyPaymentValue) {
-          toast({ 
+          toast({
             title: t("error"),
-            description: `Amount exceeds remaining balance. Remaining: ${formatCurrency(monthlyPaymentValue - paidTotalExcludingCurrent)}`,
+            description: `Amount exceeds remaining balance. Remaining: ${formatCurrency(
+              monthlyPaymentValue - paidTotalExcludingCurrent
+            )}`,
             variant: "destructive",
           });
           return;
@@ -254,16 +303,21 @@ export default function PaymentsPage() {
       // Update via backend API
       try {
         await apiUpdatePayment(editingPaymentId, {
-          studentId: formData.studentId,
           amount: newAmount,
-          month: formData.month,
-          year: parseInt(formData.year),
           status: formData.status as PaymentStatus,
           paymentMethod: formData.paymentMethod,
           notes: formData.notes || undefined,
           paidDate: new Date().toISOString(), // Set paidDate for both "paid" and "partial"
         });
         setEditingPaymentId(null);
+
+        toast({
+          title: t("paymentUpdated") || "Payment Updated",
+          description:
+            t("paymentUpdatedDescription") ||
+            "Payment has been updated successfully",
+          variant: "default",
+        });
       } catch (error) {
         console.error("Failed to update payment:", error);
         toast({
@@ -274,51 +328,61 @@ export default function PaymentsPage() {
         return;
       }
     } else {
-       // Create new payment
-       // Use backend payments instead of localStorage
-       const periodPaidTotal = payments
-         .filter(
-           (p) =>
-             p.studentId === formData.studentId &&
-             p.month === formData.month &&
-             p.year === parseInt(formData.year)
-         )
-         .reduce((sum, p) => sum + p.amount, 0);
+      // Create new payment
+      // Use backend payments instead of localStorage
+      const periodPaidTotal = payments
+        .filter(
+          (p) =>
+            p.studentId === formData.studentId &&
+            p.month === formData.month &&
+            p.year === parseInt(formData.year)
+        )
+        .reduce((sum, p) => sum + p.amount, 0);
 
-       // Allow if: existing payments + new amount <= monthly payment
-       if (periodPaidTotal + newAmount > monthlyPaymentValue) {
-         toast({ 
-           title: t("error"),
-           description: `Amount exceeds remaining balance. Remaining: ${formatCurrency(monthlyPaymentValue - periodPaidTotal)}`,
-           variant: "destructive",
-         });
-         return;
-       }
+      // Allow if: existing payments + new amount <= monthly payment
+      if (periodPaidTotal + newAmount > monthlyPaymentValue) {
+        toast({
+          title: t("error"),
+          description: `Amount exceeds remaining balance. Remaining: ${formatCurrency(
+            monthlyPaymentValue - periodPaidTotal
+          )}`,
+          variant: "destructive",
+        });
+        return;
+      }
 
-       // Create via backend API
-       try {
-         const student = students.find((s) => s.id === formData.studentId);
-         await apiCreatePayment({
-           studentId: formData.studentId,
-           amount: newAmount,
-           month: formData.month,
-           year: parseInt(formData.year),
-           status: formData.status as PaymentStatus,
-           paymentMethod: formData.paymentMethod,
-           invoiceNumber,
-           notes: formData.notes || undefined,
-           paidDate: new Date().toISOString(), // Set paidDate for both "paid" and "partial"
-           branchId: student?.branchId || user.branchId || "",
-         });
-       } catch (error) {
-         console.error("Failed to create payment:", error);
-         toast({
-           title: t("error"),
-           description: "Failed to create payment",
-           variant: "destructive",
-         });
-         return;
-       }
+      // Create via backend API
+      try {
+        const student = students.find((s) => s.id === formData.studentId);
+        await apiCreatePayment({
+          studentId: formData.studentId,
+          amount: newAmount,
+          month: formData.month,
+          year: parseInt(formData.year),
+          status: formData.status as PaymentStatus,
+          paymentMethod: formData.paymentMethod,
+          invoiceNumber,
+          notes: formData.notes || undefined,
+          paidDate: new Date().toISOString(), // Set paidDate for both "paid" and "partial"
+          branchId: student?.branchId || user.branchId || "",
+        });
+
+        toast({
+          title: t("paymentCreated") || "Payment Created",
+          description:
+            t("paymentCreatedDescription") ||
+            "Payment has been created successfully",
+          variant: "default",
+        });
+      } catch (error) {
+        console.error("Failed to create payment:", error);
+        toast({
+          title: t("error"),
+          description: "Failed to create payment",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     resetForm();
@@ -332,7 +396,7 @@ export default function PaymentsPage() {
   ) => {
     // Prevent duplicate requests
     if (processingPaymentId === id) return;
-    
+
     setProcessingPaymentId(id);
     try {
       await apiUpdatePayment(id, {
@@ -343,9 +407,9 @@ export default function PaymentsPage() {
       await loadData();
     } catch (error) {
       console.error("Failed to mark payment as paid:", error);
-      
+
       // Check if payment still exists in state
-      const paymentExists = payments.some(p => p.id === id);
+      const paymentExists = payments.some((p) => p.id === id);
       if (!paymentExists) {
         toast({
           title: t("info"),
@@ -379,13 +443,20 @@ export default function PaymentsPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    const confirm = window.confirm(t("deletePaymentConfirmation"));
-    if (!confirm) return;
-    
+  const handleDelete = (id: string) => {
+    setDeleteConfirmDialog({
+      isOpen: true,
+      paymentId: id,
+    });
+  };
+
+  const confirmDelete = async () => {
+    const id = deleteConfirmDialog.paymentId;
+    if (!id) return;
+
     // Prevent duplicate requests
     if (processingPaymentId === id) return;
-    
+
     setProcessingPaymentId(id);
     try {
       await apiDeletePayment(id);
@@ -393,9 +464,9 @@ export default function PaymentsPage() {
       toast({ title: t("paymentDeleted"), variant: "success" });
     } catch (error) {
       console.error("Failed to delete payment:", error);
-      
+
       // Check if payment still exists in state
-      const paymentExists = payments.some(p => p.id === id);
+      const paymentExists = payments.some((p) => p.id === id);
       if (!paymentExists) {
         toast({
           title: t("info"),
@@ -412,6 +483,7 @@ export default function PaymentsPage() {
       }
     } finally {
       setProcessingPaymentId(null);
+      setDeleteConfirmDialog({ isOpen: false, paymentId: null });
     }
   };
 
@@ -476,18 +548,18 @@ export default function PaymentsPage() {
     }
 
     if (created.length > 0) {
-      toast({ 
+      toast({
         title: t("success"),
         description: `Created ${created.length} payment(s)`,
-        variant: "success" 
+        variant: "success",
       });
     }
 
     if (skipped.length > 0) {
-      toast({ 
+      toast({
         title: t("info"),
         description: `${skipped.length} student(s) already fully paid`,
-        variant: "default" 
+        variant: "default",
       });
     }
 
@@ -519,11 +591,18 @@ export default function PaymentsPage() {
   };
 
   const resetForm = () => {
+    // Use branch's current financial month, fallback to current date
+    const defaultMonth =
+      branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
+      getDefaultMonth();
+    const defaultYear =
+      branchData?.currentFinancialMonth?.year?.toString() || getDefaultYear();
+
     setFormData({
       studentId: "",
       amount: "",
-      month: getDefaultMonth(),
-      year: getDefaultYear(),
+      month: defaultMonth,
+      year: defaultYear,
       status: "partial",
       paymentMethod: "cash",
       notes: "",
@@ -592,8 +671,6 @@ export default function PaymentsPage() {
     return student?.fullName || "Unknown";
   };
 
-
-
   const getClassName = (studentId: string) => {
     const student = students.find((s) => s.id === studentId);
     if (!student) return "N/A";
@@ -655,27 +732,43 @@ export default function PaymentsPage() {
   };
 
   const totalIncome = payments
-    .filter((p) => p.status === "paid")
+    .filter(
+      (p) =>
+        p.status === "paid" &&
+        Number(p.month) === parseInt(selectedMonth) &&
+        Number(p.year) === selectedYear
+    )
     .reduce((sum, p) => sum + p.amount, 0);
 
   // Calculate pending as: monthly fees for all active students - what they've already paid
-  const currentMonth = new Date().getMonth() + 1;
-  const currentYear = new Date().getFullYear();
-  
   const totalPending = (() => {
     let pending = 0;
+    const selectedMonthNum = parseInt(selectedMonth);
     for (const student of students) {
       if (student.status !== "active") continue;
-      
+
+      // Only count students who joined before or during the selected month
+      if (student.enrollmentDate) {
+        const enrollDate = new Date(student.enrollmentDate);
+        const enrollMonth = enrollDate.getMonth() + 1;
+        const enrollYear = enrollDate.getFullYear();
+        if (
+          enrollYear > selectedYear ||
+          (enrollYear === selectedYear && enrollMonth > selectedMonthNum)
+        ) {
+          continue; // Skip students who joined after the selected month
+        }
+      }
+
       const paidThisMonth = payments
         .filter(
           (p) =>
             p.studentId === student.id &&
-            Number(p.month) === currentMonth &&
-            Number(p.year) === currentYear
+            Number(p.month) === selectedMonthNum &&
+            Number(p.year) === selectedYear
         )
         .reduce((sum, p) => sum + p.amount, 0);
-      
+
       const remaining = Math.max(0, student.monthlyPayment - paidThisMonth);
       pending += remaining;
     }
@@ -684,13 +777,31 @@ export default function PaymentsPage() {
 
   const totalByMethod = {
     card: payments
-      .filter((p) => p.paymentMethod === "card" && p.status === "paid")
+      .filter(
+        (p) =>
+          p.paymentMethod === "card" &&
+          p.status === "paid" &&
+          Number(p.month) === parseInt(selectedMonth) &&
+          Number(p.year) === selectedYear
+      )
       .reduce((sum, p) => sum + p.amount, 0),
     cash: payments
-      .filter((p) => p.paymentMethod === "cash" && p.status === "paid")
+      .filter(
+        (p) =>
+          p.paymentMethod === "cash" &&
+          p.status === "paid" &&
+          Number(p.month) === parseInt(selectedMonth) &&
+          Number(p.year) === selectedYear
+      )
       .reduce((sum, p) => sum + p.amount, 0),
     bank: payments
-      .filter((p) => p.paymentMethod === "bank" && p.status === "paid")
+      .filter(
+        (p) =>
+          p.paymentMethod === "bank" &&
+          p.status === "paid" &&
+          Number(p.month) === parseInt(selectedMonth) &&
+          Number(p.year) === selectedYear
+      )
       .reduce((sum, p) => sum + p.amount, 0),
   };
 
@@ -814,6 +925,19 @@ export default function PaymentsPage() {
             {t("trackStudentFees")}
           </p>
         </div>
+
+        {/* Month Selector for Admin */}
+        {isAdmin && branchData && selectedMonth && (
+          <MonthYearSelector
+            month={selectedMonth}
+            year={selectedYear}
+            onChange={handleMonthChange}
+            currentBranchMonth={branchData.currentFinancialMonth?.month
+              ?.toString()
+              .padStart(2, "0")}
+            currentBranchYear={branchData.currentFinancialMonth?.year}
+          />
+        )}
 
         <div className="flex items-center gap-2">
           <Dialog
@@ -1541,7 +1665,10 @@ export default function PaymentsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => handleEdit(payment)}
-                            disabled={!canEditPayments || processingPaymentId === payment.id}
+                            disabled={
+                              !canEditPayments ||
+                              processingPaymentId === payment.id
+                            }
                             title={
                               canEditPayments ? t("edit") : t("noPermission")
                             }
@@ -1553,7 +1680,10 @@ export default function PaymentsPage() {
                             size="sm"
                             variant="destructive"
                             onClick={() => handleDelete(payment.id)}
-                            disabled={!canDeletePayments || processingPaymentId === payment.id}
+                            disabled={
+                              !canDeletePayments ||
+                              processingPaymentId === payment.id
+                            }
                             title={
                               canDeletePayments
                                 ? t("delete")
@@ -1756,6 +1886,42 @@ export default function PaymentsPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmDialog.isOpen}
+        onOpenChange={(open) => {
+          if (!open) setDeleteConfirmDialog({ isOpen: false, paymentId: null });
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("deletePayment")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600 dark:text-slate-400 py-4">
+            {t("deletePaymentConfirmation")}
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                setDeleteConfirmDialog({ isOpen: false, paymentId: null })
+              }
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={processingPaymentId === deleteConfirmDialog.paymentId}
+            >
+              {t("delete")}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

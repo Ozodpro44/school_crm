@@ -44,4 +44,7 @@ export const paymentTranslations: Partial<Translation> = {
   invoice: { "uz-cyrl": "Ҳисоб-фактура", "uz-latn": "Hisob-faktura", en: "Invoice" },
   noPaymentsFound: { "uz-cyrl": "Ҳеч қандай тўлов топилмади", "uz-latn": "Hech qanday to'lov topilmadi", en: "No payments found" },
   whoAddedPayment: { "uz-cyrl": "Киритган шахс", "uz-latn": "Kiritgan shaxs", en: "Added by" },
-};
+  deletePayment: { "uz-cyrl": "Тўловни ўчириш", "uz-latn": "To'lovni o'chirish", en: "Delete Payment" },
+  deletePaymentConfirmation: { "uz-cyrl": "Бу тўловни ўчириб ташламоқчимисиз?", "uz-latn": "Bu to'lovni o'chirib tashlmoqchimisiz?", en: "Are you sure you want to delete this payment?" },
+  paymentDeleted: { "uz-cyrl": "Тўлов ўчирилди", "uz-latn": "To'lov o'chirildi", en: "Payment deleted" },
+  };

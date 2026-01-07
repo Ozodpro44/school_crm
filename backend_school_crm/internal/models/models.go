@@ -91,6 +91,7 @@ type Payment struct {
 	BranchID           string         `json:"branchId" db:"branch_id"`
 	CreatedBy          *string        `json:"createdBy" db:"created_by"`
 	CreatedByName      *string        `json:"createdByName" db:"-"`
+	FinancialMonthID   *string        `json:"financialMonthId" db:"financial_month_id"`
 	CreatedAt          time.Time      `json:"createdAt" db:"created_at"`
 }
 
@@ -105,15 +106,17 @@ type Class struct {
 }
 
 type Branch struct {
-	ID                      string      `json:"id" db:"id"`
-	Name                    string      `json:"name" db:"name"`
-	Address                 string      `json:"address" db:"address"`
-	Phone                   string      `json:"phone" db:"phone"`
-	MonthlyPayment          float64     `json:"monthlyPayment" db:"monthly_payment"`
-	Currency                string      `json:"currency" db:"currency"`
-	AdminID                 *string     `json:"adminId" db:"admin_id"`
-	CreatedAt               time.Time   `json:"createdAt" db:"created_at"`
-	UpdatedAt               time.Time   `json:"updatedAt" db:"updated_at"`
+	ID                       string          `json:"id" db:"id"`
+	Name                     string          `json:"name" db:"name"`
+	Address                  string          `json:"address" db:"address"`
+	Phone                    string          `json:"phone" db:"phone"`
+	MonthlyPayment           float64         `json:"monthlyPayment" db:"monthly_payment"`
+	Currency                 string          `json:"currency" db:"currency"`
+	AdminID                  *string         `json:"adminId" db:"admin_id"`
+	CurrentFinancialMonthID  *string         `json:"currentFinancialMonthId" db:"current_financial_month_id"`
+	CurrentFinancialMonth    *FinancialMonth `json:"currentFinancialMonth" db:"-"`
+	CreatedAt                time.Time       `json:"createdAt" db:"created_at"`
+	UpdatedAt                time.Time       `json:"updatedAt" db:"updated_at"`
 }
 
 type Teacher struct {
@@ -142,6 +145,7 @@ type Salary struct {
 	PaidDate         *time.Time    `json:"paidDate" db:"paid_date"`
 	BranchID         string        `json:"branchId" db:"branch_id"`
 	CreatedBy        *string       `json:"createdBy" db:"created_by"`
+	FinancialMonthID *string       `json:"financialMonthId" db:"financial_month_id"`
 	CreatedAt        time.Time     `json:"createdAt" db:"created_at"`
 }
 
@@ -156,6 +160,7 @@ type Expense struct {
 	BranchID         string        `json:"branchId" db:"branch_id"`
 	CreatedBy        string        `json:"createdBy" db:"created_by"`
 	Notes            *string       `json:"notes" db:"notes"`
+	FinancialMonthID *string       `json:"financialMonthId" db:"financial_month_id"`
 	CreatedAt        time.Time     `json:"createdAt" db:"created_at"`
 }
 
@@ -197,4 +202,24 @@ type Permission struct {
 	CanViewReports       bool   `json:"canViewReports" db:"can_view_reports"`
 	CanViewSettings      bool   `json:"canViewSettings" db:"can_view_settings"`
 	CanEditSettings      bool   `json:"canEditSettings" db:"can_edit_settings"`
+}
+
+type MonthStatus string
+
+const (
+	MonthStatusOpen   MonthStatus = "OPEN"
+	MonthStatusClosed MonthStatus = "CLOSED"
+)
+
+type FinancialMonth struct {
+	ID                string     `json:"id" db:"id"`
+	BranchID          string     `json:"branchId" db:"branch_id"`
+	Year              int        `json:"year" db:"year"`
+	Month             int        `json:"month" db:"month"`
+	Status            MonthStatus `json:"status" db:"status"`
+	PaymentAmount     float64    `json:"paymentAmount" db:"payment_amount"`
+	OpenedAt          time.Time  `json:"openedAt" db:"opened_at"`
+	ClosedAt          *time.Time `json:"closedAt" db:"closed_at"`
+	CreatedAt         time.Time  `json:"createdAt" db:"created_at"`
+	UpdatedAt         time.Time  `json:"updatedAt" db:"updated_at"`
 }

@@ -235,6 +235,98 @@ const grantTablePermissions = `
 SELECT 1;
 `
 
+const createFinancialMonthsTable = `
+CREATE TABLE IF NOT EXISTS financial_months (
+	id UUID PRIMARY KEY,
+	branch_id UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+	year INTEGER NOT NULL,
+	month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+	status VARCHAR(20) DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED')),
+	payment_amount DECIMAL(15, 2) DEFAULT 0,
+	opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	closed_at TIMESTAMP,
+	created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(branch_id, year, month)
+);
+`
+
+const addCurrentFinancialMonthToBranches = `
+DO $$ 
+BEGIN
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'branches' AND column_name = 'current_financial_month_id') THEN
+		ALTER TABLE branches ADD COLUMN current_financial_month_id UUID REFERENCES financial_months(id) ON DELETE SET NULL;
+	END IF;
+END $$;
+`
+
+const addFinancialMonthIdToPayments = `
+DO $$ 
+BEGIN
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'payments' AND column_name = 'financial_month_id') THEN
+		ALTER TABLE payments ADD COLUMN financial_month_id UUID REFERENCES financial_months(id) ON DELETE RESTRICT;
+	END IF;
+END $$;
+`
+
+const addFinancialMonthIdToSalaries = `
+DO $$ 
+BEGIN
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'salaries' AND column_name = 'financial_month_id') THEN
+		ALTER TABLE salaries ADD COLUMN financial_month_id UUID REFERENCES financial_months(id) ON DELETE RESTRICT;
+	END IF;
+END $$;
+`
+
+const addFinancialMonthIdToExpenses = `
+DO $$ 
+BEGIN
+	IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses' AND column_name = 'financial_month_id') THEN
+		ALTER TABLE expenses ADD COLUMN financial_month_id UUID REFERENCES financial_months(id) ON DELETE RESTRICT;
+	END IF;
+END $$;
+`
+
+const populateFinancialMonths = `
+INSERT INTO financial_months (id, branch_id, year, month, status, payment_amount, opened_at)
+SELECT 
+    gen_random_uuid(),
+    b.id,
+    EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER,
+    EXTRACT(MONTH FROM CURRENT_DATE)::INTEGER,
+    'OPEN'::VARCHAR,
+    b.monthly_payment,
+    CURRENT_TIMESTAMP
+FROM branches b
+WHERE NOT EXISTS (
+    SELECT 1 FROM financial_months fm
+    WHERE fm.branch_id = b.id
+        AND fm.year = EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER
+        AND fm.month = EXTRACT(MONTH FROM CURRENT_DATE)::INTEGER
+)
+ON CONFLICT (branch_id, year, month) DO NOTHING;
+
+UPDATE branches b
+SET current_financial_month_id = fm.id, updated_at = CURRENT_TIMESTAMP
+FROM financial_months fm
+WHERE b.id = fm.branch_id
+    AND b.current_financial_month_id IS NULL
+    AND fm.year = EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER
+    AND fm.month = EXTRACT(MONTH FROM CURRENT_DATE)::INTEGER;
+`
+
+const removeCurrentMonthYearFromBranches = `
+DO $$ 
+BEGIN
+	IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'branches' AND column_name = 'current_month') THEN
+		ALTER TABLE branches DROP COLUMN current_month;
+	END IF;
+	IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'branches' AND column_name = 'current_year') THEN
+		ALTER TABLE branches DROP COLUMN current_year;
+	END IF;
+END $$;
+`
+
 const createIndexes = `
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_students_branch_id ON students(branch_id);
@@ -243,12 +335,15 @@ CREATE INDEX IF NOT EXISTS idx_students_status ON students(status);
 CREATE INDEX IF NOT EXISTS idx_payments_student_id ON payments(student_id);
 CREATE INDEX IF NOT EXISTS idx_payments_branch_id ON payments(branch_id);
 CREATE INDEX IF NOT EXISTS idx_payments_month_year ON payments(month, year);
+CREATE INDEX IF NOT EXISTS idx_payments_financial_month_id ON payments(financial_month_id);
 CREATE INDEX IF NOT EXISTS idx_salaries_teacher_id ON salaries(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_salaries_branch_id ON salaries(branch_id);
 CREATE INDEX IF NOT EXISTS idx_salaries_month_year ON salaries(month, year);
+CREATE INDEX IF NOT EXISTS idx_salaries_financial_month_id ON salaries(financial_month_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_branch_id ON expenses(branch_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
 CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category);
+CREATE INDEX IF NOT EXISTS idx_expenses_financial_month_id ON expenses(financial_month_id);
 CREATE INDEX IF NOT EXISTS idx_incomes_branch_id ON incomes(branch_id);
 CREATE INDEX IF NOT EXISTS idx_incomes_date ON incomes(date);
 CREATE INDEX IF NOT EXISTS idx_classes_branch_id ON classes(branch_id);
@@ -256,4 +351,7 @@ CREATE INDEX IF NOT EXISTS idx_classes_teacher_id ON classes(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_teachers_branch_id ON teachers(branch_id);
 CREATE INDEX IF NOT EXISTS idx_settings_branch_id ON settings(branch_id);
 CREATE INDEX IF NOT EXISTS idx_permissions_user_id ON permissions(user_id);
+CREATE INDEX IF NOT EXISTS idx_financial_months_branch_id ON financial_months(branch_id);
+CREATE INDEX IF NOT EXISTS idx_financial_months_status ON financial_months(status);
+CREATE INDEX IF NOT EXISTS idx_financial_months_year_month ON financial_months(year, month);
 `

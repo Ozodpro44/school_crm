@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/school-crm/backend/internal/db"
@@ -87,6 +88,11 @@ type FinancialSummary struct {
 
 // GetPaymentReport returns a list of payments with student and class info
 func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, startDate, endDate time.Time, status, classID string) ([]PaymentReportItem, error) {
+	startMonth := int(startDate.Month())
+	startYear := startDate.Year()
+	endMonth := int(endDate.Month())
+	endYear := endDate.Year()
+	
 	query := `
 	SELECT 
 		p.id,
@@ -105,19 +111,22 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 	JOIN students st ON p.student_id = st.id
 	LEFT JOIN classes c ON st.class_id = c.id
 	WHERE p.branch_id = $1
-		AND p.created_at >= $2
-		AND p.created_at <= $3
+		AND ((p.year = $2 AND p.month >= $3) OR (p.year > $2) OR (p.year = $4 AND p.month <= $5))
 	`
 
-	args := []interface{}{branchID, startDate, endDate.AddDate(0, 0, 1)}
+	args := []interface{}{branchID, startYear, startMonth, endYear, endMonth}
 
 	if status != "all" && status != "" {
-		query += " AND p.status = $4"
-		args = append([]interface{}{branchID, startDate, endDate.AddDate(0, 0, 1), status}, args[3:]...)
+		query += " AND p.status = $6"
+		args = append(args, status)
 	}
 
 	if classID != "all" && classID != "" {
-		query += " AND st.class_id = $5"
+		paramIdx := 7
+		if status == "all" || status == "" {
+			paramIdx = 6
+		}
+		query += fmt.Sprintf(" AND st.class_id = $%d", paramIdx)
 		args = append(args, classID)
 	}
 
@@ -224,11 +233,12 @@ func (s *ReportService) GetDebtorsReport(ctx context.Context, branchID string, m
 		c.name as class_name,
 		st.monthly_payment,
 		st.status,
-		COALESCE(SUM(CASE WHEN p.status = 'paid' THEN p.amount ELSE 0 END), 0) as paid_amount
+		COALESCE(SUM(p.amount), 0) as paid_amount
 	FROM students st
 	LEFT JOIN classes c ON st.class_id = c.id
-	LEFT JOIN payments p ON st.id = p.student_id AND p.month = $1 AND p.year = $2 AND p.branch_id = $3
+	LEFT JOIN payments p ON st.id = p.student_id AND p.month = $1 AND p.year = $2 AND p.branch_id = $3 AND p.amount > 0
 	WHERE st.branch_id = $3 AND st.status = 'active'
+		AND (st.enrollment_date IS NULL OR (EXTRACT(YEAR FROM st.enrollment_date) < $2 OR (EXTRACT(YEAR FROM st.enrollment_date) = $2 AND EXTRACT(MONTH FROM st.enrollment_date) <= CAST($1 AS INT))))
 	`
 
 	args := []interface{}{month, year, branchID}

@@ -33,7 +33,6 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canEditExpenses: true,
     canDeleteExpenses: true,
     canViewReports: true,
-    canFinishMonth: true,
     canViewSettings: true,
     canEditSettings: true,
   },
@@ -61,7 +60,6 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canEditExpenses: true,
     canDeleteExpenses: true,
     canViewReports: true,
-    canFinishMonth: true,
     canViewSettings: false,
     canEditSettings: false,
   },
@@ -89,7 +87,6 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canEditExpenses: false,
     canDeleteExpenses: false,
     canViewReports: true,
-    canFinishMonth: true,
     canViewSettings: false,
     canEditSettings: false,
   },
@@ -117,7 +114,6 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canEditExpenses: true,
     canDeleteExpenses: false,
     canViewReports: true,
-    canFinishMonth: false,
     canViewSettings: false,
     canEditSettings: false,
   },
@@ -145,7 +141,6 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canEditExpenses: false,
     canDeleteExpenses: false,
     canViewReports: false,
-    canFinishMonth: false,
     canViewSettings: false,
     canEditSettings: false,
   },
@@ -173,7 +168,6 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canEditExpenses: false,
     canDeleteExpenses: false,
     canViewReports: false,
-    canFinishMonth: false,
     canViewSettings: false,
     canEditSettings: false,
   },
@@ -201,7 +195,6 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canEditExpenses: false,
     canDeleteExpenses: false,
     canViewReports: false,
-    canFinishMonth: false,
     canViewSettings: false,
     canEditSettings: false,
   },
@@ -343,7 +336,7 @@ export function hasPermission(permission: keyof Permission): boolean {
 
   if (user.role === "admin") return true;
 
-  return user.permissions?.[permission] || false;
+  return Boolean(user.permissions?.[permission]) || false;
 }
 
 /**
@@ -351,4 +344,136 @@ export function hasPermission(permission: keyof Permission): boolean {
  */
 export function isAuthenticated(): boolean {
   return getCurrentUser() !== null && api.getAuthToken() !== null;
+}
+
+/**
+ * Request password reset - sends OTP to email
+ */
+export async function forgotPassword(email: string): Promise<{ message: string; email: string }> {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to send OTP';
+      try {
+        const error = JSON.parse(errorText);
+        errorMessage = error.error || error.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const responseText = await response.text();
+    return JSON.parse(responseText);
+  } catch (error) {
+    console.error('Forgot password failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Verify OTP and get reset token
+ */
+export async function verifyOTP(email: string, otp: string): Promise<{ message: string; resetToken: string; email: string }> {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/verify-otp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, otp }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to verify OTP';
+      try {
+        const error = JSON.parse(errorText);
+        errorMessage = error.error || error.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const responseText = await response.text();
+    return JSON.parse(responseText);
+  } catch (error) {
+    console.error('OTP verification failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Resend OTP to email
+ */
+export async function resendOTP(email: string): Promise<{ message: string }> {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/resend-otp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to resend OTP';
+      try {
+        const error = JSON.parse(errorText);
+        errorMessage = error.error || error.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const responseText = await response.text();
+    return JSON.parse(responseText);
+  } catch (error) {
+    console.error('Resend OTP failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Reset password with reset token
+ */
+export async function resetPassword(email: string, resetToken: string, newPassword: string): Promise<{ message: string }> {
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email, resetToken, newPassword }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      let errorMessage = 'Failed to reset password';
+      try {
+        const error = JSON.parse(errorText);
+        errorMessage = error.error || error.message || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
+
+    const responseText = await response.text();
+    return JSON.parse(responseText);
+  } catch (error) {
+    console.error('Password reset failed:', error);
+    throw error;
+  }
 }

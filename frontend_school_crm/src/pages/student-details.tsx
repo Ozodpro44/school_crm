@@ -38,9 +38,9 @@ import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { useToast } from "@/hooks/use-toast";
-import { hasPermission } from "@/lib/auth";
+import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { formatPhoneNumber } from "@/lib/utils";
-import { getStudent, listPayments, listClasses } from "@/lib/api";
+import { getStudent, listPayments, listClasses, getStudentPaymentHistory, getBranch, Branch } from "@/lib/api";
 
 export default function StudentDetailsPage() {
   const router = useRouter();
@@ -54,6 +54,7 @@ export default function StudentDetailsPage() {
   const [markLeftConfirmOpen, setMarkLeftConfirmOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [classes, setClasses] = useState<any[]>([]);
+  const [branchData, setBranchData] = useState<Branch | null>(null);
   const [editFormData, setEditFormData] = useState({
     fullName: "",
     classId: "",
@@ -64,6 +65,8 @@ export default function StudentDetailsPage() {
   const { toast } = useToast();
   const canEditStudents = hasPermission("canEditStudents");
   const canDeleteStudents = hasPermission("canDeleteStudents");
+  const currentUser = getCurrentUser();
+  const isAdmin = currentUser?.role === "admin" || currentUser?.role === "branch_admin";
 
   useEffect(() => {
     if (!id) return;
@@ -108,14 +111,29 @@ export default function StudentDetailsPage() {
         const classData = classesDB.getById(studentData.classId);
         setClassName(classData?.name || "N/A");
         
-        // Fetch payments from backend
-         const branchId = localStorage.getItem("selectedBranchId");
-         if (branchId) {
-           const paymentsData = await listPayments({ branchId });
-           // Filter payments for this student
-           const studentPayments = paymentsData.filter((p: Payment) => p.studentId === studentData.id);
-           setPayments(studentPayments);
-         }
+        const branchId = localStorage.getItem("selectedBranchId");
+        
+        // Fetch branch data for current month info
+        if (branchId) {
+          const branch = await getBranch(branchId);
+          setBranchData(branch);
+        }
+        
+        // Fetch payments based on role
+        // Admin sees all payment history, Manager sees only current month
+        if (isAdmin) {
+          // Admin: get full payment history
+          const paymentsData = await getStudentPaymentHistory(studentData.id, branchId || undefined);
+          setPayments(paymentsData);
+        } else {
+          // Manager: get only current month payments
+          if (branchId) {
+            const paymentsData = await listPayments({ branchId });
+            // Filter payments for this student
+            const studentPayments = paymentsData.filter((p: Payment) => p.studentId === studentData.id);
+            setPayments(studentPayments);
+          }
+        }
       }
       
       // Load classes for edit form

@@ -658,7 +658,7 @@ export default function ManagersPage() {
                             <div key={perm.key} className="flex items-center space-x-2">
                               <Checkbox
                                 id={perm.key}
-                                checked={permissions[perm.key]}
+                                checked={Boolean(permissions[perm.key])}
                                 onCheckedChange={(checked) =>
                                   updatePermission(perm.key, checked as boolean)
                                 }

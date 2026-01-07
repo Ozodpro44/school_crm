@@ -33,4 +33,10 @@ export const settingsTranslations: Partial<Translation> = {
   failedToLoadSettings: { "uz-cyrl": "Созламаларни юклашда хатолик", "uz-latn": "Sozlamalarni yuklashda xatolik", en: "Failed to load settings" },
   failedToSaveSettings: { "uz-cyrl": "Созламаларни сақлашда хатолик", "uz-latn": "Sozlamalarni saqlashda xatolik", en: "Failed to save settings" },
   saving: { "uz-cyrl": "Сақланмоқда...", "uz-latn": "Saqlannmoqda...", en: "Saving..." },
+  currentMonth: { "uz-cyrl": "Жорий ой", "uz-latn": "Joriy oy", en: "Current Month" },
+  currentMonthDescription: { "uz-cyrl": "Барча тўловлар, харажатлар ва маошлар ушбу ойга қайд этилади", "uz-latn": "Barcha to'lovlar, xarajatlar va maoshlar shu oyga yoziladi", en: "All payments, expenses and salaries are recorded in this month" },
+  activeMonth: { "uz-cyrl": "Маълумотларни киритиш учун фаол давр", "uz-latn": "Ma'lumot kiritish uchun faol davr", en: "Active period for data entry" },
+  switchToNextMonth: { "uz-cyrl": "Кейинги ой", "uz-latn": "Keyingi oy", en: "Next Month" },
+  monthSwitched: { "uz-cyrl": "Ой ўзгартирилди", "uz-latn": "Oy o'zgartirildi", en: "Month switched" },
+  failedToSwitchMonth: { "uz-cyrl": "Ойни ўзгартириб бўлмади", "uz-latn": "Oyni o'zgartirib bo'lmadi", en: "Failed to switch month" },
   };

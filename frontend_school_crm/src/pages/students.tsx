@@ -39,14 +39,16 @@ import {
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
-  listStudents as apiListStudents,
-  createStudent as apiCreateStudent,
-  updateStudent as apiUpdateStudent,
-  deleteStudent as apiDeleteStudent,
-  listClasses as apiListClasses,
-  listBranches as apiListBranches,
-  listPayments as apiListPayments,
-} from "@/lib/api";
+   listStudents as apiListStudents,
+   createStudent as apiCreateStudent,
+   updateStudent as apiUpdateStudent,
+   deleteStudent as apiDeleteStudent,
+   listClasses as apiListClasses,
+   listBranches as apiListBranches,
+   listPayments as apiListPayments,
+   getBranch,
+   Branch,
+ } from "@/lib/api";
 import type { Student as ApiStudent, Payment } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
@@ -73,6 +75,7 @@ export default function StudentsPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [branchData, setBranchData] = useState<Branch | null>(null);
   const [isBulkChangeClassOpen, setIsBulkChangeClassOpen] = useState(false);
   const [bulkChangeClassId, setBulkChangeClassId] = useState<string>("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -132,6 +135,7 @@ export default function StudentsPage() {
       setStudents([]);
       setClasses([]);
       setPayments([]);
+      setBranchData(null);
       return;
     }
 
@@ -139,18 +143,21 @@ export default function StudentsPage() {
     
     try {
       if (selectedBranchId) {
-        const [studentsList, classList, paymentsList] = await Promise.all([
+        const [studentsList, classList, paymentsList, branch] = await Promise.all([
           apiListStudents(selectedBranchId),
           apiListClasses(selectedBranchId),
           apiListPayments({ branchId: selectedBranchId }),
+          getBranch(selectedBranchId),
         ]);
         setStudents(studentsList);
         setClasses(classList);
         setPayments(paymentsList);
+        setBranchData(branch);
       } else {
         setStudents([]);
         setClasses([]);
         setPayments([]);
+        setBranchData(null);
       }
     } catch (error) {
       console.error("Failed to load data:", error);
@@ -161,6 +168,7 @@ export default function StudentsPage() {
       });
       setClasses([]);
       setPayments([]);
+      setBranchData(null);
     }
   };
 
@@ -169,23 +177,25 @@ export default function StudentsPage() {
   const canDeleteStudents = hasPermission("canDeleteStudents");
 
   const hasCurrentMonthPayment = (studentId: string): boolean => {
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
+    // Use branch's current financial month if available, fallback to actual current date
+    const currentMonth = branchData?.currentFinancialMonth?.month?.toString().padStart(2, '0') || 
+                        (new Date().getMonth() + 1).toString().padStart(2, '0');
+    const currentYear = branchData?.currentFinancialMonth?.year || new Date().getFullYear();
 
     // Use backend payments instead of localStorage
     return payments.some(
       (payment) =>
         payment.studentId === studentId &&
-        Number(payment.month) === currentMonth &&
+        Number(payment.month) === Number(currentMonth) &&
         Number(payment.year) === currentYear
     );
   };
 
   const getCurrentMonthPaymentStatus = (studentId: string): string => {
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
+    // Use branch's current financial month if available, fallback to actual current date
+    const currentMonth = branchData?.currentFinancialMonth?.month?.toString().padStart(2, '0') || 
+                        (new Date().getMonth() + 1).toString().padStart(2, '0');
+    const currentYear = branchData?.currentFinancialMonth?.year || new Date().getFullYear();
 
     const student = students.find(s => s.id === studentId);
     if (!student) return "unpaid";
@@ -194,7 +204,7 @@ export default function StudentsPage() {
     const currentMonthPayments = payments.filter(
       (payment) =>
         payment.studentId === studentId &&
-        Number(payment.month) === currentMonth &&
+        Number(payment.month) === Number(currentMonth) &&
         Number(payment.year) === currentYear
     );
 

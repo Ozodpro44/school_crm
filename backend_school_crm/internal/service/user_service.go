@@ -17,13 +17,27 @@ import (
 type UserService struct {
 	db            *db.Database
 	branchService *BranchService
+	redisClient   *utils.RedisClient
+	emailSender   *utils.EmailSender
 }
 
 func NewUserService(database *db.Database) *UserService {
 	return &UserService{
 		db:            database,
 		branchService: NewBranchService(database),
+		redisClient:   nil,
+		emailSender:   nil,
 	}
+}
+
+// SetRedisClient sets the Redis client for the service
+func (s *UserService) SetRedisClient(redisClient *utils.RedisClient) {
+	s.redisClient = redisClient
+}
+
+// SetEmailSender sets the email sender for the service
+func (s *UserService) SetEmailSender(emailSender *utils.EmailSender) {
+	s.emailSender = emailSender
 }
 
 // GetDB returns the database connection
@@ -251,25 +265,90 @@ func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
 }
 
 func (s *UserService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.User, error) {
+	// Validate and sanitize input fields
+	allowedFields := map[string]bool{
+		"full_name":           true,
+		"email":               true,
+		"password":            true,
+		"current_password":    true,
+	}
+
 	query := `UPDATE users SET `
 	args := []interface{}{}
 	argCount := 1
+	hasUpdates := false
+
+	// Hash password if provided
+	var currentPassword string
+	if pwd, exists := updates["current_password"]; exists {
+		if pwdStr, ok := pwd.(string); ok {
+			currentPassword = pwdStr
+		}
+		delete(updates, "current_password")
+	}
+
+	if newPwd, exists := updates["password"]; exists {
+		if pwdStr, ok := newPwd.(string); ok {
+			// If current_password is provided, verify it
+			if currentPassword != "" {
+				// Note: user.Password is cleared in GetByID, need to fetch separately
+				userRow := &models.User{}
+				userQuery := `SELECT password FROM users WHERE id = $1`
+				err := s.db.GetConn().QueryRowContext(ctx, userQuery, id).Scan(&userRow.Password)
+				if err != nil {
+					log.Printf("[UserService.Update] Failed to fetch current password: %v", err)
+					return nil, errors.New("failed to verify current password")
+				}
+
+				if err := bcrypt.CompareHashAndPassword([]byte(userRow.Password), []byte(currentPassword)); err != nil {
+					return nil, errors.New("current password is incorrect")
+				}
+			}
+
+			// Hash the new password
+			hashedPassword, err := bcrypt.GenerateFromPassword([]byte(pwdStr), bcrypt.DefaultCost)
+			if err != nil {
+				log.Printf("[UserService.Update] Failed to hash password: %v", err)
+				return nil, errors.New("failed to update password")
+			}
+			updates["password"] = string(hashedPassword)
+		}
+	}
 
 	for key, value := range updates {
-		if argCount > 1 {
+		if !allowedFields[key] {
+			continue
+		}
+		if hasUpdates {
 			query += ", "
 		}
 		query += key + " = $" + strconv.Itoa(argCount)
 		args = append(args, value)
 		argCount++
+		hasUpdates = true
+	}
+
+	if !hasUpdates {
+		log.Printf("[UserService.Update] No valid fields to update for user %s", id)
+		return s.GetByID(ctx, id)
 	}
 
 	query += " WHERE id = $" + strconv.Itoa(argCount)
 	args = append(args, id)
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, args...)
+	log.Printf("[UserService.Update] Executing query: %s with args: %v", query, args)
+
+	result, err := s.db.GetConn().ExecContext(ctx, query, args...)
 	if err != nil {
+		log.Printf("[UserService.Update] Database error: %v", err)
 		return nil, err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Printf("[UserService.Update] Error getting rows affected: %v", err)
+	} else {
+		log.Printf("[UserService.Update] Rows affected: %d", rowsAffected)
 	}
 
 	return s.GetByID(ctx, id)
@@ -411,4 +490,161 @@ func (s *UserService) GetManagersByBranch(ctx context.Context, branchID string) 
 	}
 
 	return managers, nil
+}
+
+// ForgotPasswordRequest initiates password reset by sending OTP to email
+// Only admin users can reset their password
+func (s *UserService) ForgotPasswordRequest(ctx context.Context, email string) error {
+	if s.redisClient == nil || s.emailSender == nil {
+		return errors.New("redis or email service not configured")
+	}
+
+	// Verify user exists and is an admin
+	user := &models.User{}
+	query := `SELECT id, email, role FROM users WHERE email = $1`
+	err := s.db.GetConn().QueryRowContext(ctx, query, email).Scan(&user.ID, &user.Email, &user.Role)
+	if err == sql.ErrNoRows {
+		log.Printf("[UserService.ForgotPasswordRequest] User not found: %s", email)
+		return errors.New("user not found")
+	}
+	if err != nil {
+		log.Printf("[UserService.ForgotPasswordRequest] Database error: %v", err)
+		return err
+	}
+
+	// Check if user is admin
+	if user.Role != models.RoleAdmin {
+		log.Printf("[UserService.ForgotPasswordRequest] Non-admin user attempted password reset: %s (Role: %s)", email, user.Role)
+		return errors.New("only admin users can reset password")
+	}
+
+	// Generate and store OTP
+	otp := utils.GenerateOTP()
+	if err := s.redisClient.SetOTP(ctx, email, otp); err != nil {
+		log.Printf("[UserService.ForgotPasswordRequest] Failed to store OTP: %v", err)
+		return errors.New("failed to generate OTP")
+	}
+
+	// Send OTP via email
+	if err := s.emailSender.SendOTPEmail(email, otp); err != nil {
+		log.Printf("[UserService.ForgotPasswordRequest] Failed to send email: %v", err)
+		return errors.New("failed to send OTP email")
+	}
+
+	log.Printf("[UserService.ForgotPasswordRequest] OTP sent successfully to %s", email)
+	return nil
+}
+
+// VerifyOTPRequest verifies the OTP and generates reset token
+func (s *UserService) VerifyOTPRequest(ctx context.Context, email, otp string) (string, error) {
+	if s.redisClient == nil {
+		return "", errors.New("redis service not configured")
+	}
+
+	// Verify OTP exists and matches
+	storedOTP, err := s.redisClient.GetOTP(ctx, email)
+	if err != nil {
+		log.Printf("[UserService.VerifyOTPRequest] OTP not found or expired: %v", err)
+		return "", errors.New("OTP expired or invalid")
+	}
+
+	if storedOTP != otp {
+		log.Printf("[UserService.VerifyOTPRequest] OTP mismatch for email: %s", email)
+		return "", errors.New("invalid OTP")
+	}
+
+	// Delete OTP after verification
+	s.redisClient.DeleteOTP(ctx, email)
+
+	// Generate reset token
+	resetToken := uuid.New().String()
+	if err := s.redisClient.SetPasswordReset(ctx, email, resetToken); err != nil {
+		log.Printf("[UserService.VerifyOTPRequest] Failed to store reset token: %v", err)
+		return "", errors.New("failed to generate reset token")
+	}
+
+	log.Printf("[UserService.VerifyOTPRequest] OTP verified successfully for %s", email)
+	return resetToken, nil
+}
+
+// ResetPasswordWithToken resets the password using the reset token
+func (s *UserService) ResetPasswordWithToken(ctx context.Context, email, resetToken, newPassword string) error {
+	if s.redisClient == nil {
+		return errors.New("redis service not configured")
+	}
+
+	// Verify reset token
+	storedToken, err := s.redisClient.GetPasswordReset(ctx, email)
+	if err != nil {
+		log.Printf("[UserService.ResetPasswordWithToken] Reset token not found or expired: %v", err)
+		return errors.New("reset token expired or invalid")
+	}
+
+	if storedToken != resetToken {
+		log.Printf("[UserService.ResetPasswordWithToken] Reset token mismatch for email: %s", email)
+		return errors.New("invalid reset token")
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("[UserService.ResetPasswordWithToken] Failed to hash password: %v", err)
+		return errors.New("failed to reset password")
+	}
+
+	// Update password in database
+	query := `UPDATE users SET password = $1, updated_at = $2 WHERE email = $3`
+	_, err = s.db.GetConn().ExecContext(ctx, query, string(hashedPassword), utils.GetLocalTime(), email)
+	if err != nil {
+		log.Printf("[UserService.ResetPasswordWithToken] Failed to update password: %v", err)
+		return errors.New("failed to reset password")
+	}
+
+	// Delete reset token
+	s.redisClient.DeletePasswordReset(ctx, email)
+
+	log.Printf("[UserService.ResetPasswordWithToken] Password reset successfully for %s", email)
+	return nil
+}
+
+// ResendOTP resends OTP to the user's email
+// Only admin users can request password reset
+func (s *UserService) ResendOTP(ctx context.Context, email string) error {
+	if s.redisClient == nil || s.emailSender == nil {
+		return errors.New("redis or email service not configured")
+	}
+
+	// Verify user exists and is an admin
+	user := &models.User{}
+	query := `SELECT id, email, role FROM users WHERE email = $1`
+	err := s.db.GetConn().QueryRowContext(ctx, query, email).Scan(&user.ID, &user.Email, &user.Role)
+	if err == sql.ErrNoRows {
+		log.Printf("[UserService.ResendOTP] User not found: %s", email)
+		return errors.New("user not found")
+	}
+	if err != nil {
+		return err
+	}
+
+	// Check if user is admin
+	if user.Role != models.RoleAdmin {
+		log.Printf("[UserService.ResendOTP] Non-admin user attempted password reset: %s (Role: %s)", email, user.Role)
+		return errors.New("only admin users can reset password")
+	}
+
+	// Generate and store new OTP
+	otp := utils.GenerateOTP()
+	if err := s.redisClient.SetOTP(ctx, email, otp); err != nil {
+		log.Printf("[UserService.ResendOTP] Failed to store OTP: %v", err)
+		return errors.New("failed to generate OTP")
+	}
+
+	// Send OTP via email
+	if err := s.emailSender.SendOTPEmail(email, otp); err != nil {
+		log.Printf("[UserService.ResendOTP] Failed to send email: %v", err)
+		return errors.New("failed to send OTP email")
+	}
+
+	log.Printf("[UserService.ResendOTP] OTP resent successfully to %s", email)
+	return nil
 }

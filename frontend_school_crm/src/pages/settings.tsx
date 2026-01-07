@@ -20,14 +20,21 @@ import { Settings, Language } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { Save, Globe, DollarSign, Building2 } from "lucide-react";
-import { hasPermission } from "@/lib/auth";
+import { Save, Globe, DollarSign, Building2, Calendar, ChevronRight } from "lucide-react";
+import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { useSetLanguage } from "@/hooks/use-language";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
-import { getSettings, updateSettings, UpdateSettingsRequest } from "@/lib/api";
+import { getSettings, updateSettings, UpdateSettingsRequest, switchBranchMonth, getBranch, Branch } from "@/lib/api";
 import { useBranch } from "@/context/BranchContext";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -36,12 +43,17 @@ export default function SettingsPage() {
   );
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [branchData, setBranchData] = useState<Branch | null>(null);
+  const [showSwitchMonthDialog, setShowSwitchMonthDialog] = useState(false);
+  const [isSwitchingMonth, setIsSwitchingMonth] = useState(false);
   const { toast } = useToast();
   const language = useLanguage();
   const setLanguage = useSetLanguage();
   const t = (key: string) => getTranslation(key, language);
   const router = useRouter();
-  const { currentBranch } = useBranch();
+  const { currentBranch, refreshBranches } = useBranch();
+  const currentUser = getCurrentUser();
+  const isAdmin = currentUser?.role === "admin";
 
   const fetchSettings = async () => {
     try {
@@ -49,6 +61,13 @@ export default function SettingsPage() {
       const data = await getSettings();
       setSettings(data);
       setOriginalSettings(data);
+      
+      // Also fetch branch data for current month info
+      const branchId = localStorage.getItem("selectedBranchId");
+      if (branchId) {
+        const branch = await getBranch(branchId);
+        setBranchData(branch);
+      }
     } catch (error) {
       toast({
         title: t("error"),
@@ -57,6 +76,71 @@ export default function SettingsPage() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getMonthName = (month: number | string) => {
+    const monthNum = typeof month === "string" ? parseInt(month) : month;
+    const monthNames: { [key: number]: string } = {
+      1: t("january") || "Январь",
+      2: t("february") || "Февраль",
+      3: t("march") || "Март",
+      4: t("april") || "Апрель",
+      5: t("may") || "Май",
+      6: t("june") || "Июнь",
+      7: t("july") || "Июль",
+      8: t("august") || "Август",
+      9: t("september") || "Сентябрь",
+      10: t("october") || "Октябрь",
+      11: t("november") || "Ноябрь",
+      12: t("december") || "Декабрь",
+    };
+    return monthNames[monthNum] || month;
+  };
+
+  const getNextMonth = () => {
+    if (!branchData?.currentFinancialMonth) return { month: 1, year: 0 };
+    const currentMonth = branchData.currentFinancialMonth.month;
+    const currentYear = branchData.currentFinancialMonth.year;
+    
+    if (currentMonth >= 12) {
+      return { month: 1, year: currentYear + 1 };
+    }
+    return { month: currentMonth + 1, year: currentYear };
+  };
+
+  const handleSwitchMonth = async () => {
+    const branchId = localStorage.getItem("selectedBranchId");
+    if (!branchId) return;
+
+    try {
+      setIsSwitchingMonth(true);
+      const updatedBranch = await switchBranchMonth(branchId);
+      setBranchData(updatedBranch);
+      setShowSwitchMonthDialog(false);
+      
+      // Refresh branch context
+      if (refreshBranches) {
+        await refreshBranches();
+      }
+      
+      // Dispatch branchChange event to reload all pages with new month data
+      // This will cause payments, expenses, salaries pages to reload with new (empty) data
+      window.dispatchEvent(new CustomEvent("branchChange", { detail: branchId }));
+      
+      toast({
+        title: t("success"),
+        description: t("monthSwitched") || `Месяц переключён на ${getMonthName(updatedBranch.currentMonth)} ${updatedBranch.currentYear}`,
+        variant: "success",
+      });
+    } catch (error) {
+      toast({
+        title: t("error"),
+        description: error instanceof Error ? error.message : t("failedToSwitchMonth") || "Не удалось переключить месяц",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSwitchingMonth(false);
     }
   };
 
@@ -239,6 +323,48 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
+        {/* Current Month - Admin Only */}
+        {isAdmin && branchData && (
+          <Card className="border-l-4 border-l-blue-500">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="h-5 w-5" />
+                {t("currentMonth") || "Текущий месяц"}
+              </CardTitle>
+              <CardDescription>
+                {t("currentMonthDescription") || "Все платежи, расходы и зарплаты записываются в этот месяц"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  {branchData?.currentFinancialMonth ? (
+                    <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                      {getMonthName(branchData.currentFinancialMonth.month)} {branchData.currentFinancialMonth.year}
+                    </p>
+                  ) : (
+                    <p className="text-3xl font-bold text-gray-400 dark:text-gray-600">
+                      {t("loading") || "Загрузка..."}
+                    </p>
+                  )}
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {t("activeMonth") || "Активный период для записи данных"}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowSwitchMonthDialog(true)}
+                  className="flex items-center gap-2"
+                  disabled={!branchData?.currentFinancialMonth}
+                >
+                  {t("switchToNextMonth") || "Следующий месяц"}
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* System Information */}
         <Card className="md:col-span-2">
           <CardHeader>
@@ -271,6 +397,59 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Switch Month Confirmation Dialog */}
+      <Dialog open={showSwitchMonthDialog} onOpenChange={setShowSwitchMonthDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("confirmSwitchMonth") || "Подтвердите переключение месяца"}</DialogTitle>
+            <DialogDescription>
+              {t("switchMonthWarning") || "После переключения менеджеры не смогут видеть и редактировать данные предыдущего месяца."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="bg-muted p-4 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">{t("currentMonth") || "Текущий месяц"}</p>
+                  <p className="font-semibold">{branchData?.currentFinancialMonth && `${getMonthName(branchData.currentFinancialMonth.month)} ${branchData.currentFinancialMonth.year}`}</p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm text-muted-foreground">{t("nextMonth") || "Следующий месяц"}</p>
+                  <p className="font-semibold text-blue-600">
+                    {getMonthName(getNextMonth().month)} {getNextMonth().year}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+              <p className="text-sm text-amber-900 dark:text-amber-100">
+                {t("switchMonthNote") || "• Новый месяц начнётся с нуля (payments = 0, expenses = 0, salaries = 0)"}
+              </p>
+              <p className="text-sm text-amber-900 dark:text-amber-100 mt-1">
+                {t("switchMonthNoteManager") || "• Менеджеры потеряют доступ к данным прошлого месяца"}
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowSwitchMonthDialog(false)}
+                disabled={isSwitchingMonth}
+              >
+                {t("cancel")}
+              </Button>
+              <Button
+                onClick={handleSwitchMonth}
+                disabled={isSwitchingMonth}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {isSwitchingMonth ? (t("switching") || "Переключение...") : (t("confirmSwitch") || "Подтвердить")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -326,7 +326,7 @@ export default function BranchesPage() {
                        onChange={(e) => setFormData({ ...formData, monthlyPayment: parseInt(e.target.value) || 100000 })}
                        placeholder="500000"
                        step="500"
-                       min="1"
+                       min="500"
                        required
                      />
                   </div>

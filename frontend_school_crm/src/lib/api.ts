@@ -159,6 +159,8 @@ export interface Branch {
   phone: string;
   monthlyPayment: number;
   adminId?: string;
+  currentMonth: string;
+  currentYear: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -784,6 +786,30 @@ export async function deleteBranch(id: string): Promise<{ success: boolean }> {
   });
 }
 
+/**
+ * Switch branch to next month (Admin only)
+ * Advances the branch's current_month to the next calendar month
+ */
+export async function switchBranchMonth(id: string): Promise<Branch> {
+  return apiRequest<Branch>(`/branches/${id}/switch-month`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Get student payment history (Admin sees all, Manager sees current month only)
+ */
+export async function getStudentPaymentHistory(
+  studentId: string,
+  branchId?: string
+): Promise<Payment[]> {
+  const query = branchId ? `?branchId=${branchId}` : "";
+  const response = await apiRequest<Payment[]>(
+    `/payments/student/${studentId}/history${query}`
+  );
+  return Array.isArray(response) ? response : [];
+}
+
 // ============================================================================
 // TEACHER ENDPOINTS
 // ============================================================================
@@ -863,12 +889,18 @@ export async function getSalary(id: string): Promise<Salary> {
 }
 
 /**
- * List salaries by branch
+ * List salaries by branch with optional month/year filter (Admin only for historical data)
  */
-export async function listSalaries(branchId: string): Promise<Salary[]> {
-  const response = await apiRequest<Salary[]>(
-    `/salaries?branchId=${branchId}`
-  );
+export async function listSalaries(
+  branchId: string,
+  month?: string,
+  year?: number
+): Promise<Salary[]> {
+  let query = `branchId=${branchId}`;
+  if (month) query += `&month=${month}`;
+  if (year) query += `&year=${year}`;
+  
+  const response = await apiRequest<Salary[]>(`/salaries?${query}`);
   return Array.isArray(response) ? response : [];
 }
 
@@ -931,12 +963,18 @@ export async function updateExpense(
 }
 
 /**
- * List expenses by branch
+ * List expenses by branch with optional month/year filter (Admin only for historical data)
  */
-export async function listExpenses(branchId: string): Promise<Expense[]> {
-  const response = await apiRequest<Expense[]>(
-    `/expenses?branchId=${branchId}`
-  );
+export async function listExpenses(
+  branchId: string,
+  month?: string,
+  year?: number
+): Promise<Expense[]> {
+  let query = `branchId=${branchId}`;
+  if (month) query += `&month=${month}`;
+  if (year) query += `&year=${year}`;
+  
+  const response = await apiRequest<Expense[]>(`/expenses?${query}`);
   return Array.isArray(response) ? response : [];
 }
 
@@ -1066,13 +1104,11 @@ export interface FinancialSummary {
  */
 export async function getPaymentReport(
   branchId: string,
-  startDate: string,
-  endDate: string,
-  status?: string,
+  month: string,
+  year: string,
   classId?: string
 ): Promise<PaymentReportItem[]> {
-  let query = `?branchId=${branchId}&startDate=${startDate}&endDate=${endDate}`;
-  if (status && status !== "all") query += `&status=${status}`;
+  let query = `?branchId=${branchId}&month=${month}&year=${year}`;
   if (classId && classId !== "all") query += `&classId=${classId}`;
 
   const response = await apiRequest<PaymentReportItem[]>(

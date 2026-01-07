@@ -3,6 +3,7 @@ export type PaymentMethod = "card" | "cash" | "bank";
 export type StudentStatus = "active" | "left" | "suspended";
 export type PaymentStatus = "paid" | "partial";
 export type Language = "uz-cyrl" | "uz-latn" | "en";
+export type MonthStatus = "OPEN" | "CLOSED";
 
 export interface Permission {
   id?: string;
@@ -34,6 +35,19 @@ export interface Permission {
   canEditSettings: boolean;
 }
 
+export interface FinancialMonth {
+  id: string;
+  branchId: string;
+  year: number;
+  month: number;
+  status: "OPEN" | "CLOSED";
+  paymentAmount: number;
+  openedAt: string;
+  closedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Branch {
   id: string;
   name: string;
@@ -42,6 +56,8 @@ export interface Branch {
   monthlyPayment: number;
   adminId?: string;
   managerIds: string[];
+  currentFinancialMonthId?: string;
+  currentFinancialMonth?: FinancialMonth;
   createdAt: string;
   updatedAt: string;
 }

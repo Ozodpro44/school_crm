@@ -21,10 +21,12 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { salariesDB, teachersDB, usersDB, monthArchivesDB } from "@/lib/storage";
+import { salariesDB, teachersDB, usersDB, monthArchivesDB, branchesDB } from "@/lib/storage";
 import { Salary, PaymentStatus, Teacher, PaymentMethod } from "@/types";
 import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
+import { listSalaries, getBranch, Branch } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -45,6 +47,7 @@ export default function SalariesPage() {
      const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
      const [currentPage, setCurrentPage] = useState(1);
      const itemsPerPage = 10;
+     const [branchData, setBranchData] = useState<Branch | null>(null);
     const language = useLanguage();
     const { toast } = useToast();
     const canCreateSalaries = hasPermission("canCreateSalaries");
@@ -63,11 +66,13 @@ export default function SalariesPage() {
     const currentUser = getCurrentUser();
     const isAdmin = currentUser?.role === "admin" || currentUser?.role === "branch_admin";
 
+    const [selectedMonth, setSelectedMonth] = useState<string>("");
+    const [selectedYear, setSelectedYear] = useState<number>(0);
+
     const isMonthVisible = (month: string, year: number): boolean => {
-      // Admins can see all data including archived
-      if (isAdmin) return true;
-      // Non-admins can't see archived months
-      return !monthArchivesDB.isMonthArchived(month, year);
+      // The backend API handles filtering of archived months per branch
+      // So we allow all months here and let the backend handle visibility
+      return true;
     };
 
      const [formData, setFormData] = useState({
@@ -75,7 +80,7 @@ export default function SalariesPage() {
      amount: "",
      month: getDefaultMonth(),
      year: getDefaultYear(),
-     status: "unpaid" as PaymentStatus,
+     status: "partial" as PaymentStatus,
      paymentMethod: "bank" as PaymentMethod,
      notes: "",
    });
@@ -99,18 +104,66 @@ export default function SalariesPage() {
 
   // Reload data when branch changes
   useEffect(() => {
-    const handleBranchChange = () => {
-      loadData();
+    const handleBranchChange = async () => {
+      setIsLoading(true);
+      setCurrentPage(1);
+      // Reset selectedMonth to force reload from new branch
+      setSelectedMonth("");
+      loadData().finally(() => setIsLoading(false));
     };
     window.addEventListener("branchChange", handleBranchChange);
     return () => window.removeEventListener("branchChange", handleBranchChange);
   }, []);
 
+  // Reload data when month/year changes
+  useEffect(() => {
+    loadData();
+  }, [selectedMonth, selectedYear]);
+
   const t = (key: string) => getTranslation(key, language);
 
-  const loadData = () => {
-    setSalaries(salariesDB.getAll());
-    setTeachers(teachersDB.getAll());
+  const handleMonthChange = (month: string, year: number) => {
+    setSelectedMonth(month);
+    setSelectedYear(year);
+    setCurrentPage(1);
+  };
+
+  const loadData = async (month?: string, year?: number) => {
+    try {
+      const branchId = localStorage.getItem("selectedBranchId") || "";
+      
+      // Load branch data to get current month
+      if (branchId) {
+        const branch = await getBranch(branchId);
+        setBranchData(branch);
+        
+        // Use financial month data if available, otherwise fall back to branch's current month
+        const currentMonth = branch.currentFinancialMonth?.month?.toString().padStart(2, '0') || branch.currentMonth;
+        const currentYear = branch.currentFinancialMonth?.year || branch.currentYear;
+        
+        // Set selected month to branch's current month if not already set and not provided
+        const targetMonth = month || selectedMonth || currentMonth;
+        const targetYear = year || selectedYear || currentYear;
+        
+        if (!selectedMonth) {
+          setSelectedMonth(currentMonth);
+          setSelectedYear(currentYear);
+        }
+        
+        // Fetch salaries from API filtered by branch and month
+        const data = await listSalaries(branchId, targetMonth, targetYear);
+        setSalaries(data);
+      }
+      
+      setTeachers(teachersDB.getAll());
+    } catch (error) {
+      console.error("Failed to load salaries:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load salaries",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -186,12 +239,16 @@ export default function SalariesPage() {
   };
 
   const resetForm = () => {
+    // Use branch's current financial month, fallback to current date
+    const defaultMonth = branchData?.currentFinancialMonth?.month?.toString().padStart(2, '0') || getDefaultMonth();
+    const defaultYear = branchData?.currentFinancialMonth?.year?.toString() || getDefaultYear();
+    
     setFormData({
       teacherId: "",
       amount: "",
-      month: getDefaultMonth(),
-      year: getDefaultYear(),
-      status: "unpaid",
+      month: defaultMonth,
+      year: defaultYear,
+      status: "partial",
       paymentMethod: "bank",
       notes: "",
     });
@@ -215,9 +272,7 @@ export default function SalariesPage() {
     const matchesStatus =
       filterStatus === "all" || salary.status === filterStatus;
 
-    const visibilityMatch = isMonthVisible(salary.month, salary.year);
-
-    return matchesSearch && matchesStatus && visibilityMatch;
+    return matchesSearch && matchesStatus;
   });
 
   const totalPages = Math.ceil(filteredSalaries.length / itemsPerPage);
@@ -228,7 +283,7 @@ export default function SalariesPage() {
     switch (status) {
       case "paid":
         return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-      case "unpaid":
+      case "partial":
         return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
       case "partial":
         return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
@@ -264,7 +319,7 @@ export default function SalariesPage() {
     .reduce((sum, s) => sum + s.amount, 0);
 
   const totalPending = salaries
-    .filter((s) => s.status === "unpaid")
+    .filter((s) => s.status === "partial")
     .reduce((sum, s) => sum + s.amount, 0);
 
   const months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
@@ -334,7 +389,7 @@ export default function SalariesPage() {
     
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
+          <div className="flex-1">
             <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
               {t("salaries")}
             </h1>
@@ -343,6 +398,19 @@ export default function SalariesPage() {
             </p>
           </div>
 
+          {isAdmin && branchData && selectedMonth && (
+            <div className="flex-1 flex justify-center">
+              <MonthYearSelector
+                month={selectedMonth}
+                year={selectedYear}
+                onChange={handleMonthChange}
+                currentBranchMonth={branchData.currentFinancialMonth?.month?.toString().padStart(2, '0')}
+                currentBranchYear={branchData.currentFinancialMonth?.year}
+              />
+            </div>
+          )}
+
+          <div className="flex-1 flex justify-end">
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button
@@ -418,7 +486,7 @@ export default function SalariesPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="paid">{t("paid")}</SelectItem>
-                        <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
+                        <SelectItem value="partial">{t("partial")}</SelectItem>
                         <SelectItem value="partial">{t("partialPaid")}</SelectItem>
                       </SelectContent>
                     </Select>
@@ -504,6 +572,7 @@ export default function SalariesPage() {
               </form>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -578,7 +647,7 @@ export default function SalariesPage() {
                 <SelectContent>
                   <SelectItem value="all">{t("allStatus")}</SelectItem>
                   <SelectItem value="paid">{t("paid")}</SelectItem>
-                  <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
+                  <SelectItem value="partial">{t("partial")}</SelectItem>
                   <SelectItem value="partial">{t("partialPaid")}</SelectItem>
                 </SelectContent>
               </Select>
@@ -653,7 +722,7 @@ export default function SalariesPage() {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-end gap-2">
-                          {salary.status === "unpaid" && (
+                          {salary.status === "partial" && (
                             <Button
                               size="sm"
                               variant="outline"

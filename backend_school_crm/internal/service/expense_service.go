@@ -151,3 +151,30 @@ func (s *ExpenseService) Delete(ctx context.Context, id string) error {
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
 	return err
 }
+
+func (s *ExpenseService) GetByBranchIDAndPeriod(ctx context.Context, branchID string, month int, year int) ([]models.Expense, error) {
+	query := `SELECT id, title, description, amount, category, payment_method, date, branch_id, created_by, notes, created_at
+	         FROM expenses 
+	         WHERE branch_id = $1 
+	         AND EXTRACT(MONTH FROM date) = $2 
+	         AND EXTRACT(YEAR FROM date) = $3 
+	         ORDER BY date DESC`
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var expenses []models.Expense
+	for rows.Next() {
+		var expense models.Expense
+		if err := rows.Scan(&expense.ID, &expense.Title, &expense.Description, &expense.Amount, &expense.Category,
+			&expense.PaymentMethod, &expense.Date, &expense.BranchID, &expense.CreatedBy, &expense.Notes, &expense.CreatedAt); err != nil {
+			return nil, err
+		}
+		expenses = append(expenses, expense)
+	}
+
+	return expenses, rows.Err()
+}

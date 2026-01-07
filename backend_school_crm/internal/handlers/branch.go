@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/service"
 )
 
@@ -14,7 +16,8 @@ func RegisterBranchRoutes(router *gin.RouterGroup, branchService *service.Branch
 	branches.GET("", listBranches(branchService))
 	branches.PUT("/:id", updateBranch(branchService))
 	branches.DELETE("/:id", deleteBranch(branchService))
-
+	// Switch month - Admin only
+	branches.POST("/:id/switch-month", middleware.RoleChecker(userService, models.RoleAdmin), switchMonth(branchService))
 }
 
 func createBranch(branchService *service.BranchService) gin.HandlerFunc {
@@ -88,6 +91,20 @@ func deleteBranch(branchService *service.BranchService) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "branch deleted"})
+	}
+}
+
+func switchMonth(branchService *service.BranchService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+
+		branch, err := branchService.SwitchMonth(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, branch)
 	}
 }
 

@@ -150,6 +150,59 @@ func checkPermission(perms *models.Permission, permission string) bool {
 	}
 }
 
+// RoleChecker checks if user has the required role (Admin only typically)
+func RoleChecker(userService *service.UserService, requiredRoles ...models.UserRole) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, err := GetUserID(c)
+		if err != nil {
+			log.Printf("[RoleChecker] Failed to get user ID: %v", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			c.Abort()
+			return
+		}
+
+		user, err := userService.GetByID(c.Request.Context(), userID)
+		if err != nil || user == nil {
+			log.Printf("[RoleChecker] Failed to fetch user %s: %v", userID, err)
+			c.JSON(http.StatusForbidden, gin.H{"error": "user not found"})
+			c.Abort()
+			return
+		}
+
+		// Check if user has any of the required roles
+		hasRole := false
+		for _, role := range requiredRoles {
+			if user.Role == role {
+				hasRole = true
+				break
+			}
+		}
+
+		if !hasRole {
+			log.Printf("[RoleChecker] User %s (role: %s) denied - requires role: %v", user.ID, user.Role, requiredRoles)
+			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient role permissions"})
+			c.Abort()
+			return
+		}
+
+		log.Printf("[RoleChecker] User %s has role %s, access granted", user.ID, user.Role)
+		c.Next()
+	}
+}
+
+// GetUserRole returns the user's role from the context
+func GetUserRole(c *gin.Context, userService *service.UserService) (models.UserRole, error) {
+	userID, err := GetUserID(c)
+	if err != nil {
+		return "", err
+	}
+	user, err := userService.GetByID(c.Request.Context(), userID)
+	if err != nil || user == nil {
+		return "", err
+	}
+	return user.Role, nil
+}
+
 // getDefaultPermissionsByRole returns role-based permissions as fallback
 func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 	switch role {

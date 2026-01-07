@@ -259,15 +259,24 @@ export default function HomePage() {
         return;
       }
 
+      // Fetch branch data to get current month/year
+      const branch = await api.getBranch(branchId);
+      const branchMonth = branch?.currentMonth || String(new Date().getMonth() + 1).padStart(2, "0");
+      const branchYear = branch?.currentYear || new Date().getFullYear();
+
       console.log(
         "[Dashboard.calculateStats] Fetching data for branch:",
-        branchId
+        branchId,
+        "Month:",
+        branchMonth,
+        "Year:",
+        branchYear
       );
       const students = await api.listStudents(branchId);
       const teachers = await api.listTeachers(branchId);
-      const payments = await api.listPayments({ branchId: branchId });
-      const salaries = await api.listSalaries(branchId);
-      const expenses = await api.listExpenses(branchId);
+      const payments = await api.listPayments({ branchId: branchId, month: branchMonth, year: branchYear });
+      const salaries = await api.listSalaries(branchId, branchMonth, branchYear);
+      const expenses = await api.listExpenses(branchId, branchMonth, branchYear);
       
       // Generate chart with the same data to avoid duplicate fetches
       generateChartData(payments, salaries, expenses);
@@ -297,9 +306,8 @@ export default function HomePage() {
           .reduce((sum, s) => sum + s.amount, 0) +
         expenses.reduce((sum: number, e: any) => sum + e.amount, 0);
 
-      const now = new Date();
-      const currentMonth = now.getMonth() + 1;
-      const currentYear = now.getFullYear();
+      const currentMonth = parseInt(branchMonth);
+      const currentYear = branchYear;
 
       const debtors = activeStudents.filter((s) => {
         const studentPayments = payments.filter(

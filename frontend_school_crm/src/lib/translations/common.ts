@@ -1402,5 +1402,258 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Keyingi",
     en: "Next",
   },
+  current: {
+    "uz-cyrl": "жорий",
+    "uz-latn": "joriy",
+    en: "current",
+  },
+  goToCurrent: {
+    "uz-cyrl": "Жорийга ўтиш",
+    "uz-latn": "Joriyga o'tish",
+    en: "Go to Current",
+  },
+  archive: {
+    "uz-cyrl": "архив",
+    "uz-latn": "arxiv",
+    en: "archive",
+  },
+  thisMonth: {
+    "uz-cyrl": "ушбу ойда",
+    "uz-latn": "ushbu oyda",
+    en: "this month",
+  },
+
+  // Admin Profile
+  adminProfile: {
+    "uz-cyrl": "Админ профили",
+    "uz-latn": "Admin profili",
+    en: "Admin Profile",
+  },
+  viewAdminDetails: {
+    "uz-cyrl": "Админ ҳисобини тафсилотларини кўринг",
+    "uz-latn": "Admin hisobini tafsilo­tlarini ko'ring",
+    en: "View and manage admin account details",
+  },
+  contactInformation: {
+    "uz-cyrl": "Алоқа маълумотлари",
+    "uz-latn": "Aloqa ma'lumotlari",
+    en: "Contact Information",
+  },
+  emailAddress: {
+    "uz-cyrl": "Электрон почта манзили",
+    "uz-latn": "Elektron pochta manzili",
+    en: "Email Address",
+  },
+  phoneNumber: {
+    "uz-cyrl": "Телефон рақами",
+    "uz-latn": "Telefon raqami",
+    en: "Phone Number",
+  },
+  accountStatus: {
+    "uz-cyrl": "Ҳисоб ҳолати",
+    "uz-latn": "Hisob holati",
+    en: "Account Status",
+  },
+  accountDetails: {
+    "uz-cyrl": "Ҳисоб тафсилотлари",
+    "uz-latn": "Hisob tafsilo­tlari",
+    en: "Account Details",
+  },
+  userId: {
+    "uz-cyrl": "Фойдаланувчи ID",
+    "uz-latn": "Foydalanuvchi ID",
+    en: "User ID",
+  },
+  createdDate: {
+    "uz-cyrl": "Яратилган сана",
+    "uz-latn": "Yaratilgan sana",
+    en: "Created Date",
+  },
+  lastUpdated: {
+    "uz-cyrl": "Охирги янгилашлар",
+    "uz-latn": "Oxirgi yangillashlar",
+    en: "Last Updated",
+  },
+  editProfile: {
+    "uz-cyrl": "Профилни таҳрирлаш",
+    "uz-latn": "Profilni tahrirlash",
+    en: "Edit Profile",
+  },
+  granted: {
+    "uz-cyrl": "Берилган",
+    "uz-latn": "Berilgan",
+    en: "Granted",
+  },
+  canManageUsers: {
+    "uz-cyrl": "Фойдаланувчиларни бошқариш",
+    "uz-latn": "Foydalanuvchilarni boshqarish",
+    en: "Manage Users",
+  },
+  canManageBranches: {
+    "uz-cyrl": "Филиаллларни бошқариш",
+    "uz-latn": "Filiallarni boshqarish",
+    en: "Manage Branches",
+  },
+  canManageClasses: {
+    "uz-cyrl": "Синфларни бошқариш",
+    "uz-latn": "Sinflarni boshqarish",
+    en: "Manage Classes",
+  },
+  canManageStudents: {
+    "uz-cyrl": "Ўқувчиларни бошқариш",
+    "uz-latn": "O'quvchilarni boshqarish",
+    en: "Manage Students",
+  },
+  canManageTeachers: {
+    "uz-cyrl": "Ўқитувчиларни бошқариш",
+    "uz-latn": "O'qituvchilarni boshqarish",
+    en: "Manage Teachers",
+  },
+  canViewReports: {
+    "uz-cyrl": "Ҳисоботларни кўриш",
+    "uz-latn": "Hisobotlarni ko'rish",
+    en: "View Reports",
+  },
+  canManagePayments: {
+    "uz-cyrl": "Тўловларни бошқариш",
+    "uz-latn": "To'lovlarni boshqarish",
+    en: "Manage Payments",
+  },
+  canManageSalaries: {
+    "uz-cyrl": "Маошларни бошқариш",
+    "uz-latn": "Maoshlarni boshqarish",
+    en: "Manage Salaries",
+  },
+  canManageExpenses: {
+    "uz-cyrl": "Харажатларни бошқариш",
+    "uz-latn": "Xarajatlarni boshqarish",
+    en: "Manage Expenses",
+  },
+  canManageSettings: {
+    "uz-cyrl": "Созламаларни бошқариш",
+    "uz-latn": "Sozlamalarni boshqarish",
+    en: "Manage Settings",
+  },
+
+  // Profile update translations
+  profileUpdated: {
+    "uz-cyrl": "Профил янгилан",
+    "uz-latn": "Profil yangilandi",
+    en: "Profile Updated",
+  },
+  profileUpdatedDescription: {
+    "uz-cyrl": "Сизнинг профил муваффақиятли янгилан",
+    "uz-latn": "Sizning profil muvaffaqiyatli yangilandi",
+    en: "Your profile has been updated successfully",
+  },
+  passwordUpdated: {
+    "uz-cyrl": "Пароль янгилан",
+    "uz-latn": "Parol yangilandi",
+    en: "Password Updated",
+  },
+  passwordUpdatedDescription: {
+    "uz-cyrl": "Сизнинг пароль муваффақиятли ўзгартирилди",
+    "uz-latn": "Sizning parol muvaffaqiyatli o'zgartirildi",
+    en: "Your password has been changed successfully",
+  },
+  currentPassword: {
+    "uz-cyrl": "Жорий пароль",
+    "uz-latn": "Joriy parol",
+    en: "Current Password",
+  },
+  currentPasswordRequired: {
+    "uz-cyrl": "Жорий пароль керак",
+    "uz-latn": "Joriy parol kerak",
+    en: "Current password is required",
+  },
+  enterCurrentPassword: {
+    "uz-cyrl": "Жорий паролни киритинг",
+    "uz-latn": "Joriy parolni kiritng",
+    en: "Enter current password",
+  },
+  enterFullName: {
+    "uz-cyrl": "Тўлиқ исмни киритинг",
+    "uz-latn": "To'liq ismni kiritng",
+    en: "Enter full name",
+  },
+  fullNameRequired: {
+    "uz-cyrl": "Тўлиқ исм керак",
+    "uz-latn": "To'liq ism kerak",
+    en: "Full name is required",
+  },
+  updateFailed: {
+    "uz-cyrl": "Янгилаш мувафаққиятсиз бўлди",
+    "uz-latn": "Yangilash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to update profile",
+  },
+  updateError: {
+    "uz-cyrl": "Хатолик юзага келди",
+    "uz-latn": "Xatolic yuzaga keldi",
+    en: "An error occurred",
+  },
+  emptyResponse: {
+    "uz-cyrl": "Сервердан бўш жавоб",
+    "uz-latn": "Serverdan bo'sh javob",
+    en: "Empty response from server",
+  },
+  updating: {
+    "uz-cyrl": "Янгиланиёр...",
+    "uz-latn": "Yangilaniyor...",
+    en: "Updating...",
+  },
+  saving: {
+    "uz-cyrl": "Сақланаёр...",
+    "uz-latn": "Saqlanayo...",
+    en: "Saving...",
+  },
+
+  // Payment translations
+  paymentCreated: {
+    "uz-cyrl": "Тўлов яратилди",
+    "uz-latn": "To'lov yaratildi",
+    en: "Payment Created",
+  },
+  paymentCreatedDescription: {
+    "uz-cyrl": "Тўлов муваффақиятли яратилди",
+    "uz-latn": "To'lov muvaffaqiyatli yaratildi",
+    en: "Payment has been created successfully",
+  },
+  paymentUpdated: {
+    "uz-cyrl": "Тўлов янгилан",
+    "uz-latn": "To'lov yangilandi",
+    en: "Payment Updated",
+  },
+  paymentUpdatedDescription: {
+    "uz-cyrl": "Тўлов муваффақиятли янгилан",
+    "uz-latn": "To'lov muvaffaqiyatli yangilandi",
+    en: "Payment has been updated successfully",
+  },
+
+  // Payment form fields
+  additionalNotes: {
+    "uz-cyrl": "Қўшимча эслатмалар",
+    "uz-latn": "Qo'shimcha eslatmalar",
+    en: "Additional Notes",
+  },
+  method: {
+    "uz-cyrl": "Усул",
+    "uz-latn": "Usul",
+    en: "Method",
+  },
+  receipt: {
+    "uz-cyrl": "Квитанция",
+    "uz-latn": "Kvitansiya",
+    en: "Receipt",
+  },
+  updateProfileInfo: {
+    "uz-cyrl": "Профилнингиз маълумотларини янгилаш",
+    "uz-latn": "Profilningiz ma'lumotlarini yangilash",
+    en: "Update your profile information",
+  },
+  changePasswordDescription: {
+    "uz-cyrl": "Жорий паролни ва янги паролни киритинг",
+    "uz-latn": "Joriy parolni va yangi parolni kiritng",
+    en: "Enter your current password and new password",
+  },
   };
 

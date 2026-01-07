@@ -42,7 +42,10 @@ import {
   deleteExpense,
   updateExpense,
   getUser,
+  getBranch,
+  Branch,
 } from "@/lib/api";
+import MonthYearSelector from "@/components/MonthYearSelector";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -64,6 +67,11 @@ export default function ExpensesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [userCache, setUserCache] = useState<{ [key: string]: string }>({});
+  const [branchData, setBranchData] = useState<Branch | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedYear, setSelectedYear] = useState<number>(0);
+  const currentUser = getCurrentUser();
+  const isAdmin = currentUser?.role === "admin" || currentUser?.role === "branch_admin";
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -135,9 +143,11 @@ export default function ExpensesPage() {
 
   // Refetch when branch changes
   useEffect(() => {
-    const handleBranchChange = () => {
+    const handleBranchChange = async () => {
       setIsLoading(true);
-      setCurrentPage(1); // Reset to first page when branch changes
+      setCurrentPage(1);
+      // Reset selectedMonth to force reload from new branch
+      setSelectedMonth("");
       loadData().finally(() => setIsLoading(false));
     };
 
@@ -147,11 +157,36 @@ export default function ExpensesPage() {
 
   const t = (key: string) => getTranslation(key, language);
 
-  const loadData = async () => {
+  const loadData = async (month?: string, year?: number) => {
     try {
       const branchId = localStorage.getItem("selectedBranchId") || "";
-      const data = await listExpenses(branchId);
-      setExpenses(data);
+      let data: Expense[] = [];
+      
+      // Load branch data to get current month
+      if (branchId) {
+        const branch = await getBranch(branchId);
+        setBranchData(branch);
+        
+        // Use financial month data if available, otherwise fall back to current date
+        const currentMonth = branch.currentFinancialMonth?.month?.toString().padStart(2, '0') || new Date().getMonth().toString().padStart(2, '0');
+        const currentYear = branch.currentFinancialMonth?.year || new Date().getFullYear();
+        
+        // Set selected month to branch's current month if not already set and not provided
+        const targetMonth = month || selectedMonth || currentMonth;
+        const targetYear = year || selectedYear || currentYear;
+        
+        if (!selectedMonth) {
+          setSelectedMonth(currentMonth);
+          setSelectedYear(currentYear);
+        }
+        
+        // Always use the current branch month for filtering
+        const queryMonth = targetMonth;
+        const queryYear = targetYear;
+        
+        data = await listExpenses(branchId, queryMonth, queryYear);
+        setExpenses(data);
+      }
 
       // Fetch user names for all unique creators
       const creatorIds = [
@@ -168,6 +203,12 @@ export default function ExpensesPage() {
         variant: "destructive",
       });
     }
+  };
+
+  const handleMonthChange = (month: string, year: number) => {
+    setSelectedMonth(month);
+    setSelectedYear(year);
+    loadData(month, year);
   };
 
   const getUserName = (userId: string) => {
@@ -338,12 +379,14 @@ export default function ExpensesPage() {
   };
 
   const resetForm = () => {
+    // Set date to today
+    const today = new Date().toISOString().split("T")[0];
     setFormData({
       category: "",
       description: "",
       amount: "",
       paymentMethod: "cash",
-      date: new Date().toISOString().split("T")[0],
+      date: today,
       notes: "",
     });
     setEditingExpense(null);
@@ -498,7 +541,7 @@ export default function ExpensesPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
+        <div className="flex-1">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
             {t("expenses")}
           </h1>
@@ -507,7 +550,23 @@ export default function ExpensesPage() {
           </p>
         </div>
 
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        {isAdmin && branchData && selectedMonth && (
+          <div className="flex-1 flex justify-center">
+            <MonthYearSelector
+              month={selectedMonth}
+              year={selectedYear}
+              onChange={handleMonthChange}
+              currentBranchMonth={branchData.currentFinancialMonth?.month?.toString().padStart(2, '0')}
+              currentBranchYear={branchData.currentFinancialMonth?.year}
+            />
+          </div>
+        )}
+
+        <div className="flex-1 flex justify-end">
+        <Dialog open={isDialogOpen} onOpenChange={(open) => {
+          setIsDialogOpen(open);
+          if (!open) resetForm();
+        }}>
           <DialogTrigger asChild>
             <Button
               className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
@@ -640,6 +699,7 @@ export default function ExpensesPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

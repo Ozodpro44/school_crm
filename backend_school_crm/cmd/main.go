@@ -14,6 +14,7 @@ import (
 	"github.com/school-crm/backend/internal/handlers"
 	"github.com/school-crm/backend/internal/middleware"
 	"github.com/school-crm/backend/internal/service"
+	"github.com/school-crm/backend/internal/utils"
 )
 
 func main() {
@@ -26,6 +27,12 @@ func main() {
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		JWTSecret:   os.Getenv("JWT_SECRET"),
 		Environment: os.Getenv("ENVIRONMENT"),
+		RedisURL:    os.Getenv("REDIS_URL"),
+		SMTPHost:    os.Getenv("SMTP_HOST"),
+		SMTPPort:    os.Getenv("SMTP_PORT"),
+		SMTPUser:    os.Getenv("SMTP_USER"),
+		SMTPPass:    os.Getenv("SMTP_PASS"),
+		SMTPFrom:    os.Getenv("SMTP_FROM"),
 	}
 
 	if cfg.Port == "" {
@@ -53,8 +60,34 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// Initialize Redis (optional but recommended for OTP)
+	var redisClient *utils.RedisClient
+	if cfg.RedisURL != "" {
+		rc, err := utils.NewRedisClient(cfg.RedisURL)
+		if err != nil {
+			log.Printf("Warning: Failed to connect to Redis: %v. OTP features will be disabled.", err)
+		} else {
+			redisClient = rc
+			defer redisClient.Close()
+		}
+	}
+
+	// Initialize Email Sender (optional for password reset)
+	var emailSender *utils.EmailSender
+	if cfg.SMTPHost != "" && cfg.SMTPPort != "" && cfg.SMTPUser != "" && cfg.SMTPPass != "" {
+		emailSender = utils.NewEmailSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom)
+	}
+
 	// Initialize services
 	userService := service.NewUserService(database)
+	
+	// Set Redis and Email clients in UserService
+	if redisClient != nil {
+		userService.SetRedisClient(redisClient)
+	}
+	if emailSender != nil {
+		userService.SetEmailSender(emailSender)
+	}
 	studentService := service.NewStudentService(database)
 	paymentService := service.NewPaymentService(database)
 	classService := service.NewClassService(database)
@@ -83,6 +116,10 @@ func main() {
 	// Public routes
 	router.POST("/api/auth/login", handlers.Login(userService, cfg.JWTSecret))
 	router.POST("/api/auth/register", handlers.Register(userService, cfg.JWTSecret))
+	router.POST("/api/auth/forgot-password", handlers.ForgotPassword(userService))
+	router.POST("/api/auth/verify-otp", handlers.VerifyOTP(userService))
+	router.POST("/api/auth/resend-otp", handlers.ResendOTP(userService))
+	router.POST("/api/auth/reset-password", handlers.ResetPassword(userService))
 
 	// Protected routes
 	protected := router.Group("/api")
@@ -95,7 +132,7 @@ func main() {
 	handlers.RegisterStudentRoutes(protected, studentService, classService, userService)
 
 	// Payments
-	handlers.RegisterPaymentRoutes(protected, paymentService, userService)
+	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService)
 
 	// Classes
 	handlers.RegisterClassRoutes(protected, classService, userService)
@@ -107,10 +144,10 @@ func main() {
 	handlers.RegisterTeacherRoutes(protected, teacherService, userService)
 
 	// Salaries
-	handlers.RegisterSalaryRoutes(protected, salaryService, userService)
+	handlers.RegisterSalaryRoutes(protected, salaryService, branchService, userService)
 
 	// Expenses
-	handlers.RegisterExpenseRoutes(protected, expenseService, userService)
+	handlers.RegisterExpenseRoutes(protected, expenseService, branchService, userService)
 
 	// Reports
 	handlers.RegisterReportRoutes(protected, reportService, userService)

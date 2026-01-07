@@ -235,3 +235,59 @@ func (s *PaymentService) GetPaymentSummary(ctx context.Context, branchID string)
 		},
 	}, nil
 }
+
+func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchID string, month string, year int) (map[string]interface{}, error) {
+	query := `
+	SELECT 
+		SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) as total_paid,
+		SUM(CASE WHEN status = 'unpaid' THEN amount ELSE 0 END) as total_unpaid,
+		SUM(CASE WHEN status = 'partial' THEN amount ELSE 0 END) as total_partial,
+		SUM(CASE WHEN payment_method = 'card' THEN amount ELSE 0 END) as card,
+		SUM(CASE WHEN payment_method = 'cash' THEN amount ELSE 0 END) as cash,
+		SUM(CASE WHEN payment_method = 'bank' THEN amount ELSE 0 END) as bank
+	FROM payments WHERE branch_id = $1 AND month = $2 AND year = $3
+	`
+
+	var totalPaid, totalUnpaid, totalPartial, card, cash, bank sql.NullFloat64
+
+	err := s.db.GetConn().QueryRowContext(ctx, query, branchID, month, year).Scan(&totalPaid, &totalUnpaid, &totalPartial, &card, &cash, &bank)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]interface{}{
+		"totalPaid":    totalPaid.Float64,
+		"totalUnpaid":  totalUnpaid.Float64,
+		"totalPartial": totalPartial.Float64,
+		"byMethod": map[string]float64{
+			"card": card.Float64,
+			"cash": cash.Float64,
+			"bank": bank.Float64,
+		},
+	}, nil
+}
+
+func (s *PaymentService) GetByStudentID(ctx context.Context, studentID string) ([]models.Payment, error) {
+	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
+	         FROM payments p
+	         LEFT JOIN users u ON p.created_by = u.id
+	         WHERE p.student_id = $1 ORDER BY p.year DESC, p.month DESC, p.created_at DESC`
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, studentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var payments []models.Payment
+	for rows.Next() {
+		var payment models.Payment
+		if err := rows.Scan(&payment.ID, &payment.StudentID, &payment.Amount, &payment.Month, &payment.Year,
+			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName); err != nil {
+			return nil, err
+		}
+		payments = append(payments, payment)
+	}
+
+	return payments, rows.Err()
+}

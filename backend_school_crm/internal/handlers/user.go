@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -134,12 +135,16 @@ func updateUser(userService *service.UserService) gin.HandlerFunc {
 			return
 		}
 
+		log.Printf("[updateUser] Updating user %s with data: %+v", id, updates)
+
 		user, err := userService.Update(c.Request.Context(), id, updates)
 		if err != nil {
+			log.Printf("[updateUser] Error updating user: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
+		log.Printf("[updateUser] Successfully updated user %s", id)
 		c.JSON(http.StatusOK, user)
 	}
 }

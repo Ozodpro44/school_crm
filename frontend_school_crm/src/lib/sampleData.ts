@@ -8,12 +8,18 @@ export function initializeSampleData() {
   // Settings are now fetched from backend, not from local storage
 
   // Create sample branches
+  const now = new Date();
+  const currentMonth = String(now.getMonth() + 1).padStart(2, "0");
+  const currentYear = now.getFullYear();
+
   const branch1 = branchesDB.create({
     name: "Марказий филиал",
     address: "Тошкент ш., Чилонзор т., 12-кв, 34-уй",
     phone: "+998 90 123 45 67",
     monthlyPayment: 500000,
     managerIds: [],
+    currentMonth,
+    currentYear,
   });
 
   const branch2 = branchesDB.create({
@@ -22,6 +28,8 @@ export function initializeSampleData() {
     phone: "+998 90 234 56 78",
     monthlyPayment: 450000,
     managerIds: [],
+    currentMonth,
+    currentYear,
   });
 
   // Create sample teachers with branch assignment

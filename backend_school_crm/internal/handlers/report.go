@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
@@ -24,29 +25,48 @@ func RegisterReportRoutes(router *gin.RouterGroup, reportService *service.Report
 func getPaymentReport(reportService *service.ReportService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		branchID := c.Query("branchId")
-		startDateStr := c.Query("startDate")
-		endDateStr := c.Query("endDate")
-		status := c.Query("status")
+		month := c.Query("month")
+		yearStr := c.Query("year")
 		classID := c.Query("classId")
 
-		if branchID == "" || startDateStr == "" || endDateStr == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "branchId, startDate, and endDate are required"})
+		if branchID == "" || month == "" || yearStr == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "branchId, month, and year are required"})
 			return
 		}
 
-		startDate, err := time.Parse("2006-01-02", startDateStr)
+		var year int
+		parsedTime, err := time.Parse("2006", yearStr)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid startDate format (use YYYY-MM-DD)"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid year format"})
 			return
 		}
+		year = parsedTime.Year()
 
-		endDate, err := time.Parse("2006-01-02", endDateStr)
+		// Convert month and year to date range (first day to last day of month)
+		monthInt := 0
+		_, err = time.Parse("01", month)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid endDate format (use YYYY-MM-DD)"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid month format (use MM)"})
+			return
+		}
+		// Parse month manually
+		monthStr := month
+		startDate := time.Date(year, time.Month(0), 1, 0, 0, 0, 0, time.UTC)
+		for i := 1; i <= 12; i++ {
+			if fmt.Sprintf("%02d", i) == monthStr {
+				monthInt = i
+				break
+			}
+		}
+		if monthInt == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid month (use 01-12)"})
 			return
 		}
 
-		items, err := reportService.GetPaymentReport(c.Request.Context(), branchID, startDate, endDate, status, classID)
+		startDate = time.Date(year, time.Month(monthInt), 1, 0, 0, 0, 0, time.UTC)
+		endDate := startDate.AddDate(0, 1, -1)
+
+		items, err := reportService.GetPaymentReport(c.Request.Context(), branchID, startDate, endDate, "", classID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -103,14 +123,12 @@ func getDebtorsReport(reportService *service.ReportService) gin.HandlerFunc {
 		}
 
 		var year int
-		if _, err := time.Parse("2006", yearStr); err != nil {
+		parsedTime, err := time.Parse("2006", yearStr)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid year format"})
 			return
 		}
-		year = int(time.Now().Year())
-		if len(yearStr) == 4 {
-			_, _ = time.Parse("2006", yearStr)
-		}
+		year = parsedTime.Year()
 
 		items, err := reportService.GetDebtorsReport(c.Request.Context(), branchID, month, year, classID)
 		if err != nil {

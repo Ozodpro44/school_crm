@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	// "time"
@@ -48,7 +47,7 @@ func (s *PermissionService) GetByUserID(ctx context.Context, userID string) (*mo
 
 	if err == sql.ErrNoRows {
 		log.Printf("[PermissionService.GetByUserID] No permissions found for user: %s", userID)
-		return nil, errors.New("permissions not found")
+		return nil, nil
 	}
 	if err != nil {
 		log.Printf("[PermissionService.GetByUserID] Database error for user %s: %v", userID, err)

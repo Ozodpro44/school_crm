@@ -37,6 +37,9 @@ import {
   getDebtorsReport,
   getExpensesReport,
   getFinancialSummary,
+  getBranch,
+  listClasses,
+  Branch,
 } from "@/lib/api";
 import { Payment, Salary } from "@/types";
 import { Download, FileText, AlertCircle, CheckCircle } from "lucide-react";
@@ -53,10 +56,9 @@ export default function ReportsPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [reportType, setReportType] = useState<ReportType>("payment");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
   const [classId, setClassId] = useState("all");
-  const [status, setStatus] = useState("all");
+  const [paymentMonth, setPaymentMonth] = useState("");
+  const [paymentYear, setPaymentYear] = useState("");
   const [debtorMonth, setDebtorMonth] = useState("");
   const [debtorYear, setDebtorYear] = useState("");
   const [classes, setClasses] = useState<any[]>([]);
@@ -64,6 +66,7 @@ export default function ReportsPage() {
   const [users, setUsers] = useState<any[]>([]);
   const [reportData, setReportData] = useState<any[]>([]);
   const [summary, setSummary] = useState({ total: 0, count: 0, avg: 0 });
+  const [branchData, setBranchData] = useState<Branch | null>(null);
   const language = useLanguage();
   const t = (key: string) => getTranslation(key, language);
   const canViewReports = hasPermission("canViewReports");
@@ -76,41 +79,67 @@ export default function ReportsPage() {
     }
 
     setIsLoading(true);
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       loadClasses();
       loadStudents();
       loadUsers();
+      await loadBranch();
       setDefaultDates();
       setIsLoading(false);
     }, 300);
     return () => clearTimeout(timer);
   }, [canViewReports, router]);
 
+  // Apply default dates when branch data loads
+  useEffect(() => {
+    if (branchData && !debtorMonth) {
+      console.log("Setting default dates with branchData:", branchData);
+      setDefaultDates();
+    }
+  }, [branchData]);
+
   useEffect(() => {
     generateReport();
-  }, [
-    reportType,
-    startDate,
-    endDate,
-    classId,
-    status,
-    debtorMonth,
-    debtorYear,
-  ]);
+  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear]);
 
   const setDefaultDates = () => {
-    const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    // Use branch's current financial month if available, fallback to current date
+    const currentMonth =
+      branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
+      (new Date().getMonth() + 1).toString().padStart(2, "0");
+    const currentYear =
+      branchData?.currentFinancialMonth?.year || new Date().getFullYear();
 
-    setStartDate(firstDay.toISOString().split("T")[0]);
-    setEndDate(lastDay.toISOString().split("T")[0]);
-    setDebtorMonth((now.getMonth() + 1).toString().padStart(2, "0"));
-    setDebtorYear(now.getFullYear().toString());
+    setPaymentMonth(currentMonth);
+    setPaymentYear(currentYear.toString());
+    setDebtorMonth(currentMonth);
+    setDebtorYear(currentYear.toString());
   };
 
-  const loadClasses = () => {
-    setClasses(classesDB.getAll());
+  const loadBranch = async () => {
+    try {
+      const branchId = localStorage.getItem("selectedBranchId");
+      if (branchId) {
+        const branch = await getBranch(branchId);
+        setBranchData(branch);
+      }
+    } catch (error) {
+      console.error("Failed to load branch data:", error);
+    }
+  };
+
+  const loadClasses = async () => {
+    try {
+      const branchId = localStorage.getItem("selectedBranchId");
+      if (branchId) {
+        const classesData = await listClasses(branchId);
+        setClasses(classesData);
+      }
+    } catch (error) {
+      console.error("Failed to load classes:", error);
+      // Fallback to localStorage
+      setClasses(classesDB.getAll());
+    }
   };
 
   const loadStudents = () => {
@@ -119,6 +148,12 @@ export default function ReportsPage() {
 
   const loadUsers = () => {
     setUsers(usersDB.getAll());
+  };
+
+  const getUserName = (userId: string) => {
+    if (!userId) return "N/A";
+    const user = users.find((u) => u.id === userId);
+    return user?.fullName || userId;
   };
 
   const isAdmin =
@@ -149,25 +184,40 @@ export default function ReportsPage() {
   };
 
   const generateReport = async () => {
-    if (!startDate || !endDate) {
-      setReportData([]);
-      return;
-    }
-
     switch (reportType) {
       case "payment":
-        generatePaymentReport();
+        if (!paymentMonth || !paymentYear) {
+          setReportData([]);
+          return;
+        }
+        await generatePaymentReport();
         break;
       case "salary":
-        generateSalaryReport();
+        if (!paymentMonth || !paymentYear) {
+          setReportData([]);
+          return;
+        }
+        await generateSalaryReport();
         break;
       case "debtors":
+        if (!debtorMonth || !debtorYear) {
+          setReportData([]);
+          return;
+        }
         generateDebtorsReport();
         break;
       case "income":
+        if (!paymentMonth || !paymentYear) {
+          setReportData([]);
+          return;
+        }
         await generateIncomeReport();
         break;
       case "expenses":
+        if (!paymentMonth || !paymentYear) {
+          setReportData([]);
+          return;
+        }
         await generateExpensesReport();
         break;
     }
@@ -187,9 +237,8 @@ export default function ReportsPage() {
 
       const items = await getPaymentReport(
         branchId,
-        startDate,
-        endDate,
-        status,
+        paymentMonth,
+        paymentYear,
         classId
       );
 
@@ -210,7 +259,7 @@ export default function ReportsPage() {
               minute: "2-digit",
             })
           : "N/A",
-        addedBy: item.createdBy || "N/A",
+        addedBy: getUserName(item.createdBy || ""),
       }));
 
       const total = data.reduce((sum, item) => sum + item.amount, 0);
@@ -244,7 +293,20 @@ export default function ReportsPage() {
         return;
       }
 
-      const items = await getSalaryReport(branchId, startDate, endDate, status);
+      // Convert month/year to dates
+      const startYear = parseInt(paymentYear) || new Date().getFullYear();
+      const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
+      const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
+
+      const newStartDate = startDateObj.toISOString().split("T")[0];
+      const newEndDate = endDateObj.toISOString().split("T")[0];
+
+      const items = await getSalaryReport(
+        branchId,
+        newStartDate,
+        newEndDate,
+        ""
+      );
 
       const data = items.map((item) => ({
         id: item.id,
@@ -262,7 +324,7 @@ export default function ReportsPage() {
               minute: "2-digit",
             })
           : "N/A",
-        addedBy: item.createdBy || "N/A",
+        addedBy: getUserName(item.createdBy || ""),
       }));
 
       const total = data.reduce((sum, item) => sum + item.amount, 0);
@@ -301,12 +363,23 @@ export default function ReportsPage() {
         return;
       }
 
+      const yearNum = parseInt(debtorYear, 10);
+
+      console.log("Debtors Report Query Params:", {
+        branchId,
+        debtorMonth,
+        debtorYear,
+        yearNum,
+      });
+
       const items = await getDebtorsReport(
         branchId,
         debtorMonth,
-        Number(debtorYear),
+        yearNum,
         classId === "all" ? undefined : classId
       );
+
+      console.log("Debtors Report Response:", items);
 
       const data = items.map((item) => ({
         id: item.id,
@@ -319,6 +392,8 @@ export default function ReportsPage() {
         dueAmount: item.dueAmount,
         status: item.status,
       }));
+
+      console.log("Processed Debtors Data:", data);
 
       const total = data.reduce((sum, item) => sum + item.dueAmount, 0);
       setSummary({
@@ -352,7 +427,19 @@ export default function ReportsPage() {
         return;
       }
 
-      const expenses = await getExpensesReport(branchId, startDate, endDate);
+      // Convert month/year to dates
+      const startYear = parseInt(paymentYear) || new Date().getFullYear();
+      const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
+      const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
+
+      const newStartDate = startDateObj.toISOString().split("T")[0];
+      const newEndDate = endDateObj.toISOString().split("T")[0];
+
+      const expenses = await getExpensesReport(
+        branchId,
+        newStartDate,
+        newEndDate
+      );
 
       const data = expenses.map((e: any) => {
         return {
@@ -405,9 +492,22 @@ export default function ReportsPage() {
         return;
       }
 
-      const financialSummary = await getFinancialSummary(branchId, startDate, endDate);
+      // Convert month/year to dates
+      const startYear = parseInt(paymentYear) || new Date().getFullYear();
+      const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
+      const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
 
-      const totalExpense = financialSummary.totalSalaries + financialSummary.totalExpenses;
+      const newStartDate = startDateObj.toISOString().split("T")[0];
+      const newEndDate = endDateObj.toISOString().split("T")[0];
+
+      const financialSummary = await getFinancialSummary(
+        branchId,
+        newStartDate,
+        newEndDate
+      );
+
+      const totalExpense =
+        financialSummary.totalSalaries + financialSummary.totalExpenses;
       const profit = financialSummary.totalIncome - totalExpense;
 
       setReportData([
@@ -461,10 +561,11 @@ export default function ReportsPage() {
 
   const downloadReport = () => {
     let csv = "";
+    const periodLabel = `${paymentMonth}/${paymentYear}`;
 
     if (reportType === "income") {
       csv = "Financial Summary Report\n";
-      csv += `Period: ${startDate} to ${endDate}\n\n`;
+      csv += `Period: ${periodLabel}\n\n`;
       csv += "Label,Amount\n";
       reportData.forEach((item) => {
         csv += `${item.label},${item.amount}\n`;
@@ -515,7 +616,7 @@ export default function ReportsPage() {
       }
 
       csv = `${reportType.toUpperCase()} REPORT\n`;
-      csv += `Period: ${startDate} to ${endDate}\n\n`;
+      csv += `Period: ${periodLabel}\n\n`;
       csv += columns.join(",") + "\n";
 
       reportData.forEach((item) => {
@@ -535,7 +636,7 @@ export default function ReportsPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${reportType}-report-${startDate}-to-${endDate}.csv`;
+    a.download = `${reportType}-report-${periodLabel}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -598,27 +699,48 @@ export default function ReportsPage() {
             </div>
 
             {reportType !== "debtors" && (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="startDate">{t("startDate")}</Label>
+              <div className="space-y-2">
+                <Label htmlFor="paymentMonth">{t("month") || "Month"}</Label>
+                <div className="flex gap-2">
+                  <Select value={paymentMonth} onValueChange={setPaymentMonth}>
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="Month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const monthNum = (i + 1).toString().padStart(2, "0");
+                        const monthNames = [
+                          "january",
+                          "february",
+                          "march",
+                          "april",
+                          "may",
+                          "june",
+                          "july",
+                          "august",
+                          "september",
+                          "october",
+                          "november",
+                          "december",
+                        ];
+                        return (
+                          <SelectItem key={monthNum} value={monthNum}>
+                            {t(monthNames[i])}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
                   <Input
-                    id="startDate"
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
+                    type="number"
+                    min="2000"
+                    max="2099"
+                    value={paymentYear}
+                    onChange={(e) => setPaymentYear(e.target.value)}
+                    className="w-20"
                   />
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="endDate">{t("endDate")}</Label>
-                  <Input
-                    id="endDate"
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
-                </div>
-              </>
+              </div>
             )}
 
             {reportType !== "salary" &&
@@ -651,54 +773,48 @@ export default function ReportsPage() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="01">{t("January")}</SelectItem>
-                      <SelectItem value="02">{t("February")}</SelectItem>
-                      <SelectItem value="03">{t("March")}</SelectItem>
-                      <SelectItem value="04">{t("April")}</SelectItem>
-                      <SelectItem value="05">{t("May")}</SelectItem>
-                      <SelectItem value="06">{t("June")}</SelectItem>
-                      <SelectItem value="07">{t("July")}</SelectItem>
-                      <SelectItem value="08">{t("August")}</SelectItem>
-                      <SelectItem value="09">{t("September")}</SelectItem>
-                      <SelectItem value="10">{t("October")}</SelectItem>
-                      <SelectItem value="11">{t("November")}</SelectItem>
-                      <SelectItem value="12">{t("December")}</SelectItem>
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const monthNum = (i + 1).toString().padStart(2, "0");
+                        const monthNames = [
+                          "january",
+                          "february",
+                          "march",
+                          "april",
+                          "may",
+                          "june",
+                          "july",
+                          "august",
+                          "september",
+                          "october",
+                          "november",
+                          "december",
+                        ];
+                        return (
+                          <SelectItem key={monthNum} value={monthNum}>
+                            {t(monthNames[i])}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="debtorYear">{t("year")}</Label>
-                  <Select value={debtorYear} onValueChange={setDebtorYear}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="2022">2022</SelectItem>
-                      <SelectItem value="2023">2023</SelectItem>
-                      <SelectItem value="2024">2024</SelectItem>
-                      <SelectItem value="2025">2025</SelectItem>
-                      <SelectItem value="2026">2026</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    id="debtorYear"
+                    type="number"
+                    min="2000"
+                    max="2099"
+                    value={debtorYear || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      console.log("Debtor year changed to:", val);
+                      setDebtorYear(val);
+                    }}
+                  />
                 </div>
               </>
-            )}
-
-            {reportType !== "debtors" && (
-              <div className="space-y-2">
-                <Label htmlFor="status">{t("status")}</Label>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("allStatus")}</SelectItem>
-                    <SelectItem value="paid">{t("paid")}</SelectItem>
-                    <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             )}
           </div>
 

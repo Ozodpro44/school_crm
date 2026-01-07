@@ -129,3 +129,26 @@ func (s *SalaryService) Delete(ctx context.Context, id string) error {
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
 	return err
 }
+
+func (s *SalaryService) GetByBranchIDAndPeriod(ctx context.Context, branchID string, month string, year int) ([]models.Salary, error) {
+	query := `SELECT id, teacher_id, amount, month, year, payment_method, status, notes, paid_date, branch_id, created_by, created_at
+	         FROM salaries WHERE branch_id = $1 AND month = $2 AND year = $3 ORDER BY created_at DESC`
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var salaries []models.Salary
+	for rows.Next() {
+		var salary models.Salary
+		if err := rows.Scan(&salary.ID, &salary.TeacherID, &salary.Amount, &salary.Month, &salary.Year,
+			&salary.PaymentMethod, &salary.Status, &salary.Notes, &salary.PaidDate, &salary.BranchID, &salary.CreatedBy, &salary.CreatedAt); err != nil {
+			return nil, err
+		}
+		salaries = append(salaries, salary)
+	}
+
+	return salaries, rows.Err()
+}

@@ -16,6 +16,7 @@ export const miscTranslations: Partial<Translation> = {
   pendingPayments: { "uz-cyrl": "Ўтқазиб юборилган тўловлар", "uz-latn": "O'tkázib yuborilgan to'lovlar", en: "Pending Payments" },
   pendingExpenses: { "uz-cyrl": "Ўтқазиб юборилган харажатлар", "uz-latn": "Kutilayotgan xarajatlar", en: "Pending Expenses" },
   studentDebtors: { "uz-cyrl": "Ўқувчи қарздорлари", "uz-latn": "O'quvchi qarzdorlari", en: "Student Debtors" },
+  pendingStudentPayments: { "uz-cyrl": "Ўқувчиларнинг ўтқазиб юборилган тўловлари", "uz-latn": "O'quvchilarning o'tkazib yuborilgan to'lovlari", en: "Students with pending payments" },
   studentsWithUnpaidFees: { "uz-cyrl": "Тўланмаган туй қўшилган ўқувчилар", "uz-latn": "To'lanmagan to'lovlari bor o'quvchilar", en: "Students with unpaid fees" },
   unpaidSalaries: { "uz-cyrl": "Тўланмаган маиш", "uz-latn": "To'lanmagan ish haqi", en: "Unpaid Salaries" },
   teacherSalaryPaymentsDue: { "uz-cyrl": "ўқитувчи маищ тўловлари қўшилиб қолди", "uz-latn": "o'qituvchi ish haqi to'lovlari kutilayotgan", en: "teacher salary payments due" },

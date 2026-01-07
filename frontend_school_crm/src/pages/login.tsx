@@ -16,6 +16,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { login as apiLogin } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
+import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,6 +25,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const language = useLanguage();
   const t = (key: string) => getTranslation(key, language);
 
@@ -110,7 +112,19 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">{t("password")}</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">{t("password")}</Label>
+                {/* Only show forgot password link - will be validated on backend for admin role */}
+                <button
+                  type="button"
+                  onClick={() => setForgotPasswordOpen(true)}
+                  className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium transition-colors"
+                  disabled={loading}
+                  title="Password reset available for admin users only"
+                >
+                  {t("forgotPassword")}
+                </button>
+              </div>
               <div className="relative">
                 <Input
                   id="password"
@@ -168,6 +182,12 @@ export default function LoginPage() {
           </form>
         </CardContent>
       </Card>
+
+      <ForgotPasswordModal
+        open={forgotPasswordOpen}
+        onOpenChange={setForgotPasswordOpen}
+        language={language}
+      />
     </div>
   );
 }
