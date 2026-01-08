@@ -38,7 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { createClass, updateClass, deleteClass, listClasses, listTeachers, listStudents } from "@/lib/api";
+import { createClass, updateClass, deleteClass, listClasses, listTeachers, listStudents, updateStudent } from "@/lib/api";
 
 export default function ClassesPage() {
   const router = useRouter();
