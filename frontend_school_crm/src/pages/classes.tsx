@@ -261,14 +261,29 @@ export default function ClassesPage() {
 
     if (!selectedClassId || selectedStudentIds.length === 0) return;
 
-    selectedStudentIds.forEach((studentId) => {
-      studentsDB.update(studentId, { classId: selectedClassId });
-    });
+    const updatePromises = selectedStudentIds.map((studentId) =>
+      updateStudent(studentId, { classId: selectedClassId })
+    );
 
-    loadData();
-    setIsBulkAddOpen(false);
-    setSelectedClassId("");
-    setSelectedStudentIds([]);
+    Promise.all(updatePromises)
+      .then(() => {
+        loadData();
+        setIsBulkAddOpen(false);
+        setSelectedClassId("");
+        setSelectedStudentIds([]);
+        toast({
+          title: t("success"),
+          description: `${selectedStudentIds.length} ${t("students")} ${t("added")} ${classes.find((c) => c.id === selectedClassId)?.name}`,
+          variant: "success",
+        });
+      })
+      .catch((error) => {
+        toast({
+          title: t("error"),
+          description: error instanceof Error ? error.message : t("errorOccurred"),
+          variant: "destructive",
+        });
+      });
   };
 
   const toggleStudentSelection = (studentId: string) => {
@@ -404,30 +419,41 @@ export default function ClassesPage() {
          ? `${t("moveStudents")} ${studentCount} ${t("students")} "${className}"? ${t("moveToClass")}`
          : `${t("moveStudent")} "${studentName}" "${className}"? ${t("moveToClass")}`,
       onConfirm: () => {
-        draggedStudentIds.forEach((studentId) => {
-          studentsDB.update(studentId, {
-            classId: classId,
-            classConfirmed: true,
-            classSignedDate: new Date().toISOString(),
-          });
-        });
+         const updatePromises = draggedStudentIds.map((studentId) =>
+           updateStudent(studentId, {
+             classId: classId,
+             classConfirmed: true,
+             classSignedDate: new Date().toISOString(),
+           })
+         );
 
-        loadData();
-        setDraggedStudent(null);
-        setDraggedOverClass(null);
-        setDraggedStudentIds([]);
-        setUnassignedSelection([]);
+         Promise.all(updatePromises)
+           .then(() => {
+             loadData();
+             setDraggedStudent(null);
+             setDraggedOverClass(null);
+             setDraggedStudentIds([]);
+             setUnassignedSelection([]);
 
-        toast({
-           title: t("success"),
-           description: isMultiple
-             ? `${studentCount} ${t("students")} ${t("movedAndSigned")} ${className}`
-             : `${studentName} ${t("movedAndSigned")} ${className}`,
-           variant: "success",
-         });
+             toast({
+               title: t("success"),
+               description: isMultiple
+                 ? `${studentCount} ${t("students")} ${t("movedAndSigned")} ${className}`
+                 : `${studentName} ${t("movedAndSigned")} ${className}`,
+               variant: "success",
+             });
 
-        setConfirmDialog({ ...confirmDialog, isOpen: false });
-      },
+             setConfirmDialog({ ...confirmDialog, isOpen: false });
+           })
+           .catch((error) => {
+             toast({
+               title: t("error"),
+               description: error instanceof Error ? error.message : t("errorOccurred"),
+               variant: "destructive",
+             });
+             setConfirmDialog({ ...confirmDialog, isOpen: false });
+           });
+       },
       onCancel: () => {
         setDraggedStudent(null);
         setDraggedOverClass(null);
@@ -935,6 +961,25 @@ export default function ClassesPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Mobile Move Button */}
+              {unassignedSelection.length > 0 && (
+                <div className="mt-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                  <p className="text-sm font-medium text-orange-900 dark:text-orange-100 mb-3">
+                    {unassignedSelection.length} {t("student")} selected
+                  </p>
+                  <Button
+                    onClick={() => {
+                      setSelectedStudentIds(unassignedSelection);
+                      setIsBulkAddOpen(true);
+                    }}
+                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                  >
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    {t("moveToClass")}
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

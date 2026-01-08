@@ -45,6 +45,7 @@ import {
    updateStudent as apiUpdateStudent,
    deleteStudent as apiDeleteStudent,
    listClasses as apiListClasses,
+   createClass as apiCreateClass,
    listBranches as apiListBranches,
    listPayments as apiListPayments,
    getBranch,
@@ -282,15 +283,29 @@ export default function StudentsPage() {
 
           let classId = "";
           if (className) {
-            const classObj = classes.find(
+            let classObj = classes.find(
               (c) => c.name.toLowerCase() === className.toLowerCase()
             );
+            
             if (!classObj) {
-              warnings.push(
-                `Row ${
-                  i + 1
-                }: Class "${className}" not found (student added without class)`
-              );
+              // Try to create the class
+              try {
+                const newClass = await apiCreateClass({
+                  name: className,
+                  branchId: branchId || "",
+                });
+                classId = newClass.id;
+                // Add to classes list so future students in this import can use it
+                classes.push(newClass);
+              } catch (classError) {
+                warnings.push(
+                  `Row ${
+                    i + 1
+                  }: Could not create class "${className}" (student added without class) - ${
+                    classError instanceof Error ? classError.message : "Unknown error"
+                  }`
+                );
+              }
             } else {
               classId = classObj.id;
             }
