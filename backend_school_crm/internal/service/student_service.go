@@ -61,15 +61,23 @@ func (s *StudentService) GetByID(ctx context.Context, id string) (*models.Studen
 	query := `SELECT id, full_name, class_id, phone, parent_phone, monthly_payment, status, branch_id, enrollment_date, left_date, class_signed_date, class_confirmed, created_at, updated_at
 	         FROM students WHERE id = $1`
 
+	var classID *string // Handle NULL class_id
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
-		&student.ID, &student.FullName, &student.ClassID, &student.Phone, &student.ParentPhone, &student.MonthlyPayment,
+		&student.ID, &student.FullName, &classID, &student.Phone, &student.ParentPhone, &student.MonthlyPayment,
 		&student.Status, &student.BranchID, &student.EnrollmentDate, &student.LeftDate, &student.ClassSignedDate, &student.ClassConfirmed, &student.CreatedAt, &student.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
 		return nil, errors.New("student not found")
 	}
-	return student, err
+	if err != nil {
+		return nil, err
+	}
+	
+	if classID != nil {
+		student.ClassID = *classID
+	}
+	return student, nil
 }
 
 func (s *StudentService) GetByBranchID(ctx context.Context, branchID string) ([]models.Student, error) {
@@ -85,9 +93,13 @@ func (s *StudentService) GetByBranchID(ctx context.Context, branchID string) ([]
 	var students []models.Student
 	for rows.Next() {
 		var student models.Student
-		if err := rows.Scan(&student.ID, &student.FullName, &student.ClassID, &student.Phone, &student.ParentPhone, &student.MonthlyPayment,
+		var classID *string // Handle NULL class_id
+		if err := rows.Scan(&student.ID, &student.FullName, &classID, &student.Phone, &student.ParentPhone, &student.MonthlyPayment,
 			&student.Status, &student.BranchID, &student.EnrollmentDate, &student.LeftDate, &student.ClassSignedDate, &student.ClassConfirmed, &student.CreatedAt, &student.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if classID != nil {
+			student.ClassID = *classID
 		}
 		students = append(students, student)
 	}
