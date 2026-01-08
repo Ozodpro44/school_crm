@@ -114,28 +114,7 @@ export default function StudentsPage() {
     status: "active" as StudentStatus,
   });
 
-  useEffect(() => {
-     setIsLoading(true);
-     const timer = setTimeout(async () => {
-       await loadData();
-       setIsLoading(false);
-     }, 300);
-     return () => clearTimeout(timer);
-   }, []);
-
-   // Reload data when branch is switched
-   useEffect(() => {
-     const handleBranchChange = async () => {
-       await loadData();
-     };
-     window.addEventListener("branchChange", handleBranchChange);
-     return () => window.removeEventListener("branchChange", handleBranchChange);
-   }, []);
-
-   // Refetch data when page regains focus
-   useRefetchOnFocus(loadData);
-
-   const t = (key: string) => getTranslation(key, language);
+  const t = (key: string) => getTranslation(key, language);
 
   const loadData = async () => {
     const user = getCurrentUser();
@@ -181,6 +160,27 @@ export default function StudentsPage() {
       setBranchData(null);
     }
   };
+
+  useEffect(() => {
+     setIsLoading(true);
+     const timer = setTimeout(async () => {
+       await loadData();
+       setIsLoading(false);
+     }, 300);
+     return () => clearTimeout(timer);
+   }, []);
+
+   // Reload data when branch is switched
+   useEffect(() => {
+     const handleBranchChange = async () => {
+       await loadData();
+     };
+     window.addEventListener("branchChange", handleBranchChange);
+     return () => window.removeEventListener("branchChange", handleBranchChange);
+   }, []);
+
+   // Refetch data when page regains focus
+   useRefetchOnFocus(loadData);
 
   const canCreateStudents = hasPermission("canCreateStudents");
   const canEditStudents = hasPermission("canEditStudents");
@@ -1546,7 +1546,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
         </Card>
 
         {/* Delete Confirmation Dialog */}
-         <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen} disabled={isDeleteLoading}>
+         <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
            <DialogContent>
              <DialogHeader>
                <DialogTitle>{t("confirmDelete")}</DialogTitle>
@@ -1580,7 +1580,6 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
          <Dialog
            open={bulkDeleteConfirmOpen}
            onOpenChange={setBulkDeleteConfirmOpen}
-           disabled={isBulkDeleteLoading}
          >
            <DialogContent>
              <DialogHeader>
@@ -1617,7 +1616,6 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
          <Dialog
            open={markLeftConfirmOpen}
            onOpenChange={setMarkLeftConfirmOpen}
-           disabled={isMarkLeftLoading}
          >
            <DialogContent>
              <DialogHeader>

@@ -81,24 +81,6 @@ export default function ClassesPage() {
     teacherId: "",
   });
 
-  useEffect(() => {
-    setIsLoading(true);
-    loadData();
-  }, []);
-
-  useEffect(() => {
-    // Listen for branch changes
-    const handleBranchChange = () => {
-      loadData();
-    };
-
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
-
-  // Refetch data when page regains focus
-  useRefetchOnFocus(loadData);
-
   const t = (key: string) => getTranslation(key, language);
 
   const loadData = async () => {
@@ -136,6 +118,24 @@ export default function ClassesPage() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    setIsLoading(true);
+    loadData();
+  }, []);
+
+  useEffect(() => {
+    // Listen for branch changes
+    const handleBranchChange = () => {
+      loadData();
+    };
+
+    window.addEventListener("branchChange", handleBranchChange);
+    return () => window.removeEventListener("branchChange", handleBranchChange);
+  }, []);
+
+  // Refetch data when page regains focus
+  useRefetchOnFocus(loadData);
 
   const canCreateClasses = hasPermission("canCreateClasses");
   const canEditClasses = hasPermission("canEditClasses");

@@ -136,39 +136,6 @@ export default function PaymentsPage() {
   // useAsync hook will manage loading state and show toast on errors
   const { isLoading: asyncLoading, run } = useAsync();
 
-  useEffect(() => {
-    // Set currentPage from URL query params
-    if (router.isReady) {
-      const page = router.query.page
-        ? parseInt(router.query.page as string, 10)
-        : 1;
-      setCurrentPage(Math.max(1, page));
-    }
-  }, [router.isReady, router.query.page]);
-
-  useEffect(() => {
-    // load data with a small delay to keep the skeleton visible briefly
-    run(async () => {
-      await new Promise((r) => setTimeout(r, 300));
-      await loadData();
-    });
-  }, [run]);
-
-  // Reload data when branch changes
-  useEffect(() => {
-    const handleBranchChange = () => {
-      // Reset selectedMonth to force reload from new branch
-      setSelectedMonth("");
-      setCurrentPage(1);
-      loadData();
-    };
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
-
-  // Refetch data when page regains focus
-  useRefetchOnFocus(loadData);
-
   const language = useLanguage();
   const { toast } = useToast();
   const t = (key: string) => getTranslation(key, language);
@@ -253,6 +220,39 @@ export default function PaymentsPage() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Set currentPage from URL query params
+    if (router.isReady) {
+      const page = router.query.page
+        ? parseInt(router.query.page as string, 10)
+        : 1;
+      setCurrentPage(Math.max(1, page));
+    }
+  }, [router.isReady, router.query.page]);
+
+  useEffect(() => {
+    // load data with a small delay to keep the skeleton visible briefly
+    run(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      await loadData();
+    });
+  }, [run]);
+
+  // Reload data when branch changes
+  useEffect(() => {
+    const handleBranchChange = () => {
+      // Reset selectedMonth to force reload from new branch
+      setSelectedMonth("");
+      setCurrentPage(1);
+      loadData();
+    };
+    window.addEventListener("branchChange", handleBranchChange);
+    return () => window.removeEventListener("branchChange", handleBranchChange);
+  }, []);
+
+  // Refetch data when page regains focus
+  useRefetchOnFocus(loadData);
 
   const handleMonthChange = (month: string, year: number) => {
     setSelectedMonth(month);
