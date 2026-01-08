@@ -24,8 +24,8 @@ func NewStudentService(database *db.Database) *StudentService {
 type CreateStudentRequest struct {
 	FullName       string     `json:"fullName" binding:"required"`
 	ClassID        *string    `json:"classId"`
-	Phone          string     `json:"phone" binding:"required"`
-	ParentPhone    string     `json:"parentPhone" binding:"required"`
+	Phone          *string    `json:"phone"`
+	ParentPhone    *string    `json:"parentPhone"`
 	MonthlyPayment float64    `json:"monthlyPayment" binding:"required,gt=0"`
 	Status         string     `json:"status" binding:"required"`
 	BranchID       string     `json:"branchId" binding:"required"`
@@ -38,12 +38,20 @@ func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) 
 		classID = req.ClassID
 	}
 	
+	var phone, parentPhone string
+	if req.Phone != nil {
+		phone = *req.Phone
+	}
+	if req.ParentPhone != nil {
+		parentPhone = *req.ParentPhone
+	}
+	
 	student := &models.Student{
 		ID:             uuid.New().String(),
 		FullName:       req.FullName,
 		ClassID:        "",
-		Phone:          req.Phone,
-		ParentPhone:    req.ParentPhone,
+		Phone:          phone,
+		ParentPhone:    parentPhone,
 		MonthlyPayment: req.MonthlyPayment,
 		Status:         models.StudentStatus(req.Status),
 		BranchID:       req.BranchID,
@@ -59,8 +67,8 @@ func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) 
 	query := `INSERT INTO students (id, full_name, class_id, phone, parent_phone, monthly_payment, status, branch_id, enrollment_date, created_at, updated_at)
 	         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, student.ID, student.FullName, classID, student.Phone,
-		student.ParentPhone, student.MonthlyPayment, student.Status, student.BranchID, student.EnrollmentDate, student.CreatedAt, student.UpdatedAt)
+	_, err := s.db.GetConn().ExecContext(ctx, query, student.ID, student.FullName, classID, phone, parentPhone,
+		student.MonthlyPayment, student.Status, student.BranchID, student.EnrollmentDate, student.CreatedAt, student.UpdatedAt)
 
 	return student, err
 }
