@@ -2,6 +2,9 @@ FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
+# Install git for fetching dependencies
+RUN apk add --no-cache git
+
 COPY go.mod go.sum ./
 RUN go mod download
 
