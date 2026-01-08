@@ -351,7 +351,7 @@ export function isAuthenticated(): boolean {
  */
 export async function forgotPassword(email: string): Promise<{ message: string; email: string }> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/forgot-password`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/forgot-password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -384,7 +384,7 @@ export async function forgotPassword(email: string): Promise<{ message: string; 
  */
 export async function verifyOTP(email: string, otp: string): Promise<{ message: string; resetToken: string; email: string }> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/verify-otp`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/verify-otp`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -417,7 +417,7 @@ export async function verifyOTP(email: string, otp: string): Promise<{ message: 
  */
 export async function resendOTP(email: string): Promise<{ message: string }> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/resend-otp`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/resend-otp`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -450,7 +450,7 @@ export async function resendOTP(email: string): Promise<{ message: string }> {
  */
 export async function resetPassword(email: string, resetToken: string, newPassword: string): Promise<{ message: string }> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/reset-password`, {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/reset-password`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
