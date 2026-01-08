@@ -1,25 +1,25 @@
 package utils
 
 import (
-	"context"
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"strings"
-
-	"github.com/resendlabs/resend-go"
 )
 
 type EmailSender struct {
-	resendClient *resend.Client
-	from         string
+	apiKey string
+	from   string
 }
 
 // NewEmailSender creates a new email sender using Resend API
 func NewEmailSender(apiKey, from string) *EmailSender {
-	client := resend.NewClient(apiKey)
 	return &EmailSender{
-		resendClient: client,
-		from:         from,
+		apiKey: apiKey,
+		from:   from,
 	}
 }
 
@@ -105,22 +105,56 @@ func (es *EmailSender) SendPasswordResetEmail(to, resetToken, resetLink string) 
 
 // sendEmail is a helper function to send email via Resend API
 func (es *EmailSender) sendEmail(to, subject, body string) error {
-	if es.resendClient == nil {
-		return fmt.Errorf("Resend client not initialized")
+	if es.apiKey == "" {
+		return fmt.Errorf("Resend API key not configured")
 	}
 
-	params := &resend.SendEmailRequest{
-		From:    es.from,
-		To:      []string{to},
-		Subject: subject,
-		Html:    body,
+	// Prepare the request payload
+	payload := map[string]interface{}{
+		"from":    es.from,
+		"to":      []string{to},
+		"subject": subject,
+		"html":    body,
 	}
 
-	log.Printf("[EmailSender] Sending email to %s via Resend API", to)
-	_, err := es.resendClient.Send(params)
+	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("[EmailSender] Failed to send email to %s: %v", to, err)
+		log.Printf("[EmailSender] Failed to marshal payload: %v", err)
+		return fmt.Errorf("failed to marshal email payload: %w", err)
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequest("POST", "https://api.resend.com/emails", bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		log.Printf("[EmailSender] Failed to create request: %v", err)
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	// Set headers
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", es.apiKey))
+
+	// Send the request
+	client := &http.Client{}
+	log.Printf("[EmailSender] Sending email to %s via Resend API", to)
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("[EmailSender] Failed to send request: %v", err)
 		return fmt.Errorf("failed to send email: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[EmailSender] Failed to read response: %v", err)
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("[EmailSender] API error (status %d): %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("Resend API error (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
 	log.Printf("[EmailSender] Email sent successfully to %s via Resend API", to)
