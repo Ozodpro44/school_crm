@@ -28,6 +28,17 @@ type CreateClassRequest struct {
 }
 
 func (s *ClassService) Create(ctx context.Context, req *CreateClassRequest) (*models.Class, error) {
+	// Check if a class with the same name already exists in this branch
+	var count int
+	checkQuery := `SELECT COUNT(*) FROM classes WHERE name = $1 AND branch_id = $2`
+	err := s.db.GetConn().QueryRowContext(ctx, checkQuery, req.Name, req.BranchID).Scan(&count)
+	if err != nil {
+		return nil, err
+	}
+	if count > 0 {
+		return nil, errors.New("a class with this name already exists in this branch")
+	}
+
 	class := &models.Class{
 		ID:        uuid.New().String(),
 		Name:      req.Name,
@@ -40,7 +51,7 @@ func (s *ClassService) Create(ctx context.Context, req *CreateClassRequest) (*mo
 	query := `INSERT INTO classes (id, name, teacher_id, branch_id, created_at, updated_at)
 	         VALUES ($1, $2, $3, $4, $5, $6)`
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, class.ID, class.Name, class.TeacherID, class.BranchID, class.CreatedAt, class.UpdatedAt)
+	_, err = s.db.GetConn().ExecContext(ctx, query, class.ID, class.Name, class.TeacherID, class.BranchID, class.CreatedAt, class.UpdatedAt)
 
 	return class, err
 }
@@ -90,6 +101,25 @@ func (s *ClassService) GetByBranchID(ctx context.Context, branchID string) ([]mo
 }
 
 func (s *ClassService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Class, error) {
+	// Get the current class to get branchID
+	currentClass, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// If name is being updated, check for duplicates
+	if newName, exists := updates["name"]; exists {
+		var count int
+		checkQuery := `SELECT COUNT(*) FROM classes WHERE name = $1 AND branch_id = $2 AND id != $3`
+		err := s.db.GetConn().QueryRowContext(ctx, checkQuery, newName, currentClass.BranchID, id).Scan(&count)
+		if err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			return nil, errors.New("a class with this name already exists in this branch")
+		}
+	}
+
 	updates = utils.ConvertKeysToSnakeCase(updates)
 	query := `UPDATE classes SET `
 	args := []interface{}{}
@@ -107,7 +137,7 @@ func (s *ClassService) Update(ctx context.Context, id string, updates map[string
 	query += " WHERE id = $" + strconv.Itoa(argCount)
 	args = append(args, id)
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, args...)
+	_, err = s.db.GetConn().ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -23,7 +23,7 @@ func NewStudentService(database *db.Database) *StudentService {
 
 type CreateStudentRequest struct {
 	FullName       string     `json:"fullName" binding:"required"`
-	ClassID        string     `json:"classId" binding:"required"`
+	ClassID        *string    `json:"classId"`
 	Phone          string     `json:"phone" binding:"required"`
 	ParentPhone    string     `json:"parentPhone" binding:"required"`
 	MonthlyPayment float64    `json:"monthlyPayment" binding:"required,gt=0"`
@@ -33,10 +33,15 @@ type CreateStudentRequest struct {
 }
 
 func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) (*models.Student, error) {
+	var classID *string
+	if req.ClassID != nil && *req.ClassID != "" {
+		classID = req.ClassID
+	}
+	
 	student := &models.Student{
 		ID:             uuid.New().String(),
 		FullName:       req.FullName,
-		ClassID:        req.ClassID,
+		ClassID:        "",
 		Phone:          req.Phone,
 		ParentPhone:    req.ParentPhone,
 		MonthlyPayment: req.MonthlyPayment,
@@ -46,11 +51,15 @@ func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) 
 		CreatedAt:      time.Now().UTC(),
 		UpdatedAt:      time.Now().UTC(),
 	}
+	
+	if classID != nil {
+		student.ClassID = *classID
+	}
 
 	query := `INSERT INTO students (id, full_name, class_id, phone, parent_phone, monthly_payment, status, branch_id, enrollment_date, created_at, updated_at)
 	         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, student.ID, student.FullName, student.ClassID, student.Phone,
+	_, err := s.db.GetConn().ExecContext(ctx, query, student.ID, student.FullName, classID, student.Phone,
 		student.ParentPhone, student.MonthlyPayment, student.Status, student.BranchID, student.EnrollmentDate, student.CreatedAt, student.UpdatedAt)
 
 	return student, err
