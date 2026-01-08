@@ -410,11 +410,13 @@ export default function StudentsPage() {
   };
 
   const downloadTemplate = () => {
-    const template = `Full Name,Class,Phone,Parent Phone,Monthly Payment (optional)
-John Doe,7A,+998901234567,+998901234568,50000
-Jane Smith,8B,+998901234569,+998901234570,55000`;
+    const template = `Full Name,Class,Phone,Parent Phone,Monthly Payment
+John Doe,Class 7A,+998901234567,+998901234568,500000
+Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
-    const blob = new Blob([template], { type: "text/csv" });
+    // Add BOM for UTF-8 encoding to ensure Excel opens correctly
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + template], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
