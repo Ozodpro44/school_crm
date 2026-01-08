@@ -11,7 +11,6 @@ import (
 
 func RegisterSettingsRoutes(router *gin.RouterGroup, branchService *service.BranchService, userService *service.UserService) {
 	settings := router.Group("/settings")
-	// Only check permissions for settings (edit requires explicit permission)
 	settings.GET("", getSettings(branchService))
 	settings.PUT("", middleware.PermissionChecker(userService, "canEditSettings"), updateSettings(branchService))
 }
