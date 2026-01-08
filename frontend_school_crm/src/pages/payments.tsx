@@ -734,6 +734,19 @@ export default function PaymentsPage() {
     startIndex + itemsPerPage
   );
 
+  // Calculate effective status based on actual payment amount vs monthly payment
+  const getEffectivePaymentStatus = (payment: Payment): PaymentStatus => {
+    const student = students.find(s => s.id === payment.studentId);
+    if (!student) return payment.status;
+    
+    // If payment amount >= monthly payment, it's fully paid
+    if (payment.amount >= student.monthlyPayment) {
+      return "paid";
+    }
+    // If payment amount < monthly payment, it's partial
+    return "partial";
+  };
+
   const getStatusColor = (status: PaymentStatus) => {
     switch (status) {
       case "paid":
@@ -1628,8 +1641,8 @@ export default function PaymentsPage() {
                       )}
                     </td>
                     <td className="py-3 px-4">
-                      <Badge className={getStatusColor(payment.status)}>
-                        {getPaymentStatusLabel(payment.status)}
+                      <Badge className={getStatusColor(getEffectivePaymentStatus(payment))}>
+                        {getPaymentStatusLabel(getEffectivePaymentStatus(payment))}
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">

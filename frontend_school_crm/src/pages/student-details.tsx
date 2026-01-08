@@ -196,12 +196,24 @@ export default function StudentDetailsPage() {
     return t(statusMap[status] || status) || status;
   };
 
+  // Calculate effective status based on actual payment amount vs monthly payment
+  const getEffectivePaymentStatus = (payment: any): string => {
+    if (!student) return payment.status;
+    
+    // If payment amount >= monthly payment, it's fully paid
+    if (payment.amount >= student.monthlyPayment) {
+      return "paid";
+    }
+    // If payment amount < monthly payment, it's partial
+    return "partial";
+  };
+
   const totalPaid = payments
-    .filter((p) => p.status === "paid")
+    .filter((p) => getEffectivePaymentStatus(p) === "paid")
     .reduce((sum, p) => sum + p.amount, 0);
 
   const totalPending = payments
-    .filter((p) => p.status === "partial")
+    .filter((p) => getEffectivePaymentStatus(p) === "partial")
     .reduce((sum, p) => sum + p.amount, 0);
 
   const handleEdit = () => {
@@ -633,9 +645,9 @@ export default function StudentDetailsPage() {
                         </td>
                         <td className="py-3 px-4">
                           <Badge
-                            className={getPaymentStatusColor(payment.status)}
+                            className={getPaymentStatusColor(getEffectivePaymentStatus(payment))}
                           >
-                            {getPaymentStatusLabel(payment.status)}
+                            {getPaymentStatusLabel(getEffectivePaymentStatus(payment))}
                           </Badge>
                         </td>
                         <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
