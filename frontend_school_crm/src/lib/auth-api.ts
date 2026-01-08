@@ -359,19 +359,19 @@ export async function forgotPassword(email: string): Promise<{ message: string; 
       body: JSON.stringify({ email }),
     });
 
+    const responseText = await response.text();
+    
     if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = 'Failed to send OTP';
+      let errorMessage = `Error: ${response.status} ${response.statusText}`;
       try {
-        const error = JSON.parse(errorText);
+        const error = JSON.parse(responseText);
         errorMessage = error.error || error.message || errorMessage;
       } catch {
-        errorMessage = errorText || errorMessage;
+        errorMessage = responseText || errorMessage;
       }
       throw new Error(errorMessage);
     }
 
-    const responseText = await response.text();
     return JSON.parse(responseText);
   } catch (error) {
     console.error('Forgot password failed:', error);

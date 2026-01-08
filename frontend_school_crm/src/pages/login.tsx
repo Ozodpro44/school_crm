@@ -166,19 +166,6 @@ export default function LoginPage() {
                 t("signIn")
               )}
             </Button>
-
-            <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg">
-              <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                {t("demoCredentials")}
-              </p>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {t("emailLabel")}{" "}
-                <span className="font-mono">admin@school.com</span>
-              </p>
-              <p className="text-xs text-slate-600 dark:text-slate-400">
-                {t("passwordLabel")} <span className="font-mono">admin123</span>
-              </p>
-            </div>
           </form>
         </CardContent>
       </Card>
