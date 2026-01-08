@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { useAsync } from "@/hooks/use-async";
+import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -164,6 +165,9 @@ export default function PaymentsPage() {
     window.addEventListener("branchChange", handleBranchChange);
     return () => window.removeEventListener("branchChange", handleBranchChange);
   }, []);
+
+  // Refetch data when page regains focus
+  useRefetchOnFocus(loadData);
 
   const language = useLanguage();
   const { toast } = useToast();

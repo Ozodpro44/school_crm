@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -92,6 +93,9 @@ export default function ClassesPage() {
     window.addEventListener("branchChange", handleBranchChange);
     return () => window.removeEventListener("branchChange", handleBranchChange);
   }, []);
+
+  // Refetch data when page regains focus
+  useRefetchOnFocus(loadData);
 
   const t = (key: string) => getTranslation(key, language);
 
