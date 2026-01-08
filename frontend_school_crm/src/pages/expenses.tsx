@@ -123,6 +123,21 @@ export default function ExpensesPage() {
     "Other",
   ];
 
+  const getCategoryTranslationKey = (category: string): string => {
+    const keyMap: Record<string, string> = {
+      "Utilities": "utilities",
+      "Supplies": "supplies",
+      "Maintenance": "maintenance",
+      "Transportation": "transportation",
+      "Equipment": "equipment",
+      "Marketing": "marketing",
+      "Insurance": "insurance",
+      "Rent": "rent",
+      "Other": "other",
+    };
+    return keyMap[category] || category.toLowerCase();
+  };
+
   useEffect(() => {
     // Set currentPage from URL query params
     if (router.isReady) {
@@ -831,8 +846,8 @@ export default function ExpensesPage() {
               <SelectContent>
                 <SelectItem value="all">{t("allCategories")}</SelectItem>
                 {categories.map((category) => (
-                  <SelectItem key={category} value={category}>
-                    {t(category)}
+                    <SelectItem key={category} value={category}>
+                      {t(getCategoryTranslationKey(category))}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -910,7 +925,7 @@ export default function ExpensesPage() {
                       {new Date(expense.date).toLocaleDateString()}
                     </td>
                     <td className="py-3 px-4">
-                      <Badge variant="outline">{t(expense.category)}</Badge>
+                      <Badge variant="outline">{t(getCategoryTranslationKey(expense.category))}</Badge>
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
                       {expense.title}

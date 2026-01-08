@@ -39,4 +39,13 @@ export const settingsTranslations: Partial<Translation> = {
   switchToNextMonth: { "uz-cyrl": "Кейинги ой", "uz-latn": "Keyingi oy", en: "Next Month" },
   monthSwitched: { "uz-cyrl": "Ой ўзгартирилди", "uz-latn": "Oy o'zgartirildi", en: "Month switched" },
   failedToSwitchMonth: { "uz-cyrl": "Ойни ўзгартириб бўлмади", "uz-latn": "Oyni o'zgartirib bo'lmadi", en: "Failed to switch month" },
+  enterBranchName: { "uz-cyrl": "Бўлим номини киритинг", "uz-latn": "Bo'lim nomini kiritng", en: "Enter branch name" },
+  branchPaymentSettings: { "uz-cyrl": "Бўлим тўлов созламалари", "uz-latn": "Bo'lim to'lov sozlamalari", en: "Branch payment settings" },
+  branchInformationTimestamps: { "uz-cyrl": "Бўлим маълумоти ва вақт белгилари", "uz-latn": "Bo'lim ma'lumoti va vaqt belgilari", en: "Branch information and timestamps" },
+  confirmSwitchMonth: { "uz-cyrl": "Ойни ўзгартиришни тасдиқланг", "uz-latn": "Oyni o'zgartirishni tasdiqlanng", en: "Confirm switch month" },
+  switchMonthWarning: { "uz-cyrl": "Ойни ўзгартириш барча маълумотларни қуфл қилади", "uz-latn": "Oyni o'zgartirish barcha ma'lumotlarni quffl qiladi", en: "Switching months will lock all data" },
+  nextMonth: { "uz-cyrl": "Кейинги ой", "uz-latn": "Keyingi oy", en: "Next month" },
+  switchMonthNote: { "uz-cyrl": "Ойни ўзгартириш сўқ жарё эта олмайди", "uz-latn": "Oyni o'zgartirish shuft jarayonni to'xtatib qo'yadi", en: "Switching month will finalize all transactions" },
+  switchMonthNoteManager: { "uz-cyrl": "Ойни ўзгартириш учун админ рухсати керак", "uz-latn": "Oyni o'zgartirish uchun admin ruxsati kerak", en: "Admin permission required to switch month" },
+  confirmSwitch: { "uz-cyrl": "Ўзгартиришни тасдиқланг", "uz-latn": "O'zgartirishni tasdiqlanng", en: "Confirm switch" },
   };
