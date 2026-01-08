@@ -1,30 +1,26 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"net/smtp"
-	"strconv"
+	"os"
 	"strings"
+
+	"github.com/resend/resend-go/v2"
 )
 
 type EmailSender struct {
-	host     string
-	port     int
-	username string
-	password string
-	from     string
+	resendClient *resend.Client
+	from         string
 }
 
-// NewEmailSender creates a new email sender
-func NewEmailSender(smtpHost string, smtpPort string, smtpUser, smtpPass, smtpFrom string) *EmailSender {
-	port, _ := strconv.Atoi(smtpPort)
+// NewEmailSender creates a new email sender using Resend API
+func NewEmailSender(apiKey, from string) *EmailSender {
+	client := resend.NewClient(apiKey)
 	return &EmailSender{
-		host:     smtpHost,
-		port:     port,
-		username: smtpUser,
-		password: smtpPass,
-		from:     smtpFrom,
+		resendClient: client,
+		from:         from,
 	}
 }
 
@@ -108,35 +104,27 @@ func (es *EmailSender) SendPasswordResetEmail(to, resetToken, resetLink string) 
 	return es.sendEmail(to, subject, body)
 }
 
-// sendEmail is a helper function to send email
+// sendEmail is a helper function to send email via Resend API
 func (es *EmailSender) sendEmail(to, subject, body string) error {
-	addr := fmt.Sprintf("%s:%d", es.host, es.port)
-
-	// Create message
-	headers := map[string]string{
-		"From":         es.from,
-		"To":           to,
-		"Subject":      subject,
-		"MIME-Version": "1.0",
-		"Content-Type": "text/html; charset=UTF-8",
+	if es.resendClient == nil {
+		return fmt.Errorf("Resend client not initialized")
 	}
 
-	message := ""
-	for k, v := range headers {
-		message += fmt.Sprintf("%s: %s\r\n", k, v)
+	params := &resend.SendEmailRequest{
+		From:    es.from,
+		To:      []string{to},
+		Subject: subject,
+		Html:    body,
 	}
-	message += "\r\n" + body
 
-	// Use STARTTLS (port 587) - most reliable method across cloud providers
-	auth := smtp.PlainAuth("", es.username, es.password, es.host)
-
-	log.Printf("[EmailSender] Connecting to %s:%d", es.host, es.port)
-	if err := smtp.SendMail(addr, auth, es.from, []string{to}, []byte(message)); err != nil {
+	log.Printf("[EmailSender] Sending email to %s via Resend API", to)
+	_, err := es.resendClient.Emails.Send(context.Background(), params)
+	if err != nil {
 		log.Printf("[EmailSender] Failed to send email to %s: %v", to, err)
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 
-	log.Printf("[EmailSender] Email sent successfully to %s", to)
+	log.Printf("[EmailSender] Email sent successfully to %s via Resend API", to)
 	return nil
 }
 

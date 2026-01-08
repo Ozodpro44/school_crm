@@ -6,9 +6,6 @@ type Config struct {
 	JWTSecret   string
 	Environment string
 	RedisURL    string
-	SMTPHost    string
-	SMTPPort    string
-	SMTPUser    string
-	SMTPPass    string
-	SMTPFrom    string
+	ResendAPIKey string
+	ResendFrom  string
 }

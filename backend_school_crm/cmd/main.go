@@ -28,11 +28,8 @@ func main() {
 		JWTSecret:   os.Getenv("JWT_SECRET"),
 		Environment: os.Getenv("ENVIRONMENT"),
 		RedisURL:    os.Getenv("REDIS_URL"),
-		SMTPHost:    os.Getenv("SMTP_HOST"),
-		SMTPPort:    os.Getenv("SMTP_PORT"),
-		SMTPUser:    os.Getenv("SMTP_USER"),
-		SMTPPass:    os.Getenv("SMTP_PASS"),
-		SMTPFrom:    os.Getenv("SMTP_FROM"),
+		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
+		ResendFrom:  os.Getenv("RESEND_FROM"),
 	}
 
 	if cfg.Port == "" {
@@ -74,8 +71,8 @@ func main() {
 
 	// Initialize Email Sender (optional for password reset)
 	var emailSender *utils.EmailSender
-	if cfg.SMTPHost != "" && cfg.SMTPPort != "" && cfg.SMTPUser != "" && cfg.SMTPPass != "" {
-		emailSender = utils.NewEmailSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom)
+	if cfg.ResendAPIKey != "" && cfg.ResendFrom != "" {
+		emailSender = utils.NewEmailSender(cfg.ResendAPIKey, cfg.ResendFrom)
 	}
 
 	// Initialize services
