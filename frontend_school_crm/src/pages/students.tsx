@@ -84,9 +84,12 @@ export default function StudentsPage() {
   const [bulkChangeClassId, setBulkChangeClassId] = useState<string>("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteStudentId, setDeleteStudentId] = useState<string | null>(null);
+  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [isBulkDeleteLoading, setIsBulkDeleteLoading] = useState(false);
   const [markLeftConfirmOpen, setMarkLeftConfirmOpen] = useState(false);
   const [markLeftStudentId, setMarkLeftStudentId] = useState<string | null>(null);
+  const [isMarkLeftLoading, setIsMarkLeftLoading] = useState(false);
   const itemsPerPage = 10;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const language = useLanguage();
@@ -530,6 +533,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const confirmDelete = async () => {
     if (deleteStudentId) {
+      setIsDeleteLoading(true);
       try {
         await apiDeleteStudent(deleteStudentId);
         await loadData();
@@ -547,6 +551,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           description: "Failed to delete student",
           variant: "destructive",
         });
+      } finally {
+        setIsDeleteLoading(false);
       }
     }
   };
@@ -569,6 +575,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const confirmBulkDelete = async () => {
     const selectedIds = getSelectedIds();
+    setIsBulkDeleteLoading(true);
     try {
       await Promise.all(selectedIds.map((id) => apiDeleteStudent(id)));
       clearSelection();
@@ -587,6 +594,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
         description: "Failed to delete some students",
         variant: "destructive",
       });
+    } finally {
+      setIsBulkDeleteLoading(false);
     }
   };
 
@@ -627,6 +636,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const confirmMarkLeft = async () => {
     if (markLeftStudentId) {
+      setIsMarkLeftLoading(true);
       try {
         await apiUpdateStudent(markLeftStudentId, {
           status: "left",
@@ -647,6 +657,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           description: "Failed to update student status",
           variant: "destructive",
         });
+      } finally {
+        setIsMarkLeftLoading(false);
       }
     }
   };
@@ -1534,95 +1546,111 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
         </Card>
 
         {/* Delete Confirmation Dialog */}
-        <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("confirmDelete")}</DialogTitle>
-            </DialogHeader>
-            <p className="text-slate-600 dark:text-slate-400">
-              {t("confirmDeleteStudent")}
-            </p>
-            <div className="flex justify-end gap-3 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setDeleteConfirmOpen(false);
-                  setDeleteStudentId(null);
-                }}
-              >
-                {t("cancel")}
-              </Button>
-              <Button variant="destructive" onClick={confirmDelete}>
-                {t("delete")}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+         <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen} disabled={isDeleteLoading}>
+           <DialogContent>
+             <DialogHeader>
+               <DialogTitle>{t("confirmDelete")}</DialogTitle>
+             </DialogHeader>
+             <p className="text-slate-600 dark:text-slate-400">
+               {t("confirmDeleteStudent")}
+             </p>
+             <div className="flex justify-end gap-3 pt-4">
+               <Button
+                 variant="outline"
+                 onClick={() => {
+                   setDeleteConfirmOpen(false);
+                   setDeleteStudentId(null);
+                 }}
+                 disabled={isDeleteLoading}
+               >
+                 {t("cancel")}
+               </Button>
+               <Button 
+                 variant="destructive" 
+                 onClick={confirmDelete}
+                 disabled={isDeleteLoading}
+               >
+                 {isDeleteLoading ? "Deleting..." : t("delete")}
+               </Button>
+             </div>
+           </DialogContent>
+         </Dialog>
 
         {/* Bulk Delete Confirmation Dialog */}
-        <Dialog
-          open={bulkDeleteConfirmOpen}
-          onOpenChange={setBulkDeleteConfirmOpen}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("confirmDelete")}</DialogTitle>
-            </DialogHeader>
-            <p className="text-slate-600 dark:text-slate-400">
-              {t("confirmDeleteMultiple")}
-            </p>
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
-              <p className="text-sm text-amber-900 dark:text-amber-100">
-                {getSelectedCount()} {t("students")} {t("willBeDeleted")}
-              </p>
-            </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setBulkDeleteConfirmOpen(false)}
-              >
-                {t("cancel")}
-              </Button>
-              <Button variant="destructive" onClick={confirmBulkDelete}>
-                {t("delete")}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+         <Dialog
+           open={bulkDeleteConfirmOpen}
+           onOpenChange={setBulkDeleteConfirmOpen}
+           disabled={isBulkDeleteLoading}
+         >
+           <DialogContent>
+             <DialogHeader>
+               <DialogTitle>{t("confirmDelete")}</DialogTitle>
+             </DialogHeader>
+             <p className="text-slate-600 dark:text-slate-400">
+               {t("confirmDeleteMultiple")}
+             </p>
+             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+               <p className="text-sm text-amber-900 dark:text-amber-100">
+                 {getSelectedCount()} {t("students")} {t("willBeDeleted")}
+               </p>
+             </div>
+             <div className="flex justify-end gap-3 pt-4">
+               <Button
+                 variant="outline"
+                 onClick={() => setBulkDeleteConfirmOpen(false)}
+                 disabled={isBulkDeleteLoading}
+               >
+                 {t("cancel")}
+               </Button>
+               <Button 
+                 variant="destructive" 
+                 onClick={confirmBulkDelete}
+                 disabled={isBulkDeleteLoading}
+               >
+                 {isBulkDeleteLoading ? "Deleting..." : t("delete")}
+               </Button>
+             </div>
+           </DialogContent>
+         </Dialog>
 
         {/* Mark Left Confirmation Dialog */}
-        <Dialog
-          open={markLeftConfirmOpen}
-          onOpenChange={setMarkLeftConfirmOpen}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t("confirm")}</DialogTitle>
-            </DialogHeader>
-            <p className="text-slate-600 dark:text-slate-400">
-              {t("confirmMarkLeft")}
-            </p>
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-              <p className="text-sm text-blue-900 dark:text-blue-100">
-                {t("willStopPaymentTracking")}
-              </p>
-            </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setMarkLeftConfirmOpen(false);
-                  setMarkLeftStudentId(null);
-                }}
-              >
-                {t("cancel")}
-              </Button>
-              <Button onClick={confirmMarkLeft}>
-                {t("confirm")}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+         <Dialog
+           open={markLeftConfirmOpen}
+           onOpenChange={setMarkLeftConfirmOpen}
+           disabled={isMarkLeftLoading}
+         >
+           <DialogContent>
+             <DialogHeader>
+               <DialogTitle>{t("confirm")}</DialogTitle>
+             </DialogHeader>
+             <p className="text-slate-600 dark:text-slate-400">
+               {t("confirmMarkLeft")}
+             </p>
+             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+               <p className="text-sm text-blue-900 dark:text-blue-100">
+                 {t("willStopPaymentTracking")}
+               </p>
+             </div>
+             <div className="flex justify-end gap-3 pt-4">
+               <Button
+                 variant="outline"
+                 onClick={() => {
+                   setMarkLeftConfirmOpen(false);
+                   setMarkLeftStudentId(null);
+                 }}
+                 disabled={isMarkLeftLoading}
+               >
+                 {t("cancel")}
+               </Button>
+               <Button 
+                 onClick={confirmMarkLeft}
+                 disabled={isMarkLeftLoading}
+               >
+                 {isMarkLeftLoading ? "Updating..." : t("confirm")}
+               </Button>
+             </div>
+           </DialogContent>
+         </Dialog>
       </div>
     
   );
