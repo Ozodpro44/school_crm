@@ -283,7 +283,7 @@ export default function StudentsPage() {
 
           let classId = "";
           if (className) {
-            let classObj = classes.find(
+            const classObj = classes.find(
               (c) => c.name.toLowerCase() === className.toLowerCase()
             );
             
