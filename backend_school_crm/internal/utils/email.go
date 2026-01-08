@@ -4,10 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
-	"github.com/resend/resend-go/v2"
+	"github.com/resendlabs/resend-go"
 )
 
 type EmailSender struct {
@@ -118,7 +117,7 @@ func (es *EmailSender) sendEmail(to, subject, body string) error {
 	}
 
 	log.Printf("[EmailSender] Sending email to %s via Resend API", to)
-	_, err := es.resendClient.Emails.Send(context.Background(), params)
+	_, err := es.resendClient.Send(params)
 	if err != nil {
 		log.Printf("[EmailSender] Failed to send email to %s: %v", to, err)
 		return fmt.Errorf("failed to send email: %w", err)
