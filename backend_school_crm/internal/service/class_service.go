@@ -139,7 +139,7 @@ func (s *ClassService) Delete(ctx context.Context, id string) error {
 	}
 
 	// Commit the transaction
-	return tx.Commit().Err()
+	return tx.Commit()
 }
 
 // loadStudentIDs loads all student IDs for a given class
