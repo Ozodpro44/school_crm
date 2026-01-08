@@ -72,12 +72,9 @@ export default function StudentDetailsPage() {
     if (!id) return;
 
     setIsLoading(true);
-    const timer = setTimeout(() => {
-      loadData();
+    loadData().finally(() => {
       setIsLoading(false);
-    }, 300);
-
-    return () => clearTimeout(timer);
+    });
   }, [id]);
 
   useEffect(() => {
@@ -104,12 +101,26 @@ export default function StudentDetailsPage() {
 
   const loadData = async () => {
     try {
+      // Check if id is available before making API call
+      if (!id) return;
+      
       // Fetch student data from backend
       const studentData = await getStudent(id as string);
       if (studentData) {
         setStudent(studentData);
-        const classData = classesDB.getById(studentData.classId);
-        setClassName(classData?.name || "N/A");
+        
+        // Fetch class name from backend API
+        try {
+          const branchId = localStorage.getItem("selectedBranchId");
+          if (branchId && studentData.classId) {
+            const classesData = await listClasses(branchId);
+            const classData = classesData.find((c: any) => c.id === studentData.classId);
+            setClassName(classData?.name || "N/A");
+          }
+        } catch (error) {
+          console.error("Failed to fetch class name:", error);
+          setClassName("N/A");
+        }
         
         const branchId = localStorage.getItem("selectedBranchId");
         
@@ -149,6 +160,7 @@ export default function StudentDetailsPage() {
         description: "Failed to load student details",
         variant: "destructive",
       });
+      setStudent(null);
     }
   };
 

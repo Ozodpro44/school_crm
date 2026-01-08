@@ -12,9 +12,14 @@ import { toast, useToast } from "@/hooks/use-toast";
 function NetworkStatusHandler() {
   const { dismiss } = useToast();
   const offlineToastIdRef = useRef<string | null>(null);
+  const isOnlineRef = useRef<boolean>(navigator.onLine);
 
   useEffect(() => {
     const handleOnline = () => {
+      // Prevent multiple calls
+      if (isOnlineRef.current) return;
+      isOnlineRef.current = true;
+
       // Dismiss the offline toast if it exists
       if (offlineToastIdRef.current) {
         dismiss(offlineToastIdRef.current);
@@ -35,6 +40,13 @@ function NetworkStatusHandler() {
     };
 
     const handleOffline = () => {
+      // Prevent multiple calls
+      if (!isOnlineRef.current) return;
+      isOnlineRef.current = false;
+
+      // Don't create duplicate toasts
+      if (offlineToastIdRef.current) return;
+
       // Show offline toast
       const offlineToast = toast({
         title: "No Connection",

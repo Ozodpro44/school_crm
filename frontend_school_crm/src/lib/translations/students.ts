@@ -43,4 +43,6 @@ export const studentTranslations: Partial<Translation> = {
   leftDate: { "uz-cyrl": "Кетган сана", "uz-latn": "Ketgan sana", en: "Left Date" },
   partial: { "uz-cyrl": "Қисман", "uz-latn": "Qisман", en: "Partial" },
   studentDetailsUpdated: { "uz-cyrl": "Ўқувчи маълумотлари янгиланди", "uz-latn": "O'quvchi ma'lumotlari yangilandi", en: "Student details updated successfully" },
+  backToStudents: { "uz-cyrl": "Ўқувчиларга қайтиш", "uz-latn": "O'quvchilarga qaytish", en: "Back to Students" },
+  noPayments: { "uz-cyrl": "Ҳеч қандай тўлов йўқ", "uz-latn": "Hech qanday to'lov yo'q", en: "No payments" },
   };

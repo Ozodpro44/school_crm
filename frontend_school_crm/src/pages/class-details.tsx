@@ -108,12 +108,9 @@ export default function ClassDetailsPage() {
     if (!id) return;
 
     setIsLoading(true);
-    const timer = setTimeout(() => {
-      loadData();
+    loadData().finally(() => {
       setIsLoading(false);
-    }, 300);
-
-    return () => clearTimeout(timer);
+    });
   }, [id]);
 
   // Reload data when branch changes
@@ -160,11 +157,14 @@ export default function ClassDetailsPage() {
         } else {
           setTeacherName("No teacher assigned");
         }
-        }
-        } catch (error) {
-        console.error("Failed to load class data:", error);
-        }
-        };
+      } else {
+        setClassData(null);
+      }
+    } catch (error) {
+      console.error("Failed to load class data:", error);
+      setClassData(null);
+    }
+  };
 
   const handleRemoveStudent = (studentId: string) => {
     if (!canEditClasses) {
