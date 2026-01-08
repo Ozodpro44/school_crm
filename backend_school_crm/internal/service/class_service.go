@@ -116,9 +116,30 @@ func (s *ClassService) Update(ctx context.Context, id string, updates map[string
 }
 
 func (s *ClassService) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM classes WHERE id = $1`
-	_, err := s.db.GetConn().ExecContext(ctx, query, id)
-	return err
+	// Start a transaction to ensure consistency
+	tx, err := s.db.GetConn().BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// First, set all students in this class to status "left" instead of deleting them
+	// This preserves student data while removing them from the class
+	updateQuery := `UPDATE students SET status = $1, left_date = $2 WHERE class_id = $3 AND status != $4`
+	_, err = tx.ExecContext(ctx, updateQuery, "left", time.Now().UTC(), id, "left")
+	if err != nil {
+		return err
+	}
+
+	// Now delete the class
+	deleteQuery := `DELETE FROM classes WHERE id = $1`
+	_, err = tx.ExecContext(ctx, deleteQuery, id)
+	if err != nil {
+		return err
+	}
+
+	// Commit the transaction
+	return tx.Commit().Err()
 }
 
 // loadStudentIDs loads all student IDs for a given class
