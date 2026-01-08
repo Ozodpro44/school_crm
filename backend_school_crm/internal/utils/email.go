@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
+	"net"
 	"net/smtp"
 	"strconv"
 	"strings"
@@ -127,14 +129,77 @@ func (es *EmailSender) sendEmail(to, subject, body string) error {
 	}
 	message += "\r\n" + body
 
-	auth := smtp.PlainAuth("", es.username, es.password, es.host)
+	// Use SMTPS (port 465) or STARTTLS (port 587)
+	var err error
+	if es.port == 465 {
+		// SMTPS - TLS from the start
+		err = es.sendMailSMTPS(addr, to, []byte(message))
+	} else {
+		// STARTTLS (port 587) or other
+		auth := smtp.PlainAuth("", es.username, es.password, es.host)
+		err = smtp.SendMail(addr, auth, es.from, []string{to}, []byte(message))
+	}
 
-	if err := smtp.SendMail(addr, auth, es.from, []string{to}, []byte(message)); err != nil {
+	if err != nil {
 		log.Printf("[EmailSender] Failed to send email to %s: %v", to, err)
 		return fmt.Errorf("failed to send email: %w", err)
 	}
 
 	log.Printf("[EmailSender] Email sent successfully to %s", to)
+	return nil
+}
+
+// sendMailSMTPS sends email using SMTPS (TLS from the start on port 465)
+func (es *EmailSender) sendMailSMTPS(addr string, to string, message []byte) error {
+	// Create TLS connection
+	tlsConfig := &tls.Config{
+		ServerName: es.host,
+	}
+
+	conn, err := tls.Dial("tcp", addr, tlsConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect to SMTP server: %w", err)
+	}
+	defer conn.Close()
+
+	// Create SMTP client
+	client, err := smtp.NewClient(conn, es.host)
+	if err != nil {
+		return fmt.Errorf("failed to create SMTP client: %w", err)
+	}
+	defer client.Close()
+
+	// Authenticate
+	auth := smtp.PlainAuth("", es.username, es.password, es.host)
+	if err := client.Auth(auth); err != nil {
+		return fmt.Errorf("failed to authenticate: %w", err)
+	}
+
+	// Send email
+	if err := client.Mail(es.from); err != nil {
+		return fmt.Errorf("failed to set sender: %w", err)
+	}
+
+	if err := client.Rcpt(to); err != nil {
+		return fmt.Errorf("failed to set recipient: %w", err)
+	}
+
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("failed to open data channel: %w", err)
+	}
+
+	_, err = w.Write(message)
+	if err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
+	}
+
+	err = w.Close()
+	if err != nil {
+		return fmt.Errorf("failed to close data channel: %w", err)
+	}
+
+	client.Quit()
 	return nil
 }
 
