@@ -40,6 +40,7 @@ import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { createClass, updateClass, deleteClass, listClasses, listTeachers, listStudents, updateStudent } from "@/lib/api";
+import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function ClassesPage() {
   const router = useRouter();
@@ -483,7 +484,7 @@ export default function ClassesPage() {
   };
 
   const filteredClasses = classes.filter((classData) =>
-    classData.name.toLowerCase().includes(searchTerm.toLowerCase())
+    searchMatchesCrossScript(classData.name, searchTerm)
   );
 
   const unassignedStudents = students.filter(

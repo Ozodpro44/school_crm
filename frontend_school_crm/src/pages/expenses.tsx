@@ -54,6 +54,7 @@ import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DialogFooter } from "@/components/ui/dialog";
+import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function ExpensesPage() {
   const router = useRouter();
@@ -440,8 +441,8 @@ export default function ExpensesPage() {
 
   const filteredExpenses = expenses.filter((expense) => {
     const matchesSearch =
-      expense.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      expense.category.toLowerCase().includes(searchTerm.toLowerCase());
+      searchMatchesCrossScript(expense.title, searchTerm) ||
+      searchMatchesCrossScript(expense.category, searchTerm);
 
     const matchesCategory =
       filterCategory === "all" || expense.category === filterCategory;

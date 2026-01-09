@@ -41,6 +41,7 @@ import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/exportUtils";
 import { listStudents as apiListStudents, listClasses as apiListClasses, listTeachers as apiListTeachers, listPayments as apiListPayments } from "@/lib/api";
 import type { Payment } from "@/lib/api";
+import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function ClassDetailsPage() {
   const router = useRouter();
@@ -339,7 +340,7 @@ export default function ClassDetailsPage() {
 
   const filteredStudents = classStudents.filter(
     (student) =>
-      student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      searchMatchesCrossScript(student.fullName, searchTerm) ||
       student.phone.includes(searchTerm)
   );
 

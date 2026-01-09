@@ -67,6 +67,7 @@ import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { useSettings } from "@/hooks/use-settings";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
+import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function PaymentsPage() {
   const router = useRouter();
@@ -715,9 +716,9 @@ export default function PaymentsPage() {
   };
 
   const filteredPayments = payments.filter((payment) => {
-    const studentName = getStudentName(payment.studentId).toLowerCase();
+    const studentName = getStudentName(payment.studentId);
     const matchesSearch =
-      studentName.includes(searchTerm.toLowerCase()) ||
+      searchMatchesCrossScript(studentName, searchTerm) ||
       (payment.invoiceNumber &&
         payment.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()));
 

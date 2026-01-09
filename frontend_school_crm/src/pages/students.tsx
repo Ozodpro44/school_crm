@@ -60,6 +60,7 @@ import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useSettings } from "@/hooks/use-settings";
+import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function StudentsPage() {
   const router = useRouter();
@@ -687,11 +688,9 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const filteredStudents = students.filter((student) => {
     const matchesSearch =
-      student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      searchMatchesCrossScript(student.fullName, searchTerm) ||
       student.phone.includes(searchTerm) ||
-      getClassName(student.classId)
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase());
+      searchMatchesCrossScript(getClassName(student.classId), searchTerm);
 
     const matchesStatus =
       filterStatus === "all" || student.status === filterStatus;

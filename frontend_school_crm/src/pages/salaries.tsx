@@ -33,6 +33,7 @@ import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { useSettings } from "@/hooks/use-settings";
+import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function SalariesPage() {
     const router = useRouter();
@@ -282,8 +283,8 @@ export default function SalariesPage() {
   };
 
   const filteredSalaries = salaries.filter((salary) => {
-    const teacherName = getTeacherName(salary.teacherId).toLowerCase();
-    const matchesSearch = teacherName.includes(searchTerm.toLowerCase());
+    const teacherName = getTeacherName(salary.teacherId);
+    const matchesSearch = searchMatchesCrossScript(teacherName, searchTerm);
 
     const matchesStatus =
       filterStatus === "all" || salary.status === filterStatus;

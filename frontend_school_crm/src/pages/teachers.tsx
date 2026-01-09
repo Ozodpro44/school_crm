@@ -25,6 +25,7 @@ import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { createTeacher, updateTeacher, deleteTeacher, listTeachers, listClasses } from "@/lib/api";
+import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function TeachersPage() {
   const [isLoading, setIsLoading] = useState(true);
@@ -252,9 +253,9 @@ export default function TeachersPage() {
   };
 
   const filteredTeachers = teachers.filter((teacher) =>
-    teacher.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    searchMatchesCrossScript(teacher.fullName, searchTerm) ||
     teacher.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    teacher.subjects.some((s) => s.toLowerCase().includes(searchTerm.toLowerCase()))
+    teacher.subjects.some((s) => searchMatchesCrossScript(s, searchTerm))
   );
 
   if (isLoading) {
