@@ -366,21 +366,47 @@ export default function PaymentsPage() {
         return;
         }
 
+        // Determine final status: if total will equal monthly payment, mark as "paid"
+        const totalAfterPayment = periodPaidTotal + newAmount;
+        const finalStatus = totalAfterPayment >= monthlyPaymentValue ? "paid" : "partial";
+
         // Create via backend API
       try {
         const student = students.find((s) => s.id === formData.studentId);
+        
+        // Create the new payment
         await apiCreatePayment({
           studentId: formData.studentId,
           amount: newAmount,
           month: formData.month,
           year: parseInt(formData.year),
-          status: formData.status as PaymentStatus,
+          status: finalStatus as PaymentStatus,
           paymentMethod: formData.paymentMethod,
           invoiceNumber,
           notes: formData.notes || undefined,
           paidDate: new Date().toISOString(), // Set paidDate for both "paid" and "partial"
           branchId: student?.branchId || user.branchId || "",
         });
+
+        // If this payment completes the month, update all related partial payments to "paid"
+        if (finalStatus === "paid") {
+          const relatedPartialPayments = payments.filter(
+            (p) =>
+              p.studentId === formData.studentId &&
+              p.month === formData.month &&
+              p.year === parseInt(formData.year) &&
+              p.status === "partial"
+          );
+
+          // Update all partial payments to paid
+          for (const payment of relatedPartialPayments) {
+            try {
+              await apiUpdatePayment(payment.id, { status: "paid" });
+            } catch (error) {
+              console.error(`Failed to update payment ${payment.id}:`, error);
+            }
+          }
+        }
 
         toast({
           title: t("paymentCreated") || "Payment Created",
@@ -793,7 +819,7 @@ export default function PaymentsPage() {
   const totalIncome = payments
     .filter(
       (p) =>
-        p.status === "paid" &&
+        (p.status === "paid" || p.status === "partial") &&
         Number(p.month) === parseInt(selectedMonth) &&
         Number(p.year) === selectedYear
     )

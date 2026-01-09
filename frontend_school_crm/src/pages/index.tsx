@@ -297,7 +297,7 @@ export default function HomePage() {
       const activeStudents = students.filter((s) => s.status === "active");
 
       const totalIncome = payments
-        .filter((p: Payment) => p.status === "paid")
+        .filter((p: Payment) => p.status === "paid" || p.status === "partial")
         .reduce((sum, p) => sum + p.amount, 0);
 
       const totalExpenses = 

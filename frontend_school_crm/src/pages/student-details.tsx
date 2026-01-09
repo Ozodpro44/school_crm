@@ -209,11 +209,11 @@ export default function StudentDetailsPage() {
   };
 
   const totalPaid = payments
-    .filter((p) => getEffectivePaymentStatus(p) === "paid")
+    .filter((p) => getEffectivePaymentStatus(p) === "paid" || getEffectivePaymentStatus(p) === "partial")
     .reduce((sum, p) => sum + p.amount, 0);
 
   const totalPending = payments
-    .filter((p) => getEffectivePaymentStatus(p) === "partial")
+    .filter((p) => getEffectivePaymentStatus(p) === "unpaid")
     .reduce((sum, p) => sum + p.amount, 0);
 
   const handleEdit = () => {
