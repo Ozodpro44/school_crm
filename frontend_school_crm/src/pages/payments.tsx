@@ -229,6 +229,8 @@ export default function PaymentsPage() {
               invoiceNumber: "CONSOLIDATED",
             };
             consolidatedPayments.push(consolidated);
+            // Also add any paid payments separately
+            consolidatedPayments.push(...paidPayments);
           } else {
             // Single or no partial: keep as is
             consolidatedPayments.push(...paymentsForKey);
@@ -509,7 +511,35 @@ export default function PaymentsPage() {
   };
 
   const handleEdit = (payment: Payment) => {
-    // Find the original unconsolidated payment if this is a consolidated one
+    // Check if this is a consolidated payment
+    if (payment.invoiceNumber === "CONSOLIDATED") {
+      // For consolidated payments, find the first individual partial payment to edit
+      const relatedPayments = originalPayments.filter(
+        p => p.studentId === payment.studentId &&
+          p.month === payment.month &&
+          p.year === payment.year &&
+          p.status === "partial"
+      );
+      
+      if (relatedPayments.length > 0) {
+        // Edit the first individual partial payment
+        const paymentToEdit = relatedPayments[0];
+        setEditingPaymentId(paymentToEdit.id);
+        setFormData({
+          studentId: paymentToEdit.studentId,
+          amount: paymentToEdit.amount.toString(),
+          month: paymentToEdit.month,
+          year: paymentToEdit.year.toString(),
+          status: paymentToEdit.status,
+          paymentMethod: paymentToEdit.paymentMethod,
+          notes: paymentToEdit.notes || "",
+        });
+        setIsDialogOpen(true);
+        return;
+      }
+    }
+    
+    // For non-consolidated payments, use the payment directly or find its original
     const originalPayment = originalPayments.find(p => p.id === payment.id) || payment;
     
     setEditingPaymentId(originalPayment.id);
