@@ -74,6 +74,7 @@ export default function PaymentsPage() {
   const { settings } = useSettings();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [originalPayments, setOriginalPayments] = useState<Payment[]>([]);
+  const [consolidatedPaymentMap, setConsolidatedPaymentMap] = useState<Map<string, string[]>>(new Map());
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -217,6 +218,8 @@ export default function PaymentsPage() {
         
         // Consolidate: merge multiple partial payments into one
         const consolidatedPayments: Payment[] = [];
+        const consolidationMap = new Map<string, string[]>();
+        
         paymentsByKey.forEach((paymentsForKey) => {
           const partialPayments = paymentsForKey.filter(p => p.status === "partial");
           const paidPayments = paymentsForKey.filter(p => p.status === "paid");
@@ -229,6 +232,11 @@ export default function PaymentsPage() {
               invoiceNumber: "CONSOLIDATED",
             };
             consolidatedPayments.push(consolidated);
+            // Track which individual payment IDs are part of this consolidation
+            consolidationMap.set(
+              consolidated.id,
+              partialPayments.map(p => p.id)
+            );
             // Also add any paid payments separately
             consolidatedPayments.push(...paidPayments);
           } else {
@@ -238,6 +246,7 @@ export default function PaymentsPage() {
         });
         
         setPayments(consolidatedPayments);
+        setConsolidatedPaymentMap(consolidationMap);
         setStudents(studentsList);
         setClasses(classesList);
       } else {
@@ -466,6 +475,7 @@ export default function PaymentsPage() {
       }
 
       resetForm();
+      setEditingPaymentId(null);
       loadData();
       setIsDialogOpen(false);
       setIsSubmitting(false);
@@ -511,19 +521,14 @@ export default function PaymentsPage() {
   };
 
   const handleEdit = (payment: Payment) => {
-    // Check if this is a consolidated payment
-    if (payment.invoiceNumber === "CONSOLIDATED") {
-      // For consolidated payments, find the first individual partial payment to edit
-      const relatedPayments = originalPayments.filter(
-        p => p.studentId === payment.studentId &&
-          p.month === payment.month &&
-          p.year === payment.year &&
-          p.status === "partial"
-      );
+    // Check if this is a consolidated payment using the map
+    const consolidatedIds = consolidatedPaymentMap.get(payment.id);
+    
+    if (consolidatedIds && consolidatedIds.length > 0) {
+      // For consolidated payments, edit the first individual partial payment
+      const paymentToEdit = originalPayments.find(p => p.id === consolidatedIds[0]);
       
-      if (relatedPayments.length > 0) {
-        // Edit the first individual partial payment
-        const paymentToEdit = relatedPayments[0];
+      if (paymentToEdit) {
         setEditingPaymentId(paymentToEdit.id);
         setFormData({
           studentId: paymentToEdit.studentId,
@@ -1640,7 +1645,11 @@ export default function PaymentsPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
+                    onClick={() => {
+                      setIsDialogOpen(false);
+                      setEditingPaymentId(null);
+                      resetForm();
+                    }}
                     disabled={isSubmitting}
                   >
                     {t("cancel")}
