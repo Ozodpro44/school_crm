@@ -117,6 +117,8 @@ export default function PaymentsPage() {
     remaining: number;
     status: "paid" | "partial" | "none";
   } | null>(null);
+  const [studentSearchTerm, setStudentSearchTerm] = useState("");
+  const [showStudentDropdown, setShowStudentDropdown] = useState(false);
   const [posPreviewData, setPosPreviewData] = useState<{
     payment: Payment;
     student: Student;
@@ -635,6 +637,21 @@ export default function PaymentsPage() {
     return;
   };
 
+  // Close student dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-student-search-container]')) {
+        setShowStudentDropdown(false);
+      }
+    };
+    
+    if (showStudentDropdown) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [showStudentDropdown]);
+
   useEffect(() => {
     // recompute payment summary when student / month / year changes
     const { studentId, month, year } = formData;
@@ -691,6 +708,20 @@ export default function PaymentsPage() {
     if (!student) return "N/A";
     const classData = classes.find((c) => c.id === student.classId);
     return classData?.name || "N/A";
+  };
+
+  const getFilteredStudentsForPayment = () => {
+    return students
+      .filter((s) => s.status === "active")
+      .filter((student) => {
+        const name = student.fullName;
+        const className = getClassName(student.id);
+        return (
+          searchMatchesCrossScript(name, studentSearchTerm) ||
+          searchMatchesCrossScript(className, studentSearchTerm) ||
+          student.phone.includes(studentSearchTerm)
+        );
+      });
   };
 
   const getPaymentMethodIcon = (method: PaymentMethod) => {
@@ -1200,7 +1231,13 @@ export default function PaymentsPage() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={(open) => {
+            setIsDialogOpen(open);
+            if (!open) {
+              setStudentSearchTerm("");
+              setShowStudentDropdown(false);
+            }
+          }}>
             <DialogTrigger asChild>
               <Button
                 className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
@@ -1223,88 +1260,117 @@ export default function PaymentsPage() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="studentId">{t("student")} *</Label>
-                    <Select
-                      value={formData.studentId}
-                      onValueChange={(value) => {
-                        const student = students.find((s) => s.id === value);
-                        const monthly = student?.monthlyPayment || 0;
-                        // set student and optimistic amount
-                        setFormData({
-                          ...formData,
-                          studentId: value,
-                          amount: monthly.toString(),
-                        });
-
-                        // compute payments for selected month/year when available
-                        if (value && formData.month) {
-                          const allPayments = paymentsDB.getAll();
-                          const paidTotal = allPayments
-                            .filter(
-                              (p) =>
-                                p.studentId === value &&
-                                p.month === formData.month &&
-                                p.year === parseInt(formData.year)
-                            )
-                            .reduce((sum, p) => sum + p.amount, 0);
-
-                          if (paidTotal >= monthly) {
-                            setPaymentSummary({
-                              paidTotal,
-                              remaining: 0,
-                              status: "paid",
-                            });
-                            setFormData((prev) => ({
-                              ...prev,
-                              amount: monthly.toString(),
-                              status: "paid",
-                            }));
-                          } else if (paidTotal > 0) {
-                            const remaining = parseFloat(
-                              (monthly - paidTotal).toFixed(2)
-                            );
-                            setPaymentSummary({
-                              paidTotal,
-                              remaining,
-                              status: "partial",
-                            });
-                            setFormData((prev) => ({
-                              ...prev,
-                              amount: remaining.toString(),
-                              status: "partial",
-                            }));
-                          } else {
-                            setPaymentSummary({
-                              paidTotal: 0,
-                              remaining: monthly,
-                              status: "none",
-                            });
-                            setFormData((prev) => ({
-                              ...prev,
-                              amount: monthly.toString(),
-                              status: "partial",
-                            }));
-                          }
-                        } else {
-                          // clear summary if month not selected
-                          setPaymentSummary(null);
+                    <Label htmlFor="studentSearch">{t("student")} *</Label>
+                    <div className="relative" data-student-search-container>
+                      <Input
+                        id="studentSearch"
+                        type="text"
+                        placeholder={t("searchStudent") || "Search student name, class, or phone..."}
+                        value={
+                          studentSearchTerm || 
+                          (formData.studentId 
+                            ? `${getStudentName(formData.studentId)} - ${getClassName(formData.studentId)}`
+                            : "")
                         }
-                      }}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("selectStudent")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {students
-                          .filter((s) => s.status === "active")
-                          .map((student) => (
-                            <SelectItem key={student.id} value={student.id}>
-                              {student.fullName} - {getClassName(student.id)}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
+                        onChange={(e) => {
+                          setStudentSearchTerm(e.target.value);
+                          setShowStudentDropdown(true);
+                        }}
+                        onFocus={() => setShowStudentDropdown(true)}
+                        className="w-full"
+                      />
+                      {showStudentDropdown && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
+                          {getFilteredStudentsForPayment().length > 0 ? (
+                            getFilteredStudentsForPayment().map((student) => (
+                              <button
+                                key={student.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-b-0 flex justify-between items-center"
+                                onClick={() => {
+                                  const monthly = student.monthlyPayment || 0;
+                                  setFormData({
+                                    ...formData,
+                                    studentId: student.id,
+                                    amount: monthly.toString(),
+                                  });
+                                  setStudentSearchTerm("");
+                                  setShowStudentDropdown(false);
+
+                                  // compute payments for selected month/year
+                                  if (formData.month) {
+                                    const paidTotal = payments
+                                      .filter(
+                                        (p) =>
+                                          p.studentId === student.id &&
+                                          p.month === formData.month &&
+                                          p.year === parseInt(formData.year)
+                                      )
+                                      .reduce((sum, p) => sum + p.amount, 0);
+
+                                    if (paidTotal >= monthly) {
+                                      setPaymentSummary({
+                                        paidTotal,
+                                        remaining: 0,
+                                        status: "paid",
+                                      });
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        amount: monthly.toString(),
+                                        status: "paid",
+                                      }));
+                                    } else if (paidTotal > 0) {
+                                      const remaining = parseFloat(
+                                        (monthly - paidTotal).toFixed(2)
+                                      );
+                                      setPaymentSummary({
+                                        paidTotal,
+                                        remaining,
+                                        status: "partial",
+                                      });
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        amount: remaining.toString(),
+                                        status: "partial",
+                                      }));
+                                    } else {
+                                      setPaymentSummary({
+                                        paidTotal: 0,
+                                        remaining: monthly,
+                                        status: "none",
+                                      });
+                                      setFormData((prev) => ({
+                                        ...prev,
+                                        amount: monthly.toString(),
+                                        status: "partial",
+                                      }));
+                                    }
+                                  } else {
+                                    setPaymentSummary(null);
+                                  }
+                                }}
+                              >
+                                <div>
+                                  <div className="font-medium text-sm">{student.fullName}</div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                                    {getClassName(student.id)} • {student.phone}
+                                  </div>
+                                </div>
+                              </button>
+                            ))
+                          ) : studentSearchTerm ? (
+                            <div className="px-3 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
+                              {t("noStudentsFound") || "No students found"}
+                            </div>
+                          ) : (
+                            <div className="px-3 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
+                              {t("typeToSearch") || "Type to search for a student"}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {!formData.studentId && <p className="text-red-500 text-sm mt-1">{t("studentRequired") || "Student is required"}</p>}
                   </div>
 
                   {/* Payment summary for selected student / period */}
