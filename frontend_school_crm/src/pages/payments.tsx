@@ -73,6 +73,7 @@ export default function PaymentsPage() {
   const router = useRouter();
   const { settings } = useSettings();
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [originalPayments, setOriginalPayments] = useState<Payment[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<Class[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -199,7 +200,42 @@ export default function PaymentsPage() {
           apiListStudents(selectedBranchId),
           apiListClasses(selectedBranchId),
         ]);
-        setPayments(paymentsList);
+        
+        // Store original payments for editing
+        setOriginalPayments(paymentsList);
+        
+        // For display, consolidate partial payments by student + month + year
+        const paymentsByKey = new Map<string, Payment[]>();
+        
+        paymentsList.forEach(payment => {
+          const key = `${payment.studentId}-${payment.month}-${payment.year}`;
+          if (!paymentsByKey.has(key)) {
+            paymentsByKey.set(key, []);
+          }
+          paymentsByKey.get(key)!.push(payment);
+        });
+        
+        // Consolidate: merge multiple partial payments into one
+        const consolidatedPayments: Payment[] = [];
+        paymentsByKey.forEach((paymentsForKey) => {
+          const partialPayments = paymentsForKey.filter(p => p.status === "partial");
+          const paidPayments = paymentsForKey.filter(p => p.status === "paid");
+          
+          if (partialPayments.length > 1) {
+            // Multiple partials: consolidate them
+            const consolidated = {
+              ...partialPayments[0],
+              amount: partialPayments.reduce((sum, p) => sum + p.amount, 0),
+              invoiceNumber: "CONSOLIDATED",
+            };
+            consolidatedPayments.push(consolidated);
+          } else {
+            // Single or no partial: keep as is
+            consolidatedPayments.push(...paymentsForKey);
+          }
+        });
+        
+        setPayments(consolidatedPayments);
         setStudents(studentsList);
         setClasses(classesList);
       } else {
@@ -473,15 +509,18 @@ export default function PaymentsPage() {
   };
 
   const handleEdit = (payment: Payment) => {
-    setEditingPaymentId(payment.id);
+    // Find the original unconsolidated payment if this is a consolidated one
+    const originalPayment = originalPayments.find(p => p.id === payment.id) || payment;
+    
+    setEditingPaymentId(originalPayment.id);
     setFormData({
-      studentId: payment.studentId,
-      amount: payment.amount.toString(),
-      month: payment.month,
-      year: payment.year.toString(),
-      status: payment.status,
-      paymentMethod: payment.paymentMethod,
-      notes: payment.notes || "",
+      studentId: originalPayment.studentId,
+      amount: originalPayment.amount.toString(),
+      month: originalPayment.month,
+      year: originalPayment.year.toString(),
+      status: originalPayment.status,
+      paymentMethod: originalPayment.paymentMethod,
+      notes: originalPayment.notes || "",
     });
     setIsDialogOpen(true);
   };
@@ -1159,9 +1198,9 @@ export default function PaymentsPage() {
                     {students.filter(
                       (s) =>
                         s.status === "active" &&
-                        s.fullName
-                          .toLowerCase()
-                          .includes(bulkSearchTerm.toLowerCase())
+                        (searchMatchesCrossScript(s.fullName, bulkSearchTerm) ||
+                          searchMatchesCrossScript(getClassName(s.id), bulkSearchTerm) ||
+                          s.phone.includes(bulkSearchTerm))
                     ).length === 0 ? (
                       <div className="p-8 text-center text-slate-500 dark:text-slate-400">
                         {t("noActiveStudentsFound")}
@@ -1171,9 +1210,9 @@ export default function PaymentsPage() {
                         .filter(
                           (s) =>
                             s.status === "active" &&
-                            s.fullName
-                              .toLowerCase()
-                              .includes(bulkSearchTerm.toLowerCase())
+                            (searchMatchesCrossScript(s.fullName, bulkSearchTerm) ||
+                              searchMatchesCrossScript(getClassName(s.id), bulkSearchTerm) ||
+                              s.phone.includes(bulkSearchTerm))
                         )
                         .map((student) => (
                           <div
