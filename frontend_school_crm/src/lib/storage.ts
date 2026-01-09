@@ -97,7 +97,7 @@ export const settingsDB = {
     // Settings are now fetched from backend via useSettings() hook
     // This is kept for backwards compatibility but should not be used
     return {
-      name: "School CRM",
+      name: "Wonderkids' CRM",
       monthlyPayment: 500000,
       currency: "UZS",
       updatedDate: new Date().toISOString(),

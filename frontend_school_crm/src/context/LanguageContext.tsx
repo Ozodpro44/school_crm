@@ -39,7 +39,7 @@ export function subscribeToLanguageChange(
 
 // Default settings
 const DEFAULT_SETTINGS: Settings = {
-  name: "School CRM",
+  name: "Wonderkids' CRM",
   monthlyPayment: 500000,
   currency: "UZS",
   updatedDate: new Date().toISOString(),

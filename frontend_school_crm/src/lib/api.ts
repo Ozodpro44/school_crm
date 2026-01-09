@@ -1,5 +1,5 @@
 /**
- * API Client for School CRM Backend
+ * API Client for Wonderkids' CRM Backend
  * Complete integration with all Golang backend endpoints
  * Handles all HTTP requests with authentication, error handling, and data marshalling
  */

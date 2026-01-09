@@ -105,7 +105,7 @@ export default function RegisterPage() {
             Create Account
           </CardTitle>
           <CardDescription className="text-center text-base">
-            Sign up to get started with School CRM
+            Sign up to get started with Wonderkids' CRM
           </CardDescription>
         </CardHeader>
         <CardContent>
