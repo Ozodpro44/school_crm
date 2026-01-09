@@ -1764,7 +1764,8 @@ export default function PaymentsPage() {
                           )}`}
                         >
                           {getPaymentMethodIcon(payment.paymentMethod)}
-                          {getPaymentMethodLabel(payment.paymentMethod)}
+                          <span>{getPaymentMethodLabel(payment.paymentMethod)}</span>
+                          <span className="ml-1 font-medium">{formatCurrency(payment.amount)}</span>
                         </Badge>
                       )}
                     </td>

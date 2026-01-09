@@ -736,7 +736,8 @@ export default function SalariesPage() {
                       <td className="py-3 px-4">
                         <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
                           {getPaymentMethodIcon(salary.paymentMethod)}
-                          {t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}
+                          <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
+                          <span className="ml-1 font-medium">{formatCurrency(salary.amount)}</span>
                         </Badge>
                       </td>
                       <td className="py-3 px-4 text-slate-900 dark:text-slate-100">

@@ -953,11 +953,12 @@ export default function ExpensesPage() {
                         )}`}
                       >
                         {getPaymentMethodIcon(expense.paymentMethod)}
-                        {t(
+                        <span>{t(
                           expense.paymentMethod === "bank"
                             ? "bankTransfer"
                             : expense.paymentMethod
-                        )}
+                        )}</span>
+                        <span className="ml-1 font-medium">{formatCurrency(expense.amount)}</span>
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
