@@ -48,4 +48,8 @@ export const paymentTranslations: Partial<Translation> = {
   deletePaymentConfirmation: { "uz-cyrl": "Бу тўловни ўчириб ташламоқчимисиз?", "uz-latn": "Bu to'lovni o'chirib tashlmoqchimisiz?", en: "Are you sure you want to delete this payment?" },
   paymentDeleted: { "uz-cyrl": "Тўлов ўчирилди", "uz-latn": "To'lov o'chirildi", en: "Payment deleted" },
   partialPayment: { "uz-cyrl": "Қисман тўлов", "uz-latn": "Qisman to'lov", en: "Partial Payment" },
+  searchStudent: { "uz-cyrl": "Ўқувчи номи, синф ёки телефон бўйича қидириш...", "uz-latn": "O'quvchi nomi, sinf yoki telefon bo'yicha qidirish...", en: "Search student name, class, or phone..." },
+  studentRequired: { "uz-cyrl": "Ўқувчи танланиши керак", "uz-latn": "O'quvchi tanlanishi kerak", en: "Student is required" },
+  noStudentsFound: { "uz-cyrl": "Ўқувчилар топилмади", "uz-latn": "O'quvchilar topilmadi", en: "No students found" },
+  typeToSearch: { "uz-cyrl": "Қидириш учун ёзинг", "uz-latn": "Qidirish uchun yozing", en: "Type to search for a student" },
   };

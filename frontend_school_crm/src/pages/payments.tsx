@@ -1262,23 +1262,58 @@ export default function PaymentsPage() {
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="studentSearch">{t("student")} *</Label>
                     <div className="relative" data-student-search-container>
-                      <Input
-                        id="studentSearch"
-                        type="text"
-                        placeholder={t("searchStudent") || "Search student name, class, or phone..."}
-                        value={
-                          studentSearchTerm || 
-                          (formData.studentId 
-                            ? `${getStudentName(formData.studentId)} - ${getClassName(formData.studentId)}`
-                            : "")
-                        }
-                        onChange={(e) => {
-                          setStudentSearchTerm(e.target.value);
-                          setShowStudentDropdown(true);
-                        }}
-                        onFocus={() => setShowStudentDropdown(true)}
-                        className="w-full"
-                      />
+                      <div className="relative">
+                        <Input
+                          id="studentSearch"
+                          type="text"
+                          placeholder={t("searchStudent") || "Search student name, class, or phone..."}
+                          value={studentSearchTerm}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setStudentSearchTerm(value);
+                            setShowStudentDropdown(true);
+                            // Clear student selection if user manually clears the field
+                            if (value === "" && formData.studentId) {
+                              setFormData({
+                                ...formData,
+                                studentId: "",
+                                amount: "",
+                              });
+                              setPaymentSummary(null);
+                            }
+                          }}
+                          onFocus={() => setShowStudentDropdown(true)}
+                          className="w-full pr-10"
+                        />
+                        {formData.studentId && !studentSearchTerm && (
+                          <div className="absolute inset-0 flex items-center px-3 pointer-events-none bg-slate-50 dark:bg-slate-900/50 rounded-md">
+                            <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                              {getStudentName(formData.studentId)} - {getClassName(formData.studentId)}
+                            </span>
+                          </div>
+                        )}
+                        {(studentSearchTerm || formData.studentId) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStudentSearchTerm("");
+                              setFormData({
+                                ...formData,
+                                studentId: "",
+                                amount: "",
+                              });
+                              setPaymentSummary(null);
+                              setShowStudentDropdown(false);
+                            }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+                            title={t("clear") || "Clear selection"}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
                       {showStudentDropdown && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
                           {getFilteredStudentsForPayment().length > 0 ? (
