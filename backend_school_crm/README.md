@@ -1,6 +1,6 @@
-# School CRM Backend
+# Wonderkids' CRM Backend
 
-A Go-based REST API backend for School CRM system with Gin framework and PostgreSQL.
+A Go-based REST API backend for Wonderkids' CRM system with Gin framework and PostgreSQL.
 
 ## Features
 

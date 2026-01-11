@@ -133,12 +133,15 @@ export default function StudentsPage() {
     
     try {
       if (selectedBranchId) {
-        const [studentsList, classList, paymentsList, branch] = await Promise.all([
+        const [studentsList, classList, paymentsResponse, branch] = await Promise.all([
           apiListStudents(selectedBranchId),
           apiListClasses(selectedBranchId),
           apiListPayments({ branchId: selectedBranchId }),
           getBranch(selectedBranchId),
         ]);
+        const paymentsList = Array.isArray(paymentsResponse) 
+          ? paymentsResponse 
+          : paymentsResponse?.data || [];
         setStudents(studentsList);
         setClasses(classList);
         setPayments(paymentsList);

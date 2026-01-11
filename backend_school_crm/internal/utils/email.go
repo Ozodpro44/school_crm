@@ -53,7 +53,7 @@ func (es *EmailSender) SendOTPEmail(to, otp string) error {
             <p>If you did not request this reset, please ignore this email.</p>
         </div>
         <div class="footer">
-            <p>&copy; 2024 School CRM. All rights reserved.</p>
+            <p>&copy; 2024 Wonderkids' CRM. All rights reserved.</p>
         </div>
     </div>
 </body>
@@ -93,7 +93,7 @@ func (es *EmailSender) SendPasswordResetEmail(to, resetToken, resetLink string) 
             <p>If you did not request this reset, please ignore this email.</p>
         </div>
         <div class="footer">
-            <p>&copy; 2024 School CRM. All rights reserved.</p>
+            <p>&copy; 2024 Wonderkids' CRM. All rights reserved.</p>
         </div>
     </div>
 </body>

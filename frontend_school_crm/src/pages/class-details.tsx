@@ -151,7 +151,10 @@ export default function ClassDetailsPage() {
         setTeachers(teachersList);
         
         // Load payments from API
-        const paymentsList = await apiListPayments({ branchId });
+        const paymentsResponse = await apiListPayments({ branchId });
+        const paymentsList = Array.isArray(paymentsResponse) 
+          ? paymentsResponse 
+          : paymentsResponse?.data || [];
         setPayments(paymentsList);
         
         if (classDataFetched.teacherId) {

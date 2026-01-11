@@ -139,7 +139,10 @@ export default function StudentDetailsPage() {
         } else {
           // Manager: get only current month payments
           if (branchId) {
-            const paymentsData = await listPayments({ branchId });
+            const paymentsResponse = await listPayments({ branchId });
+            const paymentsData = Array.isArray(paymentsResponse) 
+              ? paymentsResponse 
+              : paymentsResponse?.data || [];
             // Filter payments for this student
             const studentPayments = paymentsData.filter((p: Payment) => p.studentId === studentData.id);
             setPayments(studentPayments);

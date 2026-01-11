@@ -20,6 +20,7 @@ func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.Paym
 	payments.PUT("/:id", middleware.PermissionChecker(userService, "canEditPayments"), updatePayment(paymentService, branchService, userService))
 	payments.DELETE("/:id", middleware.PermissionChecker(userService, "canEditPayments"), deletePayment(paymentService, branchService, userService))
 	payments.GET("/branch/:branchId/summary", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentSummary(paymentService, branchService))
+	payments.GET("/payments/:branchId/indicators", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentIndicators(paymentService))
 	// Student payment history - separate endpoint for viewing all payments for a student
 	payments.GET("/student/:studentId/history", middleware.PermissionChecker(userService, "canViewPayments"), getStudentPaymentHistory(paymentService, userService))
 }
@@ -79,6 +80,21 @@ func listPayments(paymentService *service.PaymentService, branchService *service
 		studentID := c.Query("studentId")
 		month := c.Query("month")
 		year := c.Query("year")
+		
+		// Pagination parameters
+		page := c.DefaultQuery("page", "1")
+		limit := c.DefaultQuery("limit", "10")
+		
+		pageInt, _ := strconv.Atoi(page)
+		limitInt, _ := strconv.Atoi(limit)
+		
+		// Validate pagination params
+		if pageInt < 1 {
+			pageInt = 1
+		}
+		if limitInt < 1 || limitInt > 100 {
+			limitInt = 10
+		}
 
 		// Get user role for access control
 		userRole, _ := middleware.GetUserRole(c, userService)
@@ -94,22 +110,22 @@ func listPayments(paymentService *service.PaymentService, branchService *service
 
 			// If month and year are provided and user is admin, allow viewing any month
 			if month != "" && year != "" && isAdmin {
-				payments, err := paymentService.GetByBranchIDAndPeriod(c.Request.Context(), branchID, month, year)
+				result, err := paymentService.GetByBranchIDAndPeriodPaginated(c.Request.Context(), branchID, month, year, pageInt, limitInt)
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 					return
 				}
-				c.JSON(http.StatusOK, payments)
+				c.JSON(http.StatusOK, result)
 				return
 			}
 
 			// For managers or when no specific period requested: return branch's current month only
-			payments, err := paymentService.GetByBranchIDAndPeriod(c.Request.Context(), branchID, currentMonth, strconv.Itoa(currentYear))
+			result, err := paymentService.GetByBranchIDAndPeriodPaginated(c.Request.Context(), branchID, currentMonth, strconv.Itoa(currentYear), pageInt, limitInt)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return
 			}
-			c.JSON(http.StatusOK, payments)
+			c.JSON(http.StatusOK, result)
 			return
 		}
 
@@ -221,6 +237,28 @@ func getPaymentSummary(paymentService *service.PaymentService, branchService *se
 		}
 
 		summary, err := paymentService.GetPaymentSummaryForPeriod(c.Request.Context(), branchID, currentMonth, currentYear)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, summary)
+	}
+}
+
+func getPaymentIndicators(paymentService *service.PaymentService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		branchID := c.Param("branchId")
+		month := c.Query("month")
+		year := c.Query("year")
+
+		currentYear, err := strconv.Atoi(year)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid year"})
+			return
+		}
+
+		summary, err := paymentService.GetPaymentSummaryForPeriod(c.Request.Context(), branchID, month, currentYear)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

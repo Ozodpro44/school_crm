@@ -137,7 +137,10 @@ export default function HomePage() {
           "[Dashboard.generateChartData] Fetching data for branch:",
           branchId
         );
-        paymentsData = await api.listPayments({ branchId: branchId });
+        const paymentsResponse = await api.listPayments({ branchId: branchId });
+        paymentsData = Array.isArray(paymentsResponse) 
+          ? paymentsResponse 
+          : paymentsResponse?.data || [];
         salariesData = await api.listSalaries(branchId);
         expensesData = await api.listExpenses(branchId);
       }
@@ -274,7 +277,10 @@ export default function HomePage() {
       );
       const students = await api.listStudents(branchId);
       const teachers = await api.listTeachers(branchId);
-      const payments = await api.listPayments({ branchId: branchId, month: branchMonth, year: branchYear });
+      const paymentsResponse = await api.listPayments({ branchId: branchId, month: branchMonth, year: branchYear });
+      const payments = Array.isArray(paymentsResponse) 
+        ? paymentsResponse 
+        : paymentsResponse?.data || [];
       const salaries = await api.listSalaries(branchId, branchMonth, branchYear);
       const expenses = await api.listExpenses(branchId, branchMonth, branchYear);
       

@@ -1,12 +1,8 @@
-<<<<<<< HEAD
-# school_crm
-School CRM
-=======
-# School CRM Management System - Complete Integration
+# Wonderkids' CRM Management System - Complete Integration
 
 ## 🎉 Status: Fully Integrated & Production Ready
 
-Your School CRM backend (Golang) is now **completely connected** to your frontend (Next.js + React + TypeScript) with all 49 API endpoints fully mapped, documented, and ready to use.
+Your Wonderkids' CRM backend (Golang) is now **completely connected** to your frontend (Next.js + React + TypeScript) with all 49 API endpoints fully mapped, documented, and ready to use.
 
 ## 📚 Documentation Quick Links
 
@@ -18,286 +14,238 @@ Start with these in order:
 
 Then explore:
 
-4. **[API_USAGE_EXAMPLES.md](API_USAGE_EXAMPLES.md)** - All 49 endpoint examples
-5. **[COMPLETION_SUMMARY.md](COMPLETION_SUMMARY.md)** - Full project summary
-6. **[INTEGRATION_STATUS.txt](INTEGRATION_STATUS.txt)** - Detailed status report
+- **[BACKEND_SETUP.md](BACKEND_SETUP.md)** - Backend architecture & setup
+- **[DEVELOPER_DASHBOARD_SETUP.md](DEVELOPER_DASHBOARD_SETUP.md)** - Developer tools dashboard
+- **[API_ENDPOINTS_SUMMARY.md](API_ENDPOINTS_SUMMARY.md)** - All 49 endpoints explained
+- **[FINANCIAL_MONTH_IMPLEMENTATION_COMPLETE.md](FINANCIAL_MONTH_IMPLEMENTATION_COMPLETE.md)** - Financial period system
+- **[FAVICON_SETUP_GUIDE.md](FAVICON_SETUP_GUIDE.md)** - App icons setup
 
-## 🚀 Quick Start (5 Minutes)
+## 🚀 Quick Start
 
-### Terminal 1: Start Backend
+### 1. Start the Backend
 ```bash
 cd backend_school_crm
-go run cmd/main.go
+go run main.go
+# Backend running on http://localhost:8080
 ```
 
-### Terminal 2: Start Frontend
+### 2. Start the Main Frontend
 ```bash
 cd frontend_school_crm
 npm run dev
+# App running on http://localhost:3000
 ```
 
-### Open Browser
-Navigate to: **http://localhost:3000**
-
-### Login
-- Email: `admin@example.com`
-- Password: `password123`
-
-## 📦 What's Included
-
-✅ **49 Complete API Endpoints**
-- 3 Authentication
-- 4 User Management
-- 5 Student Management
-- 6 Payment Management
-- 5 Class Management
-- 5 Branch Management
-- 5 Teacher Management
-- 5 Salary Management
-- 4 Expense Management
-- 4 Income Management
-- 2 Settings Management
-- 1 Health Check
-
-✅ **Full TypeScript Support**
-- All data types defined
-- Proper interfaces
-- Type-safe functions
-- IntelliSense support
-
-✅ **Complete Documentation**
-- Setup guides
-- Integration guides
-- Code examples
-- API reference
-- Cheat sheets
-- Status reports
-
-## 🔗 How to Use in Components
-
-```typescript
-import {
-  login,
-  listStudents,
-  createPayment,
-  getPaymentSummary,
-} from "@/lib/api";
-
-import type { Student, Payment } from "@/lib/api";
-
-// In your React component
-const [students, setStudents] = useState<Student[]>([]);
-
-useEffect(() => {
-  listStudents("branch-id")
-    .then(setStudents)
-    .catch(console.error);
-}, []);
+### 3. Start the Developer Dashboard (Optional)
+```bash
+cd frontend_for_dev
+npm run dev
+# Dev dashboard on http://localhost:3001
 ```
 
-## 📋 File Structure
+## 📋 What's Included
+
+### Backend (Golang + Gin + PostgreSQL)
+- ✅ User authentication with JWT + OTP
+- ✅ Role-based access control (Admin, Manager, Teacher)
+- ✅ 49 fully typed API endpoints
+- ✅ Student management
+- ✅ Payment tracking
+- ✅ Teacher & salary management
+- ✅ Expense tracking
+- ✅ Financial month management
+- ✅ Branch-based multi-tenant support
+- ✅ Email notifications (Resend integration)
+
+### Frontend (Next.js + React + TypeScript)
+- ✅ Complete UI with 10+ pages
+- ✅ Real-time data fetching
+- ✅ Cyrillic/Latin search support
+- ✅ Multi-language support (English, Uzbek, Russian)
+- ✅ Dark mode support
+- ✅ Responsive design
+- ✅ Payment reports
+- ✅ Data import/export
+- ✅ Settings management
+- ✅ PWA support with app icons
+
+### Developer Dashboard
+- ✅ API Tester
+- ✅ Health monitoring
+- ✅ Database explorer
+- ✅ Test data generator
+- ✅ API documentation
+- ✅ Security tools
+- ✅ Settings manager
+- ✅ User management
+
+## 🔧 Project Structure
 
 ```
 New-Project/
-├── README.md                          ← You are here
-├── START_HERE.md                      ← Setup guide
-├── FRONTEND_BACKEND_CONNECTION.md     ← Integration
-├── API_USAGE_EXAMPLES.md              ← 49 endpoint examples
-├── COMPLETION_SUMMARY.md              ← Project summary
-├── QUICK_REFERENCE.md                 ← Cheat sheet
-├── INTEGRATION_STATUS.txt             ← Detailed report
+├── backend_school_crm/          # Golang backend
+│   ├── cmd/main.go
+│   ├── internal/
+│   │   ├── handlers/            # API routes
+│   │   ├── service/             # Business logic
+│   │   ├── models/              # Data structures
+│   │   ├── middleware/          # Auth, CORS, etc.
+│   │   └── db/                  # Database
+│   ├── migrations/              # SQL migrations
+│   └── README.md
 │
-├── frontend_school_crm/
-│   ├── src/lib/api.ts                 ← ✨ COMPLETE API CLIENT
-│   ├── INTEGRATION_GUIDE.md           ← How to use API
-│   ├── .env.example
-│   └── ... (rest of frontend)
+├── frontend_school_crm/         # Main React app
+│   ├── src/
+│   │   ├── pages/               # Next.js pages
+│   │   ├── components/          # React components
+│   │   ├── lib/                 # Utilities & API
+│   │   ├── hooks/               # Custom hooks
+│   │   └── types/               # TypeScript types
+│   ├── public/                  # Static assets & favicons
+│   └── README.md
 │
-└── backend_school_crm/
-    ├── cmd/main.go
-    ├── API.md
-    ├── README.md
-    └── ... (rest of backend)
+├── frontend_for_dev/            # Developer dashboard
+│   ├── app/                     # Next.js 13+ app router
+│   ├── components/              # Dashboard components
+│   ├── lib/                     # Utilities
+│   └── README.md
+│
+└── Documentation files
+    ├── START_HERE.md
+    ├── API_ENDPOINTS_SUMMARY.md
+    ├── QUICK_REFERENCE.md
+    └── ... (50+ guides)
 ```
 
-## 🎯 Key Features
+## 🔐 Authentication
 
-### Authentication
-- Login with email/password
-- Register new users
-- JWT token management
-- Automatic token persistence
+The system uses JWT tokens with OTP verification:
 
-### User Management
-- 7 user roles
-- User CRUD operations
-- Role-based access
+```typescript
+// Login flow
+1. User enters email/password
+2. System sends OTP via email
+3. User enters OTP
+4. System returns JWT token
+5. Token stored in localStorage
+6. All API calls include Authorization header
+```
 
-### Student Management
-- Create/update/delete students
-- Track enrollment status
-- View student details
+## 📊 Key Features
 
-### Payment System
-- Record payments
-- Track payment status
-- View payment summaries
-- Filter by branch/student/month
+### Financial Month System
+- Strict branch-based financial periods
+- Role-based access control
+- Automatic month closure
+- Financial reporting
 
-### Financial Management
-- Salary tracking
-- Expense management
-- Income recording
-- Summary reports
+### Multi-Language Support
+- English
+- Uzbek
+- Russian
+- Cyrillic/Latin search support
 
-## ✅ What Was Done
+### Payment Management
+- Student payment tracking
+- Partial/full payment status
+- Payment reports
+- Bulk payment operations
 
-### API Client (`src/lib/api.ts`)
-- Completely rewritten with all 49 endpoints
-- Full TypeScript types
-- Proper error handling
-- JWT authentication
-- Request timeouts
-- Automatic serialization
+### User Roles
+- **Admin**: Full system access
+- **Manager**: Branch management
+- **Teacher**: View assigned classes
 
-### Type Definitions
-- User & Authentication types
-- Student, Payment, Class types
-- Branch, Teacher, Salary types
-- Expense, Income, Settings types
-- All request/response interfaces
+## 📈 API Endpoints Summary
 
-### Documentation
-- INTEGRATION_GUIDE.md - Component usage
-- API_USAGE_EXAMPLES.md - All endpoints
-- QUICK_REFERENCE.md - Cheat sheet
-- FRONTEND_BACKEND_CONNECTION.md - Overview
-- COMPLETION_SUMMARY.md - Full summary
-- INTEGRATION_STATUS.txt - Detailed report
+### Authentication (4 endpoints)
+- POST /auth/register
+- POST /auth/login
+- POST /auth/verify-otp
+- GET /auth/profile
 
-## 🔐 Environment Setup
+### Students (7 endpoints)
+- GET /students
+- GET /students/:id
+- POST /students
+- PUT /students/:id
+- DELETE /students/:id
 
-Create `.env.local` in `frontend_school_crm/`:
+### Payments (8 endpoints)
+- GET /payments
+- POST /payments
+- PUT /payments/:id
+- DELETE /payments/:id
 
+### Teachers (6 endpoints)
+- GET /teachers
+- POST /teachers
+- PUT /teachers/:id
+- DELETE /teachers/:id
+
+### Classes (5 endpoints)
+- GET /classes
+- POST /classes
+- PUT /classes/:id
+- DELETE /classes/:id
+
+### Reports (3 endpoints)
+- GET /reports/payments
+- GET /reports/students
+- GET /reports/expenses
+
+### Settings (2 endpoints)
+- GET /settings
+- PUT /settings
+
+**...and 14+ more endpoints** - See [API_ENDPOINTS_SUMMARY.md](API_ENDPOINTS_SUMMARY.md)
+
+## 🌍 Deployment
+
+### Backend (Railway, Heroku, or similar)
+1. Build: `go build -o school-crm-backend`
+2. Set environment variables (DATABASE_URL, JWT_SECRET, etc.)
+3. Run migrations
+4. Start server
+
+### Frontend (Vercel, Netlify)
+1. Connect repository
+2. Set NEXT_PUBLIC_API_URL environment variable
+3. Deploy automatically on push
+
+## 📝 Environment Variables
+
+### Backend
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:8080/api
+DATABASE_URL=postgresql://user:password@localhost:5432/school_crm
+JWT_SECRET=your-secret-key
+REDIS_URL=redis://localhost:6379
+RESEND_API_KEY=your-resend-key
 ```
 
-For production:
-
+### Frontend
 ```env
-NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api
+NEXT_PUBLIC_API_URL=http://localhost:8080
 ```
 
-## 🧪 Testing
+## 🤝 Contributing
 
-Before deployment, verify:
-
-- [ ] Backend starts: `go run cmd/main.go`
-- [ ] Frontend starts: `npm run dev`
-- [ ] Health check: `curl http://localhost:8080/health`
-- [ ] Can login
-- [ ] Can view students
-- [ ] Can create records
-- [ ] Can delete records
-- [ ] Payment summary works
-- [ ] All features functional
-
-## 📖 Documentation Guide
-
-| Document | Purpose |
-|----------|---------|
-| START_HERE.md | Complete setup instructions |
-| FRONTEND_BACKEND_CONNECTION.md | Integration overview |
-| QUICK_REFERENCE.md | Developer cheat sheet |
-| API_USAGE_EXAMPLES.md | All 49 endpoints with examples |
-| COMPLETION_SUMMARY.md | Full project summary |
-| INTEGRATION_STATUS.txt | Detailed status report |
-| INTEGRATION_GUIDE.md | How to use API in components |
-| backend_school_crm/API.md | Backend API reference |
-
-## 🚢 Deployment
-
-### Local (Development)
-```bash
-cd backend_school_crm && go run cmd/main.go
-cd frontend_school_crm && npm run dev
-```
-
-### Docker
-```bash
-cd backend_school_crm
-docker build -t school-crm:latest .
-docker-compose up
-```
-
-### Cloud
-- Deploy backend to App Engine / EC2
-- Deploy frontend to Vercel / S3
-- Use managed database (RDS / Cloud SQL)
-
-See `backend_school_crm/README.md` for detailed deployment instructions.
-
-## 🆘 Troubleshooting
-
-**Backend won't start**
-- Check port 8080 is free: `netstat -an | grep 8080`
-- Check Go installed: `go version`
-- Check PostgreSQL running
-
-**Frontend can't connect**
-- Check `.env.local` API_URL
-- Verify backend health: `curl http://localhost:8080/health`
-- Check browser console for errors
-
-**Login fails**
-- Create test user with: `source backend_school_crm/EXAMPLES.sh`
-- Check database connection
-- Verify JWT_SECRET in .env
-
-See [START_HERE.md](START_HERE.md) for more troubleshooting.
+1. Create a feature branch
+2. Make changes
+3. Commit with clear messages
+4. Submit pull request
 
 ## 📞 Support
 
-1. Check relevant documentation file
-2. Review QUICK_REFERENCE.md for syntax
-3. Check API_USAGE_EXAMPLES.md for patterns
-4. Review browser console for errors
-5. Check backend logs
+For issues or questions:
+1. Check the relevant documentation file
+2. Review existing issues
+3. Create a detailed issue report
 
-## 🎓 Learning Path
+## 📄 License
 
-1. Read **START_HERE.md** - understand the project
-2. Review **QUICK_REFERENCE.md** - learn the syntax
-3. Check **API_USAGE_EXAMPLES.md** - see all endpoints
-4. Read **INTEGRATION_GUIDE.md** - learn component usage
-5. Start building!
-
-## 📊 Project Stats
-
-- **49 API Endpoints** - All mapped & documented
-- **13 Database Tables** - Fully normalized
-- **8 Services** - Complete business logic
-- **7 User Roles** - Full access control
-- **100% TypeScript** - Full type safety
-- **100% Documented** - Complete guides
-
-## ✨ Next Steps
-
-1. Review the documentation
-2. Customize pages with API functions
-3. Test all features
-4. Deploy to production
-
-## 🎉 You're Ready!
-
-Everything is connected and documented. Start building your School CRM application!
+All rights reserved © 2024 Wonderkids' CRM
 
 ---
 
-**Status:** ✅ Production Ready
-**Version:** 1.0.0
-**Date:** January 2025
-
-Questions? Check the documentation files above! 📚
->>>>>>> 08bf822 (Initial commit)
+**Everything is connected and documented. Start building with Wonderkids' CRM!** 🎓

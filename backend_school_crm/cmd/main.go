@@ -152,6 +152,9 @@ func main() {
 	// Settings
 	handlers.RegisterSettingsRoutes(protected, branchService, userService)
 
+	// Developer endpoints
+	// handlers.RegisterDeveloperRoutes(protected, database)
+
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Starting server on %s", addr)

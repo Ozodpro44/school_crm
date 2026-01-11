@@ -57,6 +57,7 @@ import {
   listStudents as apiListStudents,
   listClasses as apiListClasses,
   getBranch,
+  getPaymentIndicators,
 } from "@/lib/api";
 import { Branch } from "@/types";
 import MonthYearSelector from "@/components/MonthYearSelector";
@@ -102,7 +103,9 @@ export default function PaymentsPage() {
     paymentMethod: "cash" as PaymentMethod,
   });
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalPayments, setTotalPayments] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [formData, setFormData] = useState({
     studentId: "",
@@ -137,6 +140,12 @@ export default function PaymentsPage() {
     isOpen: false,
     paymentId: null,
   });
+  const [indicators, setIndicators] = useState<{
+    totalPaid?: number;
+    totalUnpaid?: number;
+    totalPartial?: number;
+    byMethod?: { card: number; cash: number; bank: number };
+  } | null>(null);
 
   // useAsync hook will manage loading state and show toast on errors
   const { isLoading: asyncLoading, run } = useAsync();
@@ -192,18 +201,34 @@ export default function PaymentsPage() {
         const queryMonth = month || selectedMonth || currentMonth;
         const queryYear = year || selectedYear || currentYear;
 
-        const [paymentsList, studentsList, classesList] = await Promise.all([
+        const [paymentsResponse, studentsList, classesList, paymentIndicators] = await Promise.all([
           apiListPayments({
             branchId: selectedBranchId,
             month: queryMonth,
             year: queryYear,
+            page: currentPage,
+            limit: itemsPerPage,
           }),
           apiListStudents(selectedBranchId),
           apiListClasses(selectedBranchId),
+          getPaymentIndicators(selectedBranchId, queryMonth, queryYear),
         ]);
+        
+        // Handle both paginated and non-paginated responses
+        let paymentsList: Payment[] = [];
+        if (Array.isArray(paymentsResponse)) {
+          paymentsList = paymentsResponse;
+          setTotalPayments(paymentsResponse.length);
+          setTotalPages(1);
+        } else if (paymentsResponse?.data) {
+          paymentsList = paymentsResponse.data;
+          setTotalPayments(paymentsResponse.total);
+          setTotalPages(paymentsResponse.totalPages);
+        }
         
         // Store original payments for editing
         setOriginalPayments(paymentsList);
+        setIndicators(paymentIndicators);
         
         // For display, consolidate partial payments by student + month + year
         const paymentsByKey = new Map<string, Payment[]>();
@@ -287,7 +312,7 @@ export default function PaymentsPage() {
       await new Promise((r) => setTimeout(r, 300));
       await loadData();
     });
-  }, [run]);
+  }, [run, currentPage, itemsPerPage]);
 
   // Reload data when branch changes
   useEffect(() => {
@@ -481,44 +506,7 @@ export default function PaymentsPage() {
       setIsSubmitting(false);
   };
 
-  const handleMarkPaid = async (
-    id: string,
-    paymentMethod: PaymentMethod = "cash"
-  ) => {
-    // Prevent duplicate requests
-    if (processingPaymentId === id) return;
 
-    setProcessingPaymentId(id);
-    try {
-      await apiUpdatePayment(id, {
-        status: "paid",
-        paymentMethod,
-        paidDate: new Date().toISOString(),
-      });
-      await loadData();
-    } catch (error) {
-      console.error("Failed to mark payment as paid:", error);
-
-      // Check if payment still exists in state
-      const paymentExists = payments.some((p) => p.id === id);
-      if (!paymentExists) {
-        toast({
-          title: t("info"),
-          description: "Payment was already removed",
-          variant: "default",
-        });
-        await loadData();
-      } else {
-        toast({
-          title: t("error"),
-          description: "Failed to mark payment as paid",
-          variant: "destructive",
-        });
-      }
-    } finally {
-      setProcessingPaymentId(null);
-    }
-  };
 
   const handleEdit = (payment: Payment) => {
     // Check if this is a consolidated payment using the map
@@ -846,6 +834,7 @@ export default function PaymentsPage() {
     }
   };
 
+  // Filter payments locally (after server pagination)
   const filteredPayments = payments.filter((payment) => {
     const studentName = getStudentName(payment.studentId);
     const matchesSearch =
@@ -859,12 +848,8 @@ export default function PaymentsPage() {
     return matchesSearch && matchesStatus;
   });
 
-  const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedPayments = filteredPayments.slice(
-    startIndex,
-    startIndex + itemsPerPage
-  );
+  // Use server-side pagination (already paginated from API)
+  const paginatedPayments = filteredPayments;
 
   // Calculate effective status based on actual payment amount vs monthly payment
   const getEffectivePaymentStatus = (payment: Payment): PaymentStatus => {
@@ -890,78 +875,13 @@ export default function PaymentsPage() {
     }
   };
 
-  const totalIncome = payments
-    .filter(
-      (p) =>
-        (p.status === "paid" || p.status === "partial") &&
-        Number(p.month) === parseInt(selectedMonth) &&
-        Number(p.year) === selectedYear
-    )
-    .reduce((sum, p) => sum + p.amount, 0);
-
-  // Calculate pending as: monthly fees for all active students - what they've already paid
-  const totalPending = (() => {
-    let pending = 0;
-    const selectedMonthNum = parseInt(selectedMonth);
-    for (const student of students) {
-      if (student.status !== "active") continue;
-
-      // Only count students who joined before or during the selected month
-      if (student.enrollmentDate) {
-        const enrollDate = new Date(student.enrollmentDate);
-        const enrollMonth = enrollDate.getMonth() + 1;
-        const enrollYear = enrollDate.getFullYear();
-        if (
-          enrollYear > selectedYear ||
-          (enrollYear === selectedYear && enrollMonth > selectedMonthNum)
-        ) {
-          continue; // Skip students who joined after the selected month
-        }
-      }
-
-      const paidThisMonth = payments
-        .filter(
-          (p) =>
-            p.studentId === student.id &&
-            Number(p.month) === selectedMonthNum &&
-            Number(p.year) === selectedYear
-        )
-        .reduce((sum, p) => sum + p.amount, 0);
-
-      const remaining = Math.max(0, student.monthlyPayment - paidThisMonth);
-      pending += remaining;
-    }
-    return pending;
-  })();
-
+  // Use API indicators if available, otherwise calculate from payments
+  const totalIncome = indicators?.totalPaid || 0;
+  const totalPending = indicators?.totalUnpaid || 0;
   const totalByMethod = {
-    card: payments
-      .filter(
-        (p) =>
-          p.paymentMethod === "card" &&
-          p.status === "paid" &&
-          Number(p.month) === parseInt(selectedMonth) &&
-          Number(p.year) === selectedYear
-      )
-      .reduce((sum, p) => sum + p.amount, 0),
-    cash: payments
-      .filter(
-        (p) =>
-          p.paymentMethod === "cash" &&
-          p.status === "paid" &&
-          Number(p.month) === parseInt(selectedMonth) &&
-          Number(p.year) === selectedYear
-      )
-      .reduce((sum, p) => sum + p.amount, 0),
-    bank: payments
-      .filter(
-        (p) =>
-          p.paymentMethod === "bank" &&
-          p.status === "paid" &&
-          Number(p.month) === parseInt(selectedMonth) &&
-          Number(p.year) === selectedYear
-      )
-      .reduce((sum, p) => sum + p.amount, 0),
+    card: indicators?.byMethod?.card || 0,
+    cash: indicators?.byMethod?.cash || 0,
+    bank: indicators?.byMethod?.bank || 0,
   };
 
   const months = [
@@ -1020,7 +940,8 @@ export default function PaymentsPage() {
     return t(methodMap[method] || method) || method;
   };
 
-  if (asyncLoading) {
+  // Show full page skeleton only on initial load
+  if (asyncLoading && payments.length === 0) {
     return (
       <div className="space-y-6">
         {/* Header Skeleton */}
@@ -1771,44 +1692,70 @@ export default function PaymentsPage() {
                 <SelectItem value="partial">{t("partial")}</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={itemsPerPage.toString()} onValueChange={(val) => {
+              setItemsPerPage(parseInt(val));
+              setCurrentPage(1);
+            }}>
+              <SelectTrigger className="w-full sm:w-[140px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10 {t("perPage")}</SelectItem>
+                <SelectItem value="20">20 {t("perPage")}</SelectItem>
+                <SelectItem value="50">50 {t("perPage")}</SelectItem>
+                <SelectItem value="100">100 {t("perPage")}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("invoice")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("student")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("period")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("amount")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("method")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("status")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("paidDate")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("whoAddedPayment")}
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("actions")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedPayments.map((payment) => (
+          {isLoading ? (
+            <div className="space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 py-4 border-b">
+                  <Skeleton className="h-4 flex-1" />
+                  <Skeleton className="h-4 flex-1" />
+                  <Skeleton className="h-4 flex-1" />
+                  <Skeleton className="h-8 w-20" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-800">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {t("invoice")}
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {t("student")}
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {t("period")}
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {t("amount")}
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {t("method")}
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {t("status")}
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {t("paidDate")}
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {t("whoAddedPayment")}
+                    </th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                      {t("actions")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedPayments.map((payment) => (
                   <tr
                     key={payment.id}
                     className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50"
@@ -1893,18 +1840,6 @@ export default function PaymentsPage() {
                             <Printer className="w-4 h-4" />
                           </Button>
 
-                          {payment.status !== "paid" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-green-600"
-                              onClick={() => handleMarkPaid(payment.id)}
-                              disabled={processingPaymentId === payment.id}
-                            >
-                              {t("markPaid")}
-                            </Button>
-                          )}
-
                           <Button
                             size="sm"
                             variant="outline"
@@ -1942,69 +1877,65 @@ export default function PaymentsPage() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
 
-            {filteredPayments.length === 0 && (
+              {filteredPayments.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-slate-500 dark:text-slate-400">
                   {t("noPaymentsFound")}
                 </p>
               </div>
-            )}
-          </div>
+              )}
+              </div>
+              )}
 
-          {/* Pagination */}
-          {filteredPayments.length > 0 && (
-            <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
+              {/* Pagination */}
+              {filteredPayments.length > 0 && (
+              <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
               <div className="text-sm text-slate-600 dark:text-slate-400">
-                {t("showing")} {startIndex + 1} -{" "}
-                {Math.min(startIndex + itemsPerPage, filteredPayments.length)}{" "}
-                {t("of")} {filteredPayments.length}
+              {t("showing")} {currentPage === 1 ? 1 : (currentPage - 1) * itemsPerPage + 1} -{" "}
+              {Math.min(currentPage * itemsPerPage, totalPayments)}{" "}
+              {t("of")} {totalPayments}
               </div>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    router.push(
-                      `/payments?page=${Math.max(1, currentPage - 1)}`
-                    )
-                  }
-                  disabled={currentPage === 1}
-                >
-                  <ChevronLeft className="w-4 h-4 mr-1" />
-                  {t("previous")}
-                </Button>
-                <div className="flex items-center gap-2">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                    (page) => (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => router.push(`/payments?page=${page}`)}
-                      >
-                        {page}
-                      </Button>
-                    )
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    router.push(
-                      `/payments?page=${Math.min(totalPages, currentPage + 1)}`
-                    )
-                  }
-                  disabled={currentPage === totalPages}
-                >
-                  {t("next")}
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                {t("previous")}
+              </Button>
+              <div className="flex items-center gap-2">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  const startPage = Math.max(1, currentPage - 2);
+                  return startPage + i;
+                })
+                  .filter((page) => page <= totalPages)
+                  .map((page) => (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(page)}
+                    >
+                      {page}
+                    </Button>
+                  ))}
               </div>
-            </div>
-          )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+              >
+                {t("next")}
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+              </div>
+              </div>
+              )}
         </CardContent>
       </Card>
 

@@ -627,19 +627,23 @@ export async function listPayments(
     studentId?: string;
     month?: string;
     year?: number;
+    page?: number;
+    limit?: number;
   }
-): Promise<Payment[]> {
+): Promise<Payment[] | { data: Payment[]; total: number; page: number; limit: number; totalPages: number }> {
   let query = "";
   if (filters?.branchId) query += `branchId=${filters.branchId}`;
   if (filters?.studentId)
     query += `${query ? "&" : ""}studentId=${filters.studentId}`;
   if (filters?.month) query += `${query ? "&" : ""}month=${filters.month}`;
   if (filters?.year) query += `${query ? "&" : ""}year=${filters.year}`;
+  if (filters?.page !== undefined) query += `${query ? "&" : ""}page=${filters.page}`;
+  if (filters?.limit !== undefined) query += `${query ? "&" : ""}limit=${filters.limit}`;
 
-  const response = await apiRequest<Payment[]>(
+  const response = await apiRequest<Payment[] | { data: Payment[]; total: number; page: number; limit: number; totalPages: number }>(
     `/payments${query ? "?" + query : ""}`
   );
-  return Array.isArray(response) ? response : [];
+  return Array.isArray(response) ? response : (response || []);
 }
 
 /**
@@ -671,6 +675,17 @@ export async function getPaymentSummary(
   branchId: string
 ): Promise<PaymentSummary> {
   return apiRequest<PaymentSummary>(`/payments/branch/${branchId}/summary`);
+}
+
+/**
+ * Get payment indicators by period
+ */
+export async function getPaymentIndicators(
+  branchId: string,
+  month: string,
+  year: number
+): Promise<PaymentSummary> {
+  return apiRequest<PaymentSummary>(`/payments/payments/${branchId}/indicators?month=${month}&year=${year}`);
 }
 
 // ============================================================================

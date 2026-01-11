@@ -1,4 +1,4 @@
-# School CRM API Documentation
+# Wonderkids' CRM API Documentation
 
 ## Base URL
 
