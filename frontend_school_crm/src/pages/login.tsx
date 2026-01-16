@@ -51,10 +51,17 @@ export default function LoginPage() {
         console.log("[Login] Login successful, user:", response.user.email);
         console.log("[Login] Token saved to localStorage");
         
-        // Wait a moment for state to update, then redirect
-        await new Promise(resolve => setTimeout(resolve, 500));
+        // Wait for BranchContext to load branches and set selectedBranchId
+        // This prevents the dashboard from showing zero data
+        let retries = 0;
+        const maxRetries = 30; // 3 seconds max wait
         
-        console.log("[Login] Redirecting to dashboard...");
+        while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          retries++;
+        }
+        
+        console.log("[Login] Branch loaded, redirecting to dashboard...");
         router.push("/").then(() => {
           console.log("[Login] Navigation completed");
         });

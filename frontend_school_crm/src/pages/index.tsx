@@ -71,6 +71,22 @@ export default function HomePage() {
     setIsLoading(true);
 
     const loadData = async () => {
+      // Wait for selectedBranchId to be available in localStorage
+      // This is needed after login when BranchContext is still loading
+      let retries = 0;
+      const maxRetries = 20; // 2 seconds max wait
+      
+      while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        retries++;
+      }
+      
+      if (!localStorage.getItem("selectedBranchId")) {
+        console.warn("[Dashboard] No branch ID found after waiting");
+        setIsLoading(false);
+        return;
+      }
+
       await Promise.all([calculateStats(), generateChartData()]);
       setIsLoading(false);
     };
@@ -84,6 +100,16 @@ export default function HomePage() {
 
     window.addEventListener("storage", handleStorageChange);
 
+    // Listen for branch change events
+    const handleBranchChange = () => {
+      setIsLoading(true);
+      Promise.all([calculateStats(), generateChartData()]).then(() => {
+        setIsLoading(false);
+      });
+    };
+
+    window.addEventListener("branchChange", handleBranchChange);
+
     // Refresh when page regains focus
     const handleFocus = () => {
       loadData();
@@ -93,6 +119,7 @@ export default function HomePage() {
 
     return () => {
       window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("branchChange", handleBranchChange);
       window.removeEventListener("focus", handleFocus);
     };
   }, [isMounted]);

@@ -317,17 +317,32 @@ export async function apiRequest<T>(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  let timeoutId: NodeJS.Timeout | null = null;
+  let isAborted = false;
+
+  const timeoutPromise = new Promise<void>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      isAborted = true;
+      controller.abort();
+      reject(new Error(`Request timeout after ${timeout}ms`));
+    }, timeout);
+  });
 
   try {
     const url = `${API_BASE_URL}${endpoint}`;
-    const response = await fetch(url, {
+    
+    const fetchPromise = fetch(url, {
       ...fetchOptions,
       headers,
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
+    const response = await Promise.race([
+      fetchPromise,
+      timeoutPromise
+    ]);
+
+    if (timeoutId) clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -358,8 +373,13 @@ export async function apiRequest<T>(
     const data = await response.json();
     return data;
   } catch (error) {
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
+    
     if (error instanceof Error) {
+      // Don't throw abort errors, they're already handled
+      if (error.name === "AbortError" && isAborted) {
+        throw new Error(`Request timeout after ${timeout}ms`);
+      }
       throw error;
     }
     throw new Error("An unexpected error occurred");
