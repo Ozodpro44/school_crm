@@ -27,4 +27,11 @@ export const authTranslations: Partial<Translation> = {
   resendIn: { "uz-cyrl": "Қайта жўнатиш: {seconds}с", "uz-latn": "Qayta jònatish: {seconds}s", en: "Resend in {seconds}s" },
   backToLogin: { "uz-cyrl": "Киришга қайтиш", "uz-latn": "Kirishga qaytish", en: "Back to Login" },
   passwordsDoNotMatch: { "uz-cyrl": "Паролlar бир хил эмас", "uz-latn": "Parollar bir xil emas", en: "Passwords do not match" },
-};
+  invalidEmailOrPassword: { "uz-cyrl": "Нотўғри электрон почта ёки парол", "uz-latn": "Notog'ri elektron pochta yoki parol", en: "Invalid email or password" },
+  networkError: { "uz-cyrl": "Тармоқ хатоси. Интернет ўланишини текширинг", "uz-latn": "Tarmoq xatosi. Internet ulanishini tekshiring", en: "Network error. Please check your internet connection" },
+  errorOccurred: { "uz-cyrl": "Хатолик юзага келди", "uz-latn": "Xatolic yuzaga keldi", en: "An error occurred" },
+  signIn: { "uz-cyrl": "Кириш", "uz-latn": "Kirish", en: "Sign In" },
+  signingIn: { "uz-cyrl": "Кирмоқда...", "uz-latn": "Kirmoqda...", en: "Signing In..." },
+  accessDashboard: { "uz-cyrl": "Панелга кириш", "uz-latn": "Panelga kirish", en: "Access Dashboard" },
+  enterPassword: { "uz-cyrl": "Паролни киритинг", "uz-latn": "Parolni kiriting", en: "Enter password" },
+  };

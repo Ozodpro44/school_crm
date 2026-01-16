@@ -71,9 +71,19 @@ export default function LoginPage() {
       }
     } catch (error) {
       console.error("[Login] Login error:", error);
-      setError(
-        error instanceof Error ? error.message : t("errorOccurred")
-      );
+      if (error instanceof Error) {
+        // Check if it's a known error message that needs translation
+        const errorMessage = error.message.toLowerCase();
+        if (errorMessage.includes("invalid") || errorMessage.includes("unauthorized")) {
+          setError(t("invalidEmailOrPassword"));
+        } else if (errorMessage.includes("network")) {
+          setError(t("networkError"));
+        } else {
+          setError(t("errorOccurred"));
+        }
+      } else {
+        setError(t("errorOccurred"));
+      }
     } finally {
       setLoading(false);
     }
