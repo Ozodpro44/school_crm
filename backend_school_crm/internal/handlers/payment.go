@@ -54,10 +54,12 @@ func createPayment(paymentService *service.PaymentService, branchService *servic
 
 		payment, err := paymentService.Create(c.Request.Context(), &req, userID)
 		if err != nil {
+			AddLog("error", "payments", fmt.Sprintf("Failed to create payment: %v", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
+		AddLog("info", "payments", fmt.Sprintf("Payment created: Amount=%d, Student=%s, Status=%s", req.Amount, req.StudentID, req.Status))
 		c.JSON(http.StatusCreated, payment)
 	}
 }

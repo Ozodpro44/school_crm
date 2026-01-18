@@ -317,7 +317,14 @@ export default function Logs() {
                     <div className="flex items-center gap-4">
                       <div className="w-44 text-muted-foreground flex items-center gap-2">
                         <Clock className="w-3 h-3" />
-                        {log.timestamp}
+                        {new Date(log.timestamp).toLocaleString('en-US', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })}
                       </div>
                       <div className="w-16">
                         <span className={cn(
@@ -403,7 +410,14 @@ export default function Logs() {
 
               <div>
                 <p className="text-sm text-muted-foreground">Timestamp</p>
-                <p className="font-mono text-foreground">{selectedLog.timestamp}</p>
+                <p className="font-mono text-foreground">{new Date(selectedLog.timestamp).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                })}</p>
               </div>
 
               <div>
