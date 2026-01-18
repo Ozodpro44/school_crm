@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Search, Download, Clock, AlertCircle, AlertTriangle, Info, Eye, Copy, Trash2, Loader } from "lucide-react";
+import { apiClient } from "@/services/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -46,86 +47,7 @@ interface LogEntry {
   branch?: string;
 }
 
-const mockLogs: LogEntry[] = [
-  {
-    id: "1",
-    timestamp: "2024-01-14 14:32:15.234",
-    level: "ERROR",
-    module: "payments",
-    message: "Payment gateway timeout after 30s",
-    details: "TransactionID: txn_abc123, Amount: ₽15000, Gateway: Sberbank",
-    stackTrace: "Error: Connection timeout\n  at PaymentService.processPayment (payments.go:145)\n  at handlers.HandlePayment (handlers.go:89)\n  at gin.Context.Next (context.go:116)",
-    requestId: "req_xyz789",
-    userId: "user_456",
-    branch: "Moscow Central",
-  },
-  {
-    id: "2",
-    timestamp: "2024-01-14 14:31:45.891",
-    level: "WARN",
-    module: "auth",
-    message: "Multiple failed login attempts detected",
-    details: "IP: 192.168.1.45, User: admin@school.ru, Attempts: 5",
-    requestId: "req_abc123",
-  },
-  {
-    id: "3",
-    timestamp: "2024-01-14 14:30:22.456",
-    level: "INFO",
-    module: "students",
-    message: "Student enrollment completed successfully",
-    details: "StudentID: std_789, Branch: Moscow Central",
-    requestId: "req_def456",
-    branch: "Moscow Central",
-  },
-  {
-    id: "4",
-    timestamp: "2024-01-14 14:29:11.123",
-    level: "INFO",
-    module: "api",
-    message: "GET /api/v1/students completed in 45ms",
-    requestId: "req_ghi789",
-  },
-  {
-    id: "5",
-    timestamp: "2024-01-14 14:28:55.789",
-    level: "ERROR",
-    module: "email",
-    message: "Failed to send notification email",
-    details: "Recipient: parent@email.com, Error: SMTP connection refused",
-    stackTrace: "Error: SMTP connection refused\n  at EmailService.sendMail (email.go:78)\n  at NotificationService.notify (notifications.go:45)",
-    requestId: "req_jkl012",
-    branch: "Saint Petersburg Main",
-  },
-  {
-    id: "6",
-    timestamp: "2024-01-14 14:27:33.456",
-    level: "WARN",
-    module: "redis",
-    message: "Redis memory usage above 80%",
-    details: "Current: 410MB, Max: 512MB",
-  },
-  {
-    id: "7",
-    timestamp: "2024-01-14 14:26:18.234",
-    level: "INFO",
-    module: "auth",
-    message: "User session created",
-    details: "UserID: usr_456, Role: Teacher",
-    requestId: "req_mno345",
-    userId: "usr_456",
-  },
-  {
-    id: "8",
-    timestamp: "2024-01-14 14:25:02.891",
-    level: "INFO",
-    module: "payments",
-    message: "Payment processed successfully",
-    details: "TransactionID: txn_def456, Amount: ₽8500",
-    requestId: "req_pqr678",
-    branch: "Sochi Campus",
-  },
-];
+// Mock logs removed - only showing real backend data
 
 const levelConfig: Record<LogLevel, { icon: typeof Info; className: string }> = {
   INFO: { icon: Info, className: "log-info" },
@@ -161,7 +83,6 @@ export default function Logs() {
       
       // Try to fetch from backend API first
       try {
-        const { apiClient } = await import('@/services/api-client');
         const backendLogs = await apiClient.getLogs(100);
         
         if (backendLogs && Array.isArray(backendLogs) && backendLogs.length > 0) {
@@ -191,16 +112,17 @@ export default function Logs() {
           return;
         }
       } catch (apiError) {
-        // Backend API not available or returned no logs
+        // Backend API not available, use mock logs
+        // This is expected during development before login
       }
       
-      // Use mock logs as fallback
-      // TODO: Add backend /api/logs endpoint to show real logs
-      setLogData(mockLogs);
+      // No logs available - backend not responding
+      setLogData([]);
+      setError('Backend logs endpoint not available. Make sure backend is running and has /api/logs endpoint deployed.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch logs';
       setError(message);
-      setLogData(mockLogs);
+      setLogData([]);
     } finally {
       setIsLoading(false);
     }

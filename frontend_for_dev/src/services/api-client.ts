@@ -74,12 +74,10 @@ export class ApiClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        if (response.status === 401) {
-          this.clearToken();
-          window.location.href = '/login';
-        }
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        const error = new Error(errorData.error || `HTTP ${response.status}`);
+        (error as any).status = response.status;
+        throw error;
       }
 
       return await response.json();
