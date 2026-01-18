@@ -32,7 +32,8 @@ var (
 // InitLogs initializes the logs storage
 func InitLogs() {
 	logs = make([]Log, 0)
-	addSampleLogs()
+	// Only real application logs, no sample data
+	AddLog("info", "api", "Application started")
 }
 
 // AddLog adds a new log entry to storage
