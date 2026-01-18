@@ -158,9 +158,9 @@ func main() {
 	// Initialize logs
 	handlers.InitLogs()
 
-	// Logs endpoints
-	protected.GET("/logs", handlers.GetLogsHandler)
-	protected.DELETE("/logs", handlers.ClearLogsHandler)
+	// Logs endpoints (public for development)
+	router.GET("/api/logs", handlers.GetLogsHandler)
+	router.DELETE("/api/logs", handlers.ClearLogsHandler)
 
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
