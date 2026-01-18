@@ -155,6 +155,13 @@ func main() {
 	// Developer endpoints
 	handlers.RegisterDeveloperRoutes(protected, database)
 
+	// Initialize logs
+	handlers.InitLogs()
+
+	// Logs endpoints
+	protected.GET("/logs", handlers.GetLogsHandler)
+	protected.DELETE("/logs", handlers.ClearLogsHandler)
+
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Starting server on %s", addr)

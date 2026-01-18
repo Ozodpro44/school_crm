@@ -10,9 +10,21 @@ import {
   Settings,
   CheckCircle2,
   Clock,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 interface NotificationSetting {
@@ -122,6 +134,12 @@ const recentAlerts = [
 
 export default function Notifications() {
   const [settings, setSettings] = useState(notificationSettings);
+  const [isIntegrationsOpen, setIsIntegrationsOpen] = useState(false);
+  const [integrations, setIntegrations] = useState({
+    email: { enabled: true, address: "admin@wonderkids.school" },
+    telegram: { enabled: true, botToken: "", chatId: "" },
+    slack: { enabled: false, webhookUrl: "" },
+  });
 
   const toggleSetting = (id: string, channel: "email" | "telegram" | "slack") => {
     setSettings((prev) =>
@@ -145,10 +163,184 @@ export default function Notifications() {
             Configure how you receive system alerts
           </p>
         </div>
-        <Button variant="outline" className="gap-2">
-          <Settings className="w-4 h-4" />
-          Configure Integrations
-        </Button>
+        <Dialog open={isIntegrationsOpen} onOpenChange={setIsIntegrationsOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" className="gap-2">
+              <Settings className="w-4 h-4" />
+              Configure Integrations
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Configure Integrations</DialogTitle>
+              <DialogDescription>
+                Set up your notification channels for receiving alerts.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-6 py-4">
+              {/* Email Integration */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-primary" />
+                    <Label className="font-medium">Email Notifications</Label>
+                  </div>
+                  <Switch
+                    checked={integrations.email.enabled}
+                    onCheckedChange={(checked) =>
+                      setIntegrations((prev) => ({
+                        ...prev,
+                        email: { ...prev.email, enabled: checked },
+                      }))
+                    }
+                  />
+                </div>
+                {integrations.email.enabled && (
+                  <div className="ml-6">
+                    <Label htmlFor="email-address" className="text-sm text-muted-foreground">
+                      Email Address
+                    </Label>
+                    <Input
+                      id="email-address"
+                      type="email"
+                      value={integrations.email.address}
+                      onChange={(e) =>
+                        setIntegrations((prev) => ({
+                          ...prev,
+                          email: { ...prev.email, address: e.target.value },
+                        }))
+                      }
+                      className="mt-1"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Telegram Integration */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-[#0088cc]" />
+                    <Label className="font-medium">Telegram</Label>
+                  </div>
+                  <Switch
+                    checked={integrations.telegram.enabled}
+                    onCheckedChange={(checked) =>
+                      setIntegrations((prev) => ({
+                        ...prev,
+                        telegram: { ...prev.telegram, enabled: checked },
+                      }))
+                    }
+                  />
+                </div>
+                {integrations.telegram.enabled && (
+                  <div className="ml-6 space-y-3">
+                    <div>
+                      <Label htmlFor="telegram-token" className="text-sm text-muted-foreground">
+                        Bot Token
+                      </Label>
+                      <Input
+                        id="telegram-token"
+                        type="password"
+                        placeholder="123456:ABC-DEF1234ghIkl..."
+                        value={integrations.telegram.botToken}
+                        onChange={(e) =>
+                          setIntegrations((prev) => ({
+                            ...prev,
+                            telegram: { ...prev.telegram, botToken: e.target.value },
+                          }))
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="telegram-chat" className="text-sm text-muted-foreground">
+                        Chat ID
+                      </Label>
+                      <Input
+                        id="telegram-chat"
+                        placeholder="-1001234567890"
+                        value={integrations.telegram.chatId}
+                        onChange={(e) =>
+                          setIntegrations((prev) => ({
+                            ...prev,
+                            telegram: { ...prev.telegram, chatId: e.target.value },
+                          }))
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                    <a
+                      href="https://core.telegram.org/bots#how-do-i-create-a-bot"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary flex items-center gap-1 hover:underline"
+                    >
+                      How to create a Telegram bot <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Slack Integration */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="#E01E5A">
+                      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z" />
+                    </svg>
+                    <Label className="font-medium">Slack</Label>
+                  </div>
+                  <Switch
+                    checked={integrations.slack.enabled}
+                    onCheckedChange={(checked) =>
+                      setIntegrations((prev) => ({
+                        ...prev,
+                        slack: { ...prev.slack, enabled: checked },
+                      }))
+                    }
+                  />
+                </div>
+                {integrations.slack.enabled && (
+                  <div className="ml-6 space-y-3">
+                    <div>
+                      <Label htmlFor="slack-webhook" className="text-sm text-muted-foreground">
+                        Webhook URL
+                      </Label>
+                      <Input
+                        id="slack-webhook"
+                        type="password"
+                        placeholder="https://hooks.slack.com/services/..."
+                        value={integrations.slack.webhookUrl}
+                        onChange={(e) =>
+                          setIntegrations((prev) => ({
+                            ...prev,
+                            slack: { ...prev.slack, webhookUrl: e.target.value },
+                          }))
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                    <a
+                      href="https://api.slack.com/messaging/webhooks"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary flex items-center gap-1 hover:underline"
+                    >
+                      How to create a Slack webhook <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                )}
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsIntegrationsOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => setIsIntegrationsOpen(false)}>Save Changes</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
