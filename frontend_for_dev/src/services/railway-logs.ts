@@ -43,7 +43,8 @@ export class RailwayLogsService {
    */
   async getLogs(limit: number = 100): Promise<RailwayLog[]> {
     if (!this.apiKey || !this.projectId) {
-      return this.getMockLogs(limit);
+      console.warn('Railway credentials not configured');
+      throw new Error('Railway API key and project ID required');
     }
 
     // Return cached logs if still fresh
@@ -58,7 +59,8 @@ export class RailwayLogsService {
       return logs;
     } catch (error) {
       console.error('Failed to fetch Railway logs:', error);
-      return this.getMockLogs(limit);
+      // Don't return mock logs - throw error so frontend can fall back to backend
+      throw error;
     }
   }
 

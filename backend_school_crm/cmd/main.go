@@ -160,6 +160,7 @@ func main() {
 
 	// Logs endpoints (public for development)
 	router.GET("/api/logs", handlers.GetLogsHandler)
+	router.GET("/api/logs/railway", handlers.GetRailwayLogsHandler)
 	router.DELETE("/api/logs", handlers.ClearLogsHandler)
 
 	// Start server

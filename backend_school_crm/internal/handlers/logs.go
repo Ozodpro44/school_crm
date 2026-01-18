@@ -1,7 +1,12 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -223,4 +228,136 @@ func ClearLogsHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "logs cleared",
 	})
+}
+
+// GetRailwayLogsHandler handles GET /api/logs/railway - fetches logs from Railway API
+func GetRailwayLogsHandler(c *gin.Context) {
+	limit := 100
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 1000 {
+			limit = parsed
+		}
+	}
+
+	apiKey := os.Getenv("RAILWAY_API_KEY")
+	projectID := os.Getenv("RAILWAY_PROJECT_ID")
+
+	if apiKey == "" || projectID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Railway credentials not configured in backend environment",
+		})
+		return
+	}
+
+	logs, err := fetchRailwayLogs(apiKey, projectID, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("Failed to fetch Railway logs: %v", err),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, logs)
+}
+
+// fetchRailwayLogs calls Railway GraphQL API to get logs
+func fetchRailwayLogs(apiKey, projectID string, limit int) ([]map[string]interface{}, error) {
+	query := fmt.Sprintf(`
+		query {
+			project(id: "%s") {
+				deployments(first: 1, sort: DESC) {
+					edges {
+						node {
+							logs(first: %d) {
+								edges {
+									node {
+										timestamp
+										message
+										level
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	`, projectID, limit)
+
+	payload := map[string]interface{}{
+		"query": query,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", "https://api.railway.app/graphql", bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Railway API returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(respBody, &data); err != nil {
+		return nil, err
+	}
+
+	// Check for errors in response
+	if errs, ok := data["errors"].([]interface{}); ok && len(errs) > 0 {
+		if errObj, ok := errs[0].(map[string]interface{}); ok {
+			if msg, ok := errObj["message"].(string); ok {
+				return nil, fmt.Errorf("Railway API error: %s", msg)
+			}
+		}
+		return nil, fmt.Errorf("Railway API error occurred")
+	}
+
+	// Parse logs from response
+	logs := []map[string]interface{}{}
+
+	if dataObj, ok := data["data"].(map[string]interface{}); ok {
+		if project, ok := dataObj["project"].(map[string]interface{}); ok {
+			if deployments, ok := project["deployments"].(map[string]interface{}); ok {
+				if edges, ok := deployments["edges"].([]interface{}); ok && len(edges) > 0 {
+					if edge, ok := edges[0].(map[string]interface{}); ok {
+						if node, ok := edge["node"].(map[string]interface{}); ok {
+							if logsObj, ok := node["logs"].(map[string]interface{}); ok {
+								if logEdges, ok := logsObj["edges"].([]interface{}); ok {
+									for _, logEdge := range logEdges {
+										if le, ok := logEdge.(map[string]interface{}); ok {
+											if logNode, ok := le["node"].(map[string]interface{}); ok {
+												logs = append(logs, logNode)
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return logs, nil
 }
