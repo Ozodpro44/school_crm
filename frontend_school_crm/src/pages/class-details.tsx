@@ -119,7 +119,7 @@ export default function ClassDetailsPage() {
       return "paid";
     }
 
-    // If there's any payment but less than required, it's partia
+    // If there's any payment but less than required, it's partial
     if (paidTotal > 0) {
       return "partial";
     }
