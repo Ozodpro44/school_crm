@@ -137,9 +137,9 @@ export default function StudentDetailsPage() {
           const paymentsData = await getStudentPaymentHistory(studentData.id, branchId || undefined);
           setPayments(paymentsData);
         } else {
-          // Manager: get only current month payments
+          // Manager: get all payments (no limit) for this student
           if (branchId) {
-            const paymentsResponse = await listPayments({ branchId });
+            const paymentsResponse = await listPayments({ branchId, limit: 10000 });
             const paymentsData = Array.isArray(paymentsResponse) 
               ? paymentsResponse 
               : paymentsResponse?.data || [];

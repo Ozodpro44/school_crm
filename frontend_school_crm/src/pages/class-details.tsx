@@ -174,8 +174,8 @@ export default function ClassDetailsPage() {
         const teachersList = await apiListTeachers(branchId);
         setTeachers(teachersList);
         
-        // Load payments from API
-        const paymentsResponse = await apiListPayments({ branchId });
+        // Load payments from API - fetch all payments without limit
+        const paymentsResponse = await apiListPayments({ branchId, limit: 10000 });
         const paymentsList = Array.isArray(paymentsResponse) 
           ? paymentsResponse 
           : paymentsResponse?.data || [];

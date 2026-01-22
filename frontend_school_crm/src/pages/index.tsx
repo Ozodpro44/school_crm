@@ -164,7 +164,7 @@ export default function HomePage() {
           "[Dashboard.generateChartData] Fetching data for branch:",
           branchId
         );
-        const paymentsResponse = await api.listPayments({ branchId: branchId });
+        const paymentsResponse = await api.listPayments({ branchId: branchId, limit: 10000 });
         paymentsData = Array.isArray(paymentsResponse) 
           ? paymentsResponse 
           : paymentsResponse?.data || [];
@@ -304,7 +304,7 @@ export default function HomePage() {
       );
       const students = await api.listStudents(branchId);
       const teachers = await api.listTeachers(branchId);
-      const paymentsResponse = await api.listPayments({ branchId: branchId, month: branchMonth, year: branchYear });
+      const paymentsResponse = await api.listPayments({ branchId: branchId, month: branchMonth, year: branchYear, limit: 10000 });
       const payments = Array.isArray(paymentsResponse) 
         ? paymentsResponse 
         : paymentsResponse?.data || [];
