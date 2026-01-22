@@ -1,7 +1,6 @@
 module github.com/school-crm/backend
 
-go 1.24
-
+go 1.24.0
 
 require (
 	github.com/gin-gonic/gin v1.9.1
@@ -44,4 +43,5 @@ require (
 	google.golang.org/protobuf v1.36.7 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
 toolchain go1.24.5
