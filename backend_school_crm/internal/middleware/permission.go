@@ -23,14 +23,14 @@ func PermissionChecker(userService *service.UserService, requiredPermission stri
 		user, err := userService.GetByID(c.Request.Context(), userID)
 		if err != nil {
 			log.Printf("[PermissionChecker] Failed to fetch user %s: %v", userID, err)
-			c.JSON(http.StatusForbidden, gin.H{"error": "user not found"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found - please log in again"})
 			c.Abort()
 			return
 		}
 		
 		if user == nil {
 			log.Printf("[PermissionChecker] User %s is nil", userID)
-			c.JSON(http.StatusForbidden, gin.H{"error": "user not found"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found - please log in again"})
 			c.Abort()
 			return
 		}
@@ -164,7 +164,7 @@ func RoleChecker(userService *service.UserService, requiredRoles ...models.UserR
 		user, err := userService.GetByID(c.Request.Context(), userID)
 		if err != nil || user == nil {
 			log.Printf("[RoleChecker] Failed to fetch user %s: %v", userID, err)
-			c.JSON(http.StatusForbidden, gin.H{"error": "user not found"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found - please log in again"})
 			c.Abort()
 			return
 		}

@@ -30,6 +30,7 @@ func main() {
 		RedisURL:    os.Getenv("REDIS_URL"),
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
 		ResendFrom:  os.Getenv("RESEND_FROM"),
+		LogsToken:   os.Getenv("LOGS_TOKEN"),
 	}
 
 	if cfg.Port == "" {
@@ -93,6 +94,30 @@ func main() {
 	salaryService := service.NewSalaryService(database)
 	expenseService := service.NewExpenseService(database)
 	reportService := service.NewReportService(database)
+	subscriptionService := service.NewSubscriptionService(database)
+	developerService := service.NewDeveloperService(database)
+	
+	// Initialize Click.uz service (using environment variables or defaults)
+	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
+	if clickMerchantID == "" {
+		clickMerchantID = "398062629" // Test merchant ID
+	}
+	clickServiceID := os.Getenv("CLICK_SERVICE_ID")
+	if clickServiceID == "" {
+		clickServiceID = "999999999" // Test service ID
+	}
+	clickSecretKey := os.Getenv("CLICK_SECRET_KEY")
+	if clickSecretKey == "" {
+		clickSecretKey = "F91D8F69C042267444B74CC0B3C747757EB0E065" // Test secret key
+	}
+	clickUzService := service.NewClickUzService(database, clickMerchantID, clickServiceID, clickSecretKey)
+	
+	// Initialize Telegram payment service
+	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	if telegramBotToken == "" {
+		telegramBotToken = "5996211575:AAHpj_Lp_UkUJfx2TYPkRcZuF6Y6La-LcCA" // Telegram bot token
+	}
+	telegramPaymentService := service.NewTelegramPaymentService(database, telegramBotToken)
 
 	// Initialize router
 	if cfg.Environment == "production" {
@@ -117,6 +142,16 @@ func main() {
 	router.POST("/api/auth/verify-otp", handlers.VerifyOTP(userService))
 	router.POST("/api/auth/resend-otp", handlers.ResendOTP(userService))
 	router.POST("/api/auth/reset-password", handlers.ResetPassword(userService))
+	
+	// Public subscription plans
+	router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
+
+	// Public developer auth routes
+	handlers.RegisterDeveloperAuthRoutes(router, developerService, cfg.JWTSecret)
+
+	// Public developer routes (dev endpoints)
+	publicDev := router.Group("/api")
+	handlers.RegisterDeveloperRoutes(publicDev, database, subscriptionService)
 
 	// Protected routes
 	protected := router.Group("/api")
@@ -152,16 +187,14 @@ func main() {
 	// Settings
 	handlers.RegisterSettingsRoutes(protected, branchService, userService)
 
-	// Developer endpoints
-	handlers.RegisterDeveloperRoutes(protected, database)
-
-	// Initialize logs
-	handlers.InitLogs()
-
-	// Logs endpoints (public for development)
-	router.GET("/api/logs", handlers.GetLogsHandler)
-	router.GET("/api/logs/railway", handlers.GetRailwayLogsHandler)
-	router.DELETE("/api/logs", handlers.ClearLogsHandler)
+	// Subscriptions (protected routes only, plans is public)
+	handlers.RegisterSubscriptionProtectedRoutes(protected, subscriptionService, userService)
+	handlers.RegisterClickUzRoutes(protected, clickUzService, subscriptionService)
+	handlers.RegisterTelegramPaymentRoutes(protected, telegramPaymentService, subscriptionService)
+	
+	// Payment webhooks (public, no auth required)
+	handlers.RegisterClickUzWebhooks(router.Group("/api"), clickUzService)
+	handlers.RegisterTelegramPaymentWebhooks(router.Group("/api"), telegramPaymentService)
 
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)

@@ -175,33 +175,35 @@ type Income struct {
 }
 
 type Permission struct {
-	ID                   string `json:"id" db:"id"`
-	UserID               string `json:"userId" db:"user_id"`
-	CanViewStudents      bool   `json:"canViewStudents" db:"can_view_students"`
-	CanCreateStudents    bool   `json:"canCreateStudents" db:"can_create_students"`
-	CanEditStudents      bool   `json:"canEditStudents" db:"can_edit_students"`
-	CanDeleteStudents    bool   `json:"canDeleteStudents" db:"can_delete_students"`
-	CanViewTeachers      bool   `json:"canViewTeachers" db:"can_view_teachers"`
-	CanCreateTeachers    bool   `json:"canCreateTeachers" db:"can_create_teachers"`
-	CanEditTeachers      bool   `json:"canEditTeachers" db:"can_edit_teachers"`
-	CanDeleteTeachers    bool   `json:"canDeleteTeachers" db:"can_delete_teachers"`
-	CanViewClasses       bool   `json:"canViewClasses" db:"can_view_classes"`
-	CanCreateClasses     bool   `json:"canCreateClasses" db:"can_create_classes"`
-	CanEditClasses       bool   `json:"canEditClasses" db:"can_edit_classes"`
-	CanDeleteClasses     bool   `json:"canDeleteClasses" db:"can_delete_classes"`
-	CanViewPayments      bool   `json:"canViewPayments" db:"can_view_payments"`
-	CanCreatePayments    bool   `json:"canCreatePayments" db:"can_create_payments"`
-	CanEditPayments      bool   `json:"canEditPayments" db:"can_edit_payments"`
-	CanViewSalaries      bool   `json:"canViewSalaries" db:"can_view_salaries"`
-	CanCreateSalaries    bool   `json:"canCreateSalaries" db:"can_create_salaries"`
-	CanEditSalaries      bool   `json:"canEditSalaries" db:"can_edit_salaries"`
-	CanViewExpenses      bool   `json:"canViewExpenses" db:"can_view_expenses"`
-	CanCreateExpenses    bool   `json:"canCreateExpenses" db:"can_create_expenses"`
-	CanEditExpenses      bool   `json:"canEditExpenses" db:"can_edit_expenses"`
-	CanDeleteExpenses    bool   `json:"canDeleteExpenses" db:"can_delete_expenses"`
-	CanViewReports       bool   `json:"canViewReports" db:"can_view_reports"`
-	CanViewSettings      bool   `json:"canViewSettings" db:"can_view_settings"`
-	CanEditSettings      bool   `json:"canEditSettings" db:"can_edit_settings"`
+	ID                    string `json:"id" db:"id"`
+	UserID                string `json:"userId" db:"user_id"`
+	CanViewStudents       bool   `json:"canViewStudents" db:"can_view_students"`
+	CanCreateStudents     bool   `json:"canCreateStudents" db:"can_create_students"`
+	CanEditStudents       bool   `json:"canEditStudents" db:"can_edit_students"`
+	CanDeleteStudents     bool   `json:"canDeleteStudents" db:"can_delete_students"`
+	CanViewTeachers       bool   `json:"canViewTeachers" db:"can_view_teachers"`
+	CanCreateTeachers     bool   `json:"canCreateTeachers" db:"can_create_teachers"`
+	CanEditTeachers       bool   `json:"canEditTeachers" db:"can_edit_teachers"`
+	CanDeleteTeachers     bool   `json:"canDeleteTeachers" db:"can_delete_teachers"`
+	CanViewClasses        bool   `json:"canViewClasses" db:"can_view_classes"`
+	CanCreateClasses      bool   `json:"canCreateClasses" db:"can_create_classes"`
+	CanEditClasses        bool   `json:"canEditClasses" db:"can_edit_classes"`
+	CanDeleteClasses      bool   `json:"canDeleteClasses" db:"can_delete_classes"`
+	CanViewPayments       bool   `json:"canViewPayments" db:"can_view_payments"`
+	CanCreatePayments     bool   `json:"canCreatePayments" db:"can_create_payments"`
+	CanEditPayments       bool   `json:"canEditPayments" db:"can_edit_payments"`
+	CanViewSalaries       bool   `json:"canViewSalaries" db:"can_view_salaries"`
+	CanCreateSalaries     bool   `json:"canCreateSalaries" db:"can_create_salaries"`
+	CanEditSalaries       bool   `json:"canEditSalaries" db:"can_edit_salaries"`
+	CanViewExpenses       bool   `json:"canViewExpenses" db:"can_view_expenses"`
+	CanCreateExpenses     bool   `json:"canCreateExpenses" db:"can_create_expenses"`
+	CanEditExpenses       bool   `json:"canEditExpenses" db:"can_edit_expenses"`
+	CanDeleteExpenses     bool   `json:"canDeleteExpenses" db:"can_delete_expenses"`
+	CanViewReports        bool   `json:"canViewReports" db:"can_view_reports"`
+	CanViewSettings       bool   `json:"canViewSettings" db:"can_view_settings"`
+	CanEditSettings       bool   `json:"canEditSettings" db:"can_edit_settings"`
+	CanViewSubscriptions  bool   `json:"canViewSubscriptions" db:"can_view_subscriptions"`
+	CanManageSubscriptions bool  `json:"canManageSubscriptions" db:"can_manage_subscriptions"`
 }
 
 type MonthStatus string

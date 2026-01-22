@@ -338,9 +338,11 @@ export async function apiRequest<T>(
       const errorMessage = errorData.error || `API Error: ${response.status}`;
       
       // Check for invalid token error and logout if needed (only 401, not 403)
-      const isInvalidToken = (errorMessage.toLowerCase().includes("invalid token") || 
-                             errorMessage.toLowerCase().includes("unauthorized")) &&
-                             response.status === 401;
+      const isInvalidToken =
+        (errorMessage.toLowerCase().includes("invalid token") ||
+          errorMessage.toLowerCase().includes("unauthorized") ||
+          errorMessage.toLowerCase().includes("user not found")) &&
+        response.status === 401;
       
       if (isInvalidToken) {
         // Clear auth data from localStorage

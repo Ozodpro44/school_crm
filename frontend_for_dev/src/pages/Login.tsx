@@ -87,12 +87,15 @@ export default function Login() {
 
           {/* Demo Credentials */}
           <div className="border-t border-border pt-4">
-            <p className="text-xs text-muted-foreground text-center mb-3">Demo Credentials</p>
+            <p className="text-xs text-muted-foreground text-center mb-3">Developer Demo Credentials</p>
             <div className="space-y-2 text-xs">
               <div className="bg-accent/30 p-2 rounded">
-                <p className="text-foreground font-mono">admin@school.ru</p>
-                <p className="text-muted-foreground font-mono">password</p>
+                <p className="text-foreground font-mono">dev@school.ru</p>
+                <p className="text-muted-foreground font-mono">dev123456</p>
               </div>
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                Or register a new developer account
+              </p>
             </div>
           </div>
 

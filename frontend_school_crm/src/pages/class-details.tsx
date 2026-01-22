@@ -93,18 +93,42 @@ export default function ClassDetailsPage() {
 
   const t = (key: string) => getTranslation(key, language);
 
-  const hasCurrentMonthPayment = (studentId: string): boolean => {
+  const getCurrentMonthPaymentStatus = (studentId: string): string => {
     const now = new Date();
-    const currentMonth = now.getMonth() + 1;
+    const currentMonth = (now.getMonth() + 1).toString().padStart(2, '0');
     const currentYear = now.getFullYear();
 
+    const student = students.find(s => s.id === studentId);
+    if (!student) return "unpaid";
+
     // Use backend payments instead of localStorage
-    return payments.some(
+    const currentMonthPayments = payments.filter(
       (payment) =>
         payment.studentId === studentId &&
-        Number(payment.month) === currentMonth &&
+        Number(payment.month) === Number(currentMonth) &&
         Number(payment.year) === currentYear
     );
+
+    if (currentMonthPayments.length === 0) return "unpaid";
+
+    const paidTotal = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0);
+    const monthly = student.monthlyPayment;
+
+    // If total paid meets or exceeds monthly requirement, it's paid
+    if (paidTotal >= monthly) {
+      return "paid";
+    }
+
+    // If there's any payment but less than required, it's partial
+    if (paidTotal > 0) {
+      return "partial";
+    }
+
+    return "unpaid";
+  };
+
+  const hasCurrentMonthPayment = (studentId: string): boolean => {
+    return getCurrentMonthPaymentStatus(studentId) === "paid";
   };
 
   useEffect(() => {

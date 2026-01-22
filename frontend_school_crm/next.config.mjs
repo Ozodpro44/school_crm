@@ -41,6 +41,7 @@ const nextConfig = {
     ],
   },
   allowedDevOrigins: ["*.daytona.work", "*.softgen.dev"],
+  output: "standalone",
 };
 
 export default nextConfig;

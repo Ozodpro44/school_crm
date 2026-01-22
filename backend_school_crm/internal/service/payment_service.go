@@ -35,6 +35,19 @@ type CreatePaymentRequest struct {
 }
 
 func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, createdBy string) (*models.Payment, error) {
+	// Check if student already has a paid payment for this month/year
+	existingPayments, err := s.GetByStudentIDAndPeriod(ctx, req.StudentID, req.Month, req.Year)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	// Check if there's already a paid payment for this period
+	for _, p := range existingPayments {
+		if p.Status == "paid" {
+			return nil, fmt.Errorf("student already has a paid payment for %s/%d", req.Month, req.Year)
+		}
+	}
+
 	payment := &models.Payment{
 		ID:            uuid.New().String(),
 		StudentID:     req.StudentID,
@@ -54,7 +67,7 @@ func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, 
 	query := `INSERT INTO payments (id, student_id, amount, month, year, payment_method, status, invoice_number, notes, paid_date, branch_id, created_by, created_at)
 	         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, payment.ID, payment.StudentID, payment.Amount, payment.Month, payment.Year,
+	_, err = s.db.GetConn().ExecContext(ctx, query, payment.ID, payment.StudentID, payment.Amount, payment.Month, payment.Year,
 		payment.PaymentMethod, payment.Status, payment.InvoiceNumber, payment.Notes, payment.PaidDate, payment.BranchID, payment.CreatedBy, payment.CreatedAt)
 
 	return payment, err

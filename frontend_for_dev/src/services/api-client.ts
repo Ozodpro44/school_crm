@@ -93,10 +93,22 @@ export class ApiClient {
   // ==================== AUTH ====================
 
   async login(email: string, password: string): Promise<{ token: string; user: any }> {
-    return this.request('/auth/login', {
+    // Use developer login endpoint for dev dashboard
+    const response = await this.request<{ id: string; email: string; fullName: string; token: string; role: string }>('/dev/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+    
+    // Transform response to match expected format
+    return {
+      token: response.token,
+      user: {
+        id: response.id,
+        email: response.email,
+        fullName: response.fullName,
+        role: response.role,
+      },
+    };
   }
 
   async register(data: {
@@ -465,6 +477,49 @@ export class ApiClient {
     return this.request(`/logs?level=${level}&limit=${limit}`, {
       method: 'GET',
     });
+  }
+
+  /**
+   * Ingest logs to the backend (used by Railway forwarder)
+   * Requires LOGS_TOKEN Bearer token
+   */
+  async ingestLog(
+    token: string,
+    payload: {
+      service: string;
+      level: string;
+      message: string;
+      metadata?: Record<string, string>;
+    }
+  ): Promise<any> {
+    const url = `${this.baseUrl}/logs/ingest`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
   }
 }
 

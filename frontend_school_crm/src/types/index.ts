@@ -4,6 +4,9 @@ export type StudentStatus = "active" | "left" | "suspended";
 export type PaymentStatus = "paid" | "partial";
 export type Language = "uz-cyrl" | "uz-latn" | "en";
 export type MonthStatus = "OPEN" | "CLOSED";
+export type SubscriptionStatus = "active" | "paused" | "cancelled" | "expired";
+export type SubscriptionPaymentStatus = "pending" | "completed" | "failed" | "refunded";
+export type BillingPeriod = "monthly" | "yearly";
 
 export interface Permission {
   id?: string;
@@ -185,4 +188,67 @@ export interface Translation {
     "uz-latn": string;
     en: string;
   };
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  billingPeriod: BillingPeriod;
+  maxBranches?: number;
+  maxStudents?: number;
+  maxClasses?: number;
+  features: Record<string, boolean | string | number>;
+  status: "active" | "inactive";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Subscription {
+  id: string;
+  userId: string;
+  planId: string;
+  branchId?: string;
+  status: SubscriptionStatus;
+  startDate: string;
+  endDate?: string;
+  renewalDate?: string;
+  autoRenew: boolean;
+  paymentMethod?: string;
+  stripeSubscriptionId?: string;
+  notes?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubscriptionUsage {
+  id: string;
+  subscriptionId: string;
+  metricName: string;
+  currentUsage: number;
+  limitValue?: number;
+  resetDate?: string;
+  updatedAt: string;
+}
+
+export interface SubscriptionPayment {
+  id: string;
+  subscriptionId: string;
+  amount: number;
+  currency: string;
+  status: SubscriptionPaymentStatus;
+  paymentDate?: string;
+  invoiceNumber?: string;
+  stripePaymentId?: string;
+  paymentMethod?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubscriptionResponse extends Subscription {
+  plan?: SubscriptionPlan;
 }

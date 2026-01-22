@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Search, Download, Clock, AlertCircle, AlertTriangle, Info, Eye, Copy, Trash2, Loader } from "lucide-react";
 import { apiClient } from "@/services/api-client";
-import { railwayLogsService } from "@/services/railway-logs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -82,50 +81,43 @@ export default function Logs() {
       setIsLoading(true);
       setError(null);
       
-      // Try to fetch from Railway via backend proxy first
+      // Fetch real Railway production logs
       try {
         const response = await fetch('/api/logs/railway?limit=100');
         
-        if (!response.ok) {
-          throw new Error(`Backend Railway proxy returned ${response.status}`);
-        }
-        
-        const railwayLogs = await response.json();
-        
-        if (railwayLogs && Array.isArray(railwayLogs) && railwayLogs.length > 0) {
-          // Convert Railway logs to LogEntry format
-          const convertedLogs: LogEntry[] = railwayLogs.map((log, index) => {
-            // Map log levels to valid LogLevel type
-            let level: LogLevel = 'INFO';
-            const upperLevel = (log.level || 'info').toUpperCase();
-            if (upperLevel === 'ERROR') level = 'ERROR';
-            else if (upperLevel === 'WARN') level = 'WARN';
-            
-            return {
-              id: log.id || `railway-${index}`,
-              timestamp: log.timestamp || new Date().toISOString(),
-              level,
-              module: log.service || 'railway',
-              message: log.message || '',
-              details: log.metadata ? JSON.stringify(log.metadata, null, 2) : undefined,
-            };
-          });
+        if (response.ok) {
+          const railwayLogs = await response.json();
           
-          setLogData(convertedLogs);
-          return;
+          if (railwayLogs && Array.isArray(railwayLogs) && railwayLogs.length > 0) {
+            const convertedLogs: LogEntry[] = railwayLogs.map((log, index) => {
+              let level: LogLevel = 'INFO';
+              const upperLevel = (log.level || 'info').toUpperCase();
+              if (upperLevel === 'ERROR') level = 'ERROR';
+              else if (upperLevel === 'WARN') level = 'WARN';
+              
+              return {
+                id: log.id || `railway-${index}`,
+                timestamp: log.timestamp || new Date().toISOString(),
+                level,
+                module: log.service || 'railway',
+                message: log.message || '',
+              };
+            });
+            
+            setLogData(convertedLogs);
+            return;
+          }
         }
       } catch (railwayError) {
         console.warn('Railway logs not available, trying backend...', railwayError);
       }
       
-      // Fall back to backend API if Railway not available
+      // Fall back to backend logs if Railway not available
       try {
         const backendLogs = await apiClient.getLogs(100);
         
         if (backendLogs && Array.isArray(backendLogs) && backendLogs.length > 0) {
-          // Convert backend logs to LogEntry format
           const convertedLogs: LogEntry[] = backendLogs.map((log, index) => {
-            // Map log levels to valid LogLevel type
             let level: LogLevel = 'INFO';
             const upperLevel = (log.level || 'info').toUpperCase();
             if (upperLevel === 'ERROR') level = 'ERROR';
@@ -152,9 +144,9 @@ export default function Logs() {
         console.warn('Backend logs not available', apiError);
       }
       
-      // No logs available from either source
+      // No logs available
       setLogData([]);
-      setError('No logs available. Configure Railway credentials or ensure backend /api/logs endpoint is running.');
+      setError('No logs available. Check Railway credentials or backend running.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch logs';
       setError(message);

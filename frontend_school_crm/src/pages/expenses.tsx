@@ -73,7 +73,8 @@ export default function ExpensesPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<number>(0);
   const currentUser = getCurrentUser();
-  const isAdmin = currentUser?.role === "admin" || currentUser?.role === "branch_admin";
+  const isAdmin =
+    currentUser?.role === "admin" || currentUser?.role === "branch_admin";
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -128,15 +129,15 @@ export default function ExpensesPage() {
 
   const getCategoryTranslationKey = (category: string): string => {
     const keyMap: Record<string, string> = {
-      "Utilities": "utilities",
-      "Supplies": "supplies",
-      "Maintenance": "maintenance",
-      "Transportation": "transportation",
-      "Equipment": "equipment",
-      "Marketing": "marketing",
-      "Insurance": "insurance",
-      "Rent": "rent",
-      "Other": "other",
+      Utilities: "utilities",
+      Supplies: "supplies",
+      Maintenance: "maintenance",
+      Transportation: "transportation",
+      Equipment: "equipment",
+      Marketing: "marketing",
+      Insurance: "insurance",
+      Rent: "rent",
+      Other: "other",
     };
     return keyMap[category] || category.toLowerCase();
   };
@@ -180,29 +181,32 @@ export default function ExpensesPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId") || "";
       let data: Expense[] = [];
-      
+
       // Load branch data to get current month
       if (branchId) {
         const branch = await getBranch(branchId);
         setBranchData(branch);
-        
+
         // Use financial month data if available, otherwise fall back to current date
-        const currentMonth = branch.currentFinancialMonth?.month?.toString().padStart(2, '0') || new Date().getMonth().toString().padStart(2, '0');
-        const currentYear = branch.currentFinancialMonth?.year || new Date().getFullYear();
-        
+        const currentMonth =
+          branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
+          new Date().getMonth().toString().padStart(2, "0");
+        const currentYear =
+          branch.currentFinancialMonth?.year || new Date().getFullYear();
+
         // Set selected month to branch's current month if not already set and not provided
         const targetMonth = month || selectedMonth || currentMonth;
         const targetYear = year || selectedYear || currentYear;
-        
+
         if (!selectedMonth) {
           setSelectedMonth(currentMonth);
           setSelectedYear(currentYear);
         }
-        
+
         // Always use the current branch month for filtering
         const queryMonth = targetMonth;
         const queryYear = targetYear;
-        
+
         data = await listExpenses(branchId, queryMonth, queryYear);
         setExpenses(data);
       }
@@ -256,6 +260,8 @@ export default function ExpensesPage() {
       setUserCache((prev) => ({ ...prev, [userId]: user.fullName }));
     } catch (error) {
       console.error(`Failed to fetch user ${userId}:`, error);
+      // Cache empty name to avoid retrying
+      setUserCache((prev) => ({ ...prev, [userId]: "Unknown" }));
     }
   };
 
@@ -272,7 +278,7 @@ export default function ExpensesPage() {
     try {
       // Convert date string (YYYY-MM-DD) to ISO timestamp (YYYY-MM-DDTHH:mm:ssZ)
       const dateTimestamp = new Date(
-        formData.date + "T00:00:00Z"
+        formData.date + "T00:00:00Z",
       ).toISOString();
 
       if (editingExpense) {
@@ -310,17 +316,17 @@ export default function ExpensesPage() {
       resetForm();
       await loadData();
       setIsDialogOpen(false);
-      } catch (error) {
+    } catch (error) {
       console.error("Failed to save expense:", error);
       toast({
         title: "Error",
         description: "Failed to save expense",
         variant: "destructive",
       });
-      } finally {
+    } finally {
       setIsSubmitting(false);
-      }
-      };
+    }
+  };
 
   const handleEdit = (expense: Expense) => {
     setEditingExpense(expense);
@@ -458,7 +464,7 @@ export default function ExpensesPage() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedExpenses = filteredExpenses.slice(
     startIndex,
-    startIndex + itemsPerPage
+    startIndex + itemsPerPage,
   );
 
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
@@ -557,12 +563,30 @@ export default function ExpensesPage() {
                 className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
               >
                 {confirmDialog.isLoading && (
-                  <svg className="w-4 h-4 mr-2 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <svg
+                    className="w-4 h-4 mr-2 animate-spin"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
                   </svg>
                 )}
-                {confirmDialog.isLoading ? t("loading") || "Loading..." : t("delete")}
+                {confirmDialog.isLoading
+                  ? t("loading") || "Loading..."
+                  : t("delete")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -589,157 +613,175 @@ export default function ExpensesPage() {
               month={selectedMonth}
               year={selectedYear}
               onChange={handleMonthChange}
-              currentBranchMonth={branchData.currentFinancialMonth?.month?.toString().padStart(2, '0')}
+              currentBranchMonth={branchData.currentFinancialMonth?.month
+                ?.toString()
+                .padStart(2, "0")}
               currentBranchYear={branchData.currentFinancialMonth?.year}
             />
           </div>
         )}
 
         <div className="flex-1 flex justify-end">
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button
-              className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
-              onClick={() => resetForm()}
-              disabled={!canCreateExpenses}
-              title={!canCreateExpenses ? t("noPermission") || "No permission to create expenses" : ""}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              {t("addExpense")}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {editingExpense ? t("editExpense") : t("addNewExpense")}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="category">{t("category")} *</Label>
-                  <Select
-                    value={formData.category}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, category: value })
-                    }
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={t("selectCategory")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {t(category.toLowerCase()) !==
-                          String(category.toLowerCase())
-                            ? t(category.toLowerCase())
-                            : category}
+          <Dialog
+            open={isDialogOpen}
+            onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) resetForm();
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button
+                className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
+                onClick={() => resetForm()}
+                disabled={!canCreateExpenses}
+                title={
+                  !canCreateExpenses
+                    ? t("noPermission") || "No permission to create expenses"
+                    : ""
+                }
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {t("addExpense")}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingExpense ? t("editExpense") : t("addNewExpense")}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="category">{t("category")} *</Label>
+                    <Select
+                      value={formData.category}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, category: value })
+                      }
+                      required
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("selectCategory")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {t(category.toLowerCase()) !==
+                            String(category.toLowerCase())
+                              ? t(category.toLowerCase())
+                              : category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">{t("amount")} *</Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      value={formData.amount}
+                      onChange={(e) =>
+                        setFormData({ ...formData, amount: e.target.value })
+                      }
+                      required
+                      placeholder="10000"
+                      step="0.01"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="paymentMethod">
+                      {t("paymentMethod")} *
+                    </Label>
+                    <Select
+                      value={formData.paymentMethod}
+                      onValueChange={(value: PaymentMethod) =>
+                        setFormData({ ...formData, paymentMethod: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="card">{t("card")}</SelectItem>
+                        <SelectItem value="cash">{t("cash")}</SelectItem>
+                        <SelectItem value="bank">
+                          {t("bankTransfer")}
                         </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="date">{t("date")} *</Label>
+                    <Input
+                      id="date"
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) =>
+                        setFormData({ ...formData, date: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="description">{t("description")} *</Label>
+                    <Input
+                      id="description"
+                      value={formData.description}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          description: e.target.value,
+                        })
+                      }
+                      placeholder={t("briefDescription")}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <Label htmlFor="notes">{t("notes")}</Label>
+                    <Textarea
+                      id="notes"
+                      value={formData.notes}
+                      onChange={(e) =>
+                        setFormData({ ...formData, notes: e.target.value })
+                      }
+                      placeholder={t("notesPlaceholder")}
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="amount">{t("amount")} *</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    value={formData.amount}
-                    onChange={(e) =>
-                      setFormData({ ...formData, amount: e.target.value })
-                    }
-                    required
-                    placeholder="10000"
-                    step="0.01"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="paymentMethod">{t("paymentMethod")} *</Label>
-                  <Select
-                    value={formData.paymentMethod}
-                    onValueChange={(value: PaymentMethod) =>
-                      setFormData({ ...formData, paymentMethod: value })
-                    }
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsDialogOpen(false)}
+                    disabled={isSubmitting}
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="card">{t("card")}</SelectItem>
-                      <SelectItem value="cash">{t("cash")}</SelectItem>
-                      <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    {t("cancel")}
+                  </Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                        {editingExpense ? t("updating") : t("creating")}
+                      </>
+                    ) : editingExpense ? (
+                      t("update")
+                    ) : (
+                      t("addExpense")
+                    )}
+                  </Button>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="date">{t("date")} *</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, date: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">{t("description")} *</Label>
-                  <Input
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({ ...formData, description: e.target.value })
-                    }
-                    placeholder={t("briefDescription")}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="notes">{t("notes")}</Label>
-                  <Textarea
-                    id="notes"
-                    value={formData.notes}
-                    onChange={(e) =>
-                      setFormData({ ...formData, notes: e.target.value })
-                    }
-                    placeholder={t("notesPlaceholder")}
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                 <Button
-                   type="button"
-                   variant="outline"
-                   onClick={() => setIsDialogOpen(false)}
-                   disabled={isSubmitting}
-                 >
-                   {t("cancel")}
-                 </Button>
-                 <Button type="submit" disabled={isSubmitting}>
-                   {isSubmitting ? (
-                     <>
-                       <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
-                       {editingExpense ? t("updating") : t("creating")}
-                     </>
-                   ) : (
-                     editingExpense ? t("update") : t("addExpense")
-                   )}
-                 </Button>
-               </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -857,8 +899,8 @@ export default function ExpensesPage() {
               <SelectContent>
                 <SelectItem value="all">{t("allCategories")}</SelectItem>
                 {categories.map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {t(getCategoryTranslationKey(category))}
+                  <SelectItem key={category} value={category}>
+                    {t(getCategoryTranslationKey(category))}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -936,7 +978,9 @@ export default function ExpensesPage() {
                       {new Date(expense.date).toLocaleDateString()}
                     </td>
                     <td className="py-3 px-4">
-                      <Badge variant="outline">{t(getCategoryTranslationKey(expense.category))}</Badge>
+                      <Badge variant="outline">
+                        {t(getCategoryTranslationKey(expense.category))}
+                      </Badge>
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
                       {expense.title}
@@ -949,16 +993,20 @@ export default function ExpensesPage() {
                     <td className="py-3 px-4">
                       <Badge
                         className={`gap-1 ${getPaymentMethodColor(
-                          expense.paymentMethod
+                          expense.paymentMethod,
                         )}`}
                       >
                         {getPaymentMethodIcon(expense.paymentMethod)}
-                        <span>{t(
-                          expense.paymentMethod === "bank"
-                            ? "bankTransfer"
-                            : expense.paymentMethod
-                        )}</span>
-                        <span className="ml-1 font-medium">{formatCurrency(expense.amount)}</span>
+                        <span>
+                          {t(
+                            expense.paymentMethod === "bank"
+                              ? "bankTransfer"
+                              : expense.paymentMethod,
+                          )}
+                        </span>
+                        <span className="ml-1 font-medium">
+                          {formatCurrency(expense.amount)}
+                        </span>
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
@@ -1017,7 +1065,7 @@ export default function ExpensesPage() {
                     size="sm"
                     onClick={() =>
                       router.push(
-                        `/expenses?page=${Math.max(1, currentPage - 1)}`
+                        `/expenses?page=${Math.max(1, currentPage - 1)}`,
                       )
                     }
                     disabled={currentPage === 1}
@@ -1036,7 +1084,7 @@ export default function ExpensesPage() {
                         >
                           {page}
                         </Button>
-                      )
+                      ),
                     )}
                   </div>
                   <Button
@@ -1046,8 +1094,8 @@ export default function ExpensesPage() {
                       router.push(
                         `/expenses?page=${Math.min(
                           totalPages,
-                          currentPage + 1
-                        )}`
+                          currentPage + 1,
+                        )}`,
                       )
                     }
                     disabled={currentPage === totalPages}

@@ -3,7 +3,6 @@ package handlers
 import (
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/middleware"
@@ -219,9 +218,4 @@ func deleteExpense(expenseService *service.ExpenseService, branchService *servic
 
 		c.JSON(http.StatusOK, gin.H{"message": "expense deleted"})
 	}
-}
-
-// Helper to check if a date is in the given month/year
-func isDateInPeriod(date time.Time, month int, year int) bool {
-	return int(date.Month()) == month && date.Year() == year
 }

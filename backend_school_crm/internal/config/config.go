@@ -8,4 +8,5 @@ type Config struct {
 	RedisURL    string
 	ResendAPIKey string
 	ResendFrom  string
+	LogsToken    string // Bearer token for ingesting logs
 }

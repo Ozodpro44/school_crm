@@ -30,7 +30,8 @@ func (s *PermissionService) GetByUserID(ctx context.Context, userID string) (*mo
 		       can_view_payments, can_create_payments, can_edit_payments,
 		       can_view_salaries, can_create_salaries, can_edit_salaries,
 		       can_view_expenses, can_create_expenses, can_edit_expenses, can_delete_expenses,
-		       can_view_reports, can_view_settings, can_edit_settings
+		       can_view_reports, can_view_settings, can_edit_settings,
+		       COALESCE(can_view_subscriptions, true), COALESCE(can_manage_subscriptions, false)
 		FROM permissions WHERE user_id = $1
 	`
 
@@ -43,6 +44,7 @@ func (s *PermissionService) GetByUserID(ctx context.Context, userID string) (*mo
 		&permission.CanViewSalaries, &permission.CanCreateSalaries, &permission.CanEditSalaries,
 		&permission.CanViewExpenses, &permission.CanCreateExpenses, &permission.CanEditExpenses, &permission.CanDeleteExpenses,
 		&permission.CanViewReports, &permission.CanViewSettings, &permission.CanEditSettings,
+		&permission.CanViewSubscriptions, &permission.CanManageSubscriptions,
 	)
 
 	if err == sql.ErrNoRows {

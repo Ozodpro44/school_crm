@@ -206,37 +206,39 @@ export default function StudentsPage() {
   };
 
   const getCurrentMonthPaymentStatus = (studentId: string): string => {
-    // Use branch's current financial month if available, fallback to actual current date
-    const currentMonth = branchData?.currentFinancialMonth?.month?.toString().padStart(2, '0') || 
-                        (new Date().getMonth() + 1).toString().padStart(2, '0');
-    const currentYear = branchData?.currentFinancialMonth?.year || new Date().getFullYear();
-
-    const student = students.find(s => s.id === studentId);
-    if (!student) return "unpaid";
-
-    // Use backend payments instead of localStorage
-    const currentMonthPayments = payments.filter(
-      (payment) =>
-        payment.studentId === studentId &&
-        Number(payment.month) === Number(currentMonth) &&
-        Number(payment.year) === currentYear
-    );
-
-    if (currentMonthPayments.length === 0) return "unpaid";
-
-    const paidTotal = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0);
-    const monthly = student.monthlyPayment;
-    const hasPartialPayment = currentMonthPayments.some(p => p.status === "partial");
-
-    if (paidTotal >= monthly) {
-      return "paid";
-    } else if (hasPartialPayment) {
-      return "partial";
-    } else if (paidTotal > 0) {
-      return "partial";
-    }
-    return "unpaid";
-  };
+     // Use branch's current financial month if available, fallback to actual current date
+     const currentMonth = branchData?.currentFinancialMonth?.month?.toString().padStart(2, '0') || 
+                         (new Date().getMonth() + 1).toString().padStart(2, '0');
+     const currentYear = branchData?.currentFinancialMonth?.year || new Date().getFullYear();
+  
+     const student = students.find(s => s.id === studentId);
+     if (!student) return "unpaid";
+  
+     // Use backend payments instead of localStorage
+     const currentMonthPayments = payments.filter(
+       (payment) =>
+         payment.studentId === studentId &&
+         Number(payment.month) === Number(currentMonth) &&
+         Number(payment.year) === currentYear
+     );
+  
+     if (currentMonthPayments.length === 0) return "unpaid";
+  
+     const paidTotal = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0);
+     const monthly = student.monthlyPayment;
+  
+     // If total paid meets or exceeds monthly requirement, it's paid
+     if (paidTotal >= monthly) {
+       return "paid";
+     }
+     
+     // If there's any payment but less than required, it's partial
+     if (paidTotal > 0) {
+       return "partial";
+     }
+     
+     return "unpaid";
+   };
 
   const processCSVData = async (csvText: string) => {
     try {

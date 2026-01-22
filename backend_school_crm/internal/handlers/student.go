@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -29,12 +28,9 @@ func createStudent(studentService *service.StudentService) gin.HandlerFunc {
 
 		student, err := studentService.Create(c.Request.Context(), &req)
 		if err != nil {
-			AddLog("error", "students", fmt.Sprintf("Failed to create student: %v", err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		AddLog("info", "students", fmt.Sprintf("New student created: %s", req.FullName))
 		c.JSON(http.StatusCreated, student)
 	}
 }
@@ -81,12 +77,9 @@ func updateStudent(studentService *service.StudentService) gin.HandlerFunc {
 
 		student, err := studentService.Update(c.Request.Context(), id, updates)
 		if err != nil {
-			AddLog("error", "students", fmt.Sprintf("Failed to update student %s: %v", id, err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		AddLog("info", "students", fmt.Sprintf("Student updated: %s", id))
 		c.JSON(http.StatusOK, student)
 	}
 }
@@ -96,12 +89,9 @@ func deleteStudent(studentService *service.StudentService) gin.HandlerFunc {
 		id := c.Param("id")
 
 		if err := studentService.Delete(c.Request.Context(), id); err != nil {
-			AddLog("error", "students", fmt.Sprintf("Failed to delete student %s: %v", id, err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		AddLog("info", "students", fmt.Sprintf("Student deleted: %s", id))
 		c.JSON(http.StatusOK, gin.H{"message": "student deleted"})
 	}
 }

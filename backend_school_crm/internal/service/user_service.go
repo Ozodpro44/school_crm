@@ -15,18 +15,20 @@ import (
 )
 
 type UserService struct {
-	db            *db.Database
-	branchService *BranchService
-	redisClient   *utils.RedisClient
-	emailSender   *utils.EmailSender
+	db                   *db.Database
+	branchService        *BranchService
+	subscriptionService  *SubscriptionService
+	redisClient          *utils.RedisClient
+	emailSender          *utils.EmailSender
 }
 
 func NewUserService(database *db.Database) *UserService {
 	return &UserService{
-		db:            database,
-		branchService: NewBranchService(database),
-		redisClient:   nil,
-		emailSender:   nil,
+		db:                  database,
+		branchService:       NewBranchService(database),
+		subscriptionService: NewSubscriptionService(database),
+		redisClient:         nil,
+		emailSender:         nil,
 	}
 }
 
@@ -43,6 +45,12 @@ func (s *UserService) SetEmailSender(emailSender *utils.EmailSender) {
 // GetDB returns the database connection
 func (s *UserService) GetDB() *db.Database {
 	return s.db
+}
+
+// GetUserPermissions retrieves permissions for a specific user
+func (s *UserService) GetUserPermissions(ctx context.Context, userID string) (*models.Permission, error) {
+	permissionService := NewPermissionService(s.db)
+	return permissionService.GetByUserID(ctx, userID)
 }
 
 type LoginRequest struct {
@@ -170,6 +178,7 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 	}
 
 	// For admin users, create a default branch after user is inserted
+	var branchID *string
 	if user.Role == models.RoleAdmin {
 		log.Printf("[UserService.Register] Creating default branch for admin user: %s", req.Email)
 
@@ -188,6 +197,38 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 		}
 
 		log.Printf("[UserService.Register] Default branch created: %s (ID: %s)", branch.Name, branch.ID)
+		branchID = &branch.ID
+	}
+
+	// Create free trial subscription for new user
+	log.Printf("[UserService.Register] Creating free trial subscription for user: %s", req.Email)
+	trialPlan, err := s.subscriptionService.GetOrCreateFreeTrial(ctx)
+	if err != nil {
+		log.Printf("[UserService.Register] Warning: Failed to create free trial subscription: %v", err)
+		// Don't fail the registration if subscription creation fails
+	} else {
+		now := utils.GetLocalTime()
+		endDate := now.AddDate(0, 0, 14) // 14 days from now
+		paymentMethod := "free_trial"
+		notes := "Automatic free trial subscription"
+		subscription := &models.Subscription{
+			UserID:        user.ID,
+			PlanID:        trialPlan.ID,
+			BranchID:      branchID,
+			Status:        "active",
+			StartDate:     now,
+			RenewalDate:   &endDate,
+			AutoRenew:     false,
+			PaymentMethod: &paymentMethod,
+			Notes:         &notes,
+		}
+
+		err = s.subscriptionService.CreateSubscription(ctx, subscription)
+		if err != nil {
+			log.Printf("[UserService.Register] Warning: Failed to create subscription for user %s: %v", user.ID, err)
+		} else {
+			log.Printf("[UserService.Register] Free trial subscription created for user: %s (Plan: %s)", user.ID, trialPlan.Name)
+		}
 	}
 
 	user.Password = ""

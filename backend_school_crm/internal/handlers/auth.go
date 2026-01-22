@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -31,13 +30,11 @@ func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
 		user, err := userService.Login(c.Request.Context(), req.Email, req.Password)
 		if err != nil {
 			log.Printf("[LOGIN ERROR] Authentication failed for %s: %v", req.Email, err)
-			AddLog("warn", "auth", fmt.Sprintf("Failed login attempt for %s from %s", req.Email, c.ClientIP()))
 			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
 		}
 
 		log.Printf("[LOGIN SUCCESS] User %s (ID: %s) logged in successfully", req.Email, user.ID)
-		AddLog("info", "auth", fmt.Sprintf("User %s logged in successfully from %s", req.Email, c.ClientIP()))
 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &middleware.CustomClaims{
 			UserID: user.ID,
@@ -81,13 +78,11 @@ func Register(userService *service.UserService, jwtSecret string) gin.HandlerFun
 		user, err := userService.Register(c.Request.Context(), &req)
 		if err != nil {
 			log.Printf("[REGISTER ERROR] Registration failed for %s: %v", req.Email, err)
-			AddLog("error", "auth", fmt.Sprintf("Registration failed for %s: %v", req.Email, err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
 		log.Printf("[REGISTER SUCCESS] User %s (ID: %s) registered successfully", req.Email, user.ID)
-		AddLog("info", "auth", fmt.Sprintf("New user registered: %s (Role: %s)", req.Email, req.Role))
 
 		// Generate JWT token for the newly registered user
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &middleware.CustomClaims{
@@ -134,13 +129,11 @@ func ForgotPassword(userService *service.UserService) gin.HandlerFunc {
 
 		if err := userService.ForgotPasswordRequest(c.Request.Context(), req.Email); err != nil {
 			log.Printf("[ForgotPassword ERROR] Failed to process request: %v", err)
-			AddLog("error", "auth", fmt.Sprintf("Password reset request failed for %s", req.Email))
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
 		log.Printf("[ForgotPassword SUCCESS] OTP sent to %s", req.Email)
-		AddLog("info", "auth", fmt.Sprintf("Password reset OTP sent to %s", req.Email))
 		c.JSON(http.StatusOK, gin.H{
 			"message": "OTP sent to your email",
 			"email":   req.Email,
@@ -169,13 +162,11 @@ func VerifyOTP(userService *service.UserService) gin.HandlerFunc {
 		resetToken, err := userService.VerifyOTPRequest(c.Request.Context(), req.Email, req.OTP)
 		if err != nil {
 			log.Printf("[VerifyOTP ERROR] Verification failed: %v", err)
-			AddLog("warn", "auth", fmt.Sprintf("OTP verification failed for %s", req.Email))
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
 		log.Printf("[VerifyOTP SUCCESS] OTP verified for %s", req.Email)
-		AddLog("info", "auth", fmt.Sprintf("OTP verified successfully for %s", req.Email))
 		c.JSON(http.StatusOK, gin.H{
 			"message":     "OTP verified successfully",
 			"resetToken":  resetToken,
@@ -233,13 +224,11 @@ func ResetPassword(userService *service.UserService) gin.HandlerFunc {
 
 		if err := userService.ResetPasswordWithToken(c.Request.Context(), req.Email, req.ResetToken, req.NewPassword); err != nil {
 			log.Printf("[ResetPassword ERROR] Password reset failed: %v", err)
-			AddLog("error", "auth", fmt.Sprintf("Password reset failed for %s: %v", req.Email, err))
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
 		log.Printf("[ResetPassword SUCCESS] Password reset for %s", req.Email)
-		AddLog("info", "auth", fmt.Sprintf("Password reset successful for %s", req.Email))
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Password reset successfully. Please login with your new password.",
 		})

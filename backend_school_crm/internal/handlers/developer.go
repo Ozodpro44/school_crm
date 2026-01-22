@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/db"
+	"github.com/school-crm/backend/internal/service"
 )
 
 // DatabaseTable represents a table in the database schema
@@ -499,8 +501,152 @@ func generateTestPayments(ctx context.Context, conn *sql.DB, branchID string) (i
 	return count, nil
 }
 
+// SeedSubscriptionPlans seeds default subscription plans if they don't exist
+func SeedSubscriptionPlans(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		log.Printf("[DEV] Seeding subscription plans")
+
+		query := `
+			INSERT INTO subscription_plans (id, name, description, price, billing_period, max_branches, max_students, max_classes, features, status, created_at, updated_at)
+			VALUES
+				(gen_random_uuid(), 'Starter', 'Perfect for small schools starting their digital journey', 29.99, 'monthly', 1, 100, 5, '{"analytics": false, "api_access": false, "priority_support": false}', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+				(gen_random_uuid(), 'Professional', 'Designed for growing schools with multiple classes', 79.99, 'monthly', 3, 500, 20, '{"analytics": true, "api_access": false, "priority_support": true}', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+				(gen_random_uuid(), 'Enterprise', 'Complete solution for large educational institutions', 199.99, 'monthly', 10, 5000, 100, '{"analytics": true, "api_access": true, "priority_support": true}', 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+			ON CONFLICT DO NOTHING
+		`
+
+		result, err := database.GetConn().ExecContext(c.Request.Context(), query)
+		if err != nil {
+			log.Printf("[DEV ERROR] Failed to seed subscription plans: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to seed subscription plans", "details": err.Error()})
+			return
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			log.Printf("[DEV ERROR] Failed to get rows affected: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get rows affected"})
+			return
+		}
+
+		log.Printf("[DEV] Seeded %d subscription plans", rowsAffected)
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Subscription plans seeded successfully",
+			"plans_created": rowsAffected,
+		})
+	}
+}
+
+// GetDevSubscriptions returns all subscriptions for dev dashboard
+func GetDevSubscriptions(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		query := `
+			SELECT id, user_id, plan_id, branch_id, status, start_date, end_date, renewal_date,
+				   auto_renew, payment_method, stripe_subscription_id, notes, cancelled_at, cancelled_by,
+				   created_at, updated_at
+			FROM subscriptions
+			ORDER BY created_at DESC
+			LIMIT 100
+		`
+
+		rows, err := database.GetConn().QueryContext(c.Request.Context(), query)
+		if err != nil {
+			log.Printf("[DEV ERROR] Failed to fetch subscriptions: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch subscriptions"})
+			return
+		}
+		defer rows.Close()
+
+		var subscriptions []map[string]interface{}
+		for rows.Next() {
+			var id, userID, planID string
+			var branchID, status, paymentMethod, stripeSubID, notes *string
+			var startDate, renewalDate, cancelledAt *time.Time
+			var endDate, cancelledBy *string
+			var autoRenew bool
+			var createdAt, updatedAt time.Time
+
+			if err := rows.Scan(&id, &userID, &planID, &branchID, &status, &startDate, &endDate, &renewalDate,
+				&autoRenew, &paymentMethod, &stripeSubID, &notes, &cancelledAt, &cancelledBy,
+				&createdAt, &updatedAt); err != nil {
+				continue
+			}
+
+			subscriptions = append(subscriptions, map[string]interface{}{
+				"id":                  id,
+				"userId":              userID,
+				"planId":              planID,
+				"branchId":            branchID,
+				"status":              status,
+				"startDate":           startDate,
+				"endDate":             endDate,
+				"renewalDate":         renewalDate,
+				"autoRenew":           autoRenew,
+				"paymentMethod":       paymentMethod,
+				"stripeSubscriptionId": stripeSubID,
+				"notes":               notes,
+				"cancelledAt":         cancelledAt,
+				"cancelledBy":         cancelledBy,
+				"createdAt":           createdAt,
+				"updatedAt":           updatedAt,
+			})
+		}
+
+		if subscriptions == nil {
+			subscriptions = []map[string]interface{}{}
+		}
+
+		c.JSON(http.StatusOK, subscriptions)
+	}
+}
+
+// GetDevUsers returns all users for dev dashboard
+func GetDevUsers(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		query := `
+			SELECT id, email, full_name, role, created_at, updated_at
+			FROM users
+			ORDER BY created_at DESC
+			LIMIT 100
+		`
+
+		rows, err := database.GetConn().QueryContext(c.Request.Context(), query)
+		if err != nil {
+			log.Printf("[DEV ERROR] Failed to fetch users: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
+			return
+		}
+		defer rows.Close()
+
+		var users []map[string]interface{}
+		for rows.Next() {
+			var id, email, fullName, role string
+			var createdAt, updatedAt time.Time
+
+			if err := rows.Scan(&id, &email, &fullName, &role, &createdAt, &updatedAt); err != nil {
+				continue
+			}
+
+			users = append(users, map[string]interface{}{
+				"id":        id,
+				"email":     email,
+				"fullName":  fullName,
+				"role":      role,
+				"createdAt": createdAt,
+				"updatedAt": updatedAt,
+			})
+		}
+
+		if users == nil {
+			users = []map[string]interface{}{}
+		}
+
+		c.JSON(http.StatusOK, users)
+	}
+}
+
 // RegisterDeveloperRoutes registers developer endpoints
-func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database) {
+func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database, subscriptionService *service.SubscriptionService) {
 	log.Println("[ROUTES] Registering developer routes")
 
 	// Schema and migrations info (no auth required for learning)
@@ -510,4 +656,16 @@ func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database) {
 
 	// Test data generation (admin only)
 	router.POST("/dev/generate-test-data", GenerateTestData(database))
+	
+	// Subscription plans seeding
+	router.POST("/dev/seed-subscription-plans", SeedSubscriptionPlans(database))
+	
+	// Subscription plans CRUD (dev endpoints)
+	router.POST("/dev/subscription-plans", CreateSubscriptionPlanHandler(subscriptionService))
+	router.PUT("/dev/subscription-plans/:id", UpdateSubscriptionPlanHandler(subscriptionService))
+	router.DELETE("/dev/subscription-plans/:id", DeleteSubscriptionPlanHandler(subscriptionService))
+	
+	// Subscriptions and users data (dev endpoints)
+	router.GET("/dev/subscriptions", GetDevSubscriptions(database))
+	router.GET("/dev/users", GetDevUsers(database))
 }
