@@ -14,9 +14,10 @@ RUN go build -ldflags="-w -s" -o out ./cmd/main.go
 
 FROM alpine:latest
 
-WORKDIR /root/
+WORKDIR /app
 
 COPY --from=builder /app/out .
+COPY --from=builder /app/migrations ./migrations
 
 EXPOSE 8080
 
