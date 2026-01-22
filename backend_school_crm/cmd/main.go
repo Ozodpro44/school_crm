@@ -144,7 +144,8 @@ func main() {
 	router.POST("/api/auth/reset-password", handlers.ResetPassword(userService))
 	
 	// Public subscription plans
-	router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
+	// SUBSCRIPTIONS DISABLED
+	// router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
 
 	// Public developer auth routes
 	handlers.RegisterDeveloperAuthRoutes(router, developerService, cfg.JWTSecret)
@@ -187,10 +188,11 @@ func main() {
 	// Settings
 	handlers.RegisterSettingsRoutes(protected, branchService, userService)
 
+	// SUBSCRIPTIONS DISABLED
 	// Subscriptions (protected routes only, plans is public)
-	handlers.RegisterSubscriptionProtectedRoutes(protected, subscriptionService, userService)
-	handlers.RegisterClickUzRoutes(protected, clickUzService, subscriptionService)
-	handlers.RegisterTelegramPaymentRoutes(protected, telegramPaymentService, subscriptionService)
+	// handlers.RegisterSubscriptionProtectedRoutes(protected, subscriptionService, userService)
+	// handlers.RegisterClickUzRoutes(protected, clickUzService, subscriptionService)
+	// handlers.RegisterTelegramPaymentRoutes(protected, telegramPaymentService, subscriptionService)
 	
 	// Payment webhooks (public, no auth required)
 	handlers.RegisterClickUzWebhooks(router.Group("/api"), clickUzService)
