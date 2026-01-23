@@ -91,8 +91,12 @@ func listPayments(paymentService *service.PaymentService, branchService *service
 		if pageInt < 1 {
 			pageInt = 1
 		}
-		if limitInt < 1 || limitInt > 100 {
+		if limitInt < 1 {
 			limitInt = 10
+		}
+		// Allow larger limits for data analysis and reporting (max 10000)
+		if limitInt > 10000 {
+			limitInt = 10000
 		}
 
 		// Get user role for access control
@@ -107,8 +111,8 @@ func listPayments(paymentService *service.PaymentService, branchService *service
 				return
 			}
 
-			// If month and year are provided and user is admin, allow viewing any month
-			if month != "" && year != "" && isAdmin {
+			// If month and year are provided, use them
+			if month != "" && year != "" {
 				result, err := paymentService.GetByBranchIDAndPeriodPaginated(c.Request.Context(), branchID, month, year, pageInt, limitInt)
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -118,7 +122,7 @@ func listPayments(paymentService *service.PaymentService, branchService *service
 				return
 			}
 
-			// For managers or when no specific period requested: return branch's current month only
+			// When no specific period requested: return branch's current month
 			result, err := paymentService.GetByBranchIDAndPeriodPaginated(c.Request.Context(), branchID, currentMonth, strconv.Itoa(currentYear), pageInt, limitInt)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
