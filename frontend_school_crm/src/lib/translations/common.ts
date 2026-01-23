@@ -1693,36 +1693,11 @@ export const commonTranslations: Partial<Translation> = {
     en: "Deficit",
   },
 
-  // Payment methods
+  // Payment methods breakdown
   incomeByPaymentMethod: {
     "uz-cyrl": "Ўдиниш усулига кўра даромад",
     "uz-latn": "O'dinish usuliga ko'ra daromad",
     en: "Income by Payment Method",
-  },
-  cardPayment: {
-    "uz-cyrl": "Карточка",
-    "uz-latn": "Kartochka",
-    en: "Card",
-  },
-  cashPayment: {
-    "uz-cyrl": "Пул",
-    "uz-latn": "Pul",
-    en: "Cash",
-  },
-  bankTransfer: {
-    "uz-cyrl": "Банк ўтказмаси",
-    "uz-latn": "Bank o'tkazmasi",
-    en: "Bank Transfer",
-  },
-  income: {
-    "uz-cyrl": "Даромад",
-    "uz-latn": "Daromad",
-    en: "Income",
-  },
-  profit: {
-    "uz-cyrl": "Фойда",
-    "uz-latn": "Foyda",
-    en: "Profit",
   },
   };
 
