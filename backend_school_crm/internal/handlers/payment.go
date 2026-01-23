@@ -111,8 +111,8 @@ func listPayments(paymentService *service.PaymentService, branchService *service
 				return
 			}
 
-			// If month and year are provided, use them
-			if month != "" && year != "" {
+			// If month and year are provided and user is admin, allow viewing any month
+			if month != "" && year != "" && isAdmin {
 				result, err := paymentService.GetByBranchIDAndPeriodPaginated(c.Request.Context(), branchID, month, year, pageInt, limitInt)
 				if err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -122,7 +122,7 @@ func listPayments(paymentService *service.PaymentService, branchService *service
 				return
 			}
 
-			// When no specific period requested: return branch's current month
+			// For managers or when no specific period requested: return branch's current month only
 			result, err := paymentService.GetByBranchIDAndPeriodPaginated(c.Request.Context(), branchID, currentMonth, strconv.Itoa(currentYear), pageInt, limitInt)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
