@@ -39,8 +39,14 @@ import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/exportUtils";
-import { listStudents as apiListStudents, listClasses as apiListClasses, listTeachers as apiListTeachers, listPayments as apiListPayments } from "@/lib/api";
-import type { Payment } from "@/lib/api";
+import {
+  listStudents as apiListStudents,
+  listClasses as apiListClasses,
+  listTeachers as apiListTeachers,
+  listPayments as apiListPayments,
+  getBranch,
+} from "@/lib/api";
+import type { Payment, Branch } from "@/lib/api";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function ClassDetailsPage() {
@@ -53,6 +59,7 @@ export default function ClassDetailsPage() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [allClasses, setAllClasses] = useState<Class[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [branchData, setBranchData] = useState<Branch | null>(null);
   const [teacherName, setTeacherName] = useState("");
   const [targetClassId, setTargetClassId] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -94,11 +101,15 @@ export default function ClassDetailsPage() {
   const t = (key: string) => getTranslation(key, language);
 
   const getCurrentMonthPaymentStatus = (studentId: string): string => {
-    const now = new Date();
-    const currentMonth = (now.getMonth() + 1).toString().padStart(2, '0');
-    const currentYear = now.getFullYear();
+    // Use branch's current month, not system month
+    if (!branchData?.currentFinancialMonth) return "unpaid";
 
-    const student = students.find(s => s.id === studentId);
+    const currentMonth = branchData.currentFinancialMonth.month
+      .toString()
+      .padStart(2, "0");
+    const currentYear = branchData.currentFinancialMonth.year;
+
+    const student = students.find((s) => s.id === studentId);
     if (!student) return "unpaid";
 
     // Use backend payments instead of localStorage
@@ -106,12 +117,15 @@ export default function ClassDetailsPage() {
       (payment) =>
         payment.studentId === studentId &&
         Number(payment.month) === Number(currentMonth) &&
-        Number(payment.year) === currentYear
+        Number(payment.year) === currentYear,
     );
 
     if (currentMonthPayments.length === 0) return "unpaid";
 
-    const paidTotal = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0);
+    const paidTotal = currentMonthPayments.reduce(
+      (sum, p) => sum + p.amount,
+      0,
+    );
     const monthly = student.monthlyPayment;
 
     // If total paid meets or exceeds monthly requirement, it's paid
@@ -157,33 +171,43 @@ export default function ClassDetailsPage() {
       // Load class from API
       const classList = await apiListClasses(branchId);
       const classDataFetched = classList.find((c) => c.id === id);
-      
+
       if (classDataFetched) {
         setClassData(classDataFetched);
         setAllClasses(classList);
-        
+
         // Load students from API
         const allStudents = await apiListStudents(branchId);
         setStudents(allStudents);
         const studentsInClass = allStudents.filter(
-          (s) => s.classId === classDataFetched.id
+          (s) => s.classId === classDataFetched.id,
         );
         setClassStudents(studentsInClass);
 
         // Load teachers from API
         const teachersList = await apiListTeachers(branchId);
         setTeachers(teachersList);
-        
+
+        // Load branch data to get current financial month
+        const branch = await getBranch(branchId);
+        setBranchData(branch);
+
         // Load payments from API - fetch all payments without month filter
         // to ensure payment status is calculated correctly across all months
-        const paymentsResponse = await apiListPayments({ branchId, limit: 10000, page: 1 });
-        const paymentsList = Array.isArray(paymentsResponse) 
-          ? paymentsResponse 
+        const paymentsResponse = await apiListPayments({
+          branchId,
+          limit: 10000,
+          page: 1,
+        });
+        const paymentsList = Array.isArray(paymentsResponse)
+          ? paymentsResponse
           : paymentsResponse?.data || [];
         setPayments(paymentsList);
-        
+
         if (classDataFetched.teacherId) {
-          const teacher = teachersList.find((t) => t.id === classDataFetched.teacherId);
+          const teacher = teachersList.find(
+            (t) => t.id === classDataFetched.teacherId,
+          );
           setTeacherName(teacher?.fullName || "Unknown");
         } else {
           setTeacherName("No teacher assigned");
@@ -369,7 +393,7 @@ export default function ClassDetailsPage() {
   const filteredStudents = classStudents.filter(
     (student) =>
       searchMatchesCrossScript(student.fullName, searchTerm) ||
-      student.phone.includes(searchTerm)
+      student.phone.includes(searchTerm),
   );
 
   const handleEdit = () => {
@@ -636,18 +660,24 @@ export default function ClassDetailsPage() {
       </div>
 
       {/* Switch Students Action Panel */}
-      <Card className={`border-l-4 transition-all ${
-        getSelectedCount() > 0
-          ? "border-l-blue-500 bg-blue-50 dark:bg-blue-900/20"
-          : "border-l-slate-300 dark:border-l-slate-600 bg-slate-50 dark:bg-slate-900/50 opacity-50"
-      }`}>
+      <Card
+        className={`border-l-4 transition-all ${
+          getSelectedCount() > 0
+            ? "border-l-blue-500 bg-blue-50 dark:bg-blue-900/20"
+            : "border-l-slate-300 dark:border-l-slate-600 bg-slate-50 dark:bg-slate-900/50 opacity-50"
+        }`}
+      >
         <CardContent className="py-3 px-4 space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-sm font-medium">
               {getSelectedCount()} {t("itemsSelected") || "selected"}
             </p>
             <div className="flex gap-2 flex-wrap">
-              <Select value={targetClassId} onValueChange={setTargetClassId} disabled={getSelectedCount() === 0}>
+              <Select
+                value={targetClassId}
+                onValueChange={setTargetClassId}
+                disabled={getSelectedCount() === 0}
+              >
                 <SelectTrigger className="w-auto min-w-[150px]">
                   <SelectValue placeholder={t("chooseClass") || "Class"} />
                 </SelectTrigger>
@@ -663,9 +693,7 @@ export default function ClassDetailsPage() {
                 size="sm"
                 onClick={handleSwitchStudents}
                 disabled={
-                  getSelectedCount() === 0 ||
-                  !targetClassId ||
-                  !canEditClasses
+                  getSelectedCount() === 0 || !targetClassId || !canEditClasses
                 }
                 className="whitespace-nowrap"
               >
@@ -756,7 +784,7 @@ export default function ClassDetailsPage() {
                             onClick={(e) => {
                               e.stopPropagation();
                               router.push(
-                                `/student-details?id=${student.id}&from=class&classId=${classData.id}`
+                                `/student-details?id=${student.id}&from=class&classId=${classData.id}`,
                               );
                             }}
                           >
@@ -910,12 +938,30 @@ export default function ClassDetailsPage() {
               className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
             >
               {confirmDialog.isLoading && (
-                <svg className="w-4 h-4 mr-2 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                <svg
+                  className="w-4 h-4 mr-2 animate-spin"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
               )}
-              {confirmDialog.isLoading ? t("loading") || "Loading..." : t("confirm")}
+              {confirmDialog.isLoading
+                ? t("loading") || "Loading..."
+                : t("confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1665,5 +1665,37 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Joriy parolni va yangi parolni kiritng",
     en: "Enter your current password and new password",
   },
+
+  // Dashboard indicators
+  paymentsIncome: {
+    "uz-cyrl": "Тўловлар даромади",
+    "uz-latn": "To'lovlar daromadi",
+    en: "Payments Income",
+  },
+  totalExpenses: {
+    "uz-cyrl": "Жами харажатлар",
+    "uz-latn": "Jami xarajatlar",
+    en: "Total Expenses",
+  },
+  expensesAndSalaries: {
+    "uz-cyrl": "Харажатлар ва маошлар",
+    "uz-latn": "Xarajatlar va maoshlar",
+    en: "Expenses & Salaries",
+  },
+  operatingCosts: {
+    "uz-cyrl": "Ишчи харажатлари",
+    "uz-latn": "Ishchi xarajatlari",
+    en: "Operating Costs",
+  },
+  positive: {
+    "uz-cyrl": "Мусбат",
+    "uz-latn": "Musbat",
+    en: "Positive",
+  },
+  deficit: {
+    "uz-cyrl": "Дефицит",
+    "uz-latn": "Defisit",
+    en: "Deficit",
+  },
   };
 

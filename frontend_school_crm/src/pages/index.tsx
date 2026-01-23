@@ -75,12 +75,15 @@ export default function HomePage() {
       // This is needed after login when BranchContext is still loading
       let retries = 0;
       const maxRetries = 20; // 2 seconds max wait
-      
-      while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+
+      while (
+        !localStorage.getItem("selectedBranchId") &&
+        retries < maxRetries
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
         retries++;
       }
-      
+
       if (!localStorage.getItem("selectedBranchId")) {
         console.warn("[Dashboard] No branch ID found after waiting");
         setIsLoading(false);
@@ -146,7 +149,11 @@ export default function HomePage() {
     return t(shortNames[monthName] || monthName) || monthName;
   };
 
-  const generateChartData = async (payments?: Payment[], salaries?: Salary[], expenses?: any[]) => {
+  const generateChartData = async (
+    payments?: Payment[],
+    salaries?: Salary[],
+    expenses?: any[],
+  ) => {
     try {
       const branchId = localStorage.getItem("selectedBranchId");
       if (!branchId) {
@@ -158,15 +165,18 @@ export default function HomePage() {
       let paymentsData = payments;
       let salariesData = salaries;
       let expensesData = expenses;
-      
+
       if (!paymentsData || !salariesData || !expensesData) {
         console.log(
           "[Dashboard.generateChartData] Fetching data for branch:",
-          branchId
+          branchId,
         );
-        const paymentsResponse = await api.listPayments({ branchId: branchId, limit: 10000 });
-        paymentsData = Array.isArray(paymentsResponse) 
-          ? paymentsResponse 
+        const paymentsResponse = await api.listPayments({
+          branchId: branchId,
+          limit: 10000,
+        });
+        paymentsData = Array.isArray(paymentsResponse)
+          ? paymentsResponse
           : paymentsResponse?.data || [];
         salariesData = await api.listSalaries(branchId);
         expensesData = await api.listExpenses(branchId);
@@ -177,7 +187,7 @@ export default function HomePage() {
         "Salaries:",
         salariesData.length,
         "Expenses:",
-        expensesData.length
+        expensesData.length,
       );
 
       if (chartView === "daily") {
@@ -193,18 +203,16 @@ export default function HomePage() {
             (p: Payment) =>
               p.paidDate &&
               p.paidDate.split("T")[0] === dateStr &&
-              p.status === "paid"
+              p.status === "paid",
           );
           const daySalaries = salariesData.filter(
             (s: Salary) =>
               s.paidDate &&
               s.paidDate.split("T")[0] === dateStr &&
-              s.status === "paid"
+              s.status === "paid",
           );
           const dayExpenses = expensesData.filter(
-            (e: any) =>
-              e.date &&
-              e.date.split("T")[0] === dateStr
+            (e: any) => e.date && e.date.split("T")[0] === dateStr,
           );
 
           dailyData.push({
@@ -213,8 +221,9 @@ export default function HomePage() {
               day: "2-digit",
             }),
             income: dayPayments.reduce((sum, p) => sum + p.amount, 0),
-            expenses: daySalaries.reduce((sum, s) => sum + s.amount, 0) +
-                      dayExpenses.reduce((sum, e) => sum + e.amount, 0),
+            expenses:
+              daySalaries.reduce((sum, s) => sum + s.amount, 0) +
+              dayExpenses.reduce((sum, e) => sum + e.amount, 0),
           });
         }
         setChartData(dailyData);
@@ -250,27 +259,28 @@ export default function HomePage() {
             (p: Payment) =>
               p.year === monthYear &&
               months.indexOf(p.month.substring(0, 3)) === monthIndex &&
-              p.status === "paid"
+              p.status === "paid",
           );
           const monthSalaries = salariesData.filter(
             (s: Salary) =>
               s.year === monthYear &&
               months.indexOf(s.month.substring(0, 3)) === monthIndex &&
-              s.status === "paid"
+              s.status === "paid",
           );
-          const monthExpenses = expensesData.filter(
-            (e: any) => {
-              const expenseDate = new Date(e.date);
-              return expenseDate.getFullYear() === monthYear &&
-                     expenseDate.getMonth() === monthIndex;
-            }
-          );
+          const monthExpenses = expensesData.filter((e: any) => {
+            const expenseDate = new Date(e.date);
+            return (
+              expenseDate.getFullYear() === monthYear &&
+              expenseDate.getMonth() === monthIndex
+            );
+          });
 
           monthlyData.push({
             label: t(months[monthIndex]) || months[monthIndex],
             income: monthPayments.reduce((sum, p) => sum + p.amount, 0),
-            expenses: monthSalaries.reduce((sum, s) => sum + s.amount, 0) +
-                      monthExpenses.reduce((sum, e) => sum + e.amount, 0),
+            expenses:
+              monthSalaries.reduce((sum, s) => sum + s.amount, 0) +
+              monthExpenses.reduce((sum, e) => sum + e.amount, 0),
           });
         }
 
@@ -291,8 +301,11 @@ export default function HomePage() {
 
       // Fetch branch data to get current financial month
       const branch = await api.getBranch(branchId);
-      const branchMonth = branch?.currentFinancialMonth?.month?.toString().padStart(2, "0") || String(new Date().getMonth() + 1).padStart(2, "0");
-      const branchYear = branch?.currentFinancialMonth?.year || new Date().getFullYear();
+      const branchMonth =
+        branch?.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
+        String(new Date().getMonth() + 1).padStart(2, "0");
+      const branchYear =
+        branch?.currentFinancialMonth?.year || new Date().getFullYear();
 
       console.log(
         "[Dashboard.calculateStats] Fetching data for branch:",
@@ -300,20 +313,33 @@ export default function HomePage() {
         "Month:",
         branchMonth,
         "Year:",
-        branchYear
+        branchYear,
       );
       const students = await api.listStudents(branchId);
       const teachers = await api.listTeachers(branchId);
-      const paymentsResponse = await api.listPayments({ branchId: branchId, month: branchMonth, year: branchYear, limit: 10000 });
-      const payments = Array.isArray(paymentsResponse) 
-        ? paymentsResponse 
+      const paymentsResponse = await api.listPayments({
+        branchId: branchId,
+        month: branchMonth,
+        year: branchYear,
+        limit: 10000,
+      });
+      const payments = Array.isArray(paymentsResponse)
+        ? paymentsResponse
         : paymentsResponse?.data || [];
-      const salaries = await api.listSalaries(branchId, branchMonth, branchYear);
-      const expenses = await api.listExpenses(branchId, branchMonth, branchYear);
-      
+      const salaries = await api.listSalaries(
+        branchId,
+        branchMonth,
+        branchYear,
+      );
+      const expenses = await api.listExpenses(
+        branchId,
+        branchMonth,
+        branchYear,
+      );
+
       // Generate chart with the same data to avoid duplicate fetches
       generateChartData(payments, salaries, expenses);
-      
+
       console.log(
         "[Dashboard.calculateStats] Data loaded - Students:",
         students.length,
@@ -324,7 +350,7 @@ export default function HomePage() {
         "Salaries:",
         salaries.length,
         "Expenses:",
-        expenses.length
+        expenses.length,
       );
 
       const activeStudents = students.filter((s) => s.status === "active");
@@ -333,7 +359,7 @@ export default function HomePage() {
         .filter((p: Payment) => p.status === "paid" || p.status === "partial")
         .reduce((sum, p) => sum + p.amount, 0);
 
-      const totalExpenses = 
+      const totalExpenses =
         salaries
           .filter((s: Salary) => s.status === "paid")
           .reduce((sum, s) => sum + s.amount, 0) +
@@ -347,7 +373,7 @@ export default function HomePage() {
           (p: Payment) =>
             p.studentId === s.id &&
             Number(p.month) === currentMonth &&
-            Number(p.year) === currentYear
+            Number(p.year) === currentYear,
         );
         // Student is debtor if no payment exists OR payment is unpaid
         const hasNoPaidPayment =
@@ -361,7 +387,7 @@ export default function HomePage() {
           (s: Salary) =>
             s.teacherId === teacher.id &&
             Number(s.month) === currentMonth &&
-            Number(s.year) === currentYear
+            Number(s.year) === currentYear,
         );
         // Salary is unpaid if no record exists OR status is unpaid
         const hasNoPaidSalary =
@@ -553,8 +579,105 @@ export default function HomePage() {
       </div>
 
       <div
-        className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 animate-fade-in"
+        className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6 animate-fade-in"
         style={{ animationDelay: "0.5s" }}
+      >
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <DollarSign className="w-5 h-5 text-green-500" />
+              {t("paymentsIncome")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 md:p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                <div>
+                  <p className="font-medium text-sm md:text-base text-slate-900 dark:text-slate-100">
+                    {t("totalIncome")}
+                  </p>
+                  <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400">
+                    {t("fromStudentPayments")}
+                  </p>
+                </div>
+                <div className="text-2xl md:text-3xl font-bold text-green-600 dark:text-green-400">
+                  {formatCurrency(stats.totalIncome)}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <Wallet className="w-5 h-5 text-red-500" />
+              {t("totalExpenses")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 md:p-4 bg-red-50 dark:bg-red-950/30 rounded-lg">
+                <div>
+                  <p className="font-medium text-sm md:text-base text-slate-900 dark:text-slate-100">
+                    {t("expensesAndSalaries")}
+                  </p>
+                  <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400">
+                    {t("operatingCosts")}
+                  </p>
+                </div>
+                <div className="text-2xl md:text-3xl font-bold text-red-600 dark:text-red-400">
+                  {formatCurrency(stats.totalExpenses)}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <TrendingUp className="w-5 h-5 text-purple-500" />
+              {t("netProfit")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div
+                className={`flex items-center justify-between p-3 md:p-4 rounded-lg ${
+                  stats.profit >= 0
+                    ? "bg-purple-50 dark:bg-purple-950/30"
+                    : "bg-red-50 dark:bg-red-950/30"
+                }`}
+              >
+                <div>
+                  <p className="font-medium text-sm md:text-base text-slate-900 dark:text-slate-100">
+                    {t("incomeMinusExpenses")}
+                  </p>
+                  <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400">
+                    {stats.profit >= 0
+                      ? t("positive") || "Positive"
+                      : t("deficit") || "Deficit"}
+                  </p>
+                </div>
+                <div
+                  className={`text-2xl md:text-3xl font-bold ${
+                    stats.profit >= 0
+                      ? "text-purple-600 dark:text-purple-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {formatCurrency(stats.profit)}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div
+        className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 animate-fade-in"
+        style={{ animationDelay: "0.55s" }}
       >
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
@@ -611,7 +734,7 @@ export default function HomePage() {
 
       <Card
         className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-indigo-200 dark:border-indigo-800 animate-fade-in"
-        style={{ animationDelay: "0.6s" }}
+        style={{ animationDelay: "0.65s" }}
       >
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-indigo-900 dark:text-indigo-100 text-base md:text-lg">
