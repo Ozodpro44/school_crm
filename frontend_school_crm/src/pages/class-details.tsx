@@ -46,7 +46,8 @@ import {
   listPayments as apiListPayments,
   getBranch,
 } from "@/lib/api";
-import type { Payment, Branch } from "@/lib/api";
+import type { Payment } from "@/lib/api";
+import type { Branch } from "@/types";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function ClassDetailsPage() {
