@@ -95,13 +95,8 @@ export default function ManagersPage() {
   const [originalPermissions, setOriginalPermissions] = useState<Permission | null>(null);
 
   useEffect(() => {
-    const loadWithDelay = async () => {
-      setIsLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 300));
-      await loadData();
-    };
-    
-    loadWithDelay();
+    setIsLoading(true);
+    loadData().finally(() => setIsLoading(false));
   }, [currentBranch]);
 
   const loadData = async () => {

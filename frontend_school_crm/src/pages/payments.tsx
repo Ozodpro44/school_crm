@@ -307,9 +307,7 @@ export default function PaymentsPage() {
   }, [router.isReady, router.query.page]);
 
   useEffect(() => {
-    // load data with a small delay to keep the skeleton visible briefly
     run(async () => {
-      await new Promise((r) => setTimeout(r, 300));
       await loadData();
     });
   }, [run, currentPage, itemsPerPage]);

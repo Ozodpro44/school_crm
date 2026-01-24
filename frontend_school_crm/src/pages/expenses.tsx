@@ -154,11 +154,7 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     setIsLoading(true);
-    const timer = setTimeout(() => {
-      loadData();
-      setIsLoading(false);
-    }, 300);
-    return () => clearTimeout(timer);
+    loadData().finally(() => setIsLoading(false));
   }, []);
 
   // Refetch when branch changes

@@ -1060,6 +1060,7 @@ export interface PaymentReportItem {
   paymentMethod: string;
   paidDate?: string;
   createdBy?: string;
+  createdByName?: string;
   createdAt: string;
 }
 
@@ -1074,6 +1075,7 @@ export interface SalaryReportItem {
   paymentMethod: string;
   paidDate?: string;
   createdBy?: string;
+  createdByName?: string;
   createdAt: string;
 }
 
@@ -1099,6 +1101,7 @@ export interface ExpenseReportItem {
   paymentMethod: string;
   date: string;
   createdBy: string;
+  createdByName?: string;
   notes?: string;
   createdAt: string;
 }
@@ -1198,6 +1201,18 @@ export async function getFinancialSummary(
 ): Promise<FinancialSummary> {
   const query = `?branchId=${branchId}&startDate=${startDate}&endDate=${endDate}`;
   return apiRequest<FinancialSummary>(`/reports/financial-summary${query}`);
+}
+
+/**
+ * Get all dashboard data in a single API call
+ */
+export async function getDashboardData(
+  branchId: string,
+  month: number,
+  year: number
+): Promise<any> {
+  const query = `?branchId=${branchId}&month=${month}&year=${year}`;
+  return apiRequest(`/reports/dashboard${query}`);
 }
 
 // ============================================================================

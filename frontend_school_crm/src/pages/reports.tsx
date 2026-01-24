@@ -149,7 +149,10 @@ export default function ReportsPage() {
     setUsers(usersDB.getAll());
   };
 
-  const getUserName = (userId: string) => {
+  const getUserName = (userId: string, userName?: string) => {
+    // First try to use the provided userName from API response
+    if (userName && userName.trim()) return userName;
+    // Fallback to local user lookup
     if (!userId) return "N/A";
     const user = users.find((u) => u.id === userId);
     return user?.fullName || userId;
@@ -258,7 +261,7 @@ export default function ReportsPage() {
               minute: "2-digit",
             })
           : "N/A",
-        addedBy: getUserName(item.createdBy || ""),
+        addedBy: getUserName(item.createdBy || "", item.createdByName),
       }));
 
       const total = data.reduce((sum, item) => sum + item.amount, 0);
@@ -323,7 +326,7 @@ export default function ReportsPage() {
               minute: "2-digit",
             })
           : "N/A",
-        addedBy: getUserName(item.createdBy || ""),
+        addedBy: getUserName(item.createdBy || "", item.createdByName),
       }));
 
       const total = data.reduce((sum, item) => sum + item.amount, 0);

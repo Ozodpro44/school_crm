@@ -37,6 +37,11 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Xarajatlar",
     en: "Expenses",
   },
+  income: {
+    "uz-cyrl": "Даромад",
+    "uz-latn": "Daromad",
+    en: "Income",
+  },
   reports: {
     "uz-cyrl": "Ҳисоботлар",
     "uz-latn": "Hisobotlar",

@@ -14,6 +14,7 @@ func RegisterReportRoutes(router *gin.RouterGroup, reportService *service.Report
 	reports := router.Group("/reports")
 	reports.Use(middleware.PermissionChecker(userService, "canViewReports"))
 	{
+		reports.GET("/dashboard", getDashboardData(reportService))
 		reports.GET("/payments", getPaymentReport(reportService))
 		reports.GET("/salaries", getSalaryReport(reportService))
 		reports.GET("/debtors", getDebtorsReport(reportService))
@@ -204,5 +205,39 @@ func getFinancialSummary(reportService *service.ReportService) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, summary)
+	}
+}
+
+func getDashboardData(reportService *service.ReportService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		branchID := c.Query("branchId")
+		monthStr := c.Query("month")
+		yearStr := c.Query("year")
+
+		if branchID == "" || monthStr == "" || yearStr == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "branchId, month, and year are required"})
+			return
+		}
+
+		var month, year int
+		_, err := fmt.Sscanf(monthStr, "%d", &month)
+		if err != nil || month < 1 || month > 12 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid month format (use 1-12)"})
+			return
+		}
+
+		_, err = fmt.Sscanf(yearStr, "%d", &year)
+		if err != nil || year < 1900 || year > 2100 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid year format"})
+			return
+		}
+
+		data, err := reportService.GetDashboardData(c.Request.Context(), branchID, month, year)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, data)
 	}
 }
