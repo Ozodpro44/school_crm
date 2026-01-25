@@ -113,13 +113,45 @@ type DashboardData struct {
 	Expenses            []ExpenseReportItem `json:"expenses"`
 }
 
-// GetPaymentReport returns a list of payments with student and class info
-func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, startDate, endDate time.Time, status, classID string) ([]PaymentReportItem, error) {
+// GetPaymentReport returns a paginated list of payments with student and class info
+func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, startDate, endDate time.Time, status, classID string, page, limit int) ([]PaymentReportItem, int64, error) {
 	startMonth := int(startDate.Month())
 	startYear := startDate.Year()
 	endMonth := int(endDate.Month())
 	endYear := endDate.Year()
 	
+	// Get total count first
+	countQuery := `
+	SELECT COUNT(*)
+	FROM payments p
+	JOIN students st ON p.student_id = st.id
+	LEFT JOIN classes c ON st.class_id = c.id
+	LEFT JOIN users u ON p.created_by = u.id
+	WHERE p.branch_id = $1
+		AND ((p.year = $2 AND p.month >= $3) OR (p.year > $2) OR (p.year = $4 AND p.month <= $5))
+	`
+
+	countArgs := []interface{}{branchID, startYear, startMonth, endYear, endMonth}
+	paramIdx := 6
+
+	if status != "all" && status != "" {
+		countQuery += " AND p.status = $6"
+		countArgs = append(countArgs, status)
+		paramIdx = 7
+	}
+
+	if classID != "all" && classID != "" {
+		countQuery += fmt.Sprintf(" AND st.class_id = $%d", paramIdx)
+		countArgs = append(countArgs, classID)
+	}
+
+	var total int64
+	err := s.db.GetConn().QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Get paginated data
 	query := `
 	SELECT 
 		p.id,
@@ -144,26 +176,29 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 	`
 
 	args := []interface{}{branchID, startYear, startMonth, endYear, endMonth}
+	paramIdx = 6
 
 	if status != "all" && status != "" {
 		query += " AND p.status = $6"
 		args = append(args, status)
+		paramIdx = 7
 	}
 
 	if classID != "all" && classID != "" {
-		paramIdx := 7
-		if status == "all" || status == "" {
-			paramIdx = 6
-		}
 		query += fmt.Sprintf(" AND st.class_id = $%d", paramIdx)
 		args = append(args, classID)
+		paramIdx++
 	}
 
 	query += " ORDER BY p.created_at DESC"
+	
+	// Add pagination
+	offset := (page - 1) * limit
+	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -185,12 +220,12 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 			&item.CreatedByName,
 			&item.CreatedAt,
 		); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		items = append(items, item)
 	}
 
-	return items, rows.Err()
+	return items, total, rows.Err()
 }
 
 // GetSalaryReport returns a list of salaries with teacher info
@@ -504,6 +539,9 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 
 // GetDashboardData returns consolidated dashboard data
 func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, month int, year int) (*DashboardData, error) {
+	// Convert month to 2-digit string format (e.g., 1 -> "01")
+	monthStr := fmt.Sprintf("%02d", month)
+	
 	// Count students
 	var totalStudents, activeStudents, totalTeachers int
 	
@@ -533,7 +571,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM payments 
 		 WHERE branch_id = $1 AND month = $2 AND year = $3 AND (status = 'paid' OR status = 'partial')`,
-		branchID, month, year).
+		branchID, monthStr, year).
 		Scan(&totalIncome)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -544,7 +582,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM salaries 
 		 WHERE branch_id = $1 AND month = $2 AND year = $3 AND status = 'paid'`,
-		branchID, month, year).
+		branchID, monthStr, year).
 		Scan(&totalSalaries)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -552,8 +590,8 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM expenses 
-		 WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3`,
-		branchID, month, year).
+		 WHERE branch_id = $1 AND LPAD(EXTRACT(MONTH FROM date)::text, 2, '0') = $2 AND EXTRACT(YEAR FROM date) = $3`,
+		branchID, monthStr, year).
 		Scan(&totalExpensesOnly)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -575,7 +613,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 		GROUP BY payment_method
 	`
 	
-	rows, err := s.db.GetConn().QueryContext(ctx, paymentMethodQuery, branchID, month, year)
+	rows, err := s.db.GetConn().QueryContext(ctx, paymentMethodQuery, branchID, monthStr, year)
 	if err != nil {
 		return nil, err
 	}
@@ -602,7 +640,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM salaries 
 		 WHERE branch_id = $1 AND month = $2 AND year = $3 AND status = 'paid' AND payment_method = 'cash'`,
-		branchID, month, year).
+		branchID, monthStr, year).
 		Scan(&cashSalaries)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -611,7 +649,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM salaries 
 		 WHERE branch_id = $1 AND month = $2 AND year = $3 AND status = 'paid' AND payment_method = 'card'`,
-		branchID, month, year).
+		branchID, monthStr, year).
 		Scan(&cardSalaries)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -620,7 +658,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM salaries 
 		 WHERE branch_id = $1 AND month = $2 AND year = $3 AND status = 'paid' AND payment_method = 'bank'`,
-		branchID, month, year).
+		branchID, monthStr, year).
 		Scan(&bankSalaries)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -630,8 +668,8 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	var cashExpensesOnly, cardExpensesOnly, bankExpensesOnly sql.NullFloat64
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM expenses 
-		 WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3 AND payment_method = 'cash'`,
-		branchID, month, year).
+		 WHERE branch_id = $1 AND LPAD(EXTRACT(MONTH FROM date)::text, 2, '0') = $2 AND EXTRACT(YEAR FROM date) = $3 AND payment_method = 'cash'`,
+		branchID, monthStr, year).
 		Scan(&cashExpensesOnly)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -639,8 +677,8 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM expenses 
-		 WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3 AND payment_method = 'card'`,
-		branchID, month, year).
+		 WHERE branch_id = $1 AND LPAD(EXTRACT(MONTH FROM date)::text, 2, '0') = $2 AND EXTRACT(YEAR FROM date) = $3 AND payment_method = 'card'`,
+		branchID, monthStr, year).
 		Scan(&cardExpensesOnly)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -648,8 +686,8 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM expenses 
-		 WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3 AND payment_method = 'bank'`,
-		branchID, month, year).
+		 WHERE branch_id = $1 AND LPAD(EXTRACT(MONTH FROM date)::text, 2, '0') = $2 AND EXTRACT(YEAR FROM date) = $3 AND payment_method = 'bank'`,
+		branchID, monthStr, year).
 		Scan(&bankExpensesOnly)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -676,7 +714,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 		)
 	`
 	var debtorsCount int
-	err = s.db.GetConn().QueryRowContext(ctx, debtorsQuery, branchID, month, year).Scan(&debtorsCount)
+	err = s.db.GetConn().QueryRowContext(ctx, debtorsQuery, branchID, monthStr, year).Scan(&debtorsCount)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
@@ -692,16 +730,16 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 		)
 	`
 	var unpaidSalariesCount int
-	err = s.db.GetConn().QueryRowContext(ctx, unpaidSalariesQuery, branchID, month, year).Scan(&unpaidSalariesCount)
+	err = s.db.GetConn().QueryRowContext(ctx, unpaidSalariesQuery, branchID, monthStr, year).Scan(&unpaidSalariesCount)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
 	
 	// Get payments list
-	paymentsData, err := s.GetPaymentReport(ctx, branchID, 
+	paymentsData, _, err := s.GetPaymentReport(ctx, branchID, 
 		time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC),
 		time.Date(year, time.Month(month)+1, 0, 23, 59, 59, 0, time.UTC),
-		"", "")
+		"", "", 1, 10000)
 	if err != nil {
 		return nil, err
 	}

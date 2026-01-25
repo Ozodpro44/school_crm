@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -29,10 +30,26 @@ func getPaymentReport(reportService *service.ReportService) gin.HandlerFunc {
 		month := c.Query("month")
 		yearStr := c.Query("year")
 		classID := c.Query("classId")
+		pageStr := c.DefaultQuery("page", "1")
+		limitStr := c.DefaultQuery("limit", "10")
 
 		if branchID == "" || month == "" || yearStr == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "branchId, month, and year are required"})
 			return
+		}
+
+		// Parse pagination params
+		page := 1
+		limit := 10
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+		// Cap limit at 1000
+		if limit > 1000 {
+			limit = 1000
 		}
 
 		var year int
@@ -67,13 +84,19 @@ func getPaymentReport(reportService *service.ReportService) gin.HandlerFunc {
 		startDate = time.Date(year, time.Month(monthInt), 1, 0, 0, 0, 0, time.UTC)
 		endDate := startDate.AddDate(0, 1, -1)
 
-		items, err := reportService.GetPaymentReport(c.Request.Context(), branchID, startDate, endDate, "", classID)
+		items, total, err := reportService.GetPaymentReport(c.Request.Context(), branchID, startDate, endDate, "", classID, page, limit)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, items)
+		c.JSON(http.StatusOK, gin.H{
+			"data":        items,
+			"total":       total,
+			"page":        page,
+			"limit":       limit,
+			"totalPages": (total + int64(limit) - 1) / int64(limit),
+		})
 	}
 }
 

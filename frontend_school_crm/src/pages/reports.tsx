@@ -60,6 +60,10 @@ export default function ReportsPage() {
   const [paymentYear, setPaymentYear] = useState("");
   const [debtorMonth, setDebtorMonth] = useState("");
   const [debtorYear, setDebtorYear] = useState("");
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
+  const [total, setTotal] = useState(0);
   const [classes, setClasses] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
@@ -98,8 +102,13 @@ export default function ReportsPage() {
   }, [branchData]);
 
   useEffect(() => {
+    setPage(1); // Reset to first page when filters change
     generateReport();
-  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear]);
+  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit]);
+
+  useEffect(() => {
+    generateReport();
+  }, [page]);
 
   const setDefaultDates = () => {
     // Use branch's current financial month if available, fallback to current date
@@ -237,14 +246,16 @@ export default function ReportsPage() {
         return;
       }
 
-      const items = await getPaymentReport(
+      const response = await getPaymentReport(
         branchId,
         paymentMonth,
         paymentYear,
-        classId
+        classId,
+        page,
+        limit
       );
 
-      const data = items.map((item) => ({
+      const data = response.data.map((item) => ({
         id: item.id,
         studentName: item.studentName,
         className: item.className,
@@ -264,14 +275,16 @@ export default function ReportsPage() {
         addedBy: getUserName(item.createdBy || "", item.createdByName),
       }));
 
-      const total = data.reduce((sum, item) => sum + item.amount, 0);
+      const totalAmount = data.reduce((sum, item) => sum + item.amount, 0);
       setSummary({
-        total,
+        total: totalAmount,
         count: data.length,
-        avg: data.length > 0 ? total / data.length : 0,
+        avg: data.length > 0 ? totalAmount / data.length : 0,
       });
 
       setReportData(data);
+      setTotal(response.total);
+      setTotalPages(response.totalPages);
     } catch (error) {
       console.error("Failed to generate payment report:", error);
       toast({
@@ -1123,6 +1136,54 @@ export default function ReportsPage() {
                 </div>
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {reportType === "payment" && total > 0 && (
+              <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-4">
+                  <Label className="text-sm text-slate-600 dark:text-slate-400">
+                    {t("perPage") || "Per Page"}
+                  </Label>
+                  <Select value={limit.toString()} onValueChange={(val) => setLimit(parseInt(val))}>
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5</SelectItem>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                    {t("showing") || "Showing"} {(page - 1) * limit + 1} {t("to") || "to"} {Math.min(page * limit, total)} {t("of") || "of"} {total}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(Math.max(1, page - 1))}
+                    disabled={page === 1}
+                  >
+                    {t("previous") || "Previous"}
+                  </Button>
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    {t("page") || "Page"} {page} {t("of") || "of"} {totalPages}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(Math.min(totalPages, page + 1))}
+                    disabled={page === totalPages || totalPages === 0}
+                  >
+                    {t("next") || "Next"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

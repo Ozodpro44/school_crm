@@ -1126,15 +1126,25 @@ export async function getPaymentReport(
   branchId: string,
   month: string,
   year: string,
-  classId?: string
-): Promise<PaymentReportItem[]> {
+  classId?: string,
+  page?: number,
+  limit?: number
+): Promise<{
+  data: PaymentReportItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> {
   let query = `?branchId=${branchId}&month=${month}&year=${year}`;
   if (classId && classId !== "all") query += `&classId=${classId}`;
+  if (page) query += `&page=${page}`;
+  if (limit) query += `&limit=${limit}`;
 
-  const response = await apiRequest<PaymentReportItem[]>(
+  const response = await apiRequest<any>(
     `/reports/payments${query}`
   );
-  return Array.isArray(response) ? response : [];
+  return response || { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
 }
 
 /**
