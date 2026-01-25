@@ -61,6 +61,19 @@ export const miscTranslations: Partial<Translation> = {
   // Table
   showing: { "uz-cyrl": "Кўрсатилмоқда", "uz-latn": "Ko'rsatilmoqda", en: "Showing" },
   results: { "uz-cyrl": "натижалар", "uz-latn": "natijalar", en: "results" },
+  
+  // Pagination
+  perPage: { "uz-cyrl": "Сахифада", "uz-latn": "Sahifada", en: "Per Page" },
+  page: { "uz-cyrl": "Сахифа", "uz-latn": "Sahifa", en: "Page" },
+  of: { "uz-cyrl": "дан", "uz-latn": "dan", en: "of" },
+  to: { "uz-cyrl": "га", "uz-latn": "ga", en: "to" },
+  previous: { "uz-cyrl": "Олдинги", "uz-latn": "Oldingi", en: "Previous" },
+  next: { "uz-cyrl": "Кейинги", "uz-latn": "Keyingi", en: "Next" },
+  
+  // Payment methods
+  cashPayments: { "uz-cyrl": "Нақд тўловлар", "uz-latn": "Naqd to'lovlar", en: "Cash Payments" },
+  cardPayments: { "uz-cyrl": "Карта тўловлари", "uz-latn": "Karta to'lovlari", en: "Card Payments" },
+  bankPayments: { "uz-cyrl": "Банк ўтказмалари", "uz-latn": "Bank o'tkazmalari", en: "Bank Payments" },
 
   // Month abbreviations
   Jan: { "uz-cyrl": "Янв", "uz-latn": "Yanv", en: "Jan" },
