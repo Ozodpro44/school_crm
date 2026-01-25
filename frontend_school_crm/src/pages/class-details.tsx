@@ -177,8 +177,9 @@ export default function ClassDetailsPage() {
         setClassData(classDataFetched);
         setAllClasses(classList);
 
-        // Load students from API
-        const allStudents = await apiListStudents(branchId);
+        // Load students from API (fetch all with large limit)
+        const studentsResponse = await apiListStudents(branchId, 1, 10000);
+        const allStudents = studentsResponse.data || [];
         setStudents(allStudents);
         const studentsInClass = allStudents.filter(
           (s) => s.classId === classDataFetched.id,
@@ -770,10 +771,7 @@ export default function ClassDetailsPage() {
                         : ""
                     }`}
                   >
-                    <div
-                      className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
-                      onClick={() => toggleSelect(student.id)}
-                    >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
                       <Checkbox
                         checked={isSelected(student.id)}
                         onCheckedChange={() => toggleSelect(student.id)}
@@ -795,7 +793,7 @@ export default function ClassDetailsPage() {
                             <div className="flex items-center gap-1">
                               <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
                               <span className="text-xs text-green-600 dark:text-green-400">
-                                Paid
+                                {t("paid")}
                               </span>
                             </div>
                           )}

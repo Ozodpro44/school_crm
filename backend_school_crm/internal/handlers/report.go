@@ -60,7 +60,7 @@ func getPaymentReport(reportService *service.ReportService) gin.HandlerFunc {
 		}
 		year = parsedTime.Year()
 
-		// Convert month and year to date range (first day to last day of month)
+		// Parse month as integer
 		monthInt := 0
 		_, err = time.Parse("01", month)
 		if err != nil {
@@ -69,7 +69,6 @@ func getPaymentReport(reportService *service.ReportService) gin.HandlerFunc {
 		}
 		// Parse month manually
 		monthStr := month
-		startDate := time.Date(year, time.Month(0), 1, 0, 0, 0, 0, time.UTC)
 		for i := 1; i <= 12; i++ {
 			if fmt.Sprintf("%02d", i) == monthStr {
 				monthInt = i
@@ -81,8 +80,9 @@ func getPaymentReport(reportService *service.ReportService) gin.HandlerFunc {
 			return
 		}
 
-		startDate = time.Date(year, time.Month(monthInt), 1, 0, 0, 0, 0, time.UTC)
-		endDate := startDate.AddDate(0, 1, -1)
+		// Create dummy dates (not used anymore but required by function signature)
+		startDate := time.Date(year, time.Month(monthInt), 1, 0, 0, 0, 0, time.UTC)
+		endDate := startDate
 
 		items, total, err := reportService.GetPaymentReport(c.Request.Context(), branchID, startDate, endDate, "", classID, page, limit)
 		if err != nil {

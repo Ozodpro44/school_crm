@@ -91,6 +91,10 @@ export default function StudentsPage() {
   const [markLeftConfirmOpen, setMarkLeftConfirmOpen] = useState(false);
   const [markLeftStudentId, setMarkLeftStudentId] = useState<string | null>(null);
   const [isMarkLeftLoading, setIsMarkLeftLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [totalPages, setTotalPages] = useState(0);
+  const [total, setTotal] = useState(0);
   const itemsPerPage = 10;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const language = useLanguage();
@@ -133,8 +137,8 @@ export default function StudentsPage() {
     
     try {
       if (selectedBranchId) {
-        const [studentsList, classList, paymentsResponse, branch] = await Promise.all([
-          apiListStudents(selectedBranchId),
+        const [studentsResponse, classList, paymentsResponse, branch] = await Promise.all([
+          apiListStudents(selectedBranchId, page, limit),
           apiListClasses(selectedBranchId),
           apiListPayments({ branchId: selectedBranchId, limit: 10000 }),
           getBranch(selectedBranchId),
@@ -142,7 +146,10 @@ export default function StudentsPage() {
         const paymentsList = Array.isArray(paymentsResponse) 
           ? paymentsResponse 
           : paymentsResponse?.data || [];
-        setStudents(studentsList);
+        
+        setStudents(studentsResponse.data || []);
+        setTotal(studentsResponse.total || 0);
+        setTotalPages(studentsResponse.totalPages || 0);
         setClasses(classList);
         setPayments(paymentsList);
         setBranchData(branch);
@@ -174,9 +181,20 @@ export default function StudentsPage() {
      return () => clearTimeout(timer);
    }, []);
 
+   // Reload data when filters or pagination changes
+   useEffect(() => {
+     setPage(1); // Reset to first page on filter changes
+     loadData();
+   }, [filterStatus, filterClass, filterPaymentStatus, limit]);
+
+   useEffect(() => {
+     loadData();
+   }, [page]);
+
    // Reload data when branch is switched
    useEffect(() => {
      const handleBranchChange = async () => {
+       setPage(1);
        await loadData();
      };
      window.addEventListener("branchChange", handleBranchChange);
@@ -715,10 +733,27 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     );
   });
 
-  const totalPages = Math.ceil(filteredStudents.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedStudents = filteredStudents.slice(startIndex, endIndex);
+  // Use backend-paginated students directly (already filtered by backend via page/limit)
+  // But still apply client-side filters for search, status, class, and payment status
+  const filteredAndPaginatedStudents = students.filter((student) => {
+    const matchesSearch = searchTerm === "" ||
+      searchMatchesCrossScript(student.fullName, searchTerm) ||
+      (student.phone?.includes(searchTerm)) ||
+      (student.parentPhone?.includes(searchTerm));
+    
+    const matchesStatus = filterStatus === "all" || student.status === filterStatus;
+    const matchesClass = filterClass === "all" || student.classId === filterClass;
+    
+    let matchesPaymentStatus = true;
+    if (filterPaymentStatus !== "all") {
+      const paymentStatus = getCurrentMonthPaymentStatus(student.id);
+      matchesPaymentStatus = paymentStatus === filterPaymentStatus;
+    }
+
+    return matchesSearch && matchesStatus && matchesClass && matchesPaymentStatus;
+  });
+
+  const paginatedStudents = filteredAndPaginatedStudents;
 
   const getStatusColor = (status: StudentStatus) => {
     switch (status) {
@@ -1465,82 +1500,50 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               </div>
             )}
 
-            {filteredStudents.length > 0 && (
+            {total > 0 && (
               <div className="flex flex-col sm:flex-row items-center justify-between mt-6 px-4 py-3 border-t border-slate-200 dark:border-slate-800 gap-4">
-                <div className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 text-center sm:text-left">
-                  Showing <span className="font-medium">{startIndex + 1}</span>{" "}
-                  to{" "}
-                  <span className="font-medium">
-                    {Math.min(endIndex, filteredStudents.length)}
-                  </span>{" "}
-                  of{" "}
-                  <span className="font-medium">{filteredStudents.length}</span>{" "}
-                  students
+                <div className="flex items-center gap-4">
+                  <Label className="text-sm text-slate-600 dark:text-slate-400">
+                    {t("perPage") || "Per Page"}
+                  </Label>
+                  <Select value={limit.toString()} onValueChange={(val) => setLimit(parseInt(val))}>
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5</SelectItem>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                      <SelectItem value="100">100</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+                    {t("showing") || "Showing"} {(page - 1) * limit + 1} {t("to") || "to"} {Math.min(page * limit, total)} {t("of") || "of"} {total}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.max(1, prev - 1))
-                    }
-                    disabled={currentPage === 1}
+                    onClick={() => setPage(Math.max(1, page - 1))}
+                    disabled={page === 1}
                     className="h-8"
                   >
                     <ChevronLeft className="w-4 h-4" />
-                    <span className="hidden sm:inline ml-1">Previous</span>
+                    <span className="hidden sm:inline ml-1">{t("previous") || "Previous"}</span>
                   </Button>
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1)
-                      .filter((page) => {
-                        // Show first page, last page, current page, and pages around current
-                        return (
-                          page === 1 ||
-                          page === totalPages ||
-                          Math.abs(page - currentPage) <= 1
-                        );
-                      })
-                      .map((page, index, arr) => {
-                        // Add ellipsis if there's a gap
-                        if (
-                          index > 0 &&
-                          arr[index - 1] !== page - 1 &&
-                          page !== arr[index - 1] + 1
-                        ) {
-                          return (
-                            <span
-                              key={`ellipsis-${page}`}
-                              className="px-1 text-slate-500"
-                            >
-                              ...
-                            </span>
-                          );
-                        }
-                        return (
-                          <Button
-                            key={page}
-                            variant={
-                              currentPage === page ? "default" : "outline"
-                            }
-                            size="sm"
-                            onClick={() => setCurrentPage(page)}
-                            className="w-8 h-8 p-0"
-                          >
-                            {page}
-                          </Button>
-                        );
-                      })}
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    {t("page") || "Page"} {page} {t("of") || "of"} {totalPages}
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.min(totalPages, prev + 1))
-                    }
-                    disabled={currentPage === totalPages}
+                    onClick={() => setPage(Math.min(totalPages, page + 1))}
+                    disabled={page === totalPages || totalPages === 0}
                     className="h-8"
                   >
-                    <span className="hidden sm:inline mr-1">Next</span>
+                    <span className="hidden sm:inline mr-1">{t("next") || "Next"}</span>
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                 </div>

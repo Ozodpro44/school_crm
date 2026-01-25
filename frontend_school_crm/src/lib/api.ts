@@ -575,13 +575,25 @@ export async function getStudent(id: string): Promise<Student> {
 }
 
 /**
- * List students by branch
+ * List students by branch with pagination
  */
-export async function listStudents(branchId: string): Promise<Student[]> {
-  const response = await apiRequest<Student[]>(
-    `/students?branchId=${branchId}`
-  );
-  return Array.isArray(response) ? response : [];
+export async function listStudents(
+  branchId: string,
+  page?: number,
+  limit?: number
+): Promise<{
+  data: Student[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}> {
+  let query = `/students?branchId=${branchId}`;
+  if (page) query += `&page=${page}`;
+  if (limit) query += `&limit=${limit}`;
+
+  const response = await apiRequest<any>(query);
+  return response || { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
 }
 
 /**

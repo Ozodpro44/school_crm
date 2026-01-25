@@ -97,13 +97,24 @@ func (s *StudentService) GetByID(ctx context.Context, id string) (*models.Studen
 	return student, nil
 }
 
-func (s *StudentService) GetByBranchID(ctx context.Context, branchID string) ([]models.Student, error) {
-	query := `SELECT id, full_name, class_id, phone, parent_phone, monthly_payment, status, branch_id, enrollment_date, left_date, class_signed_date, class_confirmed, created_at, updated_at
-	         FROM students WHERE branch_id = $1 ORDER BY full_name`
-
-	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
+func (s *StudentService) GetByBranchID(ctx context.Context, branchID string, page, limit int) ([]models.Student, int64, error) {
+	// Get total count first
+	var total int64
+	countQuery := `SELECT COUNT(*) FROM students WHERE branch_id = $1`
+	err := s.db.GetConn().QueryRowContext(ctx, countQuery, branchID).Scan(&total)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	// Get paginated data
+	query := `SELECT id, full_name, class_id, phone, parent_phone, monthly_payment, status, branch_id, enrollment_date, left_date, class_signed_date, class_confirmed, created_at, updated_at
+	         FROM students WHERE branch_id = $1 ORDER BY full_name
+	         LIMIT $2 OFFSET $3`
+
+	offset := (page - 1) * limit
+	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, limit, offset)
+	if err != nil {
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -113,7 +124,7 @@ func (s *StudentService) GetByBranchID(ctx context.Context, branchID string) ([]
 		var classID *string // Handle NULL class_id
 		if err := rows.Scan(&student.ID, &student.FullName, &classID, &student.Phone, &student.ParentPhone, &student.MonthlyPayment,
 			&student.Status, &student.BranchID, &student.EnrollmentDate, &student.LeftDate, &student.ClassSignedDate, &student.ClassConfirmed, &student.CreatedAt, &student.UpdatedAt); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		if classID != nil {
 			student.ClassID = *classID
@@ -121,7 +132,7 @@ func (s *StudentService) GetByBranchID(ctx context.Context, branchID string) ([]
 		students = append(students, student)
 	}
 
-	return students, rows.Err()
+	return students, total, rows.Err()
 }
 
 func (s *StudentService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Student, error) {

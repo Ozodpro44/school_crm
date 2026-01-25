@@ -115,10 +115,8 @@ type DashboardData struct {
 
 // GetPaymentReport returns a paginated list of payments with student and class info
 func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, startDate, endDate time.Time, status, classID string, page, limit int) ([]PaymentReportItem, int64, error) {
-	startMonth := int(startDate.Month())
+	startMonth := fmt.Sprintf("%02d", int(startDate.Month()))
 	startYear := startDate.Year()
-	endMonth := int(endDate.Month())
-	endYear := endDate.Year()
 	
 	// Get total count first
 	countQuery := `
@@ -128,16 +126,16 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 	LEFT JOIN classes c ON st.class_id = c.id
 	LEFT JOIN users u ON p.created_by = u.id
 	WHERE p.branch_id = $1
-		AND ((p.year = $2 AND p.month >= $3) OR (p.year > $2) OR (p.year = $4 AND p.month <= $5))
+		AND p.year = $2 AND p.month = $3
 	`
 
-	countArgs := []interface{}{branchID, startYear, startMonth, endYear, endMonth}
-	paramIdx := 6
+	countArgs := []interface{}{branchID, startYear, startMonth}
+	paramIdx := 4
 
 	if status != "all" && status != "" {
-		countQuery += " AND p.status = $6"
+		countQuery += fmt.Sprintf(" AND p.status = $%d", paramIdx)
 		countArgs = append(countArgs, status)
-		paramIdx = 7
+		paramIdx++
 	}
 
 	if classID != "all" && classID != "" {
@@ -148,7 +146,7 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 	var total int64
 	err := s.db.GetConn().QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
-		return nil, 0, err
+		return []PaymentReportItem{}, 0, err
 	}
 
 	// Get paginated data
@@ -159,7 +157,7 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 		st.full_name as student_name,
 		c.name as class_name,
 		p.amount,
-		p.month,
+		LPAD(p.month::TEXT, 2, '0') as month,
 		p.year,
 		p.status,
 		p.payment_method,
@@ -172,16 +170,16 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 	LEFT JOIN classes c ON st.class_id = c.id
 	LEFT JOIN users u ON p.created_by = u.id
 	WHERE p.branch_id = $1
-		AND ((p.year = $2 AND p.month >= $3) OR (p.year > $2) OR (p.year = $4 AND p.month <= $5))
+		AND p.year = $2 AND p.month = $3
 	`
 
-	args := []interface{}{branchID, startYear, startMonth, endYear, endMonth}
-	paramIdx = 6
+	args := []interface{}{branchID, startYear, startMonth}
+	paramIdx = 4
 
 	if status != "all" && status != "" {
-		query += " AND p.status = $6"
+		query += fmt.Sprintf(" AND p.status = $%d", paramIdx)
 		args = append(args, status)
-		paramIdx = 7
+		paramIdx++
 	}
 
 	if classID != "all" && classID != "" {
@@ -198,11 +196,11 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, 0, err
+		return []PaymentReportItem{}, 0, err
 	}
 	defer rows.Close()
 
-	var items []PaymentReportItem
+	items := make([]PaymentReportItem, 0)
 	for rows.Next() {
 		var item PaymentReportItem
 		if err := rows.Scan(
@@ -220,11 +218,14 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 			&item.CreatedByName,
 			&item.CreatedAt,
 		); err != nil {
-			return nil, 0, err
+			return []PaymentReportItem{}, 0, err
 		}
 		items = append(items, item)
 	}
 
+	if len(items) == 0 {
+		return []PaymentReportItem{}, total, rows.Err()
+	}
 	return items, total, rows.Err()
 }
 

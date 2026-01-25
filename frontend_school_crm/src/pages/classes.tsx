@@ -103,8 +103,8 @@ export default function ClassesPage() {
         setClasses(classList);
         const teachersList = await listTeachers(branchId);
         setTeachers(teachersList);
-        const studentsList = await listStudents(branchId);
-        setStudents(studentsList);
+        const studentsResponse = await listStudents(branchId, 1, 10000);
+        setStudents(studentsResponse.data || []);
       } else {
         setStudents([]);
       }

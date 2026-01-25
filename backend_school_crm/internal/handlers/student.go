@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/middleware"
@@ -55,13 +56,36 @@ func listStudents(studentService *service.StudentService) gin.HandlerFunc {
 			return
 		}
 
-		students, err := studentService.GetByBranchID(c.Request.Context(), branchID)
+		// Parse pagination params
+		pageStr := c.DefaultQuery("page", "1")
+		limitStr := c.DefaultQuery("limit", "10")
+		
+		page := 1
+		limit := 10
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+		// Cap limit at 1000
+		if limit > 1000 {
+			limit = 1000
+		}
+
+		students, total, err := studentService.GetByBranchID(c.Request.Context(), branchID, page, limit)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, students)
+		c.JSON(http.StatusOK, gin.H{
+			"data":       students,
+			"total":      total,
+			"page":       page,
+			"limit":      limit,
+			"totalPages": (total + int64(limit) - 1) / int64(limit),
+		})
 	}
 }
 

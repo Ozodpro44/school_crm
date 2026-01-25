@@ -178,10 +178,6 @@ export default function HomePage() {
       let expensesData = expenses;
 
       if (!paymentsData || !salariesData || !expensesData) {
-        console.log(
-          "[Dashboard.generateChartData] Fetching data for branch:",
-          branchId,
-        );
         const paymentsResponse = await api.listPayments({
           branchId: branchId,
           limit: 10000,
@@ -192,14 +188,6 @@ export default function HomePage() {
         salariesData = await api.listSalaries(branchId);
         expensesData = await api.listExpenses(branchId);
       }
-      console.log(
-        "[Dashboard.generateChartData] Data loaded - Payments:",
-        paymentsData.length,
-        "Salaries:",
-        salariesData.length,
-        "Expenses:",
-        expensesData.length,
-      );
 
       if (chartView === "daily") {
         // Daily view: show last 14 days
@@ -265,17 +253,18 @@ export default function HomePage() {
           const monthIndex = date.getMonth();
           const monthYear = date.getFullYear();
           const monthStr = months[monthIndex].substring(0, 3);
+          const monthNum = monthIndex + 1; // 1-12
 
           const monthPayments = paymentsData.filter(
             (p: Payment) =>
               p.year === monthYear &&
-              months.indexOf(p.month.substring(0, 3)) === monthIndex &&
+              parseInt(p.month) === monthNum &&
               p.status === "paid",
           );
           const monthSalaries = salariesData.filter(
             (s: Salary) =>
               s.year === monthYear &&
-              months.indexOf(s.month.substring(0, 3)) === monthIndex &&
+              parseInt(s.month) === monthNum &&
               s.status === "paid",
           );
           const monthExpenses = expensesData.filter((e: any) => {
@@ -317,22 +306,8 @@ export default function HomePage() {
       const branchYear =
         branch?.currentFinancialMonth?.year || new Date().getFullYear();
 
-      console.log(
-        "[Dashboard.calculateStats] Fetching consolidated dashboard data for branch:",
-        branchId,
-        "Month:",
-        branchMonth,
-        "Year:",
-        branchYear,
-      );
-
       // Fetch all dashboard data in a single API call
       const dashboardData = await api.getDashboardData(branchId, branchMonth, branchYear);
-
-      console.log(
-        "[Dashboard.calculateStats] Consolidated data loaded:",
-        dashboardData,
-      );
 
       // Generate chart with the data
       generateChartData(

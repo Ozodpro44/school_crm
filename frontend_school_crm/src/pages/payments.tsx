@@ -270,9 +270,12 @@ export default function PaymentsPage() {
           }
         });
         
+        // Handle students response
+        const studentsData = Array.isArray(studentsList) ? studentsList : studentsList?.data || [];
+        
         setPayments(consolidatedPayments);
         setConsolidatedPaymentMap(consolidationMap);
-        setStudents(studentsList);
+        setStudents(studentsData);
         setClasses(classesList);
       } else {
         // Load from local storage as fallback if no branch selected

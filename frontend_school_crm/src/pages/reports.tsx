@@ -41,12 +41,13 @@ import {
   listClasses,
 } from "@/lib/api";
 import { Payment, Salary, Branch } from "@/types";
-import { Download, FileText, AlertCircle, CheckCircle } from "lucide-react";
+import { Download, FileText, AlertCircle, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 type ReportType = "payment" | "salary" | "debtors" | "income" | "expenses";
 
@@ -70,6 +71,7 @@ export default function ReportsPage() {
   const [reportData, setReportData] = useState<any[]>([]);
   const [summary, setSummary] = useState({ total: 0, count: 0, avg: 0 });
   const [branchData, setBranchData] = useState<Branch | null>(null);
+  const [paymentMethodsData, setPaymentMethodsData] = useState<any[]>([]);
   const language = useLanguage();
   const t = (key: string) => getTranslation(key, language);
   const canViewReports = hasPermission("canViewReports");
@@ -103,12 +105,11 @@ export default function ReportsPage() {
 
   useEffect(() => {
     setPage(1); // Reset to first page when filters change
-    generateReport();
   }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit]);
 
   useEffect(() => {
     generateReport();
-  }, [page]);
+  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit, page]);
 
   const setDefaultDates = () => {
     // Use branch's current financial month if available, fallback to current date
@@ -255,6 +256,14 @@ export default function ReportsPage() {
         limit
       );
 
+      if (!response || !response.data) {
+        setReportData([]);
+        setSummary({ total: 0, count: 0, avg: 0 });
+        setTotal(0);
+        setTotalPages(0);
+        return;
+      }
+
       const data = response.data.map((item) => ({
         id: item.id,
         studentName: item.studentName,
@@ -322,6 +331,12 @@ export default function ReportsPage() {
         newEndDate,
         ""
       );
+
+      if (!items || !Array.isArray(items)) {
+        setReportData([]);
+        setSummary({ total: 0, count: 0, avg: 0 });
+        return;
+      }
 
       const data = items.map((item) => ({
         id: item.id,
@@ -545,18 +560,24 @@ export default function ReportsPage() {
           count: 0,
         },
         {
-          label: t("totalExpense") || "Total Expenses",
-          amount: totalExpense,
-          type: "expense",
-          count: 0,
-        },
-        {
           label: t("netProfit") || "Net Profit",
           amount: profit,
           type: profit >= 0 ? "profit" : "loss",
           count: 0,
         },
       ]);
+
+      // Format payment methods data for pie chart
+      const paymentMethods = financialSummary.paymentsByMethod || {};
+      const paymentMethodsChartData = Object.entries(paymentMethods).map(
+        ([method, amount]) => ({
+          name:
+            method.charAt(0).toUpperCase() +
+            method.slice(1).toLowerCase(),
+          value: amount as number,
+        })
+      );
+      setPaymentMethodsData(paymentMethodsChartData);
 
       setSummary({
         total: profit,
@@ -888,43 +909,108 @@ export default function ReportsPage() {
 
       {/* Report Data */}
       {reportType === "income" ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {reportData.map((item, idx) => (
-            <Card
-              key={idx}
-              className={`border-l-4 ${
-                item.type === "income"
-                  ? "border-l-green-500"
-                  : item.type === "expense"
-                  ? "border-l-red-500"
-                  : item.amount >= 0
-                  ? "border-l-blue-500"
-                  : "border-l-red-500"
-              }`}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                  {item.label}
-                </CardTitle>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {reportData.map((item, idx) => (
+              <Card
+                key={idx}
+                className={`border-l-4 ${
+                  item.type === "income"
+                    ? "border-l-green-500"
+                    : item.type === "expense"
+                    ? "border-l-red-500"
+                    : item.amount >= 0
+                    ? "border-l-blue-500"
+                    : "border-l-red-500"
+                }`}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                    {item.label}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div
+                    className={`text-2xl font-bold ${
+                      item.type === "income"
+                        ? "text-green-600 dark:text-green-400"
+                        : item.type === "expense"
+                        ? "text-red-600 dark:text-red-400"
+                        : item.amount >= 0
+                        ? "text-blue-600 dark:text-blue-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {formatCurrency(item.amount)}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Bar Chart */}
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("incomeVsExpenses") || "Income vs Expenses"}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div
-                  className={`text-2xl font-bold ${
-                    item.type === "income"
-                      ? "text-green-600 dark:text-green-400"
-                      : item.type === "expense"
-                      ? "text-red-600 dark:text-red-400"
-                      : item.amount >= 0
-                      ? "text-blue-600 dark:text-blue-400"
-                      : "text-red-600 dark:text-red-400"
-                  }`}
-                >
-                  {formatCurrency(item.amount)}
-                </div>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={reportData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" />
+                    <YAxis />
+                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                    <Legend />
+                    <Bar dataKey="amount" fill="#3b82f6" />
+                  </BarChart>
+                </ResponsiveContainer>
               </CardContent>
             </Card>
-          ))}
-        </div>
+
+            {/* Pie Chart - Income by Payment Method */}
+            {paymentMethodsData.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>{t("incomeByPaymentMethod") || "Income by Payment Method"}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <PieChart>
+                      <Pie
+                        data={paymentMethodsData}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ name, value }) => `${name}: ${formatCurrency(value)}`}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                      >
+                        {paymentMethodsData.map((entry, index) => (
+                          <Cell
+                            key={`cell-${index}`}
+                            fill={
+                              entry.name === "Cash"
+                                ? "#10b981"
+                                : entry.name === "Card"
+                                ? "#3b82f6"
+                                : entry.name === "Bank"
+                                ? "#f59e0b"
+                                : "#8b5cf6"
+                            }
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => formatCurrency(value)} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </>
       ) : (
         <Card>
           <CardHeader>
@@ -1167,8 +1253,10 @@ export default function ReportsPage() {
                     size="sm"
                     onClick={() => setPage(Math.max(1, page - 1))}
                     disabled={page === 1}
+                    className="h-8"
                   >
-                    {t("previous") || "Previous"}
+                    <ChevronLeft className="w-4 h-4" />
+                    <span className="hidden sm:inline ml-1">{t("previous") || "Previous"}</span>
                   </Button>
                   <div className="text-sm text-slate-600 dark:text-slate-400">
                     {t("page") || "Page"} {page} {t("of") || "of"} {totalPages}
@@ -1178,8 +1266,10 @@ export default function ReportsPage() {
                     size="sm"
                     onClick={() => setPage(Math.min(totalPages, page + 1))}
                     disabled={page === totalPages || totalPages === 0}
+                    className="h-8"
                   >
-                    {t("next") || "Next"}
+                    <span className="hidden sm:inline mr-1">{t("next") || "Next"}</span>
+                    <ChevronRight className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
