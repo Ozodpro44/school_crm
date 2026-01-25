@@ -467,7 +467,7 @@ export default function BranchesPage() {
                         <Label className="text-xs text-muted-foreground">{t("admin")}</Label>
                         {branch.adminId ? (
                           <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="secondary">{branch.adminId}</Badge>
+                            <Badge variant="secondary"></Badge>
                           </div>
                         ) : (
                           <Button
