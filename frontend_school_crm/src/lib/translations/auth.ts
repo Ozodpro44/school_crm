@@ -10,7 +10,7 @@ export const authTranslations: Partial<Translation> = {
   passwordLabel: { "uz-cyrl": "Парол:", "uz-latn": "Parol:", en: "Password:" },
   forgotPassword: { "uz-cyrl": "Паролни унутдингизми?", "uz-latn": "Parolni untudingizmi?", en: "Forgot Password?" },
   forgotPasswordTitle: { "uz-cyrl": "Паролни қайта ўрнатиш", "uz-latn": "Parolni qayta o'rnatish", en: "Reset Password" },
-  enterEmail: { "uz-cyrl": "Электрон почтаңизни киритинг", "uz-latn": "Elektron pochtangizni kiritinz", en: "Enter your email" },
+  enterEmail: { "uz-cyrl": "Электрон почтаңизни киритинг", "uz-latn": "Elektron pochtangizni kiriting", en: "Enter your email" },
   sendOTP: { "uz-cyrl": "OTP жўнатиш", "uz-latn": "OTP jònatish", en: "Send OTP" },
   otpSent: { "uz-cyrl": "OTP электрон почтангизга жўнатилди", "uz-latn": "OTP elektronpochtangizga jònatildi", en: "OTP sent to your email" },
   enterOTP: { "uz-cyrl": "6 рақамли кодни киритинг", "uz-latn": "6 raqamli kodni kiritinz", en: "Enter 6-digit code" },

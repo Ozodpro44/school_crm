@@ -13,14 +13,20 @@ import (
 
 func RegisterReportRoutes(router *gin.RouterGroup, reportService *service.ReportService, userService *service.UserService) {
 	reports := router.Group("/reports")
-	reports.Use(middleware.PermissionChecker(userService, "canViewReports"))
 	{
+		// Dashboard accessible to all users
 		reports.GET("/dashboard", getDashboardData(reportService))
-		reports.GET("/payments", getPaymentReport(reportService))
-		reports.GET("/salaries", getSalaryReport(reportService))
-		reports.GET("/debtors", getDebtorsReport(reportService))
-		reports.GET("/expenses", getExpensesReport(reportService))
-		reports.GET("/financial-summary", getFinancialSummary(reportService))
+
+		// Protected report endpoints
+		protected := reports.Group("")
+		protected.Use(middleware.PermissionChecker(userService, "canViewReports"))
+		{
+			protected.GET("/payments", getPaymentReport(reportService))
+			protected.GET("/salaries", getSalaryReport(reportService))
+			protected.GET("/debtors", getDebtorsReport(reportService))
+			protected.GET("/expenses", getExpensesReport(reportService))
+			protected.GET("/financial-summary", getFinancialSummary(reportService))
+		}
 	}
 }
 
