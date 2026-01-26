@@ -1708,5 +1708,103 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "O'dinish usuliga ko'ra daromad",
     en: "Income by Payment Method",
   },
+
+  // Month abbreviations
+  Jan: {
+    "uz-cyrl": "Янв",
+    "uz-latn": "Yanv",
+    en: "Jan",
+  },
+  Feb: {
+    "uz-cyrl": "Фев",
+    "uz-latn": "Fev",
+    en: "Feb",
+  },
+  Mar: {
+    "uz-cyrl": "Мар",
+    "uz-latn": "Mar",
+    en: "Mar",
+  },
+  Apr: {
+    "uz-cyrl": "Апр",
+    "uz-latn": "Apr",
+    en: "Apr",
+  },
+  May: {
+    "uz-cyrl": "Май",
+    "uz-latn": "May",
+    en: "May",
+  },
+  Jun: {
+    "uz-cyrl": "Июн",
+    "uz-latn": "Iyun",
+    en: "Jun",
+  },
+  Jul: {
+    "uz-cyrl": "Июл",
+    "uz-latn": "Iyul",
+    en: "Jul",
+  },
+  Aug: {
+    "uz-cyrl": "Авг",
+    "uz-latn": "Avg",
+    en: "Aug",
+  },
+  Sep: {
+    "uz-cyrl": "Сен",
+    "uz-latn": "Sen",
+    en: "Sep",
+  },
+  Oct: {
+    "uz-cyrl": "Окт",
+    "uz-latn": "Okt",
+    en: "Oct",
+  },
+  Nov: {
+    "uz-cyrl": "Ноя",
+    "uz-latn": "Noya",
+    en: "Nov",
+  },
+  Dec: {
+    "uz-cyrl": "Дек",
+    "uz-latn": "Dek",
+    en: "Dec",
+  },
+
+  // Payment methods
+  bankPayments: {
+    "uz-cyrl": "Банк тўловлари",
+    "uz-latn": "Bank to'lovlari",
+    en: "Bank Payments",
+  },
+
+  // Pagination
+  page: {
+    "uz-cyrl": "Саҳифа",
+    "uz-latn": "Sahifa",
+    en: "Page",
+  },
+  perPage: {
+    "uz-cyrl": "Саҳифада",
+    "uz-latn": "Sahifada",
+    en: "Per Page",
+  },
+
+  // Actions
+  change: {
+    "uz-cyrl": "Ўзгартириш",
+    "uz-latn": "O‘zgartirish",
+    en: "Change",
+  },
+
+  // Field labels
+  notes: {
+    "uz-cyrl": "Изоҳлар",
+    "uz-latn": "Izohlar",
+    en: "Notes",
+  },
   };
+
+
+
 

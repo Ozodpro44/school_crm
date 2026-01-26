@@ -166,7 +166,7 @@ export const settingsTranslations: Partial<Translation> = {
   },
 
   activeMonth: {
-    "uz-cyrl": "Маълумот киритиш учун фаол давр",
+    "uz-cyrl": "Ма’лумот киритиш учун фаол давр",
     "uz-latn": "Ma’lumot kiritish uchun faol davr",
     en: "Active period for data entry",
   },
@@ -217,5 +217,29 @@ export const settingsTranslations: Partial<Translation> = {
     "uz-cyrl": "Ўзгартиришни тасдиқланг",
     "uz-latn": "O‘zgartirishni tasdiqlang",
     en: "Confirm switch",
+  },
+
+  enterBranchName: {
+    "uz-cyrl": "Филиал номини киритинг",
+    "uz-latn": "Filial nomini kiriting",
+    en: "Enter branch name",
+  },
+
+  branchPaymentSettings: {
+    "uz-cyrl": "Филиал тўлов созламалари",
+    "uz-latn": "Filial to‘lov sozlamalari",
+    en: "Branch payment settings",
+  },
+
+  branchInformationTimestamps: {
+    "uz-cyrl": "Филиал маълумотлари ва вақт белгилари",
+    "uz-latn": "Filial ma’lumotlari va vaqt belgilari",
+    en: "Branch information and timestamps",
+  },
+
+  nextMonth: {
+    "uz-cyrl": "Кейинги ой",
+    "uz-latn": "Keyingi oy",
+    en: "Next Month",
   },
 };

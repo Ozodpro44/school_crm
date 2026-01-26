@@ -171,4 +171,65 @@ export const reportTranslations: Partial<Translation> = {
     "uz-latn": "Kiritgan shaxs",
     en: "Added By",
   },
+
+  reportFilter: {
+    "uz-cyrl": "Ҳисобот фильтри",
+    "uz-latn": "Hisobot filtri",
+    en: "Report Filter",
+  },
+
+  reportFilters: {
+    "uz-cyrl": "Ҳисобот фильтрлари",
+    "uz-latn": "Hisobot filtrlari",
+    en: "Report Filters",
+  },
+
+  studentPayments: {
+    "uz-cyrl": "Ўқувчи тўловлари",
+    "uz-latn": "O‘quvchi to‘lovlari",
+    en: "Student Payments",
+  },
+
+  teacherSalaries: {
+    "uz-cyrl": "Ўқитувчи маошлари",
+    "uz-latn": "O‘qituvchi maoshlari",
+    en: "Teacher Salaries",
+  },
+
+  downloadReport: {
+    "uz-cyrl": "Ҳисоботни юклаб олиш",
+    "uz-latn": "Hisobotni yuklab olish",
+    en: "Download Report",
+  },
+
+  count: {
+    "uz-cyrl": "Сони",
+    "uz-latn": "Soni",
+    en: "Count",
+  },
+
+  average: {
+    "uz-cyrl": "Ўртача қиймат",
+    "uz-latn": "O‘rtacha qiymat",
+    en: "Average",
+  },
+
+  reportDetails: {
+    "uz-cyrl": "Ҳисобот бўйича маълумотлар",
+    "uz-latn": "Hisobot bo‘yicha ma’lumotlar",
+    en: "Report Details",
+  },
+
+  perPage: {
+    "uz-cyrl": "Саҳифада",
+    "uz-latn": "Sahifada",
+    en: "Per Page",
+  },
+
+  page: {
+    "uz-cyrl": "Саҳифа",
+    "uz-latn": "Sahifa",
+    en: "Page",
+  },
+
 };
