@@ -207,10 +207,11 @@ export const commonTranslations: Partial<Translation> = {
 
   // Drag and drop
   dragToMove: {
-    "uz-cyrl": "Ҳарвочун сўрдинг",
-    "uz-latn": "Harvoqchun surding",
+    "uz-cyrl": "Суриб кўчириш",
+    "uz-latn": "Sudrab ko‘chirish",
     en: "Drag to move",
   },
+
 
   // Form fields
   fullName: {
@@ -296,9 +297,9 @@ export const commonTranslations: Partial<Translation> = {
     en: "Manager created",
   },
   confirmDelete: {
-    "uz-cyrl": "Бу мўдирни ўчиришни хоҳлайсизми?",
-    "uz-latn": "Bu mudirni o'chirishni xohlaymi siz?",
-    en: "Are you sure you want to delete this manager?",
+    "uz-cyrl": "Ростдан ҳам ўчирмоқчимисиз?",
+    "uz-latn": "Rostdan ham o‘chirmoqchimisiz?",
+    en: "Are you sure you want to delete?",
   },
   deleted: { "uz-cyrl": "Ўчирилди", "uz-latn": "O'chirildi", en: "Deleted" },
   create: { "uz-cyrl": "Яратиш", "uz-latn": "Yaratish", en: "Create" },
@@ -316,10 +317,11 @@ export const commonTranslations: Partial<Translation> = {
 
   // Common dialog/form messages
   permissionDenied: {
-    "uz-cyrl": "Рухсат сўғи",
-    "uz-latn": "Ruhsat sugi",
+    "uz-cyrl": "Рухсат берилмаган",
+    "uz-latn": "Ruxsat berilmagan",
     en: "Permission Denied",
   },
+
   noPermission: {
     "uz-cyrl": "Ҳуқуқи йўқ",
     "uz-latn": "Haqqi yo'q",
@@ -397,10 +399,11 @@ export const commonTranslations: Partial<Translation> = {
     en: "Thank you for your payment",
   },
   pleaseKeepReceipt: {
-    "uz-cyrl": "Ожарларни сақлаб қўйинг",
-    "uz-latn": "Ojarlarni saqlab qo'ying",
+    "uz-cyrl": "Квитанцияни сақлаб қўйинг",
+    "uz-latn": "Kvitansiyani saqlab qo‘ying",
     en: "Please keep this receipt",
   },
+
   noStudentsYet: {
     "uz-cyrl": "Ҳали ўқувчи йўқ",
     "uz-latn": "Hali o'quvchi yo'q",
@@ -475,10 +478,11 @@ export const commonTranslations: Partial<Translation> = {
     en: "Invalid email or password",
   },
   errorOccurred: {
-    "uz-cyrl": "Хато юз берди. Ўтадимиз, қайта уринибғой",
-    "uz-latn": "Xato yuz berdi. O'tadimiz, qayta urinib gʻoy",
+    "uz-cyrl": "Хатолик юзага келди. Қайта уриниб кўринг",
+    "uz-latn": "Xatolik yuz berdi. Qayta urinib ko‘ring",
     en: "An error occurred. Please try again.",
   },
+
   enterEmail: {
     "uz-cyrl": "Электрон почтаңизни киритинг",
     "uz-latn": "Elektron pochtangizni kiritinг",
@@ -1232,8 +1236,8 @@ export const commonTranslations: Partial<Translation> = {
     en: "Upload CSV File",
   },
   clickToUploadOrDragDrop: {
-    "uz-cyrl": "Юклаш учун босинг ёки суцинг",
-    "uz-latn": "Yuklash uchun bosinq yoki sucing",
+    "uz-cyrl": "Юклаш учун босинг ёки суриб ташланг",
+    "uz-latn": "Yuklash uchun bosing yoki sudrab tashlang",
     en: "Click to upload or drag and drop",
   },
   csvFilesOnly: {
@@ -1320,9 +1324,9 @@ export const commonTranslations: Partial<Translation> = {
     en: "Move Students",
   },
   moveToClass: {
-    "uz-cyrl": "синфга кўчириш. Улар ушбу синфга ўнатилади.",
-    "uz-latn": "sinfga ko'chirish. Ular ushbu sinfga o'natiladi.",
-    en: "will be signed to this class.",
+    "uz-cyrl": "Синфга кўчирилади",
+    "uz-latn": "Sinfga ko‘chiriladi",
+    en: "Will be moved to this class",
   },
   movedAndSigned: {
     "uz-cyrl": "кўчирилди ва ўнатилди",

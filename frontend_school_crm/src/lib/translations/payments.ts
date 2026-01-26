@@ -13,43 +13,215 @@ export const paymentTranslations: Partial<Translation> = {
   october: { "uz-cyrl": "Октябрь", "uz-latn": "Oktyabr", en: "October" },
   november: { "uz-cyrl": "Ноябрь", "uz-latn": "Noyabr", en: "November" },
   december: { "uz-cyrl": "Декабрь", "uz-latn": "Dekabr", en: "December" },
-  paymentMethod: { "uz-cyrl": "Тўлов усули", "uz-latn": "To'lov usuli", en: "Payment Method" },
+
+  paymentMethod: {
+    "uz-cyrl": "Тўлов усули",
+    "uz-latn": "To‘lov usuli",
+    en: "Payment Method"
+  },
+
   card: { "uz-cyrl": "Карта", "uz-latn": "Karta", en: "Card" },
   cash: { "uz-cyrl": "Нақд", "uz-latn": "Naqd", en: "Cash" },
   bank: { "uz-cyrl": "Банк", "uz-latn": "Bank", en: "Bank" },
-  addPayment: { "uz-cyrl": "Тўлов қўшиш", "uz-latn": "To'lov qo'shish", en: "Add Payment" },
-  recordPayment: { "uz-cyrl": "Тўловни қайд қилиш", "uz-latn": "To'lovni qayd qilish", en: "Record Payment" },
-  paymentHistory: { "uz-cyrl": "Тўлов тарихи", "uz-latn": "To'lov tarixi", en: "Payment History" },
-  paymentsList: { "uz-cyrl": "Тўловлар рўйхати", "uz-latn": "To'lovlar ro'yxati", en: "Payments List" },
-  totalPayments: { "uz-cyrl": "Жами тўловлар", "uz-latn": "Jami to'lovlar", en: "Total Payments" },
-  pendingPayments: { "uz-cyrl": "Кутилаётган тўловлар", "uz-latn": "Kutilayotgan to'lovlar", en: "Pending Payments" },
-  noPaymentsYet: { "uz-cyrl": "Ҳали тўловлар йўқ", "uz-latn": "Hali to'lovlar yo'q", en: "No payments yet" },
-  student: { "uz-cyrl": "Ўқувчи", "uz-latn": "O'quvchi", en: "Student" },
-  paidOn: { "uz-cyrl": "Тўланган сана", "uz-latn": "To'langan sana", en: "Paid On" },
-  dueDate: { "uz-cyrl": "Муддат", "uz-latn": "Muddat", en: "Due Date" },
+
+  addPayment: {
+    "uz-cyrl": "Тўлов қўшиш",
+    "uz-latn": "To‘lov qo‘shish",
+    en: "Add Payment"
+  },
+
+  recordPayment: {
+    "uz-cyrl": "Тўловни қайд қилиш",
+    "uz-latn": "To‘lovni qayd qilish",
+    en: "Record Payment"
+  },
+
+  paymentHistory: {
+    "uz-cyrl": "Тўлов тарихи",
+    "uz-latn": "To‘lov tarixi",
+    en: "Payment History"
+  },
+
+  paymentsList: {
+    "uz-cyrl": "Тўловлар рўйхати",
+    "uz-latn": "To‘lovlar ro‘yxati",
+    en: "Payments List"
+  },
+
+  totalPayments: {
+    "uz-cyrl": "Жами тўловлар",
+    "uz-latn": "Jami to‘lovlar",
+    en: "Total Payments"
+  },
+
+  pendingPayments: {
+    "uz-cyrl": "Кутилаётган тўловлар",
+    "uz-latn": "Kutilayotgan to‘lovlar",
+    en: "Pending Payments"
+  },
+
+  noPaymentsYet: {
+    "uz-cyrl": "Ҳали тўловлар йўқ",
+    "uz-latn": "Hali to‘lovlar yo‘q",
+    en: "No payments yet"
+  },
+
+  student: { "uz-cyrl": "Ўқувчи", "uz-latn": "O‘quvchi", en: "Student" },
+
+  paidOn: {
+    "uz-cyrl": "Тўланган сана",
+    "uz-latn": "To‘langan sana",
+    en: "Paid On"
+  },
+
+  dueDate: {
+    "uz-cyrl": "Муддат",
+    "uz-latn": "Muddat",
+    en: "Due Date"
+  },
+
   // Page specific
-  trackStudentFees: { "uz-cyrl": "Ўқувчилар тўловларини кузатиш ва даромад", "uz-latn": "O'quvchilar to'lovlarini kuzatish va daromad", en: "Track student fees and income" },
-  bulkPayment: { "uz-cyrl": "Гуруҳли тўлов", "uz-latn": "Guruhli to'lov", en: "Bulk Payment" },
-  markMultipleStudentsAsPaid: { "uz-cyrl": "Бир неча ўқувчини тўланган деб белгиланг", "uz-latn": "Bir necha oʻquvchini toʻlangan deb belgilang", en: "Mark multiple students as paid" },
-  selectStudent: { "uz-cyrl": "Ўқувчини танланг", "uz-latn": "O'quvchini tanlang", en: "Select student" },
-  selectMonth: { "uz-cyrl": "Ойни танланг", "uz-latn": "Oyni tanlang", en: "Select month" },
-  selectAllActiveStudents: { "uz-cyrl": "Барча фаол ўқувчиларни танлаш", "uz-latn": "Barcha faol oʻquvchilarni tanlash", en: "Select All Active Students" },
-  noActiveStudentsFound: { "uz-cyrl": "Ҳеч қандай фаол ўқувчи топилмади", "uz-latn": "Hech qanday faol oʻquvchi topilmadi", en: "No active students found" },
-  studentsSelected: { "uz-cyrl": "ўқувчи(лар) танланди", "uz-latn": "o'quvchi(lar) tanlandi", en: "student(s) selected" },
-  totalAmount: { "uz-cyrl": "Жами сумма:", "uz-latn": "Jami summa:", en: "Total amount:" },
-  markAsPaid: { "uz-cyrl": "Тўлади", "uz-latn": "To'ladi", en: "Mark as Paid" },
-  recordNewPayment: { "uz-cyrl": "Янги тўловни қайд қилиш", "uz-latn": "Yangi to'lovni qayd qilish", en: "Record Payment" },
-  selectStudentPlaceholder: { "uz-cyrl": "Ўқувчини танланг", "uz-latn": "O'quvchini tanlang", en: "Select student" },
-  searchPayments: { "uz-cyrl": "Тўловлар бўйича қидириш...", "uz-latn": "To'lovlar boʻyicha qidirish...", en: "Search payments..." },
-  invoice: { "uz-cyrl": "Ҳисоб-фактура", "uz-latn": "Hisob-faktura", en: "Invoice" },
-  noPaymentsFound: { "uz-cyrl": "Ҳеч қандай тўлов топилмади", "uz-latn": "Hech qanday to'lov topilmadi", en: "No payments found" },
-  whoAddedPayment: { "uz-cyrl": "Киритган шахс", "uz-latn": "Kiritgan shaxs", en: "Added by" },
-  deletePayment: { "uz-cyrl": "Тўловни ўчириш", "uz-latn": "To'lovni o'chirish", en: "Delete Payment" },
-  deletePaymentConfirmation: { "uz-cyrl": "Бу тўловни ўчириб ташламоқчимисиз?", "uz-latn": "Bu to'lovni o'chirib tashlmoqchimisiz?", en: "Are you sure you want to delete this payment?" },
-  paymentDeleted: { "uz-cyrl": "Тўлов ўчирилди", "uz-latn": "To'lov o'chirildi", en: "Payment deleted" },
-  partialPayment: { "uz-cyrl": "Қисман тўлов", "uz-latn": "Qisman to'lov", en: "Partial Payment" },
-  searchStudent: { "uz-cyrl": "Ўқувчи номи, синф ёки телефон бўйича қидириш...", "uz-latn": "O'quvchi nomi, sinf yoki telefon bo'yicha qidirish...", en: "Search student name, class, or phone..." },
-  studentRequired: { "uz-cyrl": "Ўқувчи танланиши керак", "uz-latn": "O'quvchi tanlanishi kerak", en: "Student is required" },
-  noStudentsFound: { "uz-cyrl": "Ўқувчилар топилмади", "uz-latn": "O'quvchilar topilmadi", en: "No students found" },
-  typeToSearch: { "uz-cyrl": "Қидириш учун ёзинг", "uz-latn": "Qidirish uchun yozing", en: "Type to search for a student" },
-  };
+  trackStudentFees: {
+    "uz-cyrl": "Ўқувчилар тўловларини кузатиш ва даромад",
+    "uz-latn": "O‘quvchilar to‘lovlarini kuzatish va daromad",
+    en: "Track student fees and income"
+  },
+
+  bulkPayment: {
+    "uz-cyrl": "Гуруҳли тўлов",
+    "uz-latn": "Guruhli to‘lov",
+    en: "Bulk Payment"
+  },
+
+  markMultipleStudentsAsPaid: {
+    "uz-cyrl": "Бир нечта ўқувчини тўланган деб белгилаш",
+    "uz-latn": "Bir nechta o‘quvchini to‘langan deb belgilash",
+    en: "Mark multiple students as paid"
+  },
+
+  selectStudent: {
+    "uz-cyrl": "Ўқувчини танланг",
+    "uz-latn": "O‘quvchini tanlang",
+    en: "Select student"
+  },
+
+  selectMonth: {
+    "uz-cyrl": "Ойни танланг",
+    "uz-latn": "Oyni tanlang",
+    en: "Select month"
+  },
+
+  selectAllActiveStudents: {
+    "uz-cyrl": "Барча фаол ўқувчиларни танлаш",
+    "uz-latn": "Barcha faol o‘quvchilarni tanlash",
+    en: "Select All Active Students"
+  },
+
+  noActiveStudentsFound: {
+    "uz-cyrl": "Ҳеч қандай фаол ўқувчи топилмади",
+    "uz-latn": "Hech qanday faol o‘quvchi topilmadi",
+    en: "No active students found"
+  },
+
+  studentsSelected: {
+    "uz-cyrl": "ўқувчи(лар) танланди",
+    "uz-latn": "o‘quvchi(lar) tanlandi",
+    en: "student(s) selected"
+  },
+
+  totalAmount: {
+    "uz-cyrl": "Жами сумма:",
+    "uz-latn": "Jami summa:",
+    en: "Total amount:"
+  },
+
+  markAsPaid: {
+    "uz-cyrl": "Тўланди",
+    "uz-latn": "To‘landi",
+    en: "Mark as Paid"
+  },
+
+  recordNewPayment: {
+    "uz-cyrl": "Янги тўловни қайд қилиш",
+    "uz-latn": "Yangi to‘lovni qayd qilish",
+    en: "Record Payment"
+  },
+
+  selectStudentPlaceholder: {
+    "uz-cyrl": "Ўқувчини танланг",
+    "uz-latn": "O‘quvchini tanlang",
+    en: "Select student"
+  },
+
+  searchPayments: {
+    "uz-cyrl": "Тўловлар бўйича қидириш...",
+    "uz-latn": "To‘lovlar bo‘yicha qidirish...",
+    en: "Search payments..."
+  },
+
+  invoice: {
+    "uz-cyrl": "Ҳисоб-фактура",
+    "uz-latn": "Hisob-faktura",
+    en: "Invoice"
+  },
+
+  noPaymentsFound: {
+    "uz-cyrl": "Ҳеч қандай тўлов топилмади",
+    "uz-latn": "Hech qanday to‘lov topilmadi",
+    en: "No payments found"
+  },
+
+  whoAddedPayment: {
+    "uz-cyrl": "Киритган шахс",
+    "uz-latn": "Kiritgan shaxs",
+    en: "Added by"
+  },
+
+  deletePayment: {
+    "uz-cyrl": "Тўловни ўчириш",
+    "uz-latn": "To‘lovni o‘chirish",
+    en: "Delete Payment"
+  },
+
+  deletePaymentConfirmation: {
+    "uz-cyrl": "Бу тўловни ўчирмоқчимисиз?",
+    "uz-latn": "Bu to‘lovni o‘chirmoqchimisiz?",
+    en: "Are you sure you want to delete this payment?"
+  },
+
+  paymentDeleted: {
+    "uz-cyrl": "Тўлов ўчирилди",
+    "uz-latn": "To‘lov o‘chirildi",
+    en: "Payment deleted"
+  },
+
+  partialPayment: {
+    "uz-cyrl": "Қисман тўлов",
+    "uz-latn": "Qisman to‘lov",
+    en: "Partial Payment"
+  },
+
+  searchStudent: {
+    "uz-cyrl": "Ўқувчи номи, синф ёки телефон бўйича қидириш...",
+    "uz-latn": "O‘quvchi nomi, sinf yoki telefon bo‘yicha qidirish...",
+    en: "Search student name, class, or phone..."
+  },
+
+  studentRequired: {
+    "uz-cyrl": "Ўқувчи танланиши керак",
+    "uz-latn": "O‘quvchi tanlanishi kerak",
+    en: "Student is required"
+  },
+
+  noStudentsFound: {
+    "uz-cyrl": "Ўқувчилар топилмади",
+    "uz-latn": "O‘quvchilar topilmadi",
+    en: "No students found"
+  },
+
+  typeToSearch: {
+    "uz-cyrl": "Қидириш учун ёзинг",
+    "uz-latn": "Qidirish uchun yozing",
+    en: "Type to search for a student"
+  },
+};
