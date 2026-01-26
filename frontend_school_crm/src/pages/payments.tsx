@@ -209,7 +209,7 @@ export default function PaymentsPage() {
             page: currentPage,
             limit: itemsPerPage,
           }),
-          apiListStudents(selectedBranchId),
+          apiListStudents(selectedBranchId, 1, 10000), // Fetch all students (up to 10000)
           apiListClasses(selectedBranchId),
           getPaymentIndicators(selectedBranchId, queryMonth, queryYear),
         ]);
@@ -789,7 +789,9 @@ export default function PaymentsPage() {
 
   const getStudentName = (studentId: string) => {
     const student = students.find((s) => s.id === studentId);
-    return student?.fullName || "Unknown";
+    if (student?.fullName) return student.fullName;
+    // If student not found in array, return Unknown (this indicates data sync issue)
+    return "Unknown";
   };
 
   const getClassName = (studentId: string) => {
@@ -1791,7 +1793,6 @@ export default function PaymentsPage() {
                         >
                           {getPaymentMethodIcon(payment.paymentMethod)}
                           <span>{getPaymentMethodLabel(payment.paymentMethod)}</span>
-                          <span className="ml-1 font-medium">{formatCurrency(payment.amount)}</span>
                         </Badge>
                       )}
                     </td>

@@ -993,16 +993,13 @@ export default function ExpensesPage() {
                         )}`}
                       >
                         {getPaymentMethodIcon(expense.paymentMethod)}
-                        <span>
-                          {t(
-                            expense.paymentMethod === "bank"
-                              ? "bankTransfer"
-                              : expense.paymentMethod,
-                          )}
-                        </span>
-                        <span className="ml-1 font-medium">
-                          {formatCurrency(expense.amount)}
-                        </span>
+                          <span>
+                            {t(
+                              expense.paymentMethod === "bank"
+                                ? "bankTransfer"
+                                : expense.paymentMethod,
+                            )}
+                          </span>
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
