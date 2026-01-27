@@ -58,6 +58,7 @@ import {
   listClasses as apiListClasses,
   getBranch,
   getPaymentIndicators,
+  getPaymentStatus as apiGetPaymentStatus,
 } from "@/lib/api";
 import { Branch } from "@/types";
 import MonthYearSelector from "@/components/MonthYearSelector";
@@ -1350,68 +1351,70 @@ export default function PaymentsPage() {
                                 key={student.id}
                                 type="button"
                                 className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-b-0 flex justify-between items-center"
-                                onClick={() => {
-                                  const monthly = student.monthlyPayment || 0;
-                                  setFormData({
-                                    ...formData,
-                                    studentId: student.id,
-                                    amount: monthly.toString(),
-                                  });
-                                  setStudentSearchTerm("");
-                                  setShowStudentDropdown(false);
+                                onClick={async () => {
+                                   const monthly = student.monthlyPayment || 0;
+                                   setFormData({
+                                     ...formData,
+                                     studentId: student.id,
+                                     amount: monthly.toString(),
+                                   });
+                                   setStudentSearchTerm("");
+                                   setShowStudentDropdown(false);
 
-                                  // compute payments for selected month/year
-                                  if (formData.month) {
-                                    const paidTotal = payments
-                                      .filter(
-                                        (p) =>
-                                          p.studentId === student.id &&
-                                          p.month === formData.month &&
-                                          p.year === parseInt(formData.year)
-                                      )
-                                      .reduce((sum, p) => sum + p.amount, 0);
+                                   // Fetch payment status from backend
+                                   try {
+                                     if (branchData?.id) {
+                                       const statusResponse = await apiGetPaymentStatus(
+                                         student.id,
+                                         branchData.id
+                                       );
+                                       
+                                       const paidTotal = statusResponse.amount || 0;
 
-                                    if (paidTotal >= monthly) {
-                                      setPaymentSummary({
-                                        paidTotal,
-                                        remaining: 0,
-                                        status: "paid",
-                                      });
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        amount: monthly.toString(),
-                                        status: "paid",
-                                      }));
-                                    } else if (paidTotal > 0) {
-                                      const remaining = parseFloat(
-                                        (monthly - paidTotal).toFixed(2)
-                                      );
-                                      setPaymentSummary({
-                                        paidTotal,
-                                        remaining,
-                                        status: "partial",
-                                      });
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        amount: remaining.toString(),
-                                        status: "partial",
-                                      }));
-                                    } else {
-                                      setPaymentSummary({
-                                        paidTotal: 0,
-                                        remaining: monthly,
-                                        status: "none",
-                                      });
-                                      setFormData((prev) => ({
-                                        ...prev,
-                                        amount: monthly.toString(),
-                                        status: "partial",
-                                      }));
-                                    }
-                                  } else {
-                                    setPaymentSummary(null);
-                                  }
-                                }}
+                                       if (paidTotal >= monthly) {
+                                         setPaymentSummary({
+                                           paidTotal,
+                                           remaining: 0,
+                                           status: "paid",
+                                         });
+                                         setFormData((prev) => ({
+                                           ...prev,
+                                           amount: monthly.toString(),
+                                           status: "paid",
+                                         }));
+                                       } else if (paidTotal > 0) {
+                                         const remaining = parseFloat(
+                                           (monthly - paidTotal).toFixed(2)
+                                         );
+                                         setPaymentSummary({
+                                           paidTotal,
+                                           remaining,
+                                           status: "partial",
+                                         });
+                                         setFormData((prev) => ({
+                                           ...prev,
+                                           amount: remaining.toString(),
+                                           status: "partial",
+                                         }));
+                                       } else {
+                                         setPaymentSummary({
+                                           paidTotal: 0,
+                                           remaining: monthly,
+                                           status: "none",
+                                         });
+                                         setFormData((prev) => ({
+                                           ...prev,
+                                           amount: monthly.toString(),
+                                           status: "partial",
+                                         }));
+                                       }
+                                     }
+                                   } catch (error) {
+                                     console.error("Failed to fetch payment status:", error);
+                                     // Fall back to local calculation
+                                     setPaymentSummary(null);
+                                   }
+                                 }}
                               >
                                 <div>
                                   <div className="font-medium text-sm">{student.fullName}</div>

@@ -670,6 +670,67 @@ export async function listPayments(
 }
 
 /**
+ * Get payment status for a student in current month
+ */
+export async function getPaymentStatus(
+  studentId: string,
+  branchId: string
+): Promise<{ status: string; amount: number }> {
+  return apiRequest<{ status: string; amount: number }>(
+    `/payments/status/${studentId}?branchId=${branchId}`
+  );
+}
+
+/**
+ * Search students with payment status and apply filters
+ */
+export interface StudentPaymentInfo {
+  id: string;
+  fullName: string;
+  classId: string;
+  phone: string;
+  monthlyPayment: number;
+  status: "active" | "left" | "suspended";
+  amountPaid: number;
+  paymentStatus: "paid" | "partial" | "not_paid";
+  remaining: number;
+}
+
+export async function searchStudentsWithPaymentStatus(filters?: {
+  branchId: string;
+  search?: string;
+  classId?: string;
+  status?: "active" | "left" | "suspended";
+  paymentStatus?: "paid" | "partial" | "not_paid";
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  data: StudentPaymentInfo[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  let query = "";
+  if (filters?.branchId) query += `branchId=${filters.branchId}`;
+  if (filters?.search)
+    query += `${query ? "&" : ""}search=${encodeURIComponent(filters.search)}`;
+  if (filters?.classId)
+    query += `${query ? "&" : ""}classId=${filters.classId}`;
+  if (filters?.status) query += `${query ? "&" : ""}status=${filters.status}`;
+  if (filters?.paymentStatus)
+    query += `${query ? "&" : ""}paymentStatus=${filters.paymentStatus}`;
+  if (filters?.limit !== undefined) query += `${query ? "&" : ""}limit=${filters.limit}`;
+  if (filters?.offset !== undefined) query += `${query ? "&" : ""}offset=${filters.offset}`;
+
+  return apiRequest<{
+    data: StudentPaymentInfo[];
+    total: number;
+    limit: number;
+    offset: number;
+  }>(`/payments/search/students${query ? "?" + query : ""}`);
+}
+
+/**
  * Update payment
  */
 export async function updatePayment(

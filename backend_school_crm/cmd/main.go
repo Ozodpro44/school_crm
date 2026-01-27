@@ -165,7 +165,7 @@ func main() {
 	handlers.RegisterStudentRoutes(protected, studentService, classService, userService)
 
 	// Payments
-	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService)
+	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService, studentService)
 
 	// Classes
 	handlers.RegisterClassRoutes(protected, classService, userService)

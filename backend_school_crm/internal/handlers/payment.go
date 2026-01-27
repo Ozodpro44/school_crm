@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/middleware"
@@ -11,7 +12,7 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.PaymentService, branchService *service.BranchService, userService *service.UserService) {
+func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.PaymentService, branchService *service.BranchService, userService *service.UserService, studentService *service.StudentService) {
 	payments := router.Group("/payments")
 	// Authenticated users can view and edit payments
 	payments.POST("", middleware.PermissionChecker(userService, "canCreatePayments"), createPayment(paymentService, branchService))
@@ -23,6 +24,10 @@ func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.Paym
 	payments.GET("/payments/:branchId/indicators", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentIndicators(paymentService))
 	// Student payment history - separate endpoint for viewing all payments for a student
 	payments.GET("/student/:studentId/history", middleware.PermissionChecker(userService, "canViewPayments"), getStudentPaymentHistory(paymentService, userService))
+	// Student payment status for current month - used in payment modal
+	payments.GET("/status/:studentId", middleware.PermissionChecker(userService, "canViewPayments"), getStudentPaymentStatus(paymentService, branchService))
+	// Search students with payment status and filters
+	payments.GET("/search/students", middleware.PermissionChecker(userService, "canViewPayments"), searchStudentsWithPaymentStatus(paymentService, branchService, studentService))
 }
 
 func createPayment(paymentService *service.PaymentService, branchService *service.BranchService) gin.HandlerFunc {
@@ -301,5 +306,190 @@ func getStudentPaymentHistory(paymentService *service.PaymentService, userServic
 			// For managers, we return empty - they should use the main listPayments endpoint
 			c.JSON(http.StatusOK, []interface{}{})
 		}
+	}
+}
+
+// getStudentPaymentStatus returns the payment status for a student in the current month
+// Returns: status (paid/partial/not_paid) and amount paid
+func getStudentPaymentStatus(paymentService *service.PaymentService, branchService *service.BranchService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		studentID := c.Param("studentId")
+		branchID := c.Query("branchId")
+
+		if branchID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+			return
+		}
+
+		// Get branch's current month
+		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), branchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+			return
+		}
+
+		// Get payments for this student in the current month
+		payments, err := paymentService.GetByStudentIDAndPeriod(c.Request.Context(), studentID, currentMonth, currentYear)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Calculate total paid amount
+		totalPaid := 0.0
+		for _, payment := range payments {
+			totalPaid += float64(payment.Amount)
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"status": "pending",
+			"amount": totalPaid,
+		})
+	}
+}
+
+// StudentPaymentStatus represents a student with their payment information
+type StudentPaymentStatus struct {
+	ID              string  `json:"id"`
+	FullName        string  `json:"fullName"`
+	ClassID         string  `json:"classId"`
+	Phone           string  `json:"phone"`
+	MonthlyPayment  float64 `json:"monthlyPayment"`
+	Status          string  `json:"status"` // active/left/suspended
+	AmountPaid      float64 `json:"amountPaid"`
+	PaymentStatus   string  `json:"paymentStatus"` // paid/partial/not_paid
+	Remaining       float64 `json:"remaining"`
+}
+
+// searchStudentsWithPaymentStatus returns students with their payment status, supporting search and filters
+func searchStudentsWithPaymentStatus(paymentService *service.PaymentService, branchService *service.BranchService, studentService *service.StudentService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		branchID := c.Query("branchId")
+		searchQuery := c.Query("search")
+		classID := c.Query("classId")
+		studentStatus := c.Query("status") // active/left/suspended
+		paymentStatus := c.Query("paymentStatus") // paid/partial/not_paid
+		limit := c.DefaultQuery("limit", "50")
+		offset := c.DefaultQuery("offset", "0")
+
+		if branchID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+			return
+		}
+
+		limitInt, _ := strconv.Atoi(limit)
+		offsetInt, _ := strconv.Atoi(offset)
+
+		// Validate pagination
+		if limitInt < 1 {
+			limitInt = 50
+		}
+		if limitInt > 500 {
+			limitInt = 500
+		}
+		if offsetInt < 0 {
+			offsetInt = 0
+		}
+
+		// Get branch's current month
+		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), branchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+			return
+		}
+
+		// Get all students for the branch (fetch with large limit to handle all pagination locally)
+		students, _, err := studentService.GetByBranchID(c.Request.Context(), branchID, 1, 10000)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get students"})
+			return
+		}
+
+		// Build student payment status list
+		filteredStudents := []StudentPaymentStatus{}
+
+		for _, student := range students {
+			// Get payments for this student in the current month
+			payments, err := paymentService.GetByStudentIDAndPeriod(c.Request.Context(), student.ID, currentMonth, currentYear)
+			if err != nil {
+				continue
+			}
+
+			// Calculate total paid amount
+			totalPaid := 0.0
+			for _, payment := range payments {
+				totalPaid += float64(payment.Amount)
+			}
+
+			// Determine payment status
+			paymentStatusStr := "not_paid"
+			remaining := student.MonthlyPayment - totalPaid
+
+			if totalPaid >= student.MonthlyPayment {
+				paymentStatusStr = "paid"
+				remaining = 0
+			} else if totalPaid > 0 {
+				paymentStatusStr = "partial"
+			}
+
+			studentPayment := StudentPaymentStatus{
+				ID:             student.ID,
+				FullName:       student.FullName,
+				ClassID:        student.ClassID,
+				Phone:          student.Phone,
+				MonthlyPayment: student.MonthlyPayment,
+				Status:         string(student.Status),
+				AmountPaid:     totalPaid,
+				PaymentStatus:  paymentStatusStr,
+				Remaining:      remaining,
+			}
+
+			// Apply search filter (case-insensitive)
+			if searchQuery != "" {
+				searchLower := strings.ToLower(searchQuery)
+				if !strings.Contains(strings.ToLower(studentPayment.FullName), searchLower) &&
+					!strings.Contains(strings.ToLower(studentPayment.Phone), searchLower) {
+					continue
+				}
+			}
+
+			// Apply class filter
+			if classID != "" && studentPayment.ClassID != classID {
+				continue
+			}
+
+			// Apply student status filter
+			if studentStatus != "" && studentPayment.Status != studentStatus {
+				continue
+			}
+
+			// Apply payment status filter
+			if paymentStatus != "" && studentPayment.PaymentStatus != paymentStatus {
+				continue
+			}
+
+			filteredStudents = append(filteredStudents, studentPayment)
+		}
+
+		// Apply pagination
+		total := len(filteredStudents)
+		start := offsetInt
+		end := offsetInt + limitInt
+
+		if start > total {
+			start = total
+		}
+		if end > total {
+			end = total
+		}
+
+		paginatedStudents := filteredStudents[start:end]
+
+		c.JSON(http.StatusOK, gin.H{
+			"data":   paginatedStudents,
+			"total":  total,
+			"limit":  limitInt,
+			"offset": offsetInt,
+		})
 	}
 }
