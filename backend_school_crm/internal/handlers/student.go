@@ -3,9 +3,11 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/service"
 )
 
@@ -73,18 +75,75 @@ func listStudents(studentService *service.StudentService) gin.HandlerFunc {
 			limit = 1000
 		}
 
+		// Get filter parameters
+		search := c.Query("search")
+		classID := c.Query("classId")
+		status := c.Query("status")
+
+		// Get all students first (will apply filtering in memory)
 		students, total, err := studentService.GetByBranchID(c.Request.Context(), branchID, page, limit)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
+		// Apply filters to the results if search/filters provided
+		var filteredStudents []models.Student
+		filteredTotal := total
+
+		if search != "" || classID != "" || status != "" {
+			// Need to fetch all students to filter properly
+			allStudents, _, err := studentService.GetByBranchID(c.Request.Context(), branchID, 1, 10000)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+
+			// Apply filters
+			for _, student := range allStudents {
+				// Search filter (name or phone)
+				if search != "" {
+					searchLower := strings.ToLower(search)
+					nameLower := strings.ToLower(student.FullName)
+					phoneLower := strings.ToLower(student.Phone)
+					if !strings.Contains(nameLower, searchLower) && !strings.Contains(phoneLower, searchLower) {
+						continue
+					}
+				}
+
+				// Class filter
+				if classID != "" && student.ClassID != classID {
+					continue
+				}
+
+				// Status filter
+				if status != "" && string(student.Status) != status {
+					continue
+				}
+
+				filteredStudents = append(filteredStudents, student)
+			}
+
+			filteredTotal = int64(len(filteredStudents))
+
+			// Apply pagination to filtered results
+			offset := (page - 1) * limit
+			end := offset + limit
+			if offset > len(filteredStudents) {
+				offset = len(filteredStudents)
+			}
+			if end > len(filteredStudents) {
+				end = len(filteredStudents)
+			}
+			students = filteredStudents[offset:end]
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"data":       students,
-			"total":      total,
+			"total":      filteredTotal,
 			"page":       page,
 			"limit":      limit,
-			"totalPages": (total + int64(limit) - 1) / int64(limit),
+			"totalPages": (filteredTotal + int64(limit) - 1) / int64(limit),
 		})
 	}
 }

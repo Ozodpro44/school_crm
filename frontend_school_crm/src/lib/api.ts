@@ -575,12 +575,17 @@ export async function getStudent(id: string): Promise<Student> {
 }
 
 /**
- * List students by branch with pagination
+ * List students by branch with pagination and filters
  */
 export async function listStudents(
   branchId: string,
   page?: number,
-  limit?: number
+  limit?: number,
+  filters?: {
+    search?: string;
+    classId?: string;
+    status?: "active" | "left" | "suspended";
+  }
 ): Promise<{
   data: Student[];
   total: number;
@@ -591,6 +596,9 @@ export async function listStudents(
   let query = `/students?branchId=${branchId}`;
   if (page) query += `&page=${page}`;
   if (limit) query += `&limit=${limit}`;
+  if (filters?.search) query += `&search=${encodeURIComponent(filters.search)}`;
+  if (filters?.classId) query += `&classId=${filters.classId}`;
+  if (filters?.status) query += `&status=${filters.status}`;
 
   const response = await apiRequest<any>(query);
   return response || { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };

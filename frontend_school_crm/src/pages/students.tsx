@@ -137,8 +137,14 @@ export default function StudentsPage() {
     
     try {
       if (selectedBranchId) {
+        // Build filters object
+        const filters: any = {};
+        if (searchTerm) filters.search = searchTerm;
+        if (filterStatus !== "all") filters.status = filterStatus;
+        if (filterClass !== "all") filters.classId = filterClass;
+
         const [studentsResponse, classList, paymentsResponse, branch] = await Promise.all([
-          apiListStudents(selectedBranchId, page, limit),
+          apiListStudents(selectedBranchId, page, limit, filters),
           apiListClasses(selectedBranchId),
           apiListPayments({ branchId: selectedBranchId, limit: 10000 }),
           getBranch(selectedBranchId),
@@ -181,11 +187,11 @@ export default function StudentsPage() {
      return () => clearTimeout(timer);
    }, []);
 
-   // Reload data when filters or pagination changes
+   // Reload data when search term or other filters change
    useEffect(() => {
      setPage(1); // Reset to first page on filter changes
      loadData();
-   }, [filterStatus, filterClass, filterPaymentStatus, limit]);
+   }, [searchTerm, filterStatus, filterClass, limit]);
 
    useEffect(() => {
      loadData();
@@ -709,51 +715,17 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     return classData?.name || "N/A";
   };
 
-  const filteredStudents = students.filter((student) => {
-    const matchesSearch =
-      searchMatchesCrossScript(student.fullName, searchTerm) ||
-      student.phone.includes(searchTerm) ||
-      searchMatchesCrossScript(getClassName(student.classId), searchTerm);
-
-    const matchesStatus =
-      filterStatus === "all" || student.status === filterStatus;
-
-    const matchesClass =
-      filterClass === "all" || student.classId === filterClass;
-
-    const paymentStatus = getCurrentMonthPaymentStatus(student.id);
-    const matchesPaymentStatus =
-      filterPaymentStatus === "all" ||
-      (filterPaymentStatus === "paid" && paymentStatus === "paid") ||
-      (filterPaymentStatus === "partial" && paymentStatus === "partial") ||
-      (filterPaymentStatus === "unpaid" && paymentStatus === "unpaid");
-
-    return (
-      matchesSearch && matchesStatus && matchesClass && matchesPaymentStatus
-    );
-  });
-
-  // Use backend-paginated students directly (already filtered by backend via page/limit)
-  // But still apply client-side filters for search, status, class, and payment status
-  const filteredAndPaginatedStudents = students.filter((student) => {
-    const matchesSearch = searchTerm === "" ||
-      searchMatchesCrossScript(student.fullName, searchTerm) ||
-      (student.phone?.includes(searchTerm)) ||
-      (student.parentPhone?.includes(searchTerm));
-    
-    const matchesStatus = filterStatus === "all" || student.status === filterStatus;
-    const matchesClass = filterClass === "all" || student.classId === filterClass;
-    
+  // Students are now already filtered by backend based on search/filters
+  // We only need to apply payment status filter client-side since backend doesn't have payment data
+  const paginatedStudents = students.filter((student) => {
     let matchesPaymentStatus = true;
     if (filterPaymentStatus !== "all") {
       const paymentStatus = getCurrentMonthPaymentStatus(student.id);
       matchesPaymentStatus = paymentStatus === filterPaymentStatus;
     }
 
-    return matchesSearch && matchesStatus && matchesClass && matchesPaymentStatus;
+    return matchesPaymentStatus;
   });
-
-  const paginatedStudents = filteredAndPaginatedStudents;
 
   const getStatusColor = (status: StudentStatus) => {
     switch (status) {
