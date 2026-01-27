@@ -1464,7 +1464,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               })}
             </div>
 
-            {filteredStudents.length === 0 && (
+            {paginatedStudents.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-slate-500 dark:text-slate-400">
                   {t("noStudentsYet")}
