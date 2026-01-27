@@ -300,14 +300,18 @@ export default function PaymentsPage() {
   };
 
   useEffect(() => {
-    // Set currentPage from URL query params
+    // Set currentPage and itemsPerPage from URL query params
     if (router.isReady) {
       const page = router.query.page
         ? parseInt(router.query.page as string, 10)
         : 1;
+      const limit = router.query.limit
+        ? parseInt(router.query.limit as string, 10)
+        : 10;
       setCurrentPage(Math.max(1, page));
+      setItemsPerPage(limit);
     }
-  }, [router.isReady, router.query.page]);
+  }, [router.isReady, router.query.page, router.query.limit]);
 
   useEffect(() => {
     run(async () => {
@@ -1696,8 +1700,10 @@ export default function PaymentsPage() {
               </SelectContent>
             </Select>
             <Select value={itemsPerPage.toString()} onValueChange={(val) => {
-              setItemsPerPage(parseInt(val));
+              const limit = parseInt(val);
+              setItemsPerPage(limit);
               setCurrentPage(1);
+              router.push(`/payments?page=1&limit=${limit}`);
             }}>
               <SelectTrigger className="w-full sm:w-[140px]">
                 <SelectValue />
@@ -1903,7 +1909,11 @@ export default function PaymentsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                onClick={() => {
+                  const newPage = Math.max(1, currentPage - 1);
+                  setCurrentPage(newPage);
+                  router.push(`/payments?page=${newPage}&limit=${itemsPerPage}`);
+                }}
                 disabled={currentPage === 1}
               >
                 <ChevronLeft className="w-4 h-4 mr-1" />
@@ -1917,11 +1927,14 @@ export default function PaymentsPage() {
                   .filter((page) => page <= totalPages)
                   .map((page) => (
                     <Button
-                      key={page}
-                      variant={currentPage === page ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setCurrentPage(page)}
-                    >
+                       key={page}
+                       variant={currentPage === page ? "default" : "outline"}
+                       size="sm"
+                       onClick={() => {
+                         setCurrentPage(page);
+                         router.push(`/payments?page=${page}&limit=${itemsPerPage}`);
+                       }}
+                     >
                       {page}
                     </Button>
                   ))}
@@ -1929,7 +1942,11 @@ export default function PaymentsPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                onClick={() => {
+                  const newPage = Math.min(totalPages, currentPage + 1);
+                  setCurrentPage(newPage);
+                  router.push(`/payments?page=${newPage}&limit=${itemsPerPage}`);
+                }}
                 disabled={currentPage === totalPages}
               >
                 {t("next")}

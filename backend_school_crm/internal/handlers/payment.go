@@ -42,7 +42,8 @@ func createPayment(paymentService *service.PaymentService, branchService *servic
 		// Validate that payment is for the branch's current month
 		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), req.BranchID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+			fmt.Printf("[CreatePayment] Error getting branch current month: %v\n", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month: " + err.Error()})
 			return
 		}
 
@@ -54,6 +55,7 @@ func createPayment(paymentService *service.PaymentService, branchService *servic
 
 		payment, err := paymentService.Create(c.Request.Context(), &req, userID)
 		if err != nil {
+			fmt.Printf("[CreatePayment] Error creating payment: %v\n", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

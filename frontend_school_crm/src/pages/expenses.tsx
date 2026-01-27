@@ -67,7 +67,7 @@ export default function ExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [userCache, setUserCache] = useState<{ [key: string]: string }>({});
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>("");
@@ -143,14 +143,18 @@ export default function ExpensesPage() {
   };
 
   useEffect(() => {
-    // Set currentPage from URL query params
+    // Set currentPage and itemsPerPage from URL query params
     if (router.isReady) {
       const page = router.query.page
         ? parseInt(router.query.page as string, 10)
         : 1;
+      const limit = router.query.limit
+        ? parseInt(router.query.limit as string, 10)
+        : 10;
       setCurrentPage(Math.max(1, page));
+      setItemsPerPage(limit);
     }
-  }, [router.isReady, router.query.page]);
+  }, [router.isReady, router.query.page, router.query.limit]);
 
   useEffect(() => {
     if (router.isReady) {
@@ -1048,11 +1052,29 @@ export default function ExpensesPage() {
 
             {/* Pagination */}
             {filteredExpenses.length > 0 && (
-              <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
-                <div className="text-sm text-slate-600 dark:text-slate-400">
-                  {t("showing")} {startIndex + 1} -{" "}
-                  {Math.min(startIndex + itemsPerPage, filteredExpenses.length)}{" "}
-                  {t("of")} {filteredExpenses.length}
+              <div className="flex flex-col gap-4 mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    {t("showing")} {startIndex + 1} -{" "}
+                    {Math.min(startIndex + itemsPerPage, filteredExpenses.length)}{" "}
+                    {t("of")} {filteredExpenses.length}
+                  </div>
+                  <Select value={itemsPerPage.toString()} onValueChange={(val) => {
+                    const limit = parseInt(val);
+                    setItemsPerPage(limit);
+                    setCurrentPage(1);
+                    router.push(`/expenses?page=1&limit=${limit}`);
+                  }}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10 {t("perPage")}</SelectItem>
+                      <SelectItem value="20">20 {t("perPage")}</SelectItem>
+                      <SelectItem value="50">50 {t("perPage")}</SelectItem>
+                      <SelectItem value="100">100 {t("perPage")}</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -1061,7 +1083,7 @@ export default function ExpensesPage() {
                     onClick={() => {
                       const newPage = Math.max(1, currentPage - 1);
                       setCurrentPage(newPage);
-                      router.push(`/expenses?page=${newPage}`);
+                      router.push(`/expenses?page=${newPage}&limit=${itemsPerPage}`);
                     }}
                     disabled={currentPage === 1}
                   >
@@ -1077,11 +1099,11 @@ export default function ExpensesPage() {
                            size="sm"
                            onClick={() => {
                              setCurrentPage(page);
-                             router.push(`/expenses?page=${page}`);
+                             router.push(`/expenses?page=${page}&limit=${itemsPerPage}`);
                            }}
                          >
-                          {page}
-                        </Button>
+                           {page}
+                         </Button>
                       ),
                     )}
                   </div>
@@ -1091,7 +1113,7 @@ export default function ExpensesPage() {
                     onClick={() => {
                       const newPage = Math.min(totalPages, currentPage + 1);
                       setCurrentPage(newPage);
-                      router.push(`/expenses?page=${newPage}`);
+                      router.push(`/expenses?page=${newPage}&limit=${itemsPerPage}`);
                     }}
                     disabled={currentPage === totalPages}
                   >

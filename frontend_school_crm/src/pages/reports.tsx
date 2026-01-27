@@ -104,10 +104,12 @@ export default function ReportsPage() {
   }, [branchData]);
 
   useEffect(() => {
-    setPage(1); // Reset to first page when filters change
-  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit]);
-
-  useEffect(() => {
+    // Reset to first page when filters change (but not when page changes)
+    if (page !== 1) {
+      setPage(1);
+      return; // Don't generate report yet, wait for page to be set
+    }
+    // Generate report when filters or page changes
     generateReport();
   }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit, page]);
 
@@ -196,42 +198,47 @@ export default function ReportsPage() {
   };
 
   const generateReport = async () => {
-    switch (reportType) {
-      case "payment":
-        if (!paymentMonth || !paymentYear) {
-          setReportData([]);
-          return;
-        }
-        await generatePaymentReport();
-        break;
-      case "salary":
-        if (!paymentMonth || !paymentYear) {
-          setReportData([]);
-          return;
-        }
-        await generateSalaryReport();
-        break;
-      case "debtors":
-        if (!debtorMonth || !debtorYear) {
-          setReportData([]);
-          return;
-        }
-        generateDebtorsReport();
-        break;
-      case "income":
-        if (!paymentMonth || !paymentYear) {
-          setReportData([]);
-          return;
-        }
-        await generateIncomeReport();
-        break;
-      case "expenses":
-        if (!paymentMonth || !paymentYear) {
-          setReportData([]);
-          return;
-        }
-        await generateExpensesReport();
-        break;
+    setIsLoading(true);
+    try {
+      switch (reportType) {
+        case "payment":
+          if (!paymentMonth || !paymentYear) {
+            setReportData([]);
+            return;
+          }
+          await generatePaymentReport();
+          break;
+        case "salary":
+          if (!paymentMonth || !paymentYear) {
+            setReportData([]);
+            return;
+          }
+          await generateSalaryReport();
+          break;
+        case "debtors":
+          if (!debtorMonth || !debtorYear) {
+            setReportData([]);
+            return;
+          }
+          generateDebtorsReport();
+          break;
+        case "income":
+          if (!paymentMonth || !paymentYear) {
+            setReportData([]);
+            return;
+          }
+          await generateIncomeReport();
+          break;
+        case "expenses":
+          if (!paymentMonth || !paymentYear) {
+            setReportData([]);
+            return;
+          }
+          await generateExpensesReport();
+          break;
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
