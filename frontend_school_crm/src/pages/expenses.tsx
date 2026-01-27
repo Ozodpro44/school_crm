@@ -153,9 +153,11 @@ export default function ExpensesPage() {
   }, [router.isReady, router.query.page]);
 
   useEffect(() => {
-    setIsLoading(true);
-    loadData().finally(() => setIsLoading(false));
-  }, []);
+    if (router.isReady) {
+      setIsLoading(true);
+      loadData().finally(() => setIsLoading(false));
+    }
+  }, [router.isReady]);
 
   // Refetch when branch changes
   useEffect(() => {
@@ -1056,11 +1058,11 @@ export default function ExpensesPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      router.push(
-                        `/expenses?page=${Math.max(1, currentPage - 1)}`,
-                      )
-                    }
+                    onClick={() => {
+                      const newPage = Math.max(1, currentPage - 1);
+                      setCurrentPage(newPage);
+                      router.push(`/expenses?page=${newPage}`);
+                    }}
                     disabled={currentPage === 1}
                   >
                     <ChevronLeft className="w-4 h-4 mr-1" />
@@ -1070,11 +1072,14 @@ export default function ExpensesPage() {
                     {Array.from({ length: totalPages }, (_, i) => i + 1).map(
                       (page) => (
                         <Button
-                          key={page}
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => router.push(`/expenses?page=${page}`)}
-                        >
+                           key={page}
+                           variant={currentPage === page ? "default" : "outline"}
+                           size="sm"
+                           onClick={() => {
+                             setCurrentPage(page);
+                             router.push(`/expenses?page=${page}`);
+                           }}
+                         >
                           {page}
                         </Button>
                       ),
@@ -1083,14 +1088,11 @@ export default function ExpensesPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() =>
-                      router.push(
-                        `/expenses?page=${Math.min(
-                          totalPages,
-                          currentPage + 1,
-                        )}`,
-                      )
-                    }
+                    onClick={() => {
+                      const newPage = Math.min(totalPages, currentPage + 1);
+                      setCurrentPage(newPage);
+                      router.push(`/expenses?page=${newPage}`);
+                    }}
                     disabled={currentPage === totalPages}
                   >
                     {t("next")}
