@@ -68,6 +68,7 @@ export default function StudentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterClass, setFilterClass] = useState<string>("all");
@@ -715,6 +716,23 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     return classData?.name || "N/A";
   };
 
+  const handleSearch = () => {
+    setPage(1); // Reset to first page on search
+    setSearchTerm(searchInput);
+  };
+
+  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchInput("");
+    setPage(1);
+    setSearchTerm("");
+  };
+
   // Students are now already filtered by backend based on search/filters
   // We only need to apply payment status filter client-side since backend doesn't have payment data
   const paginatedStudents = students.filter((student) => {
@@ -1033,14 +1051,33 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           <CardHeader>
             <div className="flex flex-col gap-3">
               <div className="w-full">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <Input
-                    placeholder={t("searchStudents")}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 w-full"
-                  />
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                    <Input
+                      placeholder={t("searchStudents")}
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      onKeyPress={handleSearchKeyPress}
+                      className="pl-10 w-full"
+                    />
+                  </div>
+                  <Button
+                    onClick={handleSearch}
+                    className="bg-blue-600 hover:bg-blue-700"
+                    size="sm"
+                  >
+                    {t("search") || "Search"}
+                  </Button>
+                  {searchInput && (
+                    <Button
+                      onClick={handleClearSearch}
+                      variant="outline"
+                      size="sm"
+                    >
+                      {t("clear") || "Clear"}
+                    </Button>
+                  )}
                 </div>
               </div>
 
