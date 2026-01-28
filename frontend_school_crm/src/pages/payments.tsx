@@ -347,11 +347,11 @@ export default function PaymentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
+  // Load data when page or items per page changes
   useEffect(() => {
-    run(async () => {
-      await loadData();
-    });
-  }, [run, currentPage, itemsPerPage]);
+    setIsLoading(true);
+    loadData().finally(() => setIsLoading(false));
+  }, [currentPage, itemsPerPage]);
 
   // Reload data when branch changes
   useEffect(() => {
@@ -359,7 +359,8 @@ export default function PaymentsPage() {
       // Reset selectedMonth to force reload from new branch
       setSelectedMonth("");
       setCurrentPage(1);
-      loadData();
+      setIsLoading(true);
+      loadData().finally(() => setIsLoading(false));
     };
     window.addEventListener("branchChange", handleBranchChange);
     return () => window.removeEventListener("branchChange", handleBranchChange);
@@ -369,7 +370,8 @@ export default function PaymentsPage() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setCurrentPage(1); // Reset to first page
-      loadData();
+      setIsLoading(true);
+      loadData().finally(() => setIsLoading(false));
       // Update URL with filters
       const params = new URLSearchParams();
       if (searchTerm) params.set("search", searchTerm);
@@ -381,7 +383,7 @@ export default function PaymentsPage() {
       router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
     }, 300); // Debounce by 300ms
     return () => clearTimeout(timer);
-  }, [searchTerm, filterStatus, selectedMonth, selectedYear, itemsPerPage]);
+  }, [searchTerm, filterStatus, selectedMonth, selectedYear]);
 
   // Update URL when page changes
   useEffect(() => {
@@ -396,10 +398,13 @@ export default function PaymentsPage() {
     params.set("limit", itemsPerPage.toString());
     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]);
+  }, [currentPage, itemsPerPage]);
 
-  // Refetch data when page regains focus
-  useRefetchOnFocus(loadData);
+  // Refetch data when page regains focus (preserves current filters)
+  useRefetchOnFocus(() => {
+    setIsLoading(true);
+    loadData().finally(() => setIsLoading(false));
+  });
 
   const handleMonthChange = (month: string, year: number) => {
     setSelectedMonth(month);
