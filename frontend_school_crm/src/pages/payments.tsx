@@ -209,7 +209,7 @@ export default function PaymentsPage() {
     return true;
   };
 
-  const loadData = async (month?: string, year?: number) => {
+  const loadData = async (month?: string, year?: number, searchVal?: string, statusVal?: string) => {
     try {
       // Generate a unique ID for this load request
       const loadId = ++currentLoadIdRef.current;
@@ -257,10 +257,10 @@ export default function PaymentsPage() {
 
         // Use consolidated endpoint instead of multiple calls
         const filters: any = {};
-        // Use state values if available, otherwise check router.query for initial load
-        const searchValue = searchTerm || (router.query.search as string);
+        // Use provided filter values, then state values if available, otherwise check router.query for initial load
+        const searchValue = searchVal !== undefined ? searchVal : (searchTerm || (router.query.search as string));
         const statusValue =
-          filterStatus || (router.query.status as string) || "all";
+          statusVal !== undefined ? statusVal : (filterStatus || (router.query.status as string) || "all");
 
         if (searchValue) filters.search = searchValue;
         if (statusValue !== "all") filters.status = statusValue;
@@ -1092,8 +1092,8 @@ export default function PaymentsPage() {
     setCurrentPage(1);
     setSearchTerm(searchInput);
     setIsLoading(true);
-    // Load data immediately with new search term
-    loadData().finally(() => setIsLoading(false));
+    // Load data immediately with new search term (pass the search value directly to avoid state sync issues)
+    loadData(undefined, undefined, searchInput, filterStatus).finally(() => setIsLoading(false));
     // Update URL with search - always include month/year for consistency
     const params = new URLSearchParams();
     if (searchInput) params.set("search", searchInput);
@@ -1116,8 +1116,8 @@ export default function PaymentsPage() {
     setCurrentPage(1);
     setSearchTerm("");
     setIsLoading(true);
-    // Load data immediately with cleared search
-    loadData().finally(() => setIsLoading(false));
+    // Load data immediately with cleared search (pass empty string to avoid state sync issues)
+    loadData(undefined, undefined, "", filterStatus).finally(() => setIsLoading(false));
     // Update URL to clear search - always include month/year for consistency
     const params = new URLSearchParams();
     if (filterStatus !== "all") params.set("status", filterStatus);
