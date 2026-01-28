@@ -124,7 +124,7 @@ export default function StudentsPage() {
   const canEditStudents = useMemo(() => hasPermission("canEditStudents"), []);
   const canDeleteStudents = useMemo(() => hasPermission("canDeleteStudents"), []);
 
-  // Initialize state from URL params (only when router is ready)
+  // Initialize state from URL params (only on first router ready)
   useEffect(() => {
     if (!router.isReady) return;
     
@@ -138,7 +138,8 @@ export default function StudentsPage() {
     if (status) setFilterStatus(status as string);
     if (classId) setFilterClass(classId as string);
     if (paymentStatus) setFilterPaymentStatus(paymentStatus as string);
-  }, [router.isReady, router.query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
 
   const loadData = async () => {
     const user = getCurrentUser();
@@ -152,10 +153,16 @@ export default function StudentsPage() {
     try {
       if (selectedBranchId) {
         const filters: any = {};
-        if (searchTerm) filters.search = searchTerm;
-        if (filterStatus !== "all") filters.status = filterStatus;
-        if (filterClass !== "all") filters.classId = filterClass;
-        if (filterPaymentStatus !== "all") filters.paymentStatus = filterPaymentStatus;
+        // Use state values if available, otherwise check router.query for initial load
+        const searchValue = searchTerm || (router.query.search as string);
+        const statusValue = filterStatus || (router.query.status as string) || "all";
+        const classValue = filterClass || (router.query.classId as string) || "all";
+        const paymentStatusValue = filterPaymentStatus || (router.query.paymentStatus as string) || "all";
+        
+        if (searchValue) filters.search = searchValue;
+        if (statusValue !== "all") filters.status = statusValue;
+        if (classValue !== "all") filters.classId = classValue;
+        if (paymentStatusValue !== "all") filters.paymentStatus = paymentStatusValue;
 
         const consolidated = await apiGetStudentsConsolidatedData(selectedBranchId, page, limit, filters);
         const studentsList = consolidated?.items || consolidated?.data || [];

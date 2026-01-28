@@ -220,13 +220,18 @@ export default function PaymentsPage() {
         }
 
         // Always use the current branch month for filtering
-        const queryMonth = month || selectedMonth || currentMonth;
-        const queryYear = year || selectedYear || currentYear;
+        // Prefer URL params for initial load, then fall back to state
+        const queryMonth = (router.query.month as string) || month || selectedMonth || currentMonth;
+        const queryYear = parseInt((router.query.year as string) || "") || year || selectedYear || currentYear;
 
         // Use consolidated endpoint instead of multiple calls
         const filters: any = {};
-        if (searchTerm) filters.search = searchTerm;
-        if (filterStatus !== "all") filters.status = filterStatus;
+        // Use state values if available, otherwise check router.query for initial load
+        const searchValue = searchTerm || (router.query.search as string);
+        const statusValue = filterStatus || (router.query.status as string) || "all";
+        
+        if (searchValue) filters.search = searchValue;
+        if (statusValue !== "all") filters.status = statusValue;
         filters.month = queryMonth;
         filters.year = queryYear.toString();
 
@@ -331,7 +336,7 @@ export default function PaymentsPage() {
     }
   };
 
-  // Initialize state from URL params and load initial data
+  // Initialize state from URL params and load initial data (only on first router ready)
   useEffect(() => {
     if (!router.isReady) return;
     
@@ -934,8 +939,8 @@ export default function PaymentsPage() {
         const results = await searchStudentsWithPayments(
           selectedBranchId,
           studentSearchTerm,
-          selectedMonth,
-          selectedYear.toString()
+          formData.month,
+          formData.year
         );
         setFilteredStudentsForModal(results);
       } catch (error) {
@@ -951,7 +956,59 @@ export default function PaymentsPage() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [studentSearchTerm, selectedMonth, selectedYear]);
+  }, [studentSearchTerm, formData.month, formData.year]);
+
+  // Update payment summary when month/year changes while a student is selected
+  useEffect(() => {
+    if (!formData.studentId || !selectedStudentInfo) return;
+
+    const handleMonthChange = async () => {
+      const selectedBranchId = localStorage.getItem("selectedBranchId");
+      if (!selectedBranchId) return;
+
+      try {
+        const results = await searchStudentsWithPayments(
+          selectedBranchId,
+          selectedStudentInfo.fullName,
+          formData.month,
+          formData.year
+        );
+        
+        const studentData = results.find(s => s.id === formData.studentId);
+        if (studentData) {
+          const monthly = studentData.monthlyPayment || 0;
+          const paidTotal = studentData.paidAmount || 0;
+
+          if (paidTotal >= monthly) {
+            setPaymentSummary({
+              paidTotal,
+              remaining: 0,
+              status: "paid",
+            });
+          } else if (paidTotal > 0) {
+            const remaining = parseFloat(
+              (monthly - paidTotal).toFixed(2)
+            );
+            setPaymentSummary({
+              paidTotal,
+              remaining,
+              status: "partial",
+            });
+          } else {
+            setPaymentSummary({
+              paidTotal: 0,
+              remaining: monthly,
+              status: "none",
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to update payment summary:", error);
+      }
+    };
+
+    handleMonthChange();
+  }, [formData.month, formData.year, formData.studentId]);
 
   const handleSearch = () => {
     setCurrentPage(1);
