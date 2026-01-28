@@ -360,8 +360,11 @@ export default function PaymentsPage() {
       setSearchInput(search as string);
     }
     if (status) setFilterStatus(status as string);
-    if (month) setSelectedMonth(month as string);
-    if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
+    // Always set month/year from URL or defaults for consistency
+    const urlMonth = (month as string) || getDefaultMonth();
+    const urlYear = parseInt((year as string) || "") || new Date().getFullYear();
+    setSelectedMonth(urlMonth);
+    setSelectedYear(urlYear);
     
     // Mark initial load as done BEFORE calling loadData to prevent filter effects from running
     initialLoadDoneRef.current = true;
@@ -378,8 +381,7 @@ export default function PaymentsPage() {
   // Reload data when branch changes
   useEffect(() => {
     const handleBranchChange = () => {
-      // Reset selectedMonth to force reload from new branch
-      setSelectedMonth("");
+      // Don't reset selectedMonth - let loadData handle it from branch data
       setCurrentPage(1);
       setIsLoading(true);
       loadData().finally(() => setIsLoading(false));
@@ -390,26 +392,27 @@ export default function PaymentsPage() {
 
   // Reload data when search or filter status changes
   useEffect(() => {
-    // Skip if this is the initial load (URL params are being set)
-    if (!initialLoadDoneRef.current) {
-      return;
-    }
-    
-    const timer = setTimeout(() => {
-      setCurrentPage(1); // Reset to first page
-      setIsLoading(true);
-      loadData().finally(() => setIsLoading(false));
-      // Update URL with filters
-      const params = new URLSearchParams();
-      if (searchTerm) params.set("search", searchTerm);
-      if (filterStatus !== "all") params.set("status", filterStatus);
-      if (selectedMonth) params.set("month", selectedMonth);
-      if (selectedYear) params.set("year", selectedYear.toString());
-      params.set("page", "1");
-      params.set("limit", itemsPerPage.toString());
-      router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
-    }, 300); // Debounce by 300ms
-    return () => clearTimeout(timer);
+   // Skip if this is the initial load (URL params are being set)
+   if (!initialLoadDoneRef.current) {
+     return;
+   }
+   
+   const timer = setTimeout(() => {
+     setCurrentPage(1); // Reset to first page
+     setIsLoading(true);
+     loadData().finally(() => setIsLoading(false));
+     // Update URL with filters - always include month/year for consistency
+     const params = new URLSearchParams();
+     if (searchTerm) params.set("search", searchTerm);
+     if (filterStatus !== "all") params.set("status", filterStatus);
+     // Always include month and year to prevent inconsistent URLs
+     params.set("month", selectedMonth || getDefaultMonth());
+     params.set("year", (selectedYear || new Date().getFullYear()).toString());
+     params.set("page", "1");
+     params.set("limit", itemsPerPage.toString());
+     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+   }, 300); // Debounce by 300ms
+   return () => clearTimeout(timer);
   }, [searchTerm, filterStatus, selectedMonth, selectedYear]);
 
   // Load data when page or items per page changes
@@ -1985,7 +1988,17 @@ export default function PaymentsPage() {
                  const limit = parseInt(val);
                  setItemsPerPage(limit);
                  setCurrentPage(1);
-                 router.push(`/payments?page=1&limit=${limit}`);
+                 // Always include month/year to prevent URL inconsistency
+                 const finalMonth = selectedMonth || getDefaultMonth();
+                 const finalYear = selectedYear || new Date().getFullYear();
+                 const params = new URLSearchParams();
+                 if (searchTerm) params.set("search", searchTerm);
+                 if (filterStatus !== "all") params.set("status", filterStatus);
+                 params.set("month", finalMonth);
+                 params.set("year", finalYear.toString());
+                 params.set("page", "1");
+                 params.set("limit", limit.toString());
+                 router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
                }}>
                  <SelectTrigger className="w-full">
                    <SelectValue />
@@ -2209,7 +2222,16 @@ export default function PaymentsPage() {
                     onClick={() => {
                       const newPage = Math.max(1, currentPage - 1);
                       setCurrentPage(newPage);
-                      router.push(`/payments?page=${newPage}&limit=${itemsPerPage}`);
+                      const finalMonth = selectedMonth || getDefaultMonth();
+                      const finalYear = selectedYear || new Date().getFullYear();
+                      const params = new URLSearchParams();
+                      if (searchTerm) params.set("search", searchTerm);
+                      if (filterStatus !== "all") params.set("status", filterStatus);
+                      params.set("month", finalMonth);
+                      params.set("year", finalYear.toString());
+                      params.set("page", newPage.toString());
+                      params.set("limit", itemsPerPage.toString());
+                      router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
                     }}
                     disabled={currentPage === 1}
                     className="px-2 sm:px-3"
@@ -2225,17 +2247,26 @@ export default function PaymentsPage() {
                       .filter((page) => page <= totalPages)
                       .map((page) => (
                         <Button
-                          key={page}
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => {
-                            setCurrentPage(page);
-                            router.push(`/payments?page=${page}&limit=${itemsPerPage}`);
-                          }}
-                          className="h-8 w-8 p-0"
-                        >
-                          {page}
-                        </Button>
+                           key={page}
+                           variant={currentPage === page ? "default" : "outline"}
+                           size="sm"
+                           onClick={() => {
+                             setCurrentPage(page);
+                             const finalMonth = selectedMonth || getDefaultMonth();
+                             const finalYear = selectedYear || new Date().getFullYear();
+                             const params = new URLSearchParams();
+                             if (searchTerm) params.set("search", searchTerm);
+                             if (filterStatus !== "all") params.set("status", filterStatus);
+                             params.set("month", finalMonth);
+                             params.set("year", finalYear.toString());
+                             params.set("page", page.toString());
+                             params.set("limit", itemsPerPage.toString());
+                             router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+                           }}
+                           className="h-8 w-8 p-0"
+                         >
+                           {page}
+                         </Button>
                       ))}
                   </div>
                   <Button
@@ -2244,7 +2275,16 @@ export default function PaymentsPage() {
                     onClick={() => {
                       const newPage = Math.min(totalPages, currentPage + 1);
                       setCurrentPage(newPage);
-                      router.push(`/payments?page=${newPage}&limit=${itemsPerPage}`);
+                      const finalMonth = selectedMonth || getDefaultMonth();
+                      const finalYear = selectedYear || new Date().getFullYear();
+                      const params = new URLSearchParams();
+                      if (searchTerm) params.set("search", searchTerm);
+                      if (filterStatus !== "all") params.set("status", filterStatus);
+                      params.set("month", finalMonth);
+                      params.set("year", finalYear.toString());
+                      params.set("page", newPage.toString());
+                      params.set("limit", itemsPerPage.toString());
+                      router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
                     }}
                     disabled={currentPage === totalPages}
                     className="px-2 sm:px-3"
