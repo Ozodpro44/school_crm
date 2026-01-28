@@ -136,6 +136,14 @@ export default function PaymentsPage() {
     status: "paid" | "partial" | "none";
     branchId: string;
   }>>([]);
+  const [selectedStudentInfo, setSelectedStudentInfo] = useState<{
+    id: string;
+    fullName: string;
+    phone: string;
+    classId: string;
+    className: string;
+    monthlyPayment: number;
+  } | null>(null);
   const [isSearchingStudents, setIsSearchingStudents] = useState(false);
   const [posPreviewData, setPosPreviewData] = useState<{
     payment: Payment;
@@ -773,6 +781,9 @@ export default function PaymentsPage() {
       paymentMethod: "cash",
       notes: "",
     });
+    setSelectedStudentInfo(null);
+    setStudentSearchTerm("");
+    setPaymentSummary(null);
   };
 
   const recomputePaymentStatus = (
@@ -848,7 +859,12 @@ export default function PaymentsPage() {
   }, [formData.studentId, formData.month, formData.year, filteredStudentsForModal, payments]);
 
   const getStudentName = (studentId: string) => {
-    // First try to get from consolidated data (loaded with payments)
+    // First check selected student from modal
+    if (selectedStudentInfo?.id === studentId) {
+      return selectedStudentInfo.fullName;
+    }
+    
+    // Then try consolidated data (loaded with payments)
     const studentInfo = studentInfoMap.get(studentId);
     if (studentInfo?.fullName) return studentInfo.fullName;
     
@@ -861,7 +877,12 @@ export default function PaymentsPage() {
   };
 
   const getClassName = (studentId: string) => {
-    // First try to get from consolidated data (loaded with payments)
+    // First check selected student from modal
+    if (selectedStudentInfo?.id === studentId) {
+      return selectedStudentInfo.className;
+    }
+    
+    // Then try consolidated data (loaded with payments)
     const studentInfo = studentInfoMap.get(studentId);
     if (studentInfo?.className) return studentInfo.className;
     
@@ -1434,18 +1455,19 @@ export default function PaymentsPage() {
                           </div>
                         )}
                         {(studentSearchTerm || formData.studentId) && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStudentSearchTerm("");
-                              setFormData({
-                                ...formData,
-                                studentId: "",
-                                amount: "",
-                              });
-                              setPaymentSummary(null);
-                              setShowStudentDropdown(false);
-                            }}
+                           <button
+                             type="button"
+                             onClick={() => {
+                               setStudentSearchTerm("");
+                               setSelectedStudentInfo(null);
+                               setFormData({
+                                 ...formData,
+                                 studentId: "",
+                                 amount: "",
+                               });
+                               setPaymentSummary(null);
+                               setShowStudentDropdown(false);
+                             }}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
                             title={t("clear") || "Clear selection"}
                           >
@@ -1473,16 +1495,26 @@ export default function PaymentsPage() {
                                 type="button"
                                 className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-b-0 flex justify-between items-center"
                                 onClick={() => {
-                                  const monthly = student.monthlyPayment || 0;
-                                  const paidTotal = student.paidAmount || 0;
+                                   const monthly = student.monthlyPayment || 0;
+                                   const paidTotal = student.paidAmount || 0;
 
-                                  setFormData({
-                                    ...formData,
-                                    studentId: student.id,
-                                    amount: monthly.toString(),
-                                  });
-                                  setStudentSearchTerm("");
-                                  setShowStudentDropdown(false);
+                                   // Store selected student info for later retrieval
+                                   setSelectedStudentInfo({
+                                     id: student.id,
+                                     fullName: student.fullName,
+                                     phone: student.phone,
+                                     classId: student.classId,
+                                     className: student.className,
+                                     monthlyPayment: student.monthlyPayment,
+                                   });
+
+                                   setFormData({
+                                     ...formData,
+                                     studentId: student.id,
+                                     amount: monthly.toString(),
+                                   });
+                                   setStudentSearchTerm("");
+                                   setShowStudentDropdown(false);
 
                                   // Use payment info from search response
                                   if (paidTotal >= monthly) {
@@ -2066,53 +2098,61 @@ export default function PaymentsPage() {
               {Math.min(currentPage * itemsPerPage, totalPayments)}{" "}
               {t("of")} {totalPayments}
               </div>
-              <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const newPage = Math.max(1, currentPage - 1);
-                  setCurrentPage(newPage);
-                  router.push(`/payments?page=${newPage}&limit=${itemsPerPage}`);
-                }}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="w-4 h-4 mr-1" />
-                {t("previous")}
-              </Button>
-              <div className="flex items-center gap-2">
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const startPage = Math.max(1, currentPage - 2);
-                  return startPage + i;
-                })
-                  .filter((page) => page <= totalPages)
-                  .map((page) => (
-                    <Button
-                       key={page}
-                       variant={currentPage === page ? "default" : "outline"}
-                       size="sm"
-                       onClick={() => {
-                         setCurrentPage(page);
-                         router.push(`/payments?page=${page}&limit=${itemsPerPage}`);
-                       }}
-                     >
-                      {page}
-                    </Button>
-                  ))}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const newPage = Math.min(totalPages, currentPage + 1);
-                  setCurrentPage(newPage);
-                  router.push(`/payments?page=${newPage}&limit=${itemsPerPage}`);
-                }}
-                disabled={currentPage === totalPages}
-              >
-                {t("next")}
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2 items-center justify-between">
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newPage = Math.max(1, currentPage - 1);
+                      setCurrentPage(newPage);
+                      router.push(`/payments?page=${newPage}&limit=${itemsPerPage}`);
+                    }}
+                    disabled={currentPage === 1}
+                    className="px-2 sm:px-3"
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-0 sm:mr-1" />
+                    <span className="hidden sm:inline">{t("previous")}</span>
+                  </Button>
+                  <div className="flex items-center gap-1 overflow-x-auto">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      const startPage = Math.max(1, currentPage - 2);
+                      return startPage + i;
+                    })
+                      .filter((page) => page <= totalPages)
+                      .map((page) => (
+                        <Button
+                          key={page}
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            setCurrentPage(page);
+                            router.push(`/payments?page=${page}&limit=${itemsPerPage}`);
+                          }}
+                          className="h-8 w-8 p-0"
+                        >
+                          {page}
+                        </Button>
+                      ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const newPage = Math.min(totalPages, currentPage + 1);
+                      setCurrentPage(newPage);
+                      router.push(`/payments?page=${newPage}&limit=${itemsPerPage}`);
+                    }}
+                    disabled={currentPage === totalPages}
+                    className="px-2 sm:px-3"
+                  >
+                    <span className="hidden sm:inline">{t("next")}</span>
+                    <ChevronRight className="w-4 h-4 ml-0 sm:ml-1" />
+                  </Button>
+                </div>
+                <div className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+                  {t("page")} {currentPage} {t("of")} {totalPages}
+                </div>
               </div>
               </div>
               )}
