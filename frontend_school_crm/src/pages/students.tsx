@@ -94,6 +94,7 @@ export default function StudentsPage() {
   const [total, setTotal] = useState(0);
   const itemsPerPage = 10;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const initialLoadDoneRef = useRef(false);
   const language = useLanguage();
   const { toast } = useToast();
   const {
@@ -118,13 +119,15 @@ export default function StudentsPage() {
 
   const t = (key: string) => getTranslation(key, language);
 
-  // Memoize permission checks to prevent unnecessary re-renders
+  // Get permissions once per component lifecycle
   const canCreateStudents = useMemo(() => hasPermission("canCreateStudents"), []);
   const canEditStudents = useMemo(() => hasPermission("canEditStudents"), []);
   const canDeleteStudents = useMemo(() => hasPermission("canDeleteStudents"), []);
 
-  // Initialize state from URL params
+  // Initialize state from URL params (only when router is ready)
   useEffect(() => {
+    if (!router.isReady) return;
+    
     const { page, limit, search, status, classId, paymentStatus } = router.query;
     if (page) setPage(parseInt(page as string) || 1);
     if (limit) setLimit(parseInt(limit as string) || 10);
@@ -135,7 +138,7 @@ export default function StudentsPage() {
     if (status) setFilterStatus(status as string);
     if (classId) setFilterClass(classId as string);
     if (paymentStatus) setFilterPaymentStatus(paymentStatus as string);
-  }, [router.query]);
+  }, [router.isReady, router.query]);
 
   const loadData = async () => {
     const user = getCurrentUser();
@@ -188,12 +191,18 @@ export default function StudentsPage() {
      const timer = setTimeout(async () => {
        await loadData();
        setIsLoading(false);
+       initialLoadDoneRef.current = true;
      }, 300);
      return () => clearTimeout(timer);
    }, []);
 
    // Reload data when filters change
    useEffect(() => {
+     // Skip if this is the initial load (URL params are being set)
+     if (!initialLoadDoneRef.current) {
+       return;
+     }
+     
      setPage(1); // Reset to first page on filter changes
      setIsListLoading(true);
      loadData().finally(() => setIsListLoading(false));

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -166,6 +166,9 @@ export default function PaymentsPage() {
     totalPartial?: number;
     byMethod?: { card: number; cash: number; bank: number };
   } | null>(null);
+  
+  // Track if initial load has been done to prevent double-loading from filter effects
+  const initialLoadDoneRef = useRef(false);
 
 
 
@@ -173,18 +176,12 @@ export default function PaymentsPage() {
   const { toast } = useToast();
   const t = (key: string) => getTranslation(key, language);
   
-  // Memoize permission checks to prevent unnecessary re-renders
+  // Get permissions once per component lifecycle
   const currentUser = useMemo(() => getCurrentUser(), []);
   const canCreatePayments = useMemo(() => hasPermission("canCreatePayments"), []);
   const canEditPayments = useMemo(() => hasPermission("canEditPayments"), []);
-  const canDeletePayments = useMemo(
-    () => canEditPayments && currentUser?.role !== "manager",
-    [canEditPayments, currentUser?.role]
-  );
-  const isAdmin = useMemo(
-    () => currentUser?.role === "admin" || currentUser?.role === "branch_admin",
-    [currentUser?.role]
-  );
+  const canDeletePayments = canEditPayments && currentUser?.role !== "manager";
+  const isAdmin = currentUser?.role === "admin" || currentUser?.role === "branch_admin";
 
   const isMonthVisible = (month: string, year: number): boolean => {
     // The backend API handles filtering of archived months per branch
@@ -336,40 +333,28 @@ export default function PaymentsPage() {
 
   // Initialize state from URL params and load initial data
   useEffect(() => {
-    if (router.isReady) {
-      const { page, limit, search, status, month, year } = router.query;
-      let hasUrlParams = false;
-      
-      if (page) {
-        setCurrentPage(parseInt(page as string) || 1);
-        hasUrlParams = true;
-      }
-      if (limit) {
-        setItemsPerPage(parseInt(limit as string) || 10);
-        hasUrlParams = true;
-      }
-      if (search) {
-        setSearchTerm(search as string);
-        setSearchInput(search as string);
-        hasUrlParams = true;
-      }
-      if (status) {
-        setFilterStatus(status as string);
-        hasUrlParams = true;
-      }
-      if (month) {
-        setSelectedMonth(month as string);
-        hasUrlParams = true;
-      }
-      if (year) {
-        setSelectedYear(parseInt(year as string) || new Date().getFullYear());
-        hasUrlParams = true;
-      }
-      
-      // Load initial data once router is ready
-      setIsLoading(true);
-      loadData().finally(() => setIsLoading(false));
+    if (!router.isReady) return;
+    
+    const { page, limit, search, status, month, year } = router.query;
+    
+    // Set state from URL params
+    if (page) setCurrentPage(parseInt(page as string) || 1);
+    if (limit) setItemsPerPage(parseInt(limit as string) || 10);
+    if (search) {
+      setSearchTerm(search as string);
+      setSearchInput(search as string);
     }
+    if (status) setFilterStatus(status as string);
+    if (month) setSelectedMonth(month as string);
+    if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
+    
+    // Load initial data once router is ready
+    setIsLoading(true);
+    loadData().finally(() => {
+      setIsLoading(false);
+      initialLoadDoneRef.current = true;
+    });
+    
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
@@ -388,6 +373,11 @@ export default function PaymentsPage() {
 
   // Reload data when search or filter status changes
   useEffect(() => {
+    // Skip if this is the initial load (URL params are being set)
+    if (!initialLoadDoneRef.current) {
+      return;
+    }
+    
     const timer = setTimeout(() => {
       setCurrentPage(1); // Reset to first page
       setIsLoading(true);
@@ -409,6 +399,7 @@ export default function PaymentsPage() {
   useEffect(() => {
     setIsLoading(true);
     loadData().finally(() => setIsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, itemsPerPage]);
 
   // Refetch data when page regains focus (preserves current filters)
