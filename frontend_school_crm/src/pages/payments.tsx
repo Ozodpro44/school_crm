@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/router";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -172,13 +172,19 @@ export default function PaymentsPage() {
   const language = useLanguage();
   const { toast } = useToast();
   const t = (key: string) => getTranslation(key, language);
-  const canCreatePayments = hasPermission("canCreatePayments");
-  const canEditPayments = hasPermission("canEditPayments");
-  const canDeletePayments =
-    canEditPayments && getCurrentUser()?.role !== "manager";
-  const currentUser = getCurrentUser();
-  const isAdmin =
-    currentUser?.role === "admin" || currentUser?.role === "branch_admin";
+  
+  // Memoize permission checks to prevent unnecessary re-renders
+  const currentUser = useMemo(() => getCurrentUser(), []);
+  const canCreatePayments = useMemo(() => hasPermission("canCreatePayments"), []);
+  const canEditPayments = useMemo(() => hasPermission("canEditPayments"), []);
+  const canDeletePayments = useMemo(
+    () => canEditPayments && currentUser?.role !== "manager",
+    [canEditPayments, currentUser?.role]
+  );
+  const isAdmin = useMemo(
+    () => currentUser?.role === "admin" || currentUser?.role === "branch_admin",
+    [currentUser?.role]
+  );
 
   const isMonthVisible = (month: string, year: number): boolean => {
     // The backend API handles filtering of archived months per branch

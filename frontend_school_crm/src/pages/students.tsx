@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/router";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -118,6 +118,11 @@ export default function StudentsPage() {
 
   const t = (key: string) => getTranslation(key, language);
 
+  // Memoize permission checks to prevent unnecessary re-renders
+  const canCreateStudents = useMemo(() => hasPermission("canCreateStudents"), []);
+  const canEditStudents = useMemo(() => hasPermission("canEditStudents"), []);
+  const canDeleteStudents = useMemo(() => hasPermission("canDeleteStudents"), []);
+
   // Initialize state from URL params
   useEffect(() => {
     const { page, limit, search, status, classId, paymentStatus } = router.query;
@@ -226,9 +231,7 @@ export default function StudentsPage() {
    }, []);
    useRefetchOnFocus(refetchData);
 
-  const canCreateStudents = hasPermission("canCreateStudents");
-  const canEditStudents = hasPermission("canEditStudents");
-  const canDeleteStudents = hasPermission("canDeleteStudents");
+
 
   const hasCurrentMonthPayment = (studentId: string): boolean => {
     // Payment data not available with consolidated endpoint
