@@ -330,7 +330,7 @@ export default function PaymentsPage() {
     }
   };
 
-  // Initialize state from URL params
+  // Initialize state from URL params (only on mount)
   useEffect(() => {
     if (router.isReady) {
       const { page, limit, search, status, month, year } = router.query;
@@ -344,7 +344,8 @@ export default function PaymentsPage() {
       if (month) setSelectedMonth(month as string);
       if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
     }
-  }, [router.isReady, router.query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
 
   useEffect(() => {
     run(async () => {
@@ -384,6 +385,8 @@ export default function PaymentsPage() {
 
   // Update URL when page changes
   useEffect(() => {
+    if (!router.isReady) return;
+    
     const params = new URLSearchParams();
     if (searchTerm) params.set("search", searchTerm);
     if (filterStatus !== "all") params.set("status", filterStatus);
@@ -392,6 +395,7 @@ export default function PaymentsPage() {
     params.set("page", currentPage.toString());
     params.set("limit", itemsPerPage.toString());
     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage]);
 
   // Refetch data when page regains focus
@@ -813,15 +817,22 @@ export default function PaymentsPage() {
   }, [showStudentDropdown]);
 
   useEffect(() => {
-    // recompute payment summary when student / month / year changes
+    // recompute payment summary when student / month / year changes in modal
+    // Only update when modal is open (check by formData.studentId)
     const { studentId, month, year } = formData;
     if (!studentId || !month) {
       setPaymentSummary(null);
       return;
     }
 
-    const student = filteredStudentsForModal.find((s) => s.id === studentId);
-    const monthly = student?.monthlyPayment || 0;
+    // Get student info from selected info first, then search results
+    let monthly = 0;
+    if (selectedStudentInfo?.id === studentId) {
+      monthly = selectedStudentInfo.monthlyPayment;
+    } else {
+      const student = filteredStudentsForModal.find((s) => s.id === studentId);
+      monthly = student?.monthlyPayment || 0;
+    }
 
     // Use backend payments instead of localStorage
     const paidTotal = payments
@@ -856,7 +867,9 @@ export default function PaymentsPage() {
         status: "partial",
       }));
     }
-  }, [formData.studentId, formData.month, formData.year, filteredStudentsForModal, payments]);
+    // Only depend on modal form data and selected student info, not all payments
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.studentId, formData.month, formData.year, selectedStudentInfo]);
 
   const getStudentName = (studentId: string) => {
     // First check selected student from modal
