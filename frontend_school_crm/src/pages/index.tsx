@@ -186,9 +186,9 @@ export default function HomePage() {
   ) => {
     try {
       // Use provided data (from getDashboardData) - don't fetch independently
-      let paymentsData = payments || [];
-      let salariesData = salaries || [];
-      let expensesData = expenses || [];
+      const paymentsData = payments || [];
+      const salariesData = salaries || [];
+      const expensesData = expenses || [];
 
       if (chartView === "daily") {
         // Daily view: show last 14 days
