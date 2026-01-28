@@ -209,7 +209,12 @@ export default function PaymentsPage() {
     return true;
   };
 
-  const loadData = async (month?: string, year?: number) => {
+  const loadData = async (
+    month?: string,
+    year?: number,
+    searchOverride?: string,
+    statusOverride?: string,
+  ) => {
     try {
       // Generate a unique ID for this load request
       const loadId = ++currentLoadIdRef.current;
@@ -257,10 +262,15 @@ export default function PaymentsPage() {
 
         // Use consolidated endpoint instead of multiple calls
         const filters: any = {};
-        // Use state values if available, otherwise check router.query for initial load
-        const searchValue = searchTerm || (router.query.search as string);
+        // Use override values first, then state, then URL params
+        const searchValue =
+          searchOverride !== undefined
+            ? searchOverride
+            : searchTerm || (router.query.search as string);
         const statusValue =
-          filterStatus || (router.query.status as string) || "all";
+          statusOverride !== undefined
+            ? statusOverride
+            : filterStatus || (router.query.status as string) || "all";
 
         if (searchValue) filters.search = searchValue;
         if (statusValue !== "all") filters.status = statusValue;
@@ -1091,7 +1101,20 @@ export default function PaymentsPage() {
   const handleSearch = () => {
     setCurrentPage(1);
     setSearchTerm(searchInput);
-    // Filter effect will handle loadData() with the new searchTerm
+    setIsLoading(true);
+    // Load data immediately with new search term - pass the override value
+    loadData(undefined, undefined, searchInput, filterStatus).finally(() =>
+      setIsLoading(false),
+    );
+    // Update URL with search - always include month/year for consistency
+    const params = new URLSearchParams();
+    if (searchInput) params.set("search", searchInput);
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    params.set("month", selectedMonth);
+    params.set("year", selectedYear.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
   };
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1104,7 +1127,19 @@ export default function PaymentsPage() {
     setSearchInput("");
     setCurrentPage(1);
     setSearchTerm("");
-    // Filter effect will handle loadData() with cleared search
+    setIsLoading(true);
+    // Load data immediately with cleared search - pass empty string as override
+    loadData(undefined, undefined, "", filterStatus).finally(() =>
+      setIsLoading(false),
+    );
+    // Update URL to clear search - always include month/year for consistency
+    const params = new URLSearchParams();
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    params.set("month", selectedMonth);
+    params.set("year", selectedYear.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
   };
 
   const getPaymentMethodIcon = (method: PaymentMethod) => {

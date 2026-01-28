@@ -141,7 +141,12 @@ export default function StudentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
-  const loadData = async () => {
+  const loadData = async (
+    searchOverride?: string,
+    statusOverride?: string,
+    classOverride?: string,
+    paymentStatusOverride?: string,
+  ) => {
     const user = getCurrentUser();
     if (!user) {
       setStudents([]);
@@ -153,11 +158,23 @@ export default function StudentsPage() {
     try {
       if (selectedBranchId) {
         const filters: any = {};
-        // Use state values if available, otherwise check router.query for initial load
-        const searchValue = searchTerm || (router.query.search as string);
-        const statusValue = filterStatus || (router.query.status as string) || "all";
-        const classValue = filterClass || (router.query.classId as string) || "all";
-        const paymentStatusValue = filterPaymentStatus || (router.query.paymentStatus as string) || "all";
+        // Use override values first, then state, then URL params
+        const searchValue =
+          searchOverride !== undefined
+            ? searchOverride
+            : searchTerm || (router.query.search as string);
+        const statusValue =
+          statusOverride !== undefined
+            ? statusOverride
+            : filterStatus || (router.query.status as string) || "all";
+        const classValue =
+          classOverride !== undefined
+            ? classOverride
+            : filterClass || (router.query.classId as string) || "all";
+        const paymentStatusValue =
+          paymentStatusOverride !== undefined
+            ? paymentStatusOverride
+            : filterPaymentStatus || (router.query.paymentStatus as string) || "all";
         
         if (searchValue) filters.search = searchValue;
         if (statusValue !== "all") filters.status = statusValue;
@@ -714,7 +731,11 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
   const handleSearch = () => {
     setPage(1); // Reset to first page on search
     setSearchTerm(searchInput);
-    // Filter effect will handle loadData() with the new searchTerm
+    setIsListLoading(true);
+    // Pass override values to loadData
+    loadData(searchInput, filterStatus, filterClass, filterPaymentStatus).finally(
+      () => setIsListLoading(false),
+    );
   };
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -727,7 +748,11 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     setSearchInput("");
     setPage(1);
     setSearchTerm("");
-    // Filter effect will handle loadData() with cleared search
+    setIsListLoading(true);
+    // Pass empty search as override
+    loadData("", filterStatus, filterClass, filterPaymentStatus).finally(() =>
+      setIsListLoading(false),
+    );
   };
 
   // Students are now filtered by backend including payment status
