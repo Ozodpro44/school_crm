@@ -1030,12 +1030,13 @@ export default function PaymentsPage() {
   const handleSearch = () => {
     setCurrentPage(1);
     setSearchTerm(searchInput);
-    // Update URL with search
+    // Update URL with search - always include month/year for consistency
     const params = new URLSearchParams();
     if (searchInput) params.set("search", searchInput);
     if (filterStatus !== "all") params.set("status", filterStatus);
-    if (selectedMonth) params.set("month", selectedMonth);
-    if (selectedYear) params.set("year", selectedYear.toString());
+    // Always include month and year to prevent flicker
+    params.set("month", selectedMonth || getDefaultMonth());
+    params.set("year", (selectedYear || new Date().getFullYear()).toString());
     params.set("page", "1");
     params.set("limit", itemsPerPage.toString());
     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
@@ -1051,11 +1052,12 @@ export default function PaymentsPage() {
     setSearchInput("");
     setCurrentPage(1);
     setSearchTerm("");
-    // Update URL to clear search
+    // Update URL to clear search - always include month/year for consistency
     const params = new URLSearchParams();
     if (filterStatus !== "all") params.set("status", filterStatus);
-    if (selectedMonth) params.set("month", selectedMonth);
-    if (selectedYear) params.set("year", selectedYear.toString());
+    // Always include month and year to prevent flicker
+    params.set("month", selectedMonth || getDefaultMonth());
+    params.set("year", (selectedYear || new Date().getFullYear()).toString());
     params.set("page", "1");
     params.set("limit", itemsPerPage.toString());
     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
