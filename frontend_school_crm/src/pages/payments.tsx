@@ -409,13 +409,12 @@ export default function PaymentsPage() {
     if (year)
       setSelectedYear(parseInt(year as string) || new Date().getFullYear());
 
-    // Mark initial load as done BEFORE calling loadData to prevent filter effects from running
-    initialLoadDoneRef.current = true;
-
     // Load initial data once router is ready
     setIsLoading(true);
     loadData().finally(() => {
       setIsLoading(false);
+      // Mark initial load as done AFTER data is loaded to prevent filter effects from running prematurely
+      initialLoadDoneRef.current = true;
     });
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -438,7 +437,7 @@ export default function PaymentsPage() {
     if (!initialLoadDoneRef.current) {
       return;
     }
-
+    
     const timer = setTimeout(() => {
       setCurrentPage(1); // Reset to first page
       setIsLoading(true);
@@ -456,7 +455,7 @@ export default function PaymentsPage() {
       });
     }, 300); // Debounce by 300ms
     return () => clearTimeout(timer);
-  }, [searchTerm, filterStatus, selectedMonth, selectedYear]);
+  }, [searchTerm, filterStatus, selectedMonth, selectedYear, itemsPerPage]);
 
   // Load data when page or items per page changes
   useEffect(() => {
@@ -469,7 +468,7 @@ export default function PaymentsPage() {
   const refetchData = useCallback(() => {
     setIsLoading(true);
     loadData().finally(() => setIsLoading(false));
-  }, []);
+  }, [searchTerm, filterStatus, selectedMonth, selectedYear, currentPage, itemsPerPage]);
   useRefetchOnFocus(refetchData);
 
   const handleMonthChange = (month: string, year: number) => {

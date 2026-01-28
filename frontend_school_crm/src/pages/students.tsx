@@ -194,13 +194,12 @@ export default function StudentsPage() {
 
   // Initialize and load initial data
   useEffect(() => {
-     // Mark initial load as done BEFORE calling loadData to prevent filter effects from running
-     initialLoadDoneRef.current = true;
-     
      setIsLoading(true);
      const timer = setTimeout(async () => {
        await loadData();
        setIsLoading(false);
+       // Mark initial load as done AFTER data is loaded to prevent filter effects from running prematurely
+       initialLoadDoneRef.current = true;
      }, 300);
      return () => clearTimeout(timer);
    }, []);
@@ -246,7 +245,7 @@ export default function StudentsPage() {
    const refetchData = useCallback(() => {
      setIsListLoading(true);
      loadData().finally(() => setIsListLoading(false));
-   }, []);
+   }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, page, limit]);
    useRefetchOnFocus(refetchData);
 
 
