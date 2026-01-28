@@ -1091,6 +1091,9 @@ export default function PaymentsPage() {
   const handleSearch = () => {
     setCurrentPage(1);
     setSearchTerm(searchInput);
+    setIsLoading(true);
+    // Load data immediately with new search term
+    loadData().finally(() => setIsLoading(false));
     // Update URL with search - always include month/year for consistency
     const params = new URLSearchParams();
     if (searchInput) params.set("search", searchInput);
@@ -1112,6 +1115,9 @@ export default function PaymentsPage() {
     setSearchInput("");
     setCurrentPage(1);
     setSearchTerm("");
+    setIsLoading(true);
+    // Load data immediately with cleared search
+    loadData().finally(() => setIsLoading(false));
     // Update URL to clear search - always include month/year for consistency
     const params = new URLSearchParams();
     if (filterStatus !== "all") params.set("status", filterStatus);

@@ -714,6 +714,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
   const handleSearch = () => {
     setPage(1); // Reset to first page on search
     setSearchTerm(searchInput);
+    setIsListLoading(true);
+    loadData().finally(() => setIsListLoading(false));
   };
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -726,6 +728,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     setSearchInput("");
     setPage(1);
     setSearchTerm("");
+    setIsListLoading(true);
+    loadData().finally(() => setIsListLoading(false));
   };
 
   // Students are now filtered by backend including payment status
