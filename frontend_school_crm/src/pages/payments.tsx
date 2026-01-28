@@ -823,7 +823,7 @@ export default function PaymentsPage() {
     setIsBulkPaymentOpen(false);
     setSelectedStudentIds([]);
     setBulkPaymentData({
-      month: "",
+      month: getDefaultMonth(),
       year: getDefaultYear().toString(),
       paymentMethod: "cash",
     });
