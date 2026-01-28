@@ -424,8 +424,6 @@ export default function PaymentsPage() {
   // Reload data when branch changes
   useEffect(() => {
     const handleBranchChange = () => {
-      // Reset selectedMonth to force reload from new branch
-      setSelectedMonth("");
       setCurrentPage(1);
       setIsLoading(true);
       loadData().finally(() => setIsLoading(false));
@@ -823,7 +821,7 @@ export default function PaymentsPage() {
     setIsBulkPaymentOpen(false);
     setSelectedStudentIds([]);
     setBulkPaymentData({
-      month: getDefaultMonth(),
+      month: "",
       year: getDefaultYear().toString(),
       paymentMethod: "cash",
     });
