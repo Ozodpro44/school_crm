@@ -50,15 +50,13 @@ import {
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
-  listPayments as apiListPayments,
   createPayment as apiCreatePayment,
   updatePayment as apiUpdatePayment,
   deletePayment as apiDeletePayment,
   listStudents as apiListStudents,
-  listClasses as apiListClasses,
   getBranch,
-  getPaymentIndicators,
-  getPaymentStatus as apiGetPaymentStatus,
+  getPaymentsConsolidatedData,
+  searchStudentsWithPayments,
 } from "@/lib/api";
 import { Branch } from "@/types";
 import MonthYearSelector from "@/components/MonthYearSelector";
@@ -78,7 +76,9 @@ export default function PaymentsPage() {
   const [originalPayments, setOriginalPayments] = useState<Payment[]>([]);
   const [consolidatedPaymentMap, setConsolidatedPaymentMap] = useState<Map<string, string[]>>(new Map());
   const [students, setStudents] = useState<Student[]>([]);
+  const [studentInfoMap, setStudentInfoMap] = useState<Map<string, { fullName: string; phone: string; classId: string; className: string; monthlyPayment: number }>>(new Map());
   const [classes, setClasses] = useState<Class[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -125,6 +125,18 @@ export default function PaymentsPage() {
   } | null>(null);
   const [studentSearchTerm, setStudentSearchTerm] = useState("");
   const [showStudentDropdown, setShowStudentDropdown] = useState(false);
+  const [filteredStudentsForModal, setFilteredStudentsForModal] = useState<Array<{
+    id: string;
+    fullName: string;
+    phone: string;
+    classId: string;
+    className: string;
+    monthlyPayment: number;
+    paidAmount: number;
+    status: "paid" | "partial" | "none";
+    branchId: string;
+  }>>([]);
+  const [isSearchingStudents, setIsSearchingStudents] = useState(false);
   const [posPreviewData, setPosPreviewData] = useState<{
     payment: Payment;
     student: Student;
@@ -202,39 +214,49 @@ export default function PaymentsPage() {
         const queryMonth = month || selectedMonth || currentMonth;
         const queryYear = year || selectedYear || currentYear;
 
-        const [paymentsResponse, studentsList, classesList, paymentIndicators] = await Promise.all([
-          apiListPayments({
-            branchId: selectedBranchId,
-            month: queryMonth,
-            year: queryYear,
-            page: currentPage,
-            limit: itemsPerPage,
-          }),
-          apiListStudents(selectedBranchId, 1, 10000), // Fetch all students (up to 10000)
-          apiListClasses(selectedBranchId),
-          getPaymentIndicators(selectedBranchId, queryMonth, queryYear),
-        ]);
+        // Use consolidated endpoint instead of multiple calls
+        const filters: any = {};
+        if (searchTerm) filters.search = searchTerm;
+        if (filterStatus !== "all") filters.status = filterStatus;
+        filters.month = queryMonth;
+        filters.year = queryYear.toString();
+
+        const consolidated = await getPaymentsConsolidatedData(selectedBranchId, currentPage, itemsPerPage, filters);
         
-        // Handle both paginated and non-paginated responses
-        let paymentsList: Payment[] = [];
-        if (Array.isArray(paymentsResponse)) {
-          paymentsList = paymentsResponse;
-          setTotalPayments(paymentsResponse.length);
-          setTotalPages(1);
-        } else if (paymentsResponse?.data) {
-          paymentsList = paymentsResponse.data;
-          setTotalPayments(paymentsResponse.total);
-          setTotalPages(paymentsResponse.totalPages);
-        }
+        // Handle response
+        const paymentsList = consolidated?.items || consolidated?.data || [];
+        const classesList = consolidated?.classes || [];
+        const studentsList = consolidated?.students || [];
+        const paymentIndicators = consolidated?.indicators || {
+          totalPaid: 0,
+          totalUnpaid: 0,
+          byMethod: { card: 0, cash: 0, bank: 0 }
+        };
+        
+        setTotalPayments(consolidated?.total || 0);
+        setTotalPages(Math.ceil((consolidated?.total || 0) / itemsPerPage));
         
         // Store original payments for editing
         setOriginalPayments(paymentsList);
         setIndicators(paymentIndicators);
         
+        // Build student info map for quick lookup
+        const studentMap = new Map<string, { fullName: string; phone: string; classId: string; className: string; monthlyPayment: number }>();
+        studentsList.forEach((student: any) => {
+          studentMap.set(student.id, {
+            fullName: student.fullName,
+            phone: student.phone,
+            classId: student.classId,
+            className: student.className,
+            monthlyPayment: student.monthlyPayment,
+          });
+        });
+        setStudentInfoMap(studentMap);
+        
         // For display, consolidate partial payments by student + month + year
         const paymentsByKey = new Map<string, Payment[]>();
         
-        paymentsList.forEach(payment => {
+        paymentsList.forEach((payment: Payment) => {
           const key = `${payment.studentId}-${payment.month}-${payment.year}`;
           if (!paymentsByKey.has(key)) {
             paymentsByKey.set(key, []);
@@ -271,12 +293,12 @@ export default function PaymentsPage() {
           }
         });
         
-        // Handle students response
-        const studentsData = Array.isArray(studentsList) ? studentsList : studentsList?.data || [];
+        // No need to fetch all students - we use search endpoint for modal
+        // and consolidated endpoint already has class information
         
         setPayments(consolidatedPayments);
         setConsolidatedPaymentMap(consolidationMap);
-        setStudents(studentsData);
+        setStudents([]);
         setClasses(classesList);
       } else {
         // Load from local storage as fallback if no branch selected
@@ -300,19 +322,21 @@ export default function PaymentsPage() {
     }
   };
 
+  // Initialize state from URL params
   useEffect(() => {
-    // Set currentPage and itemsPerPage from URL query params
     if (router.isReady) {
-      const page = router.query.page
-        ? parseInt(router.query.page as string, 10)
-        : 1;
-      const limit = router.query.limit
-        ? parseInt(router.query.limit as string, 10)
-        : 10;
-      setCurrentPage(Math.max(1, page));
-      setItemsPerPage(limit);
+      const { page, limit, search, status, month, year } = router.query;
+      if (page) setCurrentPage(parseInt(page as string) || 1);
+      if (limit) setItemsPerPage(parseInt(limit as string) || 10);
+      if (search) {
+        setSearchTerm(search as string);
+        setSearchInput(search as string);
+      }
+      if (status) setFilterStatus(status as string);
+      if (month) setSelectedMonth(month as string);
+      if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
     }
-  }, [router.isReady, router.query.page, router.query.limit]);
+  }, [router.isReady, router.query]);
 
   useEffect(() => {
     run(async () => {
@@ -331,6 +355,36 @@ export default function PaymentsPage() {
     window.addEventListener("branchChange", handleBranchChange);
     return () => window.removeEventListener("branchChange", handleBranchChange);
   }, []);
+
+  // Reload data when search or filter status changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1); // Reset to first page
+      loadData();
+      // Update URL with filters
+      const params = new URLSearchParams();
+      if (searchTerm) params.set("search", searchTerm);
+      if (filterStatus !== "all") params.set("status", filterStatus);
+      if (selectedMonth) params.set("month", selectedMonth);
+      if (selectedYear) params.set("year", selectedYear.toString());
+      params.set("page", "1");
+      params.set("limit", itemsPerPage.toString());
+      router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+    }, 300); // Debounce by 300ms
+    return () => clearTimeout(timer);
+  }, [searchTerm, filterStatus, selectedMonth, selectedYear, itemsPerPage]);
+
+  // Update URL when page changes
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    if (selectedMonth) params.set("month", selectedMonth);
+    if (selectedYear) params.set("year", selectedYear.toString());
+    params.set("page", currentPage.toString());
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+  }, [currentPage]);
 
   // Refetch data when page regains focus
   useRefetchOnFocus(loadData);
@@ -353,7 +407,7 @@ export default function PaymentsPage() {
     const invoiceNumber = `INV-${Date.now()}`;
 
     const monthlyPaymentValue = (() => {
-      const student = students.find((s) => s.id === formData.studentId);
+      const student = filteredStudentsForModal.find((s) => s.id === formData.studentId);
       return student?.monthlyPayment || 0;
     })();
 
@@ -450,7 +504,7 @@ export default function PaymentsPage() {
 
         // Create via backend API
       try {
-        const student = students.find((s) => s.id === formData.studentId);
+        const student = filteredStudentsForModal.find((s) => s.id === formData.studentId);
         
         // Create the new payment
         await apiCreatePayment({
@@ -607,7 +661,7 @@ export default function PaymentsPage() {
 
     // Use backend payments for checking
     for (const studentId of selectedStudentIds) {
-      const student = students.find((s) => s.id === studentId);
+      const student = filteredStudentsForModal.find((s) => s.id === studentId);
       if (!student) continue;
 
       const paidTotal = payments
@@ -693,8 +747,9 @@ export default function PaymentsPage() {
   };
 
   const toggleSelectAll = () => {
-    const activeStudents = students.filter((s) => s.status === "active");
-    if (selectedStudentIds.length === activeStudents.length) {
+    // Use filtered students from modal for bulk payment selection
+    const activeStudents = filteredStudentsForModal.filter((s) => s.status !== undefined);
+    if (selectedStudentIds.length === activeStudents.length && activeStudents.length > 0) {
       setSelectedStudentIds([]);
     } else {
       setSelectedStudentIds(activeStudents.map((s) => s.id));
@@ -754,7 +809,7 @@ export default function PaymentsPage() {
       return;
     }
 
-    const student = students.find((s) => s.id === studentId);
+    const student = filteredStudentsForModal.find((s) => s.id === studentId);
     const monthly = student?.monthlyPayment || 0;
 
     // Use backend payments instead of localStorage
@@ -790,34 +845,104 @@ export default function PaymentsPage() {
         status: "partial",
       }));
     }
-  }, [formData.studentId, formData.month, formData.year, students, payments]);
+  }, [formData.studentId, formData.month, formData.year, filteredStudentsForModal, payments]);
 
   const getStudentName = (studentId: string) => {
-    const student = students.find((s) => s.id === studentId);
+    // First try to get from consolidated data (loaded with payments)
+    const studentInfo = studentInfoMap.get(studentId);
+    if (studentInfo?.fullName) return studentInfo.fullName;
+    
+    // Fall back to filtered students from search
+    const student = filteredStudentsForModal.find((s) => s.id === studentId);
     if (student?.fullName) return student.fullName;
-    // If student not found in array, return Unknown (this indicates data sync issue)
+    
+    // If student not found, return Unknown
     return "Unknown";
   };
 
   const getClassName = (studentId: string) => {
-    const student = students.find((s) => s.id === studentId);
-    if (!student) return "N/A";
-    const classData = classes.find((c) => c.id === student.classId);
-    return classData?.name || "N/A";
+    // First try to get from consolidated data (loaded with payments)
+    const studentInfo = studentInfoMap.get(studentId);
+    if (studentInfo?.className) return studentInfo.className;
+    
+    // Fall back to filtered students from search
+    const student = filteredStudentsForModal.find((s) => s.id === studentId);
+    if (student?.className) return student.className;
+    
+    // If not found, return N/A
+    return "N/A";
   };
 
   const getFilteredStudentsForPayment = () => {
-    return students
-      .filter((s) => s.status === "active")
-      .filter((student) => {
-        const name = student.fullName;
-        const className = getClassName(student.id);
-        return (
-          searchMatchesCrossScript(name, studentSearchTerm) ||
-          searchMatchesCrossScript(className, studentSearchTerm) ||
-          student.phone.includes(studentSearchTerm)
+    // Return the filtered students from search endpoint
+    return filteredStudentsForModal;
+  };
+
+  // Handle student search in payment modal
+  useEffect(() => {
+    const handleStudentSearch = async () => {
+      const selectedBranchId = localStorage.getItem("selectedBranchId");
+      if (!selectedBranchId || !studentSearchTerm.trim()) {
+        setFilteredStudentsForModal([]);
+        return;
+      }
+
+      setIsSearchingStudents(true);
+      try {
+        const results = await searchStudentsWithPayments(
+          selectedBranchId,
+          studentSearchTerm,
+          selectedMonth,
+          selectedYear.toString()
         );
-      });
+        setFilteredStudentsForModal(results);
+      } catch (error) {
+        console.error("Failed to search students:", error);
+        setFilteredStudentsForModal([]);
+      } finally {
+        setIsSearchingStudents(false);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      handleStudentSearch();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [studentSearchTerm, selectedMonth, selectedYear]);
+
+  const handleSearch = () => {
+    setCurrentPage(1);
+    setSearchTerm(searchInput);
+    // Update URL with search
+    const params = new URLSearchParams();
+    if (searchInput) params.set("search", searchInput);
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    if (selectedMonth) params.set("month", selectedMonth);
+    if (selectedYear) params.set("year", selectedYear.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+  };
+
+  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearch();
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchInput("");
+    setCurrentPage(1);
+    setSearchTerm("");
+    // Update URL to clear search
+    const params = new URLSearchParams();
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    if (selectedMonth) params.set("month", selectedMonth);
+    if (selectedYear) params.set("year", selectedYear.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
   };
 
   const getPaymentMethodIcon = (method: PaymentMethod) => {
@@ -842,26 +967,13 @@ export default function PaymentsPage() {
     }
   };
 
-  // Filter payments locally (after server pagination)
-  const filteredPayments = payments.filter((payment) => {
-    const studentName = getStudentName(payment.studentId);
-    const matchesSearch =
-      searchMatchesCrossScript(studentName, searchTerm) ||
-      (payment.invoiceNumber &&
-        payment.invoiceNumber.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    const matchesStatus =
-      filterStatus === "all" || payment.status === filterStatus;
-
-    return matchesSearch && matchesStatus;
-  });
-
-  // Use server-side pagination (already paginated from API)
-  const paginatedPayments = filteredPayments;
+  // Server-side search and filtering already applied via API
+  // No client-side filtering needed
+  const paginatedPayments = payments;
 
   // Calculate effective status based on actual payment amount vs monthly payment
   const getEffectivePaymentStatus = (payment: Payment): PaymentStatus => {
-    const student = students.find(s => s.id === payment.studentId);
+    const student = filteredStudentsForModal.find(s => s.id === payment.studentId);
     if (!student) return payment.status;
     
     // If payment amount >= monthly payment, it's fully paid
@@ -1217,7 +1329,7 @@ export default function PaymentsPage() {
                           {t("totalIncome")}:{" "}
                           {formatCurrency(
                             selectedStudentIds.reduce((sum, id) => {
-                              const student = students.find((s) => s.id === id);
+                              const student = filteredStudentsForModal.find((s) => s.id === id);
                               return sum + (student?.monthlyPayment || 0);
                             }, 0)
                           )}
@@ -1345,81 +1457,82 @@ export default function PaymentsPage() {
                       </div>
                       {showStudentDropdown && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
-                          {getFilteredStudentsForPayment().length > 0 ? (
+                          {isSearchingStudents ? (
+                            <div className="px-3 py-4 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                <div className="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
+                                <span className="text-sm text-slate-600 dark:text-slate-400">
+                                  {t("searching") || "Searching..."}
+                                </span>
+                              </div>
+                            </div>
+                          ) : getFilteredStudentsForPayment().length > 0 ? (
                             getFilteredStudentsForPayment().map((student) => (
                               <button
                                 key={student.id}
                                 type="button"
                                 className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-b-0 flex justify-between items-center"
-                                onClick={async () => {
-                                   const monthly = student.monthlyPayment || 0;
-                                   setFormData({
-                                     ...formData,
-                                     studentId: student.id,
-                                     amount: monthly.toString(),
-                                   });
-                                   setStudentSearchTerm("");
-                                   setShowStudentDropdown(false);
+                                onClick={() => {
+                                  const monthly = student.monthlyPayment || 0;
+                                  const paidTotal = student.paidAmount || 0;
 
-                                   // Fetch payment status from backend
-                                   try {
-                                     if (branchData?.id) {
-                                       const statusResponse = await apiGetPaymentStatus(
-                                         student.id,
-                                         branchData.id
-                                       );
-                                       
-                                       const paidTotal = statusResponse.amount || 0;
+                                  setFormData({
+                                    ...formData,
+                                    studentId: student.id,
+                                    amount: monthly.toString(),
+                                  });
+                                  setStudentSearchTerm("");
+                                  setShowStudentDropdown(false);
 
-                                       if (paidTotal >= monthly) {
-                                         setPaymentSummary({
-                                           paidTotal,
-                                           remaining: 0,
-                                           status: "paid",
-                                         });
-                                         setFormData((prev) => ({
-                                           ...prev,
-                                           amount: monthly.toString(),
-                                           status: "paid",
-                                         }));
-                                       } else if (paidTotal > 0) {
-                                         const remaining = parseFloat(
-                                           (monthly - paidTotal).toFixed(2)
-                                         );
-                                         setPaymentSummary({
-                                           paidTotal,
-                                           remaining,
-                                           status: "partial",
-                                         });
-                                         setFormData((prev) => ({
-                                           ...prev,
-                                           amount: remaining.toString(),
-                                           status: "partial",
-                                         }));
-                                       } else {
-                                         setPaymentSummary({
-                                           paidTotal: 0,
-                                           remaining: monthly,
-                                           status: "none",
-                                         });
-                                         setFormData((prev) => ({
-                                           ...prev,
-                                           amount: monthly.toString(),
-                                           status: "partial",
-                                         }));
-                                       }
-                                     }
-                                   } catch (error) {
-                                     console.error("Failed to fetch payment status:", error);
-                                     // Fall back to local calculation
-                                     setPaymentSummary(null);
-                                   }
-                                 }}
+                                  // Use payment info from search response
+                                  if (paidTotal >= monthly) {
+                                    setPaymentSummary({
+                                      paidTotal,
+                                      remaining: 0,
+                                      status: "paid",
+                                    });
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      amount: monthly.toString(),
+                                      status: "paid",
+                                    }));
+                                  } else if (paidTotal > 0) {
+                                    const remaining = parseFloat(
+                                      (monthly - paidTotal).toFixed(2)
+                                    );
+                                    setPaymentSummary({
+                                      paidTotal,
+                                      remaining,
+                                      status: "partial",
+                                    });
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      amount: remaining.toString(),
+                                      status: "partial",
+                                    }));
+                                  } else {
+                                    setPaymentSummary({
+                                      paidTotal: 0,
+                                      remaining: monthly,
+                                      status: "none",
+                                    });
+                                    setFormData((prev) => ({
+                                      ...prev,
+                                      amount: monthly.toString(),
+                                      status: "partial",
+                                    }));
+                                  }
+                                }}
                               >
                                 <div>
                                   <div className="font-medium text-sm">{student.fullName}</div>
                                   <div className="text-xs text-slate-500 dark:text-slate-400">
-                                    {getClassName(student.id)} • {student.phone}
+                                    {student.className} • {student.phone}
+                                    {student.paidAmount > 0 && (
+                                      <span className="ml-2 text-xs">
+                                        ({t(student.status) || student.status}: {formatCurrency(student.paidAmount)})
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </button>
@@ -1681,45 +1794,77 @@ export default function PaymentsPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-              <Input
-                placeholder={t("searchPayments")}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("allStatus")}</SelectItem>
-                <SelectItem value="paid">{t("paid")}</SelectItem>
-                <SelectItem value="partial">{t("partial")}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={itemsPerPage.toString()} onValueChange={(val) => {
-              const limit = parseInt(val);
-              setItemsPerPage(limit);
-              setCurrentPage(1);
-              router.push(`/payments?page=1&limit=${limit}`);
-            }}>
-              <SelectTrigger className="w-full sm:w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10 {t("perPage")}</SelectItem>
-                <SelectItem value="20">20 {t("perPage")}</SelectItem>
-                <SelectItem value="50">50 {t("perPage")}</SelectItem>
-                <SelectItem value="100">100 {t("perPage")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
+         <CardHeader>
+           <div className="flex flex-col gap-3">
+             <div className="w-full">
+               <div className="flex gap-2">
+                 <div className="flex-1 relative">
+                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                   <Input
+                     placeholder={t("searchPayments")}
+                     value={searchInput}
+                     onChange={(e) => {
+                       const value = e.target.value;
+                       setSearchInput(value);
+                       // Auto-clear search when input is empty
+                       if (value === "") {
+                         setCurrentPage(1);
+                         setSearchTerm("");
+                       }
+                     }}
+                     onKeyPress={handleSearchKeyPress}
+                     className="pl-10 w-full"
+                   />
+                 </div>
+                 <Button
+                   onClick={handleSearch}
+                   className="bg-blue-600 hover:bg-blue-700"
+                   size="sm"
+                 >
+                   {t("search") || "Search"}
+                 </Button>
+                 {searchInput && (
+                   <Button
+                     onClick={handleClearSearch}
+                     variant="outline"
+                     size="sm"
+                   >
+                     {t("clear") || "Clear"}
+                   </Button>
+                 )}
+               </div>
+             </div>
+
+             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+               <Select value={filterStatus} onValueChange={setFilterStatus}>
+                 <SelectTrigger className="w-full">
+                   <SelectValue />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="all">{t("allStatus")}</SelectItem>
+                   <SelectItem value="paid">{t("paid")}</SelectItem>
+                   <SelectItem value="partial">{t("partial")}</SelectItem>
+                 </SelectContent>
+               </Select>
+               <Select value={itemsPerPage.toString()} onValueChange={(val) => {
+                 const limit = parseInt(val);
+                 setItemsPerPage(limit);
+                 setCurrentPage(1);
+                 router.push(`/payments?page=1&limit=${limit}`);
+               }}>
+                 <SelectTrigger className="w-full">
+                   <SelectValue />
+                 </SelectTrigger>
+                 <SelectContent>
+                   <SelectItem value="10">10 {t("perPage")}</SelectItem>
+                   <SelectItem value="20">20 {t("perPage")}</SelectItem>
+                   <SelectItem value="50">50 {t("perPage")}</SelectItem>
+                   <SelectItem value="100">100 {t("perPage")}</SelectItem>
+                 </SelectContent>
+               </Select>
+             </div>
+           </div>
+         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="space-y-4">
@@ -1835,15 +1980,28 @@ export default function PaymentsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              const student = students.find(
+                              const student = filteredStudentsForModal.find(
                                 (s) => s.id === payment.studentId
                               );
                               if (student) {
+                                const selectedBranchId = localStorage.getItem("selectedBranchId") || "";
                                 setPosPreviewData({
-                                  payment,
-                                  student,
-                                  className: getClassName(payment.studentId),
-                                });
+                                   payment,
+                                   student: {
+                                     id: student.id,
+                                     fullName: student.fullName,
+                                     phone: student.phone,
+                                     classId: student.classId,
+                                     monthlyPayment: student.monthlyPayment,
+                                     branchId: selectedBranchId,
+                                     status: "active",
+                                     parentPhone: "",
+                                     enrollmentDate: undefined,
+                                     createdAt: new Date().toISOString(),
+                                     updatedAt: new Date().toISOString(),
+                                   },
+                                   className: getClassName(payment.studentId),
+                                 });
                               }
                             }}
                             title={t("printReceipt")}
@@ -1890,7 +2048,7 @@ export default function PaymentsPage() {
               </tbody>
               </table>
 
-              {filteredPayments.length === 0 && (
+              {paginatedPayments.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-slate-500 dark:text-slate-400">
                   {t("noPaymentsFound")}
@@ -1901,7 +2059,7 @@ export default function PaymentsPage() {
               )}
 
               {/* Pagination */}
-              {filteredPayments.length > 0 && (
+              {paginatedPayments.length > 0 && (
               <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
               <div className="text-sm text-slate-600 dark:text-slate-400">
               {t("showing")} {currentPage === 1 ? 1 : (currentPage - 1) * itemsPerPage + 1} -{" "}

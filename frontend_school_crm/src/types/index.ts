@@ -92,6 +92,14 @@ export interface Student {
   classConfirmed?: boolean;
   createdAt: string;
   updatedAt: string;
+  class?: {
+    id: string;
+    name: string;
+  };
+  payment?: {
+    status: string;
+    amount: number;
+  };
 }
 
 export interface Teacher {

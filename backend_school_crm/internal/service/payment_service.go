@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -180,11 +181,86 @@ func (s *PaymentService) GetByBranchIDAndPeriodPaginated(ctx context.Context, br
 	totalPages := (total + int64(limit) - 1) / int64(limit)
 
 	return map[string]interface{}{
-		"data":        payments,
-		"total":       total,
-		"page":        page,
-		"limit":       limit,
-		"totalPages":  totalPages,
+		"data":       payments,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
+	}, nil
+}
+
+func (s *PaymentService) GetByBranchIDAndPeriodPaginatedWithSearch(ctx context.Context, branchID, month, year, search, statusFilter string, page, limit int) (map[string]interface{}, error) {
+	// Build WHERE clause dynamically
+	whereClause := "WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3"
+	args := []interface{}{branchID, month, year}
+	argCount := 3
+
+	// Add search filter (search in student name and invoice number)
+	if search != "" {
+		argCount++
+		whereClause += fmt.Sprintf(` AND (LOWER(s.full_name) LIKE LOWER($%d) OR LOWER(p.invoice_number) LIKE LOWER($%d))`, argCount, argCount)
+		args = append(args, "%"+search+"%", "%"+search+"%")
+	}
+
+	// Add status filter
+	if statusFilter != "" && statusFilter != "all" {
+		argCount++
+		whereClause += fmt.Sprintf(` AND p.status = $%d`, argCount)
+		args = append(args, statusFilter)
+	}
+
+	// Get total count
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM payments p LEFT JOIN students s ON p.student_id = s.id %s`, whereClause)
+	var total int64
+	countArgs := args
+	err := s.db.GetConn().QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get paginated results
+	offset := (page - 1) * limit
+	argCount++
+	limitArg := argCount
+	argCount++
+	offsetArg := argCount
+
+	args = append(args, limit, offset)
+
+	query := fmt.Sprintf(`SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
+	         FROM payments p
+	         LEFT JOIN users u ON p.created_by = u.id
+	         LEFT JOIN students s ON p.student_id = s.id
+	         %s ORDER BY p.created_at DESC LIMIT $%d OFFSET $%d`, whereClause, limitArg, offsetArg)
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var payments []models.Payment
+	for rows.Next() {
+		var payment models.Payment
+		if err := rows.Scan(&payment.ID, &payment.StudentID, &payment.Amount, &payment.Month, &payment.Year,
+			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName); err != nil {
+			return nil, err
+		}
+		payments = append(payments, payment)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	totalPages := (total + int64(limit) - 1) / int64(limit)
+
+	return map[string]interface{}{
+		"data":       payments,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": totalPages,
 	}, nil
 }
 
@@ -339,8 +415,8 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 	}
 
 	return map[string]interface{}{
-		"totalPaid":    totalPaid.Float64,
-		"totalUnpaid":  totalUnpaid.Float64,
+		"totalPaid":   totalPaid.Float64,
+		"totalUnpaid": totalUnpaid.Float64,
 		"byMethod": map[string]float64{
 			"card": card.Float64,
 			"cash": cash.Float64,
@@ -429,4 +505,155 @@ func (s *PaymentService) ConsolidatePayments(payments []models.Payment) []models
 	}
 
 	return consolidated
+}
+
+// GetByBranchIDWithFilters returns payments with pagination and dynamic filtering
+// Similar to StudentService.GetByBranchIDWithFilters
+func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, month, year string) (*models.PaymentListResponse, error) {
+	intPage, err := strconv.Atoi(page)
+	if err != nil || intPage < 1 {
+		intPage = 1
+	}
+
+	intLimit, err := strconv.Atoi(limit)
+	if err != nil || intLimit < 1 {
+		intLimit = 10
+	}
+
+	offset := (intPage - 1) * intLimit
+
+	// -------------------------
+	// dynamic filters
+	// -------------------------
+	where := `WHERE p.branch_id = $1`
+	args := []interface{}{branchID}
+	argID := 2
+
+	// Month and year are required
+	where += fmt.Sprintf(" AND p.month = $%d AND p.year = $%d", argID, argID+1)
+	args = append(args, month, year)
+	argID += 2
+
+	if search != "" {
+		where += fmt.Sprintf(
+			" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)",
+			argID, argID,
+		)
+		args = append(args, "%"+search+"%")
+		argID++
+	}
+
+	if status != "" {
+		where += fmt.Sprintf(" AND p.status = $%d", argID)
+		args = append(args, status)
+		argID++
+	}
+
+	// -------------------------
+	// count query
+	// -------------------------
+	countQuery := `
+		SELECT COUNT(*)
+		FROM payments p
+		JOIN students s ON s.id = p.student_id
+		` + where
+
+	var total int
+	err = s.db.GetConn().QueryRowContext(ctx, countQuery, args...).Scan(&total)
+	if err != nil {
+		return nil, err
+	}
+
+	// -------------------------
+	// data query
+	// -------------------------
+	dataQuery := `
+		SELECT 
+			p.id, p.student_id, p.amount, p.month, p.year, 
+			p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date,
+			p.branch_id, p.created_by, p.financial_month_id, p.created_at,
+			u.full_name as created_by_name
+		FROM payments p
+		JOIN students s ON s.id = p.student_id
+		LEFT JOIN users u ON u.id = p.created_by
+		` + where + `
+		ORDER BY p.created_at DESC
+		LIMIT $` + strconv.Itoa(argID) + ` OFFSET $` + strconv.Itoa(argID+1)
+
+	args = append(args, intLimit, offset)
+
+	rows, err := s.db.GetConn().QueryContext(ctx, dataQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var payments []models.Payment
+	for rows.Next() {
+		var p models.Payment
+		var createdByName sql.NullString
+		err := rows.Scan(
+			&p.ID, &p.StudentID, &p.Amount, &p.Month, &p.Year,
+			&p.PaymentMethod, &p.Status, &p.InvoiceNumber, &p.Notes, &p.PaidDate,
+			&p.BranchID, &p.CreatedBy, &p.FinancialMonthID, &p.CreatedAt,
+			&createdByName,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if createdByName.Valid {
+			p.CreatedByName = &createdByName.String
+		}
+		payments = append(payments, p)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &models.PaymentListResponse{
+		Items: payments,
+		Total: total,
+		Page:  intPage,
+		Limit: intLimit,
+	}, nil
+}
+
+// GetByStudentAndPeriod returns payments for a student in a specific month/year
+func (s *PaymentService) GetByStudentAndPeriod(ctx context.Context, studentID, month string, year int) ([]models.Payment, error) {
+	query := `
+		SELECT 
+			id, student_id, amount, month, year, 
+			payment_method, status, invoice_number, notes, paid_date,
+			branch_id, created_by, financial_month_id, created_at
+		FROM payments
+		WHERE student_id = $1 AND month = $2 AND year = $3
+		ORDER BY created_at DESC
+	`
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, studentID, month, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var payments []models.Payment
+	for rows.Next() {
+		var p models.Payment
+		err := rows.Scan(
+			&p.ID, &p.StudentID, &p.Amount, &p.Month, &p.Year,
+			&p.PaymentMethod, &p.Status, &p.InvoiceNumber, &p.Notes, &p.PaidDate,
+			&p.BranchID, &p.CreatedBy, &p.FinancialMonthID, &p.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		payments = append(payments, p)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return payments, nil
 }

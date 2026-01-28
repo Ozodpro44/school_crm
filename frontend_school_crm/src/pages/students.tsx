@@ -41,18 +41,14 @@ import {
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
-   listStudents as apiListStudents,
+   getStudentsConsolidatedData as apiGetStudentsConsolidatedData,
    createStudent as apiCreateStudent,
    updateStudent as apiUpdateStudent,
    deleteStudent as apiDeleteStudent,
-   listClasses as apiListClasses,
    createClass as apiCreateClass,
-   listBranches as apiListBranches,
-   listPayments as apiListPayments,
-   getBranch,
  } from "@/lib/api";
 import { Branch } from "@/types";
-import type { Student as ApiStudent, Payment } from "@/lib/api";
+import type { Student as ApiStudent } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -66,6 +62,7 @@ export default function StudentsPage() {
   const router = useRouter();
   const { settings } = useSettings();
   const [isLoading, setIsLoading] = useState(true);
+  const [isListLoading, setIsListLoading] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -80,7 +77,6 @@ export default function StudentsPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [payments, setPayments] = useState<Payment[]>([]);
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [isBulkChangeClassOpen, setIsBulkChangeClassOpen] = useState(false);
   const [bulkChangeClassId, setBulkChangeClassId] = useState<string>("");
@@ -122,48 +118,51 @@ export default function StudentsPage() {
 
   const t = (key: string) => getTranslation(key, language);
 
+  // Initialize state from URL params
+  useEffect(() => {
+    const { page, limit, search, status, classId, paymentStatus } = router.query;
+    if (page) setPage(parseInt(page as string) || 1);
+    if (limit) setLimit(parseInt(limit as string) || 10);
+    if (search) {
+      setSearchTerm(search as string);
+      setSearchInput(search as string);
+    }
+    if (status) setFilterStatus(status as string);
+    if (classId) setFilterClass(classId as string);
+    if (paymentStatus) setFilterPaymentStatus(paymentStatus as string);
+  }, [router.query]);
+
   const loadData = async () => {
     const user = getCurrentUser();
-    
-    // If not authenticated, don't try to load data
     if (!user) {
       setStudents([]);
       setClasses([]);
-      setPayments([]);
       setBranchData(null);
       return;
     }
-
     const selectedBranchId = localStorage.getItem("selectedBranchId");
-    
     try {
       if (selectedBranchId) {
-        // Build filters object
         const filters: any = {};
         if (searchTerm) filters.search = searchTerm;
         if (filterStatus !== "all") filters.status = filterStatus;
         if (filterClass !== "all") filters.classId = filterClass;
+        if (filterPaymentStatus !== "all") filters.paymentStatus = filterPaymentStatus;
 
-        const [studentsResponse, classList, paymentsResponse, branch] = await Promise.all([
-          apiListStudents(selectedBranchId, page, limit, filters),
-          apiListClasses(selectedBranchId),
-          apiListPayments({ branchId: selectedBranchId, limit: 10000 }),
-          getBranch(selectedBranchId),
-        ]);
-        const paymentsList = Array.isArray(paymentsResponse) 
-          ? paymentsResponse 
-          : paymentsResponse?.data || [];
+        const consolidated = await apiGetStudentsConsolidatedData(selectedBranchId, page, limit, filters);
+        const studentsList = consolidated?.items || consolidated?.data || [];
+        const classesList = consolidated?.classes || [];
+        const totalVal = consolidated?.total || 0;
+        const totalPagesVal = consolidated?.totalPages || consolidated?.total_pages || 0;
         
-        setStudents(studentsResponse.data || []);
-        setTotal(studentsResponse.total || 0);
-        setTotalPages(studentsResponse.totalPages || 0);
-        setClasses(classList);
-        setPayments(paymentsList);
-        setBranchData(branch);
+        setStudents(studentsList);
+        setTotal(totalVal);
+        setTotalPages(Math.ceil(totalVal / limit));
+        setClasses(classesList);
+        setBranchData(null); // Clear branch data since we're not fetching it
       } else {
         setStudents([]);
         setClasses([]);
-        setPayments([]);
         setBranchData(null);
       }
     } catch (error) {
@@ -174,7 +173,6 @@ export default function StudentsPage() {
         variant: "destructive",
       });
       setClasses([]);
-      setPayments([]);
       setBranchData(null);
     }
   };
@@ -191,11 +189,31 @@ export default function StudentsPage() {
    // Reload data when search term or other filters change
    useEffect(() => {
      setPage(1); // Reset to first page on filter changes
-     loadData();
-   }, [searchTerm, filterStatus, filterClass, limit]);
+     setIsListLoading(true);
+     loadData().finally(() => setIsListLoading(false));
+     // Update URL with filters
+     const params = new URLSearchParams();
+     if (searchTerm) params.set('search', searchTerm);
+     if (filterStatus !== 'all') params.set('status', filterStatus);
+     if (filterClass !== 'all') params.set('classId', filterClass);
+     if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
+     params.set('page', '1');
+     params.set('limit', limit.toString());
+     router.push(`/students?${params.toString()}`, undefined, { shallow: true });
+   }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, limit]);
 
    useEffect(() => {
-     loadData();
+     setIsListLoading(true);
+     loadData().finally(() => setIsListLoading(false));
+     // Update URL with page
+     const params = new URLSearchParams();
+     if (searchTerm) params.set('search', searchTerm);
+     if (filterStatus !== 'all') params.set('status', filterStatus);
+     if (filterClass !== 'all') params.set('classId', filterClass);
+     if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
+     params.set('page', page.toString());
+     params.set('limit', limit.toString());
+     router.push(`/students?${params.toString()}`, undefined, { shallow: true });
    }, [page]);
 
    // Reload data when branch is switched
@@ -216,54 +234,14 @@ export default function StudentsPage() {
   const canDeleteStudents = hasPermission("canDeleteStudents");
 
   const hasCurrentMonthPayment = (studentId: string): boolean => {
-    // Use branch's current financial month if available, fallback to actual current date
-    const currentMonth = branchData?.currentFinancialMonth?.month?.toString().padStart(2, '0') || 
-                        (new Date().getMonth() + 1).toString().padStart(2, '0');
-    const currentYear = branchData?.currentFinancialMonth?.year || new Date().getFullYear();
-
-    // Use backend payments instead of localStorage
-    return payments.some(
-      (payment) =>
-        payment.studentId === studentId &&
-        Number(payment.month) === Number(currentMonth) &&
-        Number(payment.year) === currentYear
-    );
+    // Payment data not available with consolidated endpoint
+    return false;
   };
 
   const getCurrentMonthPaymentStatus = (studentId: string): string => {
-     // Use branch's current financial month if available, fallback to actual current date
-     const currentMonth = branchData?.currentFinancialMonth?.month?.toString().padStart(2, '0') || 
-                         (new Date().getMonth() + 1).toString().padStart(2, '0');
-     const currentYear = branchData?.currentFinancialMonth?.year || new Date().getFullYear();
-  
-     const student = students.find(s => s.id === studentId);
-     if (!student) return "unpaid";
-  
-     // Use backend payments instead of localStorage
-     const currentMonthPayments = payments.filter(
-       (payment) =>
-         payment.studentId === studentId &&
-         Number(payment.month) === Number(currentMonth) &&
-         Number(payment.year) === currentYear
-     );
-  
-     if (currentMonthPayments.length === 0) return "unpaid";
-  
-     const paidTotal = currentMonthPayments.reduce((sum, p) => sum + p.amount, 0);
-     const monthly = student.monthlyPayment;
-  
-     // If total paid meets or exceeds monthly requirement, it's paid
-     if (paidTotal >= monthly) {
-       return "paid";
-     }
-     
-     // If there's any payment but less than required, it's partial
-     if (paidTotal > 0) {
-       return "partial";
-     }
-     
-     return "unpaid";
-   };
+    // Payment data not available with consolidated endpoint
+    return "unpaid";
+  };
 
   const processCSVData = async (csvText: string) => {
     try {
@@ -539,7 +517,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     setEditingStudent(student);
     setFormData({
       fullName: student.fullName,
-      classId: student.classId,
+      classId: student.class?.id || student.classId || "",
       phone: student.phone,
       parentPhone: student.parentPhone,
       monthlyPayment: student.monthlyPayment.toString(),
@@ -733,17 +711,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     setSearchTerm("");
   };
 
-  // Students are now already filtered by backend based on search/filters
-  // We only need to apply payment status filter client-side since backend doesn't have payment data
-  const paginatedStudents = students.filter((student) => {
-    let matchesPaymentStatus = true;
-    if (filterPaymentStatus !== "all") {
-      const paymentStatus = getCurrentMonthPaymentStatus(student.id);
-      matchesPaymentStatus = paymentStatus === filterPaymentStatus;
-    }
-
-    return matchesPaymentStatus;
-  });
+  // Students are now filtered by backend including payment status
+  const paginatedStudents = students;
 
   const getStatusColor = (status: StudentStatus) => {
     switch (status) {
@@ -1057,7 +1026,15 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     <Input
                       placeholder={t("searchStudents")}
                       value={searchInput}
-                      onChange={(e) => setSearchInput(e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setSearchInput(value);
+                        // Auto-clear search when input is empty
+                        if (value === "") {
+                          setPage(1);
+                          setSearchTerm("");
+                        }
+                      }}
                       onKeyPress={handleSearchKeyPress}
                       className="pl-10 w-full"
                     />
@@ -1117,8 +1094,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                    </SelectTrigger>
                    <SelectContent>
                       <SelectItem value="all">{t("allPayments")}</SelectItem>
-                      <SelectItem value="paid">{t("paidThisMonth")}</SelectItem>
-                      <SelectItem value="partial">{t("partialPayment")}</SelectItem>
+                      <SelectItem value="paid">{t("paid")}</SelectItem>
+                      <SelectItem value="partial">{t("partial")}</SelectItem>
                       <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
                    </SelectContent>
                 </Select>
@@ -1234,9 +1211,26 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
         <Card>
           <CardContent>
-            {/* Desktop Table */}
-            <div className="hidden md:overflow-x-auto md:block">
-              <table className="w-full">
+            {isListLoading ? (
+              <div className="space-y-4">
+                {[...Array(5)].map((_, i) => (
+                  <div key={i} className="flex items-center gap-4 py-4 border-b">
+                    <Skeleton className="h-4 w-4" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-8 w-20" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                {/* Desktop Table */}
+                <div className="hidden md:overflow-x-auto md:block">
+                  <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800">
                     <th className="text-left py-3 px-4">
@@ -1275,7 +1269,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                 </thead>
                 <tbody>
                   {paginatedStudents.map((student) => {
-                    const paymentStatus = getCurrentMonthPaymentStatus(student.id);
+                    const paymentStatus = student.payment?.status || 'unpaid';
                     const paymentStatusColor = paymentStatus === "paid" 
                       ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
                       : paymentStatus === "partial"
@@ -1314,7 +1308,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                             </div>
                         </td>
                         <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                          {getClassName(student.classId)}
+                          {student.class?.name || 'N/A'}
                         </td>
                         <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
                           {formatPhoneNumber(student.phone)}
@@ -1378,7 +1372,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
             {/* Mobile Card View */}
             <div className="md:hidden space-y-4">
               {paginatedStudents.map((student) => {
-                const paymentStatus = getCurrentMonthPaymentStatus(student.id);
+                const paymentStatus = student.payment?.status || 'unpaid';
                 const paymentStatusColor = paymentStatus === "paid" 
                   ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
                   : paymentStatus === "partial"
@@ -1420,7 +1414,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-slate-600 dark:text-slate-400">{t("class")}:</span>
                         <span className="font-medium text-slate-900 dark:text-slate-100">
-                          {getClassName(student.classId)}
+                          {student.class?.name || 'N/A'}
                         </span>
                       </div>
                       
@@ -1542,8 +1536,23 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     <ChevronLeft className="w-4 h-4" />
                     <span className="hidden sm:inline ml-1">{t("previous") || "Previous"}</span>
                   </Button>
-                  <div className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("page") || "Page"} {page} {t("of") || "of"} {totalPages}
+                  <div className="flex items-center gap-2">
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      const startPage = Math.max(1, page - 2);
+                      return startPage + i;
+                    })
+                      .filter((pageNum) => pageNum <= totalPages)
+                      .map((pageNum) => (
+                        <Button
+                          key={pageNum}
+                          variant={page === pageNum ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPage(pageNum)}
+                          className="h-8 w-8 p-0"
+                        >
+                          {pageNum}
+                        </Button>
+                      ))}
                   </div>
                   <Button
                     variant="outline"
@@ -1557,6 +1566,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                   </Button>
                 </div>
               </div>
+            )}
+              </>
             )}
           </CardContent>
         </Card>

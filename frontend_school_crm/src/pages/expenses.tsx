@@ -921,6 +921,21 @@ export default function ExpensesPage() {
                 <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={itemsPerPage.toString()} onValueChange={(val) => {
+                  const limit = parseInt(val);
+                  setItemsPerPage(limit);                    setCurrentPage(1);
+                  router.push(`/expenses?page=1&limit=${limit}`);
+                }}>
+                  <SelectTrigger className="w-[140px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10 {t("perPage")}</SelectItem>
+                    <SelectItem value="20">20 {t("perPage")}</SelectItem>
+                    <SelectItem value="50">50 {t("perPage")}</SelectItem>
+                    <SelectItem value="100">100 {t("perPage")}</SelectItem>
+                  </SelectContent>
+              </Select>
           </div>
         </CardHeader>
         <CardContent>
@@ -1059,22 +1074,6 @@ export default function ExpensesPage() {
                     {Math.min(startIndex + itemsPerPage, filteredExpenses.length)}{" "}
                     {t("of")} {filteredExpenses.length}
                   </div>
-                  <Select value={itemsPerPage.toString()} onValueChange={(val) => {
-                    const limit = parseInt(val);
-                    setItemsPerPage(limit);
-                    setCurrentPage(1);
-                    router.push(`/expenses?page=1&limit=${limit}`);
-                  }}>
-                    <SelectTrigger className="w-[140px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10 {t("perPage")}</SelectItem>
-                      <SelectItem value="20">20 {t("perPage")}</SelectItem>
-                      <SelectItem value="50">50 {t("perPage")}</SelectItem>
-                      <SelectItem value="100">100 {t("perPage")}</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
                 <div className="flex gap-2">
                   <Button

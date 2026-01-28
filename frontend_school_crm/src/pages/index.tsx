@@ -76,40 +76,60 @@ export default function HomePage() {
     };
   }, [router, isMounted]);
 
+  const performLoadData = async () => {
+    // Wait for selectedBranchId to be available in localStorage
+    // This is needed after login when BranchContext is still loading
+    let retries = 0;
+    const maxRetries = 20; // 2 seconds max wait
+
+    while (
+      !localStorage.getItem("selectedBranchId") &&
+      retries < maxRetries
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      retries++;
+    }
+
+    if (!localStorage.getItem("selectedBranchId")) {
+      console.warn("[Dashboard] No branch ID found after waiting");
+      return;
+    }
+
+    // Clear old stats to show loading state immediately
+    setStats({
+      totalStudents: 0,
+      activeStudents: 0,
+      totalTeachers: 0,
+      totalIncome: 0,
+      totalExpenses: 0,
+      profit: 0,
+      debtorsCount: 0,
+      unpaidSalariesCount: 0,
+      cashIncome: 0,
+      cashExpenses: 0,
+      cashProfit: 0,
+      cardIncome: 0,
+      cardExpenses: 0,
+      cardProfit: 0,
+      bankIncome: 0,
+      bankExpenses: 0,
+      bankProfit: 0,
+    });
+    setChartData([]);
+
+    await Promise.all([calculateStats(), generateChartData()]);
+  };
+
   useEffect(() => {
     if (!isMounted) return;
 
     setIsLoading(true);
-
-    const loadData = async () => {
-      // Wait for selectedBranchId to be available in localStorage
-      // This is needed after login when BranchContext is still loading
-      let retries = 0;
-      const maxRetries = 20; // 2 seconds max wait
-
-      while (
-        !localStorage.getItem("selectedBranchId") &&
-        retries < maxRetries
-      ) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        retries++;
-      }
-
-      if (!localStorage.getItem("selectedBranchId")) {
-        console.warn("[Dashboard] No branch ID found after waiting");
-        setIsLoading(false);
-        return;
-      }
-
-      await Promise.all([calculateStats(), generateChartData()]);
-      setIsLoading(false);
-    };
-
-    loadData();
+    performLoadData().finally(() => setIsLoading(false));
 
     // Listen for storage changes (when data is updated in other components)
     const handleStorageChange = () => {
-      loadData();
+      setIsLoading(true);
+      performLoadData().finally(() => setIsLoading(false));
     };
 
     window.addEventListener("storage", handleStorageChange);
@@ -117,16 +137,15 @@ export default function HomePage() {
     // Listen for branch change events
     const handleBranchChange = () => {
       setIsLoading(true);
-      Promise.all([calculateStats(), generateChartData()]).then(() => {
-        setIsLoading(false);
-      });
+      performLoadData().finally(() => setIsLoading(false));
     };
 
     window.addEventListener("branchChange", handleBranchChange);
 
     // Refresh when page regains focus
     const handleFocus = () => {
-      loadData();
+      setIsLoading(true);
+      performLoadData().finally(() => setIsLoading(false));
     };
 
     window.addEventListener("focus", handleFocus);
@@ -166,28 +185,10 @@ export default function HomePage() {
     expenses?: any[],
   ) => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
-      if (!branchId) {
-        console.warn("[Dashboard] No branch ID found for chart");
-        return;
-      }
-
-      // Use provided data if available, otherwise fetch
-      let paymentsData = payments;
-      let salariesData = salaries;
-      let expensesData = expenses;
-
-      if (!paymentsData || !salariesData || !expensesData) {
-        const paymentsResponse = await api.listPayments({
-          branchId: branchId,
-          limit: 10000,
-        });
-        paymentsData = Array.isArray(paymentsResponse)
-          ? paymentsResponse
-          : paymentsResponse?.data || [];
-        salariesData = await api.listSalaries(branchId);
-        expensesData = await api.listExpenses(branchId);
-      }
+      // Use provided data (from getDashboardData) - don't fetch independently
+      let paymentsData = payments || [];
+      let salariesData = salaries || [];
+      let expensesData = expenses || [];
 
       if (chartView === "daily") {
         // Daily view: show last 14 days

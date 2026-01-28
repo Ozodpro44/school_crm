@@ -1,4 +1,27 @@
 /**
+ * Get students and classes consolidated data
+ */
+export async function getStudentsConsolidatedData(
+  branchId: string,
+  page?: number,
+  limit?: number,
+  filters?: {
+    search?: string;
+    classId?: string;
+    status?: string;
+    paymentStatus?: string;
+  }
+): Promise<any> {
+  let query = `/students/consolidated/data?branchId=${branchId}`;
+  if (page) query += `&page=${page}`;
+  if (limit) query += `&limit=${limit}`;
+  if (filters?.search) query += `&search=${encodeURIComponent(filters.search)}`;
+  if (filters?.classId) query += `&classId=${filters.classId}`;
+  if (filters?.status) query += `&status=${filters.status}`;
+  if (filters?.paymentStatus) query += `&paymentStatus=${filters.paymentStatus}`;
+  return apiRequest<any>(query);
+}
+/**
  * API Client for Wonderkids' CRM Backend
  * Complete integration with all Golang backend endpoints
  * Handles all HTTP requests with authentication, error handling, and data marshalling
@@ -298,7 +321,7 @@ export async function apiRequest<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { timeout = 10000, ...fetchOptions } = options;
+  const { timeout = 30000, ...fetchOptions } = options;
   const token = getAuthToken();
   const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
 
@@ -626,6 +649,43 @@ export async function deleteStudent(id: string): Promise<{ success: boolean }> {
   });
 }
 
+/**
+ * Search students with payment information for payment modal
+ */
+export async function searchStudentsWithPayments(
+  branchId: string,
+  search?: string,
+  month?: string,
+  year?: string
+): Promise<Array<{
+  id: string;
+  fullName: string;
+  phone: string;
+  classId: string;
+  className: string;
+  monthlyPayment: number;
+  paidAmount: number;
+  status: "paid" | "partial" | "none";
+  branchId: string;
+}>> {
+  let query = `?branchId=${branchId}`;
+  if (search) query += `&search=${encodeURIComponent(search)}`;
+  if (month) query += `&month=${month}`;
+  if (year) query += `&year=${year}`;
+
+  return apiRequest<Array<{
+    id: string;
+    fullName: string;
+    phone: string;
+    classId: string;
+    className: string;
+    monthlyPayment: number;
+    paidAmount: number;
+    status: "paid" | "partial" | "none";
+    branchId: string;
+  }>>(`/students/search/with-payments${query}`);
+}
+
 // ============================================================================
 // PAYMENT ENDPOINTS
 // ============================================================================
@@ -660,6 +720,8 @@ export async function listPayments(
     year?: number;
     page?: number;
     limit?: number;
+    search?: string;
+    status?: string;
   }
 ): Promise<Payment[] | { data: Payment[]; total: number; page: number; limit: number; totalPages: number }> {
   let query = "";
@@ -670,6 +732,8 @@ export async function listPayments(
   if (filters?.year) query += `${query ? "&" : ""}year=${filters.year}`;
   if (filters?.page !== undefined) query += `${query ? "&" : ""}page=${filters.page}`;
   if (filters?.limit !== undefined) query += `${query ? "&" : ""}limit=${filters.limit}`;
+  if (filters?.search) query += `${query ? "&" : ""}search=${encodeURIComponent(filters.search)}`;
+  if (filters?.status) query += `${query ? "&" : ""}status=${filters.status}`;
 
   const response = await apiRequest<Payment[] | { data: Payment[]; total: number; page: number; limit: number; totalPages: number }>(
     `/payments${query ? "?" + query : ""}`
@@ -778,6 +842,30 @@ export async function getPaymentIndicators(
   year: number
 ): Promise<PaymentSummary> {
   return apiRequest<PaymentSummary>(`/payments/payments/${branchId}/indicators?month=${month}&year=${year}`);
+}
+
+/**
+ * Get payments and classes consolidated data
+ */
+export async function getPaymentsConsolidatedData(
+  branchId: string,
+  page?: number,
+  limit?: number,
+  filters?: {
+    search?: string;
+    status?: string;
+    month?: string;
+    year?: string;
+  }
+): Promise<any> {
+  let query = `/payments/consolidated/data?branchId=${branchId}`;
+  if (page) query += `&page=${page}`;
+  if (limit) query += `&limit=${limit}`;
+  if (filters?.search) query += `&search=${encodeURIComponent(filters.search)}`;
+  if (filters?.status) query += `&status=${filters.status}`;
+  if (filters?.month) query += `&month=${filters.month}`;
+  if (filters?.year) query += `&year=${filters.year}`;
+  return apiRequest<any>(query);
 }
 
 // ============================================================================

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -37,7 +38,7 @@ func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) 
 	if req.ClassID != nil && *req.ClassID != "" {
 		classID = req.ClassID
 	}
-	
+
 	var phone, parentPhone string
 	if req.Phone != nil {
 		phone = *req.Phone
@@ -45,7 +46,7 @@ func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) 
 	if req.ParentPhone != nil {
 		parentPhone = *req.ParentPhone
 	}
-	
+
 	student := &models.Student{
 		ID:             uuid.New().String(),
 		FullName:       req.FullName,
@@ -59,7 +60,7 @@ func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) 
 		CreatedAt:      time.Now().UTC(),
 		UpdatedAt:      time.Now().UTC(),
 	}
-	
+
 	if classID != nil {
 		student.ClassID = *classID
 	}
@@ -90,7 +91,7 @@ func (s *StudentService) GetByID(ctx context.Context, id string) (*models.Studen
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if classID != nil {
 		student.ClassID = *classID
 	}
@@ -165,4 +166,256 @@ func (s *StudentService) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM students WHERE id = $1`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
 	return err
+}
+
+func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, classID, paymentStatus string) (*models.StudentListResponse, error) {
+	intPage, err := strconv.Atoi(page)
+	if err != nil || intPage < 1 {
+		intPage = 1
+	}
+
+	intLimit, err := strconv.Atoi(limit)
+	if err != nil || intLimit < 1 {
+		intLimit = 10
+	}
+
+	offset := (intPage - 1) * intLimit
+
+	currentTime := time.Now()
+	currentMonth := currentTime.Format("01")
+	currentYear := currentTime.Year()
+
+	// -------------------------
+	// dynamic filters
+	// -------------------------
+	where := `WHERE s.branch_id = $1`
+	args := []interface{}{branchID}
+	argID := 2
+
+	if search != "" {
+		where += fmt.Sprintf(
+			" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)",
+			argID, argID,
+		)
+		args = append(args, "%"+search+"%")
+		argID++
+	}
+
+	if status != "" {
+		where += fmt.Sprintf(" AND s.status = $%d", argID)
+		args = append(args, status)
+		argID++
+	}
+
+	if classID != "" {
+		where += fmt.Sprintf(" AND s.class_id = $%d", argID)
+		args = append(args, classID)
+		argID++
+	}
+
+	if paymentStatus != "" {
+		where += fmt.Sprintf(" AND COALESCE(p.status, 'unpaid') = $%d", argID)
+		args = append(args, paymentStatus)
+		argID++
+	}
+
+	// -------------------------
+	// count query
+	// -------------------------
+	countQuery := `
+		SELECT COUNT(*)
+		FROM students s
+		LEFT JOIN classes c ON c.id = s.class_id
+		LEFT JOIN LATERAL (
+			SELECT status, amount
+			FROM payments
+			WHERE student_id = s.id
+			AND month = $` + strconv.Itoa(argID) + `
+			AND year = $` + strconv.Itoa(argID+1) + `
+			ORDER BY created_at DESC
+			LIMIT 1
+		) p ON true
+		` + where
+
+	argsCount := make([]interface{}, len(args))
+	copy(argsCount, args)
+	argsCount = append(argsCount, currentMonth, currentYear)
+
+	var total int
+	if err := s.db.GetConn().QueryRowContext(ctx, countQuery, argsCount...).Scan(&total); err != nil {
+		return nil, err
+	}
+
+	// -------------------------
+	// main query
+	// -------------------------
+	query := `
+		SELECT
+			s.id,
+			s.full_name,
+			s.phone,
+			s.parent_phone,
+			s.monthly_payment,
+			s.status,
+			s.branch_id,
+			s.created_at,
+			s.updated_at,
+
+			c.id   AS class_id,
+			c.name AS class_name,
+
+			COALESCE(p.status, 'unpaid') AS payment_status,
+			COALESCE(p.amount, 0)        AS payment_amount
+		FROM students s
+		LEFT JOIN classes c ON c.id = s.class_id
+		LEFT JOIN LATERAL (
+			SELECT status, amount
+			FROM payments
+			WHERE student_id = s.id
+			AND month = $` + strconv.Itoa(argID) + `
+			AND year = $` + strconv.Itoa(argID+1) + `
+			ORDER BY created_at DESC
+			LIMIT 1
+		) p ON true
+		` + where + `
+		ORDER BY s.full_name ASC
+		LIMIT $` + strconv.Itoa(argID+2) + `
+		OFFSET $` + strconv.Itoa(argID+3)
+
+	args = append(args, currentMonth, currentYear, intLimit, offset)
+
+	// -------------------------
+	// scan
+	// -------------------------
+	rows, err := s.db.GetConn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	students := make([]models.StudentList, 0)
+
+	for rows.Next() {
+		var sItem models.StudentList
+
+		var classID, className sql.NullString
+		var paymentStatus string
+		var paymentAmount float64
+
+		err := rows.Scan(
+			&sItem.ID,
+			&sItem.FullName,
+			&sItem.Phone,
+			&sItem.ParentPhone,
+			&sItem.MonthlyPayment,
+			&sItem.Status,
+			&sItem.BranchID,
+			&sItem.CreatedAt,
+			&sItem.UpdatedAt,
+
+			&classID,
+			&className,
+
+			&paymentStatus,
+			&paymentAmount,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if classID.Valid {
+			sItem.Class = models.ClassStudent{
+				ID:   classID.String,
+				Name: className.String,
+			}
+		} else {
+			sItem.Class = models.ClassStudent{
+				ID:   "",
+				Name: "",
+			}
+		}
+
+		sItem.Payment = models.PaymentStudent{
+			Status: models.PaymentStatus(paymentStatus),
+			Amount: paymentAmount,
+		}
+
+		students = append(students, sItem)
+	}
+
+	// Fetch distinct classes for the filter (only id and name)
+	classQuery := `
+		SELECT DISTINCT c.id, c.name
+		FROM classes c
+		WHERE c.id IS NOT NULL
+		AND EXISTS (
+			SELECT 1 FROM students s
+			WHERE s.class_id = c.id AND s.branch_id = $1
+		)
+		ORDER BY c.name ASC
+	`
+	classRows, err := s.db.GetConn().QueryContext(ctx, classQuery, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer classRows.Close()
+
+	classes := make([]models.ClassStudent, 0)
+	for classRows.Next() {
+		var classItem models.ClassStudent
+		if err := classRows.Scan(&classItem.ID, &classItem.Name); err != nil {
+			return nil, err
+		}
+		classes = append(classes, classItem)
+	}
+
+	return &models.StudentListResponse{
+		Items:   students,
+		Classes: classes,
+		Total:   total,
+		Page:    intPage,
+		Limit:   intLimit,
+	}, nil
+}
+
+// SearchByBranchID searches active students by name or phone
+func (s *StudentService) SearchByBranchID(ctx context.Context, branchID string, search string) ([]models.Student, error) {
+	query := `
+		SELECT id, full_name, phone, parent_phone, class_id, monthly_payment, status, branch_id, enrollment_date, created_at, updated_at
+		FROM students
+		WHERE branch_id = $1 AND status = 'active'
+	`
+	args := []interface{}{branchID}
+
+	// Add search filter if provided
+	if search != "" {
+		query += ` AND (LOWER(full_name) LIKE LOWER($2) OR phone LIKE $2)`
+		args = append(args, "%"+search+"%")
+	}
+
+	query += ` ORDER BY full_name ASC LIMIT 100`
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var students []models.Student
+	for rows.Next() {
+		var s models.Student
+		if err := rows.Scan(
+			&s.ID, &s.FullName, &s.Phone, &s.ParentPhone, &s.ClassID, &s.MonthlyPayment,
+			&s.Status, &s.BranchID, &s.EnrollmentDate, &s.CreatedAt, &s.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		students = append(students, s)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return students, nil
 }

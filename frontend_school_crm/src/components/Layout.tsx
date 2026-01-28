@@ -111,8 +111,8 @@ export function Layout({ children }: LayoutProps) {
 
   const handleBranchChange = (branchId: string) => {
     setCurrentBranchById(branchId);
-    // Refresh the page data without full reload
-    router.replace(router.asPath);
+    // The branchChange event dispatched by setCurrentBranchById will trigger
+    // dashboard data refresh via the listener in index.tsx
   };
 
   const t = (key: string) => getTranslation(key, language);

@@ -23,14 +23,14 @@ func main() {
 	}
 
 	cfg := &config.Config{
-		Port:        os.Getenv("PORT"),
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		JWTSecret:   os.Getenv("JWT_SECRET"),
-		Environment: os.Getenv("ENVIRONMENT"),
-		RedisURL:    os.Getenv("REDIS_URL"),
+		Port:         os.Getenv("PORT"),
+		DatabaseURL:  os.Getenv("DATABASE_URL"),
+		JWTSecret:    os.Getenv("JWT_SECRET"),
+		Environment:  os.Getenv("ENVIRONMENT"),
+		RedisURL:     os.Getenv("REDIS_URL"),
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
-		ResendFrom:  os.Getenv("RESEND_FROM"),
-		LogsToken:   os.Getenv("LOGS_TOKEN"),
+		ResendFrom:   os.Getenv("RESEND_FROM"),
+		LogsToken:    os.Getenv("LOGS_TOKEN"),
 	}
 
 	if cfg.Port == "" {
@@ -78,7 +78,7 @@ func main() {
 
 	// Initialize services
 	userService := service.NewUserService(database)
-	
+
 	// Set Redis and Email clients in UserService
 	if redisClient != nil {
 		userService.SetRedisClient(redisClient)
@@ -96,7 +96,7 @@ func main() {
 	reportService := service.NewReportService(database)
 	subscriptionService := service.NewSubscriptionService(database)
 	developerService := service.NewDeveloperService(database)
-	
+
 	// Initialize Click.uz service (using environment variables or defaults)
 	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
 	if clickMerchantID == "" {
@@ -111,7 +111,7 @@ func main() {
 		clickSecretKey = "F91D8F69C042267444B74CC0B3C747757EB0E065" // Test secret key
 	}
 	clickUzService := service.NewClickUzService(database, clickMerchantID, clickServiceID, clickSecretKey)
-	
+
 	// Initialize Telegram payment service
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if telegramBotToken == "" {
@@ -142,7 +142,7 @@ func main() {
 	router.POST("/api/auth/verify-otp", handlers.VerifyOTP(userService))
 	router.POST("/api/auth/resend-otp", handlers.ResendOTP(userService))
 	router.POST("/api/auth/reset-password", handlers.ResetPassword(userService))
-	
+
 	// Public subscription plans
 	// SUBSCRIPTIONS DISABLED
 	// router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
@@ -162,10 +162,10 @@ func main() {
 	handlers.RegisterUserRoutes(protected, userService)
 
 	// Students
-	handlers.RegisterStudentRoutes(protected, studentService, classService, userService)
+	handlers.RegisterStudentRoutes(protected, studentService, classService, userService, paymentService)
 
 	// Payments
-	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService, studentService)
+	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService, studentService, classService)
 
 	// Classes
 	handlers.RegisterClassRoutes(protected, classService, userService)
@@ -193,7 +193,7 @@ func main() {
 	// handlers.RegisterSubscriptionProtectedRoutes(protected, subscriptionService, userService)
 	// handlers.RegisterClickUzRoutes(protected, clickUzService, subscriptionService)
 	// handlers.RegisterTelegramPaymentRoutes(protected, telegramPaymentService, subscriptionService)
-	
+
 	// Payment webhooks (public, no auth required)
 	handlers.RegisterClickUzWebhooks(router.Group("/api"), clickUzService)
 	handlers.RegisterTelegramPaymentWebhooks(router.Group("/api"), telegramPaymentService)
