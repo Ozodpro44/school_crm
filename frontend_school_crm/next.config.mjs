@@ -42,6 +42,19 @@ const nextConfig = {
   },
   allowedDevOrigins: ["*.daytona.work", "*.softgen.dev"],
   output: "standalone",
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.softgen.ai https://cdn.softgen.dev; style-src 'self' 'unsafe-inline'; connect-src 'self' https://incredible-love-production-0008.up.railway.app https://*.railway.app http://localhost:*; img-src 'self' data: https:; font-src 'self' data:",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
