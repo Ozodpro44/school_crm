@@ -958,9 +958,10 @@ export default function PaymentsPage() {
     return () => clearTimeout(timer);
   }, [studentSearchTerm, formData.month, formData.year]);
 
-  // Update payment summary when month/year changes while a student is selected
+  // Update payment summary when month/year changes while a student is selected in the modal
   useEffect(() => {
-    if (!formData.studentId || !selectedStudentInfo) return;
+    // Only run when modal is open and a student is selected
+    if (!isDialogOpen || !formData.studentId || !selectedStudentInfo) return;
 
     const handleMonthChange = async () => {
       const selectedBranchId = localStorage.getItem("selectedBranchId");
@@ -1007,8 +1008,12 @@ export default function PaymentsPage() {
       }
     };
 
-    handleMonthChange();
-  }, [formData.month, formData.year, formData.studentId]);
+    const timer = setTimeout(() => {
+      handleMonthChange();
+    }, 300); // Add debounce to prevent excessive API calls
+
+    return () => clearTimeout(timer);
+  }, [isDialogOpen, formData.month, formData.year, formData.studentId, selectedStudentInfo]);
 
   const handleSearch = () => {
     setCurrentPage(1);
