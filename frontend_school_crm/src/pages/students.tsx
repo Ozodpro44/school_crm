@@ -177,6 +177,7 @@ export default function StudentsPage() {
     }
   };
 
+  // Initialize and load initial data
   useEffect(() => {
      setIsLoading(true);
      const timer = setTimeout(async () => {
@@ -206,16 +207,7 @@ export default function StudentsPage() {
    useEffect(() => {
      setIsListLoading(true);
      loadData().finally(() => setIsListLoading(false));
-     // Update URL with page
-     const params = new URLSearchParams();
-     if (searchTerm) params.set('search', searchTerm);
-     if (filterStatus !== 'all') params.set('status', filterStatus);
-     if (filterClass !== 'all') params.set('classId', filterClass);
-     if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
-     params.set('page', page.toString());
-     params.set('limit', limit.toString());
-     router.push(`/students?${params.toString()}`, undefined, { shallow: true });
-   }, [page, limit]);
+   }, [page]);
 
    // Reload data when branch is switched
    useEffect(() => {

@@ -415,7 +415,7 @@ export default function PaymentsPage() {
   const handleMonthChange = (month: string, year: number) => {
     setSelectedMonth(month);
     setSelectedYear(year);
-    loadData(month, year);
+    // Let the effect handle the data load
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
