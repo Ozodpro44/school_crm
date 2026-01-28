@@ -1030,13 +1030,16 @@ export default function PaymentsPage() {
   const handleSearch = () => {
     setCurrentPage(1);
     setSearchTerm(searchInput);
+    // Ensure selectedMonth is set (especially for managers who don't see the month selector)
+    const finalMonth = selectedMonth || (branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0")) || getDefaultMonth();
+    const finalYear = selectedYear || branchData?.currentFinancialMonth?.year || new Date().getFullYear();
+    
     // Update URL with search - always include month/year for consistency
     const params = new URLSearchParams();
     if (searchInput) params.set("search", searchInput);
     if (filterStatus !== "all") params.set("status", filterStatus);
-    // Always include month and year to prevent flicker
-    params.set("month", selectedMonth || getDefaultMonth());
-    params.set("year", (selectedYear || new Date().getFullYear()).toString());
+    params.set("month", finalMonth);
+    params.set("year", finalYear.toString());
     params.set("page", "1");
     params.set("limit", itemsPerPage.toString());
     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
@@ -1052,12 +1055,15 @@ export default function PaymentsPage() {
     setSearchInput("");
     setCurrentPage(1);
     setSearchTerm("");
+    // Ensure selectedMonth is set (especially for managers who don't see the month selector)
+    const finalMonth = selectedMonth || (branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0")) || getDefaultMonth();
+    const finalYear = selectedYear || branchData?.currentFinancialMonth?.year || new Date().getFullYear();
+    
     // Update URL to clear search - always include month/year for consistency
     const params = new URLSearchParams();
     if (filterStatus !== "all") params.set("status", filterStatus);
-    // Always include month and year to prevent flicker
-    params.set("month", selectedMonth || getDefaultMonth());
-    params.set("year", (selectedYear || new Date().getFullYear()).toString());
+    params.set("month", finalMonth);
+    params.set("year", finalYear.toString());
     params.set("page", "1");
     params.set("limit", itemsPerPage.toString());
     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
