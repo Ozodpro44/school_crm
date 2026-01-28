@@ -141,7 +141,7 @@ export default function StudentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
-  const loadData = async (searchVal?: string, statusVal?: string, classVal?: string, paymentStatusVal?: string) => {
+  const loadData = async () => {
     const user = getCurrentUser();
     if (!user) {
       setStudents([]);
@@ -153,11 +153,11 @@ export default function StudentsPage() {
     try {
       if (selectedBranchId) {
         const filters: any = {};
-        // Use provided filter values, then state values if available, otherwise check router.query for initial load
-        const searchValue = searchVal !== undefined ? searchVal : (searchTerm || (router.query.search as string));
-        const statusValue = statusVal !== undefined ? statusVal : (filterStatus || (router.query.status as string) || "all");
-        const classValue = classVal !== undefined ? classVal : (filterClass || (router.query.classId as string) || "all");
-        const paymentStatusValue = paymentStatusVal !== undefined ? paymentStatusVal : (filterPaymentStatus || (router.query.paymentStatus as string) || "all");
+        // Use state values if available, otherwise check router.query for initial load
+        const searchValue = searchTerm || (router.query.search as string);
+        const statusValue = filterStatus || (router.query.status as string) || "all";
+        const classValue = filterClass || (router.query.classId as string) || "all";
+        const paymentStatusValue = filterPaymentStatus || (router.query.paymentStatus as string) || "all";
         
         if (searchValue) filters.search = searchValue;
         if (statusValue !== "all") filters.status = statusValue;
@@ -714,9 +714,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
   const handleSearch = () => {
     setPage(1); // Reset to first page on search
     setSearchTerm(searchInput);
-    setIsListLoading(true);
-    // Pass filter values directly to avoid state sync issues
-    loadData(searchInput, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
+    // Filter effect will handle loadData() with the new searchTerm
   };
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -729,9 +727,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     setSearchInput("");
     setPage(1);
     setSearchTerm("");
-    setIsListLoading(true);
-    // Pass empty search value to avoid state sync issues
-    loadData("", filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
+    // Filter effect will handle loadData() with cleared search
   };
 
   // Students are now filtered by backend including payment status
