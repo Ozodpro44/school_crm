@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/router";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -228,10 +228,11 @@ export default function StudentsPage() {
    }, []);
 
    // Refetch data when page regains focus (preserves current filters)
-    useRefetchOnFocus(() => {
-      setIsListLoading(true);
-      loadData().finally(() => setIsListLoading(false));
-    });
+   const refetchData = useCallback(() => {
+     setIsListLoading(true);
+     loadData().finally(() => setIsListLoading(false));
+   }, []);
+   useRefetchOnFocus(refetchData);
 
   const canCreateStudents = hasPermission("canCreateStudents");
   const canEditStudents = hasPermission("canEditStudents");

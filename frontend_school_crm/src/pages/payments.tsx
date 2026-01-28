@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/router";
-import { useAsync } from "@/hooks/use-async";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -168,8 +167,7 @@ export default function PaymentsPage() {
     byMethod?: { card: number; cash: number; bank: number };
   } | null>(null);
 
-  // useAsync hook will manage loading state and show toast on errors
-  const { isLoading: asyncLoading, run } = useAsync();
+
 
   const language = useLanguage();
   const { toast } = useToast();
@@ -330,28 +328,44 @@ export default function PaymentsPage() {
     }
   };
 
-  // Initialize state from URL params (only on mount)
+  // Initialize state from URL params and load initial data
   useEffect(() => {
     if (router.isReady) {
       const { page, limit, search, status, month, year } = router.query;
-      if (page) setCurrentPage(parseInt(page as string) || 1);
-      if (limit) setItemsPerPage(parseInt(limit as string) || 10);
+      let hasUrlParams = false;
+      
+      if (page) {
+        setCurrentPage(parseInt(page as string) || 1);
+        hasUrlParams = true;
+      }
+      if (limit) {
+        setItemsPerPage(parseInt(limit as string) || 10);
+        hasUrlParams = true;
+      }
       if (search) {
         setSearchTerm(search as string);
         setSearchInput(search as string);
+        hasUrlParams = true;
       }
-      if (status) setFilterStatus(status as string);
-      if (month) setSelectedMonth(month as string);
-      if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
+      if (status) {
+        setFilterStatus(status as string);
+        hasUrlParams = true;
+      }
+      if (month) {
+        setSelectedMonth(month as string);
+        hasUrlParams = true;
+      }
+      if (year) {
+        setSelectedYear(parseInt(year as string) || new Date().getFullYear());
+        hasUrlParams = true;
+      }
+      
+      // Load initial data once router is ready
+      setIsLoading(true);
+      loadData().finally(() => setIsLoading(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
-
-  // Load data when page or items per page changes
-  useEffect(() => {
-    setIsLoading(true);
-    loadData().finally(() => setIsLoading(false));
-  }, [currentPage, itemsPerPage]);
 
   // Reload data when branch changes
   useEffect(() => {
@@ -385,26 +399,18 @@ export default function PaymentsPage() {
     return () => clearTimeout(timer);
   }, [searchTerm, filterStatus, selectedMonth, selectedYear]);
 
-  // Update URL when page changes
+  // Load data when page or items per page changes
   useEffect(() => {
-    if (!router.isReady) return;
-    
-    const params = new URLSearchParams();
-    if (searchTerm) params.set("search", searchTerm);
-    if (filterStatus !== "all") params.set("status", filterStatus);
-    if (selectedMonth) params.set("month", selectedMonth);
-    if (selectedYear) params.set("year", selectedYear.toString());
-    params.set("page", currentPage.toString());
-    params.set("limit", itemsPerPage.toString());
-    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setIsLoading(true);
+    loadData().finally(() => setIsLoading(false));
   }, [currentPage, itemsPerPage]);
 
   // Refetch data when page regains focus (preserves current filters)
-  useRefetchOnFocus(() => {
+  const refetchData = useCallback(() => {
     setIsLoading(true);
     loadData().finally(() => setIsLoading(false));
-  });
+  }, []);
+  useRefetchOnFocus(refetchData);
 
   const handleMonthChange = (month: string, year: number) => {
     setSelectedMonth(month);
@@ -1100,7 +1106,7 @@ export default function PaymentsPage() {
   };
 
   // Show full page skeleton only on initial load
-  if (asyncLoading && payments.length === 0) {
+  if (isLoading && payments.length === 0) {
     return (
       <div className="space-y-6">
         {/* Header Skeleton */}
