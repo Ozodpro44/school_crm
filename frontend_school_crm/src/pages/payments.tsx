@@ -363,11 +363,13 @@ export default function PaymentsPage() {
     if (month) setSelectedMonth(month as string);
     if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
     
+    // Mark initial load as done BEFORE calling loadData to prevent filter effects from running
+    initialLoadDoneRef.current = true;
+    
     // Load initial data once router is ready
     setIsLoading(true);
     loadData().finally(() => {
       setIsLoading(false);
-      initialLoadDoneRef.current = true;
     });
     
     // eslint-disable-next-line react-hooks/exhaustive-deps

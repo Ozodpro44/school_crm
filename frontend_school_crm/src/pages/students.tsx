@@ -194,11 +194,13 @@ export default function StudentsPage() {
 
   // Initialize and load initial data
   useEffect(() => {
+     // Mark initial load as done BEFORE calling loadData to prevent filter effects from running
+     initialLoadDoneRef.current = true;
+     
      setIsLoading(true);
      const timer = setTimeout(async () => {
        await loadData();
        setIsLoading(false);
-       initialLoadDoneRef.current = true;
      }, 300);
      return () => clearTimeout(timer);
    }, []);
