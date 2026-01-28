@@ -169,6 +169,8 @@ export default function PaymentsPage() {
   
   // Track if initial load has been done to prevent double-loading from filter effects
   const initialLoadDoneRef = useRef(false);
+  // Track the current load request to prevent race conditions
+  const currentLoadIdRef = useRef<number>(0);
 
 
 
@@ -191,6 +193,9 @@ export default function PaymentsPage() {
 
   const loadData = async (month?: string, year?: number) => {
     try {
+      // Generate a unique ID for this load request
+      const loadId = ++currentLoadIdRef.current;
+      
       setIsLoading(true);
       const user = getCurrentUser();
       if (!user) {
@@ -236,6 +241,11 @@ export default function PaymentsPage() {
         filters.year = queryYear.toString();
 
         const consolidated = await getPaymentsConsolidatedData(selectedBranchId, currentPage, itemsPerPage, filters);
+        
+        // Only update state if this is still the latest request
+        if (loadId !== currentLoadIdRef.current) {
+          return;
+        }
         
         // Handle response
         const paymentsList = consolidated?.items || consolidated?.data || [];
