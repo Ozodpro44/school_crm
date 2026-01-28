@@ -73,9 +73,22 @@ export default function PaymentsPage() {
   const { settings } = useSettings();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [originalPayments, setOriginalPayments] = useState<Payment[]>([]);
-  const [consolidatedPaymentMap, setConsolidatedPaymentMap] = useState<Map<string, string[]>>(new Map());
+  const [consolidatedPaymentMap, setConsolidatedPaymentMap] = useState<
+    Map<string, string[]>
+  >(new Map());
   const [students, setStudents] = useState<Student[]>([]);
-  const [studentInfoMap, setStudentInfoMap] = useState<Map<string, { fullName: string; phone: string; classId: string; className: string; monthlyPayment: number }>>(new Map());
+  const [studentInfoMap, setStudentInfoMap] = useState<
+    Map<
+      string,
+      {
+        fullName: string;
+        phone: string;
+        classId: string;
+        className: string;
+        monthlyPayment: number;
+      }
+    >
+  >(new Map());
   const [classes, setClasses] = useState<Class[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -86,20 +99,21 @@ export default function PaymentsPage() {
   const [bulkSearchTerm, setBulkSearchTerm] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [branchData, setBranchData] = useState<Branch | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<string>("");
-  const [selectedYear, setSelectedYear] = useState<number>(0);
   const getDefaultMonth = () => {
     const month = new Date().getMonth() + 1;
     return month.toString().padStart(2, "0");
   };
 
   const getDefaultYear = () => {
-    return new Date().getFullYear().toString();
+    return new Date().getFullYear();
   };
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(getDefaultMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(getDefaultYear());
 
   const [bulkPaymentData, setBulkPaymentData] = useState({
     month: getDefaultMonth(),
-    year: getDefaultYear(),
+    year: getDefaultYear().toString(),
     paymentMethod: "cash" as PaymentMethod,
   });
   const [currentPage, setCurrentPage] = useState(1);
@@ -111,7 +125,7 @@ export default function PaymentsPage() {
     studentId: "",
     amount: "",
     month: getDefaultMonth(),
-    year: getDefaultYear(),
+    year: getDefaultYear().toString(),
     status: "partial" as PaymentStatus,
     paymentMethod: "cash" as PaymentMethod,
     notes: "",
@@ -124,17 +138,19 @@ export default function PaymentsPage() {
   } | null>(null);
   const [studentSearchTerm, setStudentSearchTerm] = useState("");
   const [showStudentDropdown, setShowStudentDropdown] = useState(false);
-  const [filteredStudentsForModal, setFilteredStudentsForModal] = useState<Array<{
-    id: string;
-    fullName: string;
-    phone: string;
-    classId: string;
-    className: string;
-    monthlyPayment: number;
-    paidAmount: number;
-    status: "paid" | "partial" | "none";
-    branchId: string;
-  }>>([]);
+  const [filteredStudentsForModal, setFilteredStudentsForModal] = useState<
+    Array<{
+      id: string;
+      fullName: string;
+      phone: string;
+      classId: string;
+      className: string;
+      monthlyPayment: number;
+      paidAmount: number;
+      status: "paid" | "partial" | "none";
+      branchId: string;
+    }>
+  >([]);
   const [selectedStudentInfo, setSelectedStudentInfo] = useState<{
     id: string;
     fullName: string;
@@ -151,7 +167,7 @@ export default function PaymentsPage() {
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(
-    null
+    null,
   );
   const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
     isOpen: boolean;
@@ -166,24 +182,26 @@ export default function PaymentsPage() {
     totalPartial?: number;
     byMethod?: { card: number; cash: number; bank: number };
   } | null>(null);
-  
+
   // Track if initial load has been done to prevent double-loading from filter effects
   const initialLoadDoneRef = useRef(false);
   // Track the current load request to prevent race conditions
   const currentLoadIdRef = useRef<number>(0);
 
-
-
   const language = useLanguage();
   const { toast } = useToast();
   const t = (key: string) => getTranslation(key, language);
-  
+
   // Get permissions once per component lifecycle
   const currentUser = useMemo(() => getCurrentUser(), []);
-  const canCreatePayments = useMemo(() => hasPermission("canCreatePayments"), []);
+  const canCreatePayments = useMemo(
+    () => hasPermission("canCreatePayments"),
+    [],
+  );
   const canEditPayments = useMemo(() => hasPermission("canEditPayments"), []);
   const canDeletePayments = canEditPayments && currentUser?.role !== "manager";
-  const isAdmin = currentUser?.role === "admin" || currentUser?.role === "branch_admin";
+  const isAdmin =
+    currentUser?.role === "admin" || currentUser?.role === "branch_admin";
 
   const isMonthVisible = (month: string, year: number): boolean => {
     // The backend API handles filtering of archived months per branch
@@ -195,7 +213,7 @@ export default function PaymentsPage() {
     try {
       // Generate a unique ID for this load request
       const loadId = ++currentLoadIdRef.current;
-      
+
       setIsLoading(true);
       const user = getCurrentUser();
       if (!user) {
@@ -226,27 +244,41 @@ export default function PaymentsPage() {
 
         // Always use the current branch month for filtering
         // Prefer URL params for initial load, then fall back to state
-        const queryMonth = (router.query.month as string) || month || selectedMonth || currentMonth;
-        const queryYear = parseInt((router.query.year as string) || "") || year || selectedYear || currentYear;
+        const queryMonth =
+          (router.query.month as string) ||
+          month ||
+          selectedMonth ||
+          currentMonth;
+        const queryYear =
+          parseInt((router.query.year as string) || "") ||
+          year ||
+          selectedYear ||
+          currentYear;
 
         // Use consolidated endpoint instead of multiple calls
         const filters: any = {};
         // Use state values if available, otherwise check router.query for initial load
         const searchValue = searchTerm || (router.query.search as string);
-        const statusValue = filterStatus || (router.query.status as string) || "all";
-        
+        const statusValue =
+          filterStatus || (router.query.status as string) || "all";
+
         if (searchValue) filters.search = searchValue;
         if (statusValue !== "all") filters.status = statusValue;
         filters.month = queryMonth;
         filters.year = queryYear.toString();
 
-        const consolidated = await getPaymentsConsolidatedData(selectedBranchId, currentPage, itemsPerPage, filters);
-        
+        const consolidated = await getPaymentsConsolidatedData(
+          selectedBranchId,
+          currentPage,
+          itemsPerPage,
+          filters,
+        );
+
         // Only update state if this is still the latest request
         if (loadId !== currentLoadIdRef.current) {
           return;
         }
-        
+
         // Handle response
         const paymentsList = consolidated?.items || consolidated?.data || [];
         const classesList = consolidated?.classes || [];
@@ -254,18 +286,27 @@ export default function PaymentsPage() {
         const paymentIndicators = consolidated?.indicators || {
           totalPaid: 0,
           totalUnpaid: 0,
-          byMethod: { card: 0, cash: 0, bank: 0 }
+          byMethod: { card: 0, cash: 0, bank: 0 },
         };
-        
+
         setTotalPayments(consolidated?.total || 0);
         setTotalPages(Math.ceil((consolidated?.total || 0) / itemsPerPage));
-        
+
         // Store original payments for editing
         setOriginalPayments(paymentsList);
         setIndicators(paymentIndicators);
-        
+
         // Build student info map for quick lookup
-        const studentMap = new Map<string, { fullName: string; phone: string; classId: string; className: string; monthlyPayment: number }>();
+        const studentMap = new Map<
+          string,
+          {
+            fullName: string;
+            phone: string;
+            classId: string;
+            className: string;
+            monthlyPayment: number;
+          }
+        >();
         studentsList.forEach((student: any) => {
           studentMap.set(student.id, {
             fullName: student.fullName,
@@ -276,10 +317,10 @@ export default function PaymentsPage() {
           });
         });
         setStudentInfoMap(studentMap);
-        
+
         // For display, consolidate partial payments by student + month + year
         const paymentsByKey = new Map<string, Payment[]>();
-        
+
         paymentsList.forEach((payment: Payment) => {
           const key = `${payment.studentId}-${payment.month}-${payment.year}`;
           if (!paymentsByKey.has(key)) {
@@ -287,15 +328,19 @@ export default function PaymentsPage() {
           }
           paymentsByKey.get(key)!.push(payment);
         });
-        
+
         // Consolidate: merge multiple partial payments into one
         const consolidatedPayments: Payment[] = [];
         const consolidationMap = new Map<string, string[]>();
-        
+
         paymentsByKey.forEach((paymentsForKey) => {
-          const partialPayments = paymentsForKey.filter(p => p.status === "partial");
-          const paidPayments = paymentsForKey.filter(p => p.status === "paid");
-          
+          const partialPayments = paymentsForKey.filter(
+            (p) => p.status === "partial",
+          );
+          const paidPayments = paymentsForKey.filter(
+            (p) => p.status === "paid",
+          );
+
           if (partialPayments.length > 1) {
             // Multiple partials: consolidate them
             const consolidated = {
@@ -307,7 +352,7 @@ export default function PaymentsPage() {
             // Track which individual payment IDs are part of this consolidation
             consolidationMap.set(
               consolidated.id,
-              partialPayments.map(p => p.id)
+              partialPayments.map((p) => p.id),
             );
             // Also add any paid payments separately
             consolidatedPayments.push(...paidPayments);
@@ -316,10 +361,10 @@ export default function PaymentsPage() {
             consolidatedPayments.push(...paymentsForKey);
           }
         });
-        
+
         // No need to fetch all students - we use search endpoint for modal
         // and consolidated endpoint already has class information
-        
+
         setPayments(consolidatedPayments);
         setConsolidatedPaymentMap(consolidationMap);
         setStudents([]);
@@ -349,9 +394,9 @@ export default function PaymentsPage() {
   // Initialize state from URL params and load initial data (only on first router ready)
   useEffect(() => {
     if (!router.isReady) return;
-    
+
     const { page, limit, search, status, month, year } = router.query;
-    
+
     // Set state from URL params
     if (page) setCurrentPage(parseInt(page as string) || 1);
     if (limit) setItemsPerPage(parseInt(limit as string) || 10);
@@ -360,28 +405,27 @@ export default function PaymentsPage() {
       setSearchInput(search as string);
     }
     if (status) setFilterStatus(status as string);
-    // Always set month/year from URL or defaults for consistency
-    const urlMonth = (month as string) || getDefaultMonth();
-    const urlYear = parseInt((year as string) || "") || new Date().getFullYear();
-    setSelectedMonth(urlMonth);
-    setSelectedYear(urlYear);
-    
+    if (month) setSelectedMonth(month as string);
+    if (year)
+      setSelectedYear(parseInt(year as string) || new Date().getFullYear());
+
     // Mark initial load as done BEFORE calling loadData to prevent filter effects from running
     initialLoadDoneRef.current = true;
-    
+
     // Load initial data once router is ready
     setIsLoading(true);
     loadData().finally(() => {
       setIsLoading(false);
     });
-    
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
   // Reload data when branch changes
   useEffect(() => {
     const handleBranchChange = () => {
-      // Don't reset selectedMonth - let loadData handle it from branch data
+      // Reset selectedMonth to force reload from new branch
+      setSelectedMonth("");
       setCurrentPage(1);
       setIsLoading(true);
       loadData().finally(() => setIsLoading(false));
@@ -392,27 +436,28 @@ export default function PaymentsPage() {
 
   // Reload data when search or filter status changes
   useEffect(() => {
-   // Skip if this is the initial load (URL params are being set)
-   if (!initialLoadDoneRef.current) {
-     return;
-   }
-   
-   const timer = setTimeout(() => {
-     setCurrentPage(1); // Reset to first page
-     setIsLoading(true);
-     loadData().finally(() => setIsLoading(false));
-     // Update URL with filters - always include month/year for consistency
-     const params = new URLSearchParams();
-     if (searchTerm) params.set("search", searchTerm);
-     if (filterStatus !== "all") params.set("status", filterStatus);
-     // Always include month and year to prevent inconsistent URLs
-     params.set("month", selectedMonth || getDefaultMonth());
-     params.set("year", (selectedYear || new Date().getFullYear()).toString());
-     params.set("page", "1");
-     params.set("limit", itemsPerPage.toString());
-     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
-   }, 300); // Debounce by 300ms
-   return () => clearTimeout(timer);
+    // Skip if this is the initial load (URL params are being set)
+    if (!initialLoadDoneRef.current) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setCurrentPage(1); // Reset to first page
+      setIsLoading(true);
+      loadData().finally(() => setIsLoading(false));
+      // Update URL with filters - always include month/year
+      const params = new URLSearchParams();
+      if (searchTerm) params.set("search", searchTerm);
+      if (filterStatus !== "all") params.set("status", filterStatus);
+      params.set("month", selectedMonth);
+      params.set("year", selectedYear.toString());
+      params.set("page", "1");
+      params.set("limit", itemsPerPage.toString());
+      router.push(`/payments?${params.toString()}`, undefined, {
+        shallow: true,
+      });
+    }, 300); // Debounce by 300ms
+    return () => clearTimeout(timer);
   }, [searchTerm, filterStatus, selectedMonth, selectedYear]);
 
   // Load data when page or items per page changes
@@ -447,7 +492,9 @@ export default function PaymentsPage() {
     const invoiceNumber = `INV-${Date.now()}`;
 
     const monthlyPaymentValue = (() => {
-      const student = filteredStudentsForModal.find((s) => s.id === formData.studentId);
+      const student = filteredStudentsForModal.find(
+        (s) => s.id === formData.studentId,
+      );
       return student?.monthlyPayment || 0;
     })();
 
@@ -467,7 +514,7 @@ export default function PaymentsPage() {
               p.studentId === formData.studentId &&
               p.month === targetMonth &&
               p.year === targetYear &&
-              p.id !== editingPaymentId
+              p.id !== editingPaymentId,
           )
           .reduce((sum, p) => sum + p.amount, 0);
 
@@ -476,17 +523,17 @@ export default function PaymentsPage() {
           toast({
             title: t("error"),
             description: `Amount exceeds remaining balance. Remaining: ${formatCurrency(
-              monthlyPaymentValue - paidTotalExcludingCurrent
+              monthlyPaymentValue - paidTotalExcludingCurrent,
             )}`,
             variant: "destructive",
           });
           setIsSubmitting(false);
           return;
-          }
-          }
+        }
+      }
 
-          // Update via backend API
-          try {
+      // Update via backend API
+      try {
         await apiUpdatePayment(editingPaymentId, {
           amount: newAmount,
           status: formData.status as PaymentStatus,
@@ -513,7 +560,7 @@ export default function PaymentsPage() {
         setIsSubmitting(false);
         return;
       }
-      } else {
+    } else {
       // Create new payment
       // Use backend payments instead of localStorage
       const periodPaidTotal = payments
@@ -521,7 +568,7 @@ export default function PaymentsPage() {
           (p) =>
             p.studentId === formData.studentId &&
             p.month === formData.month &&
-            p.year === parseInt(formData.year)
+            p.year === parseInt(formData.year),
         )
         .reduce((sum, p) => sum + p.amount, 0);
 
@@ -530,22 +577,25 @@ export default function PaymentsPage() {
         toast({
           title: t("error"),
           description: `Amount exceeds remaining balance. Remaining: ${formatCurrency(
-            monthlyPaymentValue - periodPaidTotal
+            monthlyPaymentValue - periodPaidTotal,
           )}`,
           variant: "destructive",
         });
         setIsSubmitting(false);
         return;
-        }
+      }
 
-        // Determine final status: if total will equal monthly payment, mark as "paid"
-        const totalAfterPayment = periodPaidTotal + newAmount;
-        const finalStatus = totalAfterPayment >= monthlyPaymentValue ? "paid" : "partial";
+      // Determine final status: if total will equal monthly payment, mark as "paid"
+      const totalAfterPayment = periodPaidTotal + newAmount;
+      const finalStatus =
+        totalAfterPayment >= monthlyPaymentValue ? "paid" : "partial";
 
-        // Create via backend API
+      // Create via backend API
       try {
-        const student = filteredStudentsForModal.find((s) => s.id === formData.studentId);
-        
+        const student = filteredStudentsForModal.find(
+          (s) => s.id === formData.studentId,
+        );
+
         // Create the new payment
         await apiCreatePayment({
           studentId: formData.studentId,
@@ -567,7 +617,7 @@ export default function PaymentsPage() {
               p.studentId === formData.studentId &&
               p.month === formData.month &&
               p.year === parseInt(formData.year) &&
-              p.status === "partial"
+              p.status === "partial",
           );
 
           // Update all partial payments to paid
@@ -597,25 +647,25 @@ export default function PaymentsPage() {
         setIsSubmitting(false);
         return;
       }
-      }
+    }
 
-      resetForm();
-      setEditingPaymentId(null);
-      loadData();
-      setIsDialogOpen(false);
-      setIsSubmitting(false);
+    resetForm();
+    setEditingPaymentId(null);
+    loadData();
+    setIsDialogOpen(false);
+    setIsSubmitting(false);
   };
-
-
 
   const handleEdit = (payment: Payment) => {
     // Check if this is a consolidated payment using the map
     const consolidatedIds = consolidatedPaymentMap.get(payment.id);
-    
+
     if (consolidatedIds && consolidatedIds.length > 0) {
       // For consolidated payments, edit the first individual partial payment
-      const paymentToEdit = originalPayments.find(p => p.id === consolidatedIds[0]);
-      
+      const paymentToEdit = originalPayments.find(
+        (p) => p.id === consolidatedIds[0],
+      );
+
       if (paymentToEdit) {
         setEditingPaymentId(paymentToEdit.id);
         setFormData({
@@ -631,10 +681,11 @@ export default function PaymentsPage() {
         return;
       }
     }
-    
+
     // For non-consolidated payments, use the payment directly or find its original
-    const originalPayment = originalPayments.find(p => p.id === payment.id) || payment;
-    
+    const originalPayment =
+      originalPayments.find((p) => p.id === payment.id) || payment;
+
     setEditingPaymentId(originalPayment.id);
     setFormData({
       studentId: originalPayment.studentId,
@@ -709,7 +760,7 @@ export default function PaymentsPage() {
           (p) =>
             p.studentId === studentId &&
             p.month === bulkPaymentData.month &&
-            p.year === parseInt(bulkPaymentData.year)
+            p.year === parseInt(bulkPaymentData.year),
         )
         .reduce((sum, p) => sum + p.amount, 0);
 
@@ -742,7 +793,7 @@ export default function PaymentsPage() {
       } catch (error) {
         console.error(
           `Failed to create payment for student ${studentId}:`,
-          error
+          error,
         );
         toast({
           title: t("error"),
@@ -773,7 +824,7 @@ export default function PaymentsPage() {
     setSelectedStudentIds([]);
     setBulkPaymentData({
       month: "",
-      year: getDefaultYear(),
+      year: getDefaultYear().toString(),
       paymentMethod: "cash",
     });
   };
@@ -782,14 +833,19 @@ export default function PaymentsPage() {
     setSelectedStudentIds((prev) =>
       prev.includes(studentId)
         ? prev.filter((id) => id !== studentId)
-        : [...prev, studentId]
+        : [...prev, studentId],
     );
   };
 
   const toggleSelectAll = () => {
     // Use filtered students from modal for bulk payment selection
-    const activeStudents = filteredStudentsForModal.filter((s) => s.status !== undefined);
-    if (selectedStudentIds.length === activeStudents.length && activeStudents.length > 0) {
+    const activeStudents = filteredStudentsForModal.filter(
+      (s) => s.status !== undefined,
+    );
+    if (
+      selectedStudentIds.length === activeStudents.length &&
+      activeStudents.length > 0
+    ) {
       setSelectedStudentIds([]);
     } else {
       setSelectedStudentIds(activeStudents.map((s) => s.id));
@@ -802,7 +858,8 @@ export default function PaymentsPage() {
       branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
       getDefaultMonth();
     const defaultYear =
-      branchData?.currentFinancialMonth?.year?.toString() || getDefaultYear();
+      branchData?.currentFinancialMonth?.year?.toString() ||
+      getDefaultYear().toString();
 
     setFormData({
       studentId: "",
@@ -821,7 +878,7 @@ export default function PaymentsPage() {
   const recomputePaymentStatus = (
     studentId: string,
     month: string,
-    year: number
+    year: number,
   ) => {
     // This function is kept for compatibility but no longer modifies individual payment statuses
     // Each payment record maintains its own status based on what was recorded
@@ -833,14 +890,14 @@ export default function PaymentsPage() {
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (!target.closest('[data-student-search-container]')) {
+      if (!target.closest("[data-student-search-container]")) {
         setShowStudentDropdown(false);
       }
     };
-    
+
     if (showStudentDropdown) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
+      document.addEventListener("click", handleClickOutside);
+      return () => document.removeEventListener("click", handleClickOutside);
     }
   }, [showStudentDropdown]);
 
@@ -868,7 +925,7 @@ export default function PaymentsPage() {
         (p) =>
           p.studentId === studentId &&
           p.month === month &&
-          p.year === parseInt(year)
+          p.year === parseInt(year),
       )
       .reduce((sum, p) => sum + p.amount, 0);
 
@@ -904,15 +961,15 @@ export default function PaymentsPage() {
     if (selectedStudentInfo?.id === studentId) {
       return selectedStudentInfo.fullName;
     }
-    
+
     // Then try consolidated data (loaded with payments)
     const studentInfo = studentInfoMap.get(studentId);
     if (studentInfo?.fullName) return studentInfo.fullName;
-    
+
     // Fall back to filtered students from search
     const student = filteredStudentsForModal.find((s) => s.id === studentId);
     if (student?.fullName) return student.fullName;
-    
+
     // If student not found, return Unknown
     return "Unknown";
   };
@@ -922,15 +979,15 @@ export default function PaymentsPage() {
     if (selectedStudentInfo?.id === studentId) {
       return selectedStudentInfo.className;
     }
-    
+
     // Then try consolidated data (loaded with payments)
     const studentInfo = studentInfoMap.get(studentId);
     if (studentInfo?.className) return studentInfo.className;
-    
+
     // Fall back to filtered students from search
     const student = filteredStudentsForModal.find((s) => s.id === studentId);
     if (student?.className) return student.className;
-    
+
     // If not found, return N/A
     return "N/A";
   };
@@ -955,7 +1012,7 @@ export default function PaymentsPage() {
           selectedBranchId,
           studentSearchTerm,
           formData.month,
-          formData.year
+          formData.year,
         );
         setFilteredStudentsForModal(results);
       } catch (error) {
@@ -987,10 +1044,10 @@ export default function PaymentsPage() {
           selectedBranchId,
           selectedStudentInfo.fullName,
           formData.month,
-          formData.year
+          formData.year,
         );
-        
-        const studentData = results.find(s => s.id === formData.studentId);
+
+        const studentData = results.find((s) => s.id === formData.studentId);
         if (studentData) {
           const monthly = studentData.monthlyPayment || 0;
           const paidTotal = studentData.paidAmount || 0;
@@ -1002,9 +1059,7 @@ export default function PaymentsPage() {
               status: "paid",
             });
           } else if (paidTotal > 0) {
-            const remaining = parseFloat(
-              (monthly - paidTotal).toFixed(2)
-            );
+            const remaining = parseFloat((monthly - paidTotal).toFixed(2));
             setPaymentSummary({
               paidTotal,
               remaining,
@@ -1028,21 +1083,23 @@ export default function PaymentsPage() {
     }, 300); // Add debounce to prevent excessive API calls
 
     return () => clearTimeout(timer);
-  }, [isDialogOpen, formData.month, formData.year, formData.studentId, selectedStudentInfo]);
+  }, [
+    isDialogOpen,
+    formData.month,
+    formData.year,
+    formData.studentId,
+    selectedStudentInfo,
+  ]);
 
   const handleSearch = () => {
     setCurrentPage(1);
     setSearchTerm(searchInput);
-    // Ensure selectedMonth is set (especially for managers who don't see the month selector)
-    const finalMonth = selectedMonth || (branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0")) || getDefaultMonth();
-    const finalYear = selectedYear || branchData?.currentFinancialMonth?.year || new Date().getFullYear();
-    
     // Update URL with search - always include month/year for consistency
     const params = new URLSearchParams();
     if (searchInput) params.set("search", searchInput);
     if (filterStatus !== "all") params.set("status", filterStatus);
-    params.set("month", finalMonth);
-    params.set("year", finalYear.toString());
+    params.set("month", selectedMonth);
+    params.set("year", selectedYear.toString());
     params.set("page", "1");
     params.set("limit", itemsPerPage.toString());
     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
@@ -1058,15 +1115,11 @@ export default function PaymentsPage() {
     setSearchInput("");
     setCurrentPage(1);
     setSearchTerm("");
-    // Ensure selectedMonth is set (especially for managers who don't see the month selector)
-    const finalMonth = selectedMonth || (branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0")) || getDefaultMonth();
-    const finalYear = selectedYear || branchData?.currentFinancialMonth?.year || new Date().getFullYear();
-    
     // Update URL to clear search - always include month/year for consistency
     const params = new URLSearchParams();
     if (filterStatus !== "all") params.set("status", filterStatus);
-    params.set("month", finalMonth);
-    params.set("year", finalYear.toString());
+    params.set("month", selectedMonth);
+    params.set("year", selectedYear.toString());
     params.set("page", "1");
     params.set("limit", itemsPerPage.toString());
     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
@@ -1100,9 +1153,11 @@ export default function PaymentsPage() {
 
   // Calculate effective status based on actual payment amount vs monthly payment
   const getEffectivePaymentStatus = (payment: Payment): PaymentStatus => {
-    const student = filteredStudentsForModal.find(s => s.id === payment.studentId);
+    const student = filteredStudentsForModal.find(
+      (s) => s.id === payment.studentId,
+    );
     if (!student) return payment.status;
-    
+
     // If payment amount >= monthly payment, it's fully paid
     if (payment.amount >= student.monthlyPayment) {
       return "paid";
@@ -1402,8 +1457,11 @@ export default function PaymentsPage() {
                       (s) =>
                         s.status === "active" &&
                         (searchMatchesCrossScript(s.fullName, bulkSearchTerm) ||
-                          searchMatchesCrossScript(getClassName(s.id), bulkSearchTerm) ||
-                          s.phone.includes(bulkSearchTerm))
+                          searchMatchesCrossScript(
+                            getClassName(s.id),
+                            bulkSearchTerm,
+                          ) ||
+                          s.phone.includes(bulkSearchTerm)),
                     ).length === 0 ? (
                       <div className="p-8 text-center text-slate-500 dark:text-slate-400">
                         {t("noActiveStudentsFound")}
@@ -1413,9 +1471,15 @@ export default function PaymentsPage() {
                         .filter(
                           (s) =>
                             s.status === "active" &&
-                            (searchMatchesCrossScript(s.fullName, bulkSearchTerm) ||
-                              searchMatchesCrossScript(getClassName(s.id), bulkSearchTerm) ||
-                              s.phone.includes(bulkSearchTerm))
+                            (searchMatchesCrossScript(
+                              s.fullName,
+                              bulkSearchTerm,
+                            ) ||
+                              searchMatchesCrossScript(
+                                getClassName(s.id),
+                                bulkSearchTerm,
+                              ) ||
+                              s.phone.includes(bulkSearchTerm)),
                         )
                         .map((student) => (
                           <div
@@ -1456,15 +1520,17 @@ export default function PaymentsPage() {
                           {t("totalIncome")}:{" "}
                           {formatCurrency(
                             selectedStudentIds.reduce((sum, id) => {
-                              const student = filteredStudentsForModal.find((s) => s.id === id);
+                              const student = filteredStudentsForModal.find(
+                                (s) => s.id === id,
+                              );
                               return sum + (student?.monthlyPayment || 0);
-                            }, 0)
+                            }, 0),
                           )}
                         </p>
                       </div>
                       <Badge
                         className={`gap-1 ${getPaymentMethodColor(
-                          bulkPaymentData.paymentMethod
+                          bulkPaymentData.paymentMethod,
                         )}`}
                       >
                         {getPaymentMethodIcon(bulkPaymentData.paymentMethod)}
@@ -1499,13 +1565,16 @@ export default function PaymentsPage() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) {
-              setStudentSearchTerm("");
-              setShowStudentDropdown(false);
-            }
-          }}>
+          <Dialog
+            open={isDialogOpen}
+            onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) {
+                setStudentSearchTerm("");
+                setShowStudentDropdown(false);
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button
                 className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
@@ -1534,7 +1603,10 @@ export default function PaymentsPage() {
                         <Input
                           id="studentSearch"
                           type="text"
-                          placeholder={t("searchStudent") || "Search student name, class, or phone..."}
+                          placeholder={
+                            t("searchStudent") ||
+                            "Search student name, class, or phone..."
+                          }
                           value={studentSearchTerm}
                           onChange={(e) => {
                             const value = e.target.value;
@@ -1556,29 +1628,40 @@ export default function PaymentsPage() {
                         {formData.studentId && !studentSearchTerm && (
                           <div className="absolute inset-0 flex items-center px-3 pointer-events-none bg-slate-50 dark:bg-slate-900/50 rounded-md">
                             <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                              {getStudentName(formData.studentId)} - {getClassName(formData.studentId)}
+                              {getStudentName(formData.studentId)} -{" "}
+                              {getClassName(formData.studentId)}
                             </span>
                           </div>
                         )}
                         {(studentSearchTerm || formData.studentId) && (
-                           <button
-                             type="button"
-                             onClick={() => {
-                               setStudentSearchTerm("");
-                               setSelectedStudentInfo(null);
-                               setFormData({
-                                 ...formData,
-                                 studentId: "",
-                                 amount: "",
-                               });
-                               setPaymentSummary(null);
-                               setShowStudentDropdown(false);
-                             }}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStudentSearchTerm("");
+                              setSelectedStudentInfo(null);
+                              setFormData({
+                                ...formData,
+                                studentId: "",
+                                amount: "",
+                              });
+                              setPaymentSummary(null);
+                              setShowStudentDropdown(false);
+                            }}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
                             title={t("clear") || "Clear selection"}
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M6 18L18 6M6 6l12 12"
+                              />
                             </svg>
                           </button>
                         )}
@@ -1601,26 +1684,26 @@ export default function PaymentsPage() {
                                 type="button"
                                 className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-b-0 flex justify-between items-center"
                                 onClick={() => {
-                                   const monthly = student.monthlyPayment || 0;
-                                   const paidTotal = student.paidAmount || 0;
+                                  const monthly = student.monthlyPayment || 0;
+                                  const paidTotal = student.paidAmount || 0;
 
-                                   // Store selected student info for later retrieval
-                                   setSelectedStudentInfo({
-                                     id: student.id,
-                                     fullName: student.fullName,
-                                     phone: student.phone,
-                                     classId: student.classId,
-                                     className: student.className,
-                                     monthlyPayment: student.monthlyPayment,
-                                   });
+                                  // Store selected student info for later retrieval
+                                  setSelectedStudentInfo({
+                                    id: student.id,
+                                    fullName: student.fullName,
+                                    phone: student.phone,
+                                    classId: student.classId,
+                                    className: student.className,
+                                    monthlyPayment: student.monthlyPayment,
+                                  });
 
-                                   setFormData({
-                                     ...formData,
-                                     studentId: student.id,
-                                     amount: monthly.toString(),
-                                   });
-                                   setStudentSearchTerm("");
-                                   setShowStudentDropdown(false);
+                                  setFormData({
+                                    ...formData,
+                                    studentId: student.id,
+                                    amount: monthly.toString(),
+                                  });
+                                  setStudentSearchTerm("");
+                                  setShowStudentDropdown(false);
 
                                   // Use payment info from search response
                                   if (paidTotal >= monthly) {
@@ -1636,7 +1719,7 @@ export default function PaymentsPage() {
                                     }));
                                   } else if (paidTotal > 0) {
                                     const remaining = parseFloat(
-                                      (monthly - paidTotal).toFixed(2)
+                                      (monthly - paidTotal).toFixed(2),
                                     );
                                     setPaymentSummary({
                                       paidTotal,
@@ -1663,12 +1746,15 @@ export default function PaymentsPage() {
                                 }}
                               >
                                 <div>
-                                  <div className="font-medium text-sm">{student.fullName}</div>
+                                  <div className="font-medium text-sm">
+                                    {student.fullName}
+                                  </div>
                                   <div className="text-xs text-slate-500 dark:text-slate-400">
                                     {student.className} • {student.phone}
                                     {student.paidAmount > 0 && (
                                       <span className="ml-2 text-xs">
-                                        ({t(student.status) || student.status}: {formatCurrency(student.paidAmount)})
+                                        ({t(student.status) || student.status}:{" "}
+                                        {formatCurrency(student.paidAmount)})
                                       </span>
                                     )}
                                   </div>
@@ -1681,13 +1767,18 @@ export default function PaymentsPage() {
                             </div>
                           ) : (
                             <div className="px-3 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
-                              {t("typeToSearch") || "Type to search for a student"}
+                              {t("typeToSearch") ||
+                                "Type to search for a student"}
                             </div>
                           )}
                         </div>
                       )}
                     </div>
-                    {!formData.studentId && <p className="text-red-500 text-sm mt-1">{t("studentRequired") || "Student is required"}</p>}
+                    {!formData.studentId && (
+                      <p className="text-red-500 text-sm mt-1">
+                        {t("studentRequired") || "Student is required"}
+                      </p>
+                    )}
                   </div>
 
                   {/* Payment summary for selected student / period */}
@@ -1932,87 +2023,80 @@ export default function PaymentsPage() {
       </div>
 
       <Card>
-         <CardHeader>
-           <div className="flex flex-col gap-3">
-             <div className="w-full">
-               <div className="flex gap-2">
-                 <div className="flex-1 relative">
-                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                   <Input
-                     placeholder={t("searchPayments")}
-                     value={searchInput}
-                     onChange={(e) => {
-                       const value = e.target.value;
-                       setSearchInput(value);
-                       // Auto-clear search when input is empty
-                       if (value === "") {
-                         setCurrentPage(1);
-                         setSearchTerm("");
-                       }
-                     }}
-                     onKeyPress={handleSearchKeyPress}
-                     className="pl-10 w-full"
-                   />
-                 </div>
-                 <Button
-                   onClick={handleSearch}
-                   className="bg-blue-600 hover:bg-blue-700"
-                   size="sm"
-                 >
-                   {t("search") || "Search"}
-                 </Button>
-                 {searchInput && (
-                   <Button
-                     onClick={handleClearSearch}
-                     variant="outline"
-                     size="sm"
-                   >
-                     {t("clear") || "Clear"}
-                   </Button>
-                 )}
-               </div>
-             </div>
+        <CardHeader>
+          <div className="flex flex-col gap-3">
+            <div className="w-full">
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <Input
+                    placeholder={t("searchPayments")}
+                    value={searchInput}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setSearchInput(value);
+                      // Auto-clear search when input is empty
+                      if (value === "") {
+                        setCurrentPage(1);
+                        setSearchTerm("");
+                      }
+                    }}
+                    onKeyPress={handleSearchKeyPress}
+                    className="pl-10 w-full"
+                  />
+                </div>
+                <Button
+                  onClick={handleSearch}
+                  className="bg-blue-600 hover:bg-blue-700"
+                  size="sm"
+                >
+                  {t("search") || "Search"}
+                </Button>
+                {searchInput && (
+                  <Button
+                    onClick={handleClearSearch}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {t("clear") || "Clear"}
+                  </Button>
+                )}
+              </div>
+            </div>
 
-             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                 <SelectTrigger className="w-full">
-                   <SelectValue />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="all">{t("allStatus")}</SelectItem>
-                   <SelectItem value="paid">{t("paid")}</SelectItem>
-                   <SelectItem value="partial">{t("partial")}</SelectItem>
-                 </SelectContent>
-               </Select>
-               <Select value={itemsPerPage.toString()} onValueChange={(val) => {
-                 const limit = parseInt(val);
-                 setItemsPerPage(limit);
-                 setCurrentPage(1);
-                 // Always include month/year to prevent URL inconsistency
-                 const finalMonth = selectedMonth || getDefaultMonth();
-                 const finalYear = selectedYear || new Date().getFullYear();
-                 const params = new URLSearchParams();
-                 if (searchTerm) params.set("search", searchTerm);
-                 if (filterStatus !== "all") params.set("status", filterStatus);
-                 params.set("month", finalMonth);
-                 params.set("year", finalYear.toString());
-                 params.set("page", "1");
-                 params.set("limit", limit.toString());
-                 router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
-               }}>
-                 <SelectTrigger className="w-full">
-                   <SelectValue />
-                 </SelectTrigger>
-                 <SelectContent>
-                   <SelectItem value="10">10 {t("perPage")}</SelectItem>
-                   <SelectItem value="20">20 {t("perPage")}</SelectItem>
-                   <SelectItem value="50">50 {t("perPage")}</SelectItem>
-                   <SelectItem value="100">100 {t("perPage")}</SelectItem>
-                 </SelectContent>
-               </Select>
-             </div>
-           </div>
-         </CardHeader>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allStatus")}</SelectItem>
+                  <SelectItem value="paid">{t("paid")}</SelectItem>
+                  <SelectItem value="partial">{t("partial")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={itemsPerPage.toString()}
+                onValueChange={(val) => {
+                  const limit = parseInt(val);
+                  setItemsPerPage(limit);
+                  setCurrentPage(1);
+                  router.push(`/payments?page=1&limit=${limit}`);
+                }}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 {t("perPage")}</SelectItem>
+                  <SelectItem value="20">20 {t("perPage")}</SelectItem>
+                  <SelectItem value="50">50 {t("perPage")}</SelectItem>
+                  <SelectItem value="100">100 {t("perPage")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="space-y-4">
@@ -2061,158 +2145,169 @@ export default function PaymentsPage() {
                 </thead>
                 <tbody>
                   {paginatedPayments.map((payment) => (
-                  <tr
-                    key={payment.id}
-                    className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50"
-                  >
-                    <td className="py-3 px-4">
-                      <p className="font-mono text-sm text-slate-900 dark:text-slate-100">
-                        {payment.invoiceNumber}
-                      </p>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div>
-                        <p className="font-medium text-slate-900 dark:text-slate-100">
-                          {getStudentName(payment.studentId)}
+                    <tr
+                      key={payment.id}
+                      className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50"
+                    >
+                      <td className="py-3 px-4">
+                        <p className="font-mono text-sm text-slate-900 dark:text-slate-100">
+                          {payment.invoiceNumber}
                         </p>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">
-                          {getClassName(payment.studentId)}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      {getMonthName(payment.month)} {payment.year}
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      {formatCurrency(payment.amount)}
-                    </td>
-                    <td className="py-3 px-4">
-                      {payment.paymentMethod && (
-                        <Badge
-                          className={`gap-1 ${getPaymentMethodColor(
-                            payment.paymentMethod
-                          )}`}
-                        >
-                          {getPaymentMethodIcon(payment.paymentMethod)}
-                          <span>{getPaymentMethodLabel(payment.paymentMethod)}</span>
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge className={getStatusColor(getEffectivePaymentStatus(payment))}>
-                        {getPaymentStatusLabel(getEffectivePaymentStatus(payment))}
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      {payment.paidDate
-                        ? new Date(payment.paidDate).toLocaleString("en-GB", {
-                            timeZone: "Asia/Tashkent",
-                            year: "numeric",
-                            month: "2-digit",
-                            day: "2-digit",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })
-                        : "-"}
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      <span className="text-sm">
-                        {payment.createdByName || "-"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              const student = filteredStudentsForModal.find(
-                                (s) => s.id === payment.studentId
-                              );
-                              if (student) {
-                                const selectedBranchId = localStorage.getItem("selectedBranchId") || "";
-                                setPosPreviewData({
-                                   payment,
-                                   student: {
-                                     id: student.id,
-                                     fullName: student.fullName,
-                                     phone: student.phone,
-                                     classId: student.classId,
-                                     monthlyPayment: student.monthlyPayment,
-                                     branchId: selectedBranchId,
-                                     status: "active",
-                                     parentPhone: "",
-                                     enrollmentDate: undefined,
-                                     createdAt: new Date().toISOString(),
-                                     updatedAt: new Date().toISOString(),
-                                   },
-                                   className: getClassName(payment.studentId),
-                                 });
-                              }
-                            }}
-                            title={t("printReceipt")}
-                          >
-                            <Printer className="w-4 h-4" />
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleEdit(payment)}
-                            disabled={
-                              !canEditPayments ||
-                              processingPaymentId === payment.id
-                            }
-                            title={
-                              canEditPayments ? t("edit") : t("noPermission")
-                            }
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleDelete(payment.id)}
-                            disabled={
-                              !canDeletePayments ||
-                              processingPaymentId === payment.id
-                            }
-                            title={
-                              canDeletePayments
-                                ? t("delete")
-                                : t("noPermission")
-                            }
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div>
+                          <p className="font-medium text-slate-900 dark:text-slate-100">
+                            {getStudentName(payment.studentId)}
+                          </p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            {getClassName(payment.studentId)}
+                          </p>
                         </div>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+                      </td>
+                      <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                        {getMonthName(payment.month)} {payment.year}
+                      </td>
+                      <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                        {formatCurrency(payment.amount)}
+                      </td>
+                      <td className="py-3 px-4">
+                        {payment.paymentMethod && (
+                          <Badge
+                            className={`gap-1 ${getPaymentMethodColor(
+                              payment.paymentMethod,
+                            )}`}
+                          >
+                            {getPaymentMethodIcon(payment.paymentMethod)}
+                            <span>
+                              {getPaymentMethodLabel(payment.paymentMethod)}
+                            </span>
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <Badge
+                          className={getStatusColor(
+                            getEffectivePaymentStatus(payment),
+                          )}
+                        >
+                          {getPaymentStatusLabel(
+                            getEffectivePaymentStatus(payment),
+                          )}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                        {payment.paidDate
+                          ? new Date(payment.paidDate).toLocaleString("en-GB", {
+                              timeZone: "Asia/Tashkent",
+                              year: "numeric",
+                              month: "2-digit",
+                              day: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                            })
+                          : "-"}
+                      </td>
+                      <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                        <span className="text-sm">
+                          {payment.createdByName || "-"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const student = filteredStudentsForModal.find(
+                                  (s) => s.id === payment.studentId,
+                                );
+                                if (student) {
+                                  const selectedBranchId =
+                                    localStorage.getItem("selectedBranchId") ||
+                                    "";
+                                  setPosPreviewData({
+                                    payment,
+                                    student: {
+                                      id: student.id,
+                                      fullName: student.fullName,
+                                      phone: student.phone,
+                                      classId: student.classId,
+                                      monthlyPayment: student.monthlyPayment,
+                                      branchId: selectedBranchId,
+                                      status: "active",
+                                      parentPhone: "",
+                                      enrollmentDate: undefined,
+                                      createdAt: new Date().toISOString(),
+                                      updatedAt: new Date().toISOString(),
+                                    },
+                                    className: getClassName(payment.studentId),
+                                  });
+                                }
+                              }}
+                              title={t("printReceipt")}
+                            >
+                              <Printer className="w-4 h-4" />
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEdit(payment)}
+                              disabled={
+                                !canEditPayments ||
+                                processingPaymentId === payment.id
+                              }
+                              title={
+                                canEditPayments ? t("edit") : t("noPermission")
+                              }
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleDelete(payment.id)}
+                              disabled={
+                                !canDeletePayments ||
+                                processingPaymentId === payment.id
+                              }
+                              title={
+                                canDeletePayments
+                                  ? t("delete")
+                                  : t("noPermission")
+                              }
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
               </table>
 
               {paginatedPayments.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-slate-500 dark:text-slate-400">
-                  {t("noPaymentsFound")}
-                </p>
-              </div>
+                <div className="text-center py-12">
+                  <p className="text-slate-500 dark:text-slate-400">
+                    {t("noPaymentsFound")}
+                  </p>
+                </div>
               )}
-              </div>
-              )}
+            </div>
+          )}
 
-              {/* Pagination */}
-              {paginatedPayments.length > 0 && (
-              <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
+          {/* Pagination */}
+          {paginatedPayments.length > 0 && (
+            <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
               <div className="text-sm text-slate-600 dark:text-slate-400">
-              {t("showing")} {currentPage === 1 ? 1 : (currentPage - 1) * itemsPerPage + 1} -{" "}
-              {Math.min(currentPage * itemsPerPage, totalPayments)}{" "}
-              {t("of")} {totalPayments}
+                {t("showing")}{" "}
+                {currentPage === 1 ? 1 : (currentPage - 1) * itemsPerPage + 1} -{" "}
+                {Math.min(currentPage * itemsPerPage, totalPayments)} {t("of")}{" "}
+                {totalPayments}
               </div>
               <div className="flex flex-col sm:flex-row gap-2 items-center justify-between">
                 <div className="flex gap-1">
@@ -2222,16 +2317,9 @@ export default function PaymentsPage() {
                     onClick={() => {
                       const newPage = Math.max(1, currentPage - 1);
                       setCurrentPage(newPage);
-                      const finalMonth = selectedMonth || getDefaultMonth();
-                      const finalYear = selectedYear || new Date().getFullYear();
-                      const params = new URLSearchParams();
-                      if (searchTerm) params.set("search", searchTerm);
-                      if (filterStatus !== "all") params.set("status", filterStatus);
-                      params.set("month", finalMonth);
-                      params.set("year", finalYear.toString());
-                      params.set("page", newPage.toString());
-                      params.set("limit", itemsPerPage.toString());
-                      router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+                      router.push(
+                        `/payments?page=${newPage}&limit=${itemsPerPage}`,
+                      );
                     }}
                     disabled={currentPage === 1}
                     className="px-2 sm:px-3"
@@ -2247,26 +2335,19 @@ export default function PaymentsPage() {
                       .filter((page) => page <= totalPages)
                       .map((page) => (
                         <Button
-                           key={page}
-                           variant={currentPage === page ? "default" : "outline"}
-                           size="sm"
-                           onClick={() => {
-                             setCurrentPage(page);
-                             const finalMonth = selectedMonth || getDefaultMonth();
-                             const finalYear = selectedYear || new Date().getFullYear();
-                             const params = new URLSearchParams();
-                             if (searchTerm) params.set("search", searchTerm);
-                             if (filterStatus !== "all") params.set("status", filterStatus);
-                             params.set("month", finalMonth);
-                             params.set("year", finalYear.toString());
-                             params.set("page", page.toString());
-                             params.set("limit", itemsPerPage.toString());
-                             router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
-                           }}
-                           className="h-8 w-8 p-0"
-                         >
-                           {page}
-                         </Button>
+                          key={page}
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            setCurrentPage(page);
+                            router.push(
+                              `/payments?page=${page}&limit=${itemsPerPage}`,
+                            );
+                          }}
+                          className="h-8 w-8 p-0"
+                        >
+                          {page}
+                        </Button>
                       ))}
                   </div>
                   <Button
@@ -2275,16 +2356,9 @@ export default function PaymentsPage() {
                     onClick={() => {
                       const newPage = Math.min(totalPages, currentPage + 1);
                       setCurrentPage(newPage);
-                      const finalMonth = selectedMonth || getDefaultMonth();
-                      const finalYear = selectedYear || new Date().getFullYear();
-                      const params = new URLSearchParams();
-                      if (searchTerm) params.set("search", searchTerm);
-                      if (filterStatus !== "all") params.set("status", filterStatus);
-                      params.set("month", finalMonth);
-                      params.set("year", finalYear.toString());
-                      params.set("page", newPage.toString());
-                      params.set("limit", itemsPerPage.toString());
-                      router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+                      router.push(
+                        `/payments?page=${newPage}&limit=${itemsPerPage}`,
+                      );
                     }}
                     disabled={currentPage === totalPages}
                     className="px-2 sm:px-3"
@@ -2297,8 +2371,8 @@ export default function PaymentsPage() {
                   {t("page")} {currentPage} {t("of")} {totalPages}
                 </div>
               </div>
-              </div>
-              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -2392,7 +2466,7 @@ export default function PaymentsPage() {
                       {t("method") || "Method"}:
                     </span>{" "}
                     {getPaymentMethodLabel(
-                      posPreviewData.payment.paymentMethod
+                      posPreviewData.payment.paymentMethod,
                     )}
                   </p>
                 </div>
