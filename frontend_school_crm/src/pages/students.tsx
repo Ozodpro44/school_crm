@@ -186,7 +186,7 @@ export default function StudentsPage() {
      return () => clearTimeout(timer);
    }, []);
 
-   // Reload data when search term or other filters change
+   // Reload data when filters change
    useEffect(() => {
      setPage(1); // Reset to first page on filter changes
      setIsListLoading(true);
@@ -202,6 +202,7 @@ export default function StudentsPage() {
      router.push(`/students?${params.toString()}`, undefined, { shallow: true });
    }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, limit]);
 
+   // Reload data when page changes
    useEffect(() => {
      setIsListLoading(true);
      loadData().finally(() => setIsListLoading(false));
@@ -214,7 +215,7 @@ export default function StudentsPage() {
      params.set('page', page.toString());
      params.set('limit', limit.toString());
      router.push(`/students?${params.toString()}`, undefined, { shallow: true });
-   }, [page]);
+   }, [page, limit]);
 
    // Reload data when branch is switched
    useEffect(() => {
@@ -226,8 +227,11 @@ export default function StudentsPage() {
      return () => window.removeEventListener("branchChange", handleBranchChange);
    }, []);
 
-   // Refetch data when page regains focus
-   useRefetchOnFocus(loadData);
+   // Refetch data when page regains focus (preserves current filters)
+    useRefetchOnFocus(() => {
+      setIsListLoading(true);
+      loadData().finally(() => setIsListLoading(false));
+    });
 
   const canCreateStudents = hasPermission("canCreateStudents");
   const canEditStudents = hasPermission("canEditStudents");
