@@ -923,9 +923,10 @@ export default function PaymentsPage() {
           bulkPaymentData.month,
           bulkPaymentData.year,
         );
-        setFilteredStudentsForModal(results);
+        setFilteredStudentsForModal(results || []);
       } catch (error) {
         console.error("Failed to load students for bulk payment:", error);
+        setFilteredStudentsForModal([]);
       }
     };
 
@@ -1039,8 +1040,8 @@ export default function PaymentsPage() {
   };
 
   const getFilteredStudentsForPayment = () => {
-    // Return the filtered students from search endpoint
-    return filteredStudentsForModal;
+    // Return the filtered students from search endpoint, default to empty array
+    return filteredStudentsForModal || [];
   };
 
   // Handle student search in payment modal
@@ -1060,7 +1061,7 @@ export default function PaymentsPage() {
           formData.month,
           formData.year,
         );
-        setFilteredStudentsForModal(results);
+        setFilteredStudentsForModal(results || []);
       } catch (error) {
         console.error("Failed to search students:", error);
         setFilteredStudentsForModal([]);
