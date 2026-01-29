@@ -765,8 +765,10 @@ export default function PaymentsPage() {
     // Use backend payments for checking
     for (const studentId of selectedStudentIds) {
       // Try to find student in filteredStudentsForModal first, then fallback
-      let student = filteredStudentsForModal.find((s) => s.id === studentId);
-      
+      const student = filteredStudentsForModal.find(
+        (s) => s.id === studentId,
+      );
+
       // If not found in filtered list, we need to get the monthly payment amount some other way
       // This shouldn't happen if filteredStudentsForModal is properly populated
       if (!student) {
