@@ -2139,7 +2139,29 @@ export default function PaymentsPage() {
                 </Select>
                 <Select
                   value={filterPaymentMethod}
-                  onValueChange={setFilterPaymentMethod}
+                  onValueChange={(value) => {
+                    setFilterPaymentMethod(value);
+                    // Apply filter immediately when payment method changes
+                    setCurrentPage(1);
+                    setIsLoading(true);
+                    loadData(
+                      undefined,
+                      undefined,
+                      searchTerm,
+                      filterStatus,
+                    ).finally(() => setIsLoading(false));
+                    const params = new URLSearchParams();
+                    if (searchTerm) params.set("search", searchTerm);
+                    if (filterStatus !== "all") params.set("status", filterStatus);
+                    if (value !== "all") params.set("paymentMethod", value);
+                    params.set("month", selectedMonth);
+                    params.set("year", selectedYear.toString());
+                    params.set("page", "1");
+                    params.set("limit", itemsPerPage.toString());
+                    router.push(`/payments?${params.toString()}`, undefined, {
+                      shallow: true,
+                    });
+                  }}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
