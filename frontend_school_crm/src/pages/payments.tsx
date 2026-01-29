@@ -449,29 +449,6 @@ export default function PaymentsPage() {
     return () => window.removeEventListener("branchChange", handleBranchChange);
   }, []);
 
-  // Apply filters and fetch data (for filter changes only, not search)
-  const applyFilters = useCallback(() => {
-    setCurrentPage(1); // Reset to first page
-    setIsLoading(true);
-    // Load with current filter values
-    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod).finally(() =>
-      setIsLoading(false),
-    );
-    // Update URL with filters - always include month/year
-    const params = new URLSearchParams();
-    if (searchTerm) params.set("search", searchTerm);
-    if (filterStatus !== "all") params.set("status", filterStatus);
-    if (filterPaymentMethod !== "all")
-      params.set("paymentMethod", filterPaymentMethod);
-    params.set("month", selectedMonth);
-    params.set("year", selectedYear.toString());
-    params.set("page", "1");
-    params.set("limit", itemsPerPage.toString());
-    router.push(`/payments?${params.toString()}`, undefined, {
-      shallow: true,
-    });
-  }, [searchTerm, filterStatus, filterPaymentMethod, selectedMonth, selectedYear, itemsPerPage]);
-
   // Load data when page or items per page changes (but not on initial load)
   useEffect(() => {
     // Skip if initial load hasn't completed yet
@@ -2252,13 +2229,6 @@ export default function PaymentsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button
-                onClick={applyFilters}
-                className="bg-blue-600 hover:bg-blue-700"
-                size="sm"
-              >
-                {t("applyFilters") || "Apply Filters"}
-              </Button>
             </div>
           </div>
         </CardHeader>
