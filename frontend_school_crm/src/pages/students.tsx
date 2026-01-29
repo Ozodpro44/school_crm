@@ -230,7 +230,7 @@ export default function StudentsPage() {
      
      setPage(1); // Reset to first page on filter changes
      setIsListLoading(true);
-     loadData().finally(() => setIsListLoading(false));
+     loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
      // Update URL with filters
      const params = new URLSearchParams();
      if (searchTerm) params.set('search', searchTerm);
@@ -244,15 +244,29 @@ export default function StudentsPage() {
 
    // Reload data when page changes
    useEffect(() => {
+     // Skip if initial load hasn't completed yet
+     if (!initialLoadDoneRef.current) return;
+     
      setIsListLoading(true);
-     loadData().finally(() => setIsListLoading(false));
+     loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
+     // Update URL with current page
+     const params = new URLSearchParams();
+     if (searchTerm) params.set('search', searchTerm);
+     if (filterStatus !== 'all') params.set('status', filterStatus);
+     if (filterClass !== 'all') params.set('classId', filterClass);
+     if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
+     params.set('page', page.toString());
+     params.set('limit', limit.toString());
+     router.push(`/students?${params.toString()}`, undefined, { shallow: true });
    }, [page]);
 
    // Reload data when branch is switched
    useEffect(() => {
      const handleBranchChange = async () => {
        setPage(1);
-       await loadData();
+       setIsListLoading(true);
+       await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
+       setIsListLoading(false);
      };
      window.addEventListener("branchChange", handleBranchChange);
      return () => window.removeEventListener("branchChange", handleBranchChange);
@@ -261,7 +275,7 @@ export default function StudentsPage() {
    // Refetch data when page regains focus (preserves current filters)
    const refetchData = useCallback(() => {
      setIsListLoading(true);
-     loadData().finally(() => setIsListLoading(false));
+     loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
    }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, page, limit]);
    useRefetchOnFocus(refetchData);
 
@@ -309,8 +323,12 @@ export default function StudentsPage() {
           let parentPhone = "";
           let monthlyPayment = defaultPayment;
 
-          // Check if second column looks like a class name (contains letters)
-          const isClassName = /[a-zA-Z]/i.test(classNameOrPhone);
+          // Check if second column looks like a class name:
+          // - Contains letters (Latin or Cyrillic) 
+          // - OR doesn't look like a phone number (phone numbers are mostly digits)
+          const hasLetters = /[a-zA-Zа-яА-ЯёЁ\u0400-\u04FF]/i.test(classNameOrPhone);
+          const looksLikePhone = /^[\d\s\+\-\(\)]+$/.test(classNameOrPhone.replace(/\s/g, '')) && classNameOrPhone.replace(/\D/g, '').length >= 7;
+          const isClassName = hasLetters || !looksLikePhone;
 
           if (isClassName) {
             // Format: Full Name, Class, Phone, Parent Phone, Monthly Payment
@@ -406,7 +424,7 @@ export default function StudentsPage() {
           setImportData("");
           setIsImportDialogOpen(false);
           setCurrentPage(1);
-          await loadData();
+          await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
           } catch (error) {
           toast({
           title: t("importError"),
@@ -519,7 +537,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       }
 
       resetForm();
-      await loadData();
+      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
       setIsDialogOpen(false);
       toast({
         title: editingStudent ? t("updated") : t("created"),
@@ -579,7 +597,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       setIsDeleteLoading(true);
       try {
         await apiDeleteStudent(deleteStudentId);
-        await loadData();
+        await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
         toast({
           title: t("deleted"),
           description: t("successfullyDeleted"),
@@ -622,7 +640,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     try {
       await Promise.all(selectedIds.map((id) => apiDeleteStudent(id)));
       clearSelection();
-      await loadData();
+      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
       setCurrentPage(1);
       toast({
         title: t("deleted"),
@@ -660,7 +678,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     });
 
     clearSelection();
-    await loadData();
+    await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
     setIsBulkChangeClassOpen(false);
     setBulkChangeClassId("");
     toast({
