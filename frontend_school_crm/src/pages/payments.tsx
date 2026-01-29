@@ -499,6 +499,11 @@ export default function PaymentsPage() {
     const invoiceNumber = `INV-${Date.now()}`;
 
     const monthlyPaymentValue = (() => {
+      // Use selectedStudentInfo which is set when a student is selected
+      if (selectedStudentInfo && selectedStudentInfo.id === formData.studentId) {
+        return selectedStudentInfo.monthlyPayment || 0;
+      }
+      // Fallback to searching in filteredStudentsForModal
       const student = filteredStudentsForModal.find(
         (s) => s.id === formData.studentId,
       );
@@ -759,8 +764,15 @@ export default function PaymentsPage() {
 
     // Use backend payments for checking
     for (const studentId of selectedStudentIds) {
-      const student = filteredStudentsForModal.find((s) => s.id === studentId);
-      if (!student) continue;
+      // Try to find student in filteredStudentsForModal first, then fallback
+      let student = filteredStudentsForModal.find((s) => s.id === studentId);
+      
+      // If not found in filtered list, we need to get the monthly payment amount some other way
+      // This shouldn't happen if filteredStudentsForModal is properly populated
+      if (!student) {
+        console.warn(`Student ${studentId} not found in filtered list`);
+        continue;
+      }
 
       const paidTotal = payments
         .filter(
@@ -892,6 +904,31 @@ export default function PaymentsPage() {
     // Aggregated status is calculated on-the-fly for display purposes in student pages
     return;
   };
+
+  // Load all active students when bulk payment dialog opens
+  useEffect(() => {
+    const loadBulkPaymentStudents = async () => {
+      if (!isBulkPaymentOpen) return;
+
+      const selectedBranchId = localStorage.getItem("selectedBranchId");
+      if (!selectedBranchId) return;
+
+      try {
+        // Load all active students for the bulk payment dialog
+        const results = await searchStudentsWithPayments(
+          selectedBranchId,
+          "", // Empty search to get all students
+          bulkPaymentData.month,
+          bulkPaymentData.year,
+        );
+        setFilteredStudentsForModal(results);
+      } catch (error) {
+        console.error("Failed to load students for bulk payment:", error);
+      }
+    };
+
+    loadBulkPaymentStudents();
+  }, [isBulkPaymentOpen, bulkPaymentData.month, bulkPaymentData.year]);
 
   // Close student dropdown when clicking outside
   useEffect(() => {
