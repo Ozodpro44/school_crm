@@ -856,6 +856,7 @@ export async function getPaymentsConsolidatedData(
     status?: string;
     month?: string;
     year?: string;
+    paymentMethod?: string;
   }
 ): Promise<any> {
   let query = `/payments/consolidated/data?branchId=${branchId}`;
@@ -865,6 +866,7 @@ export async function getPaymentsConsolidatedData(
   if (filters?.status) query += `&status=${filters.status}`;
   if (filters?.month) query += `&month=${filters.month}`;
   if (filters?.year) query += `&year=${filters.year}`;
+  if (filters?.paymentMethod) query += `&paymentMethod=${filters.paymentMethod}`;
   return apiRequest<any>(query);
 }
 

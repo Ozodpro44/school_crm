@@ -509,7 +509,7 @@ func (s *PaymentService) ConsolidatePayments(payments []models.Payment) []models
 
 // GetByBranchIDWithFilters returns payments with pagination and dynamic filtering
 // Similar to StudentService.GetByBranchIDWithFilters
-func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, month, year string) (*models.PaymentListResponse, error) {
+func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, paymentMethod, month, year string) (*models.PaymentListResponse, error) {
 	intPage, err := strconv.Atoi(page)
 	if err != nil || intPage < 1 {
 		intPage = 1
@@ -546,6 +546,12 @@ func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 	if status != "" {
 		where += fmt.Sprintf(" AND p.status = $%d", argID)
 		args = append(args, status)
+		argID++
+	}
+
+	if paymentMethod != "" {
+		where += fmt.Sprintf(" AND p.payment_method = $%d", argID)
+		args = append(args, paymentMethod)
 		argID++
 	}
 

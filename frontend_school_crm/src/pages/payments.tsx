@@ -93,6 +93,7 @@ export default function PaymentsPage() {
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isBulkPaymentOpen, setIsBulkPaymentOpen] = useState(false);
@@ -271,9 +272,15 @@ export default function PaymentsPage() {
           statusOverride !== undefined
             ? statusOverride
             : filterStatus || (router.query.status as string) || "all";
+        const paymentMethodValue =
+          (router.query.paymentMethod as string) ||
+          filterPaymentMethod ||
+          "all";
 
         if (searchValue) filters.search = searchValue;
         if (statusValue !== "all") filters.status = statusValue;
+        if (paymentMethodValue !== "all")
+          filters.paymentMethod = paymentMethodValue;
         filters.month = queryMonth;
         filters.year = queryYear.toString();
 
@@ -441,31 +448,28 @@ export default function PaymentsPage() {
     return () => window.removeEventListener("branchChange", handleBranchChange);
   }, []);
 
-  // Reload data when search or filter status changes
-  useEffect(() => {
-    // Skip if this is the initial load (URL params are being set)
-    if (!initialLoadDoneRef.current) {
-      return;
-    }
-    
-    const timer = setTimeout(() => {
-      setCurrentPage(1); // Reset to first page
-      setIsLoading(true);
-      loadData().finally(() => setIsLoading(false));
-      // Update URL with filters - always include month/year
-      const params = new URLSearchParams();
-      if (searchTerm) params.set("search", searchTerm);
-      if (filterStatus !== "all") params.set("status", filterStatus);
-      params.set("month", selectedMonth);
-      params.set("year", selectedYear.toString());
-      params.set("page", "1");
-      params.set("limit", itemsPerPage.toString());
-      router.push(`/payments?${params.toString()}`, undefined, {
-        shallow: true,
-      });
-    }, 300); // Debounce by 300ms
-    return () => clearTimeout(timer);
-  }, [searchTerm, filterStatus, selectedMonth, selectedYear, itemsPerPage]);
+  // Apply filters and fetch data (for filter changes only, not search)
+  const applyFilters = useCallback(() => {
+    setCurrentPage(1); // Reset to first page
+    setIsLoading(true);
+    // Load with current filter values - note: payment method is already in URL query handling
+    loadData(undefined, undefined, searchTerm, filterStatus).finally(() =>
+      setIsLoading(false),
+    );
+    // Update URL with filters - always include month/year
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    if (filterPaymentMethod !== "all")
+      params.set("paymentMethod", filterPaymentMethod);
+    params.set("month", selectedMonth);
+    params.set("year", selectedYear.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/payments?${params.toString()}`, undefined, {
+      shallow: true,
+    });
+  }, [searchTerm, filterStatus, filterPaymentMethod, selectedMonth, selectedYear, itemsPerPage]);
 
   // Load data when page or items per page changes
   useEffect(() => {
@@ -2121,36 +2125,59 @@ export default function PaymentsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("allStatus")}</SelectItem>
-                  <SelectItem value="paid">{t("paid")}</SelectItem>
-                  <SelectItem value="partial">{t("partial")}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select
-                value={itemsPerPage.toString()}
-                onValueChange={(val) => {
-                  const limit = parseInt(val);
-                  setItemsPerPage(limit);
-                  setCurrentPage(1);
-                  router.push(`/payments?page=1&limit=${limit}`);
-                }}
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("allStatus")}</SelectItem>
+                    <SelectItem value="paid">{t("paid")}</SelectItem>
+                    <SelectItem value="partial">{t("partial")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={filterPaymentMethod}
+                  onValueChange={setFilterPaymentMethod}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("allPaymentMethods")}</SelectItem>
+                    <SelectItem value="cash">{t("cash")}</SelectItem>
+                    <SelectItem value="card">{t("card")}</SelectItem>
+                    <SelectItem value="bank">{t("bank")}</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={itemsPerPage.toString()}
+                  onValueChange={(val) => {
+                    const limit = parseInt(val);
+                    setItemsPerPage(limit);
+                    setCurrentPage(1);
+                    router.push(`/payments?page=1&limit=${limit}`);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10 {t("perPage")}</SelectItem>
+                    <SelectItem value="20">20 {t("perPage")}</SelectItem>
+                    <SelectItem value="50">50 {t("perPage")}</SelectItem>
+                    <SelectItem value="100">100 {t("perPage")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={applyFilters}
+                className="bg-blue-600 hover:bg-blue-700"
+                size="sm"
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10">10 {t("perPage")}</SelectItem>
-                  <SelectItem value="20">20 {t("perPage")}</SelectItem>
-                  <SelectItem value="50">50 {t("perPage")}</SelectItem>
-                  <SelectItem value="100">100 {t("perPage")}</SelectItem>
-                </SelectContent>
-              </Select>
+                {t("applyFilters") || "Apply Filters"}
+              </Button>
             </div>
           </div>
         </CardHeader>
