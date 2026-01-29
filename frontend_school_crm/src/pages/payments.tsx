@@ -215,6 +215,7 @@ export default function PaymentsPage() {
     year?: number,
     searchOverride?: string,
     statusOverride?: string,
+    paymentMethodOverride?: string,
   ) => {
     try {
       // Generate a unique ID for this load request
@@ -248,17 +249,17 @@ export default function PaymentsPage() {
           setSelectedYear(currentYear);
         }
 
-        // Always use the current branch month for filtering
-        // Prefer URL params for initial load, then fall back to state
+        // Always use passed parameters first, then state, then URL params, then branch defaults
+        // This ensures explicit calls with parameters take priority
         const queryMonth =
-          (router.query.month as string) ||
           month ||
           selectedMonth ||
+          (router.query.month as string) ||
           currentMonth;
         const queryYear =
-          parseInt((router.query.year as string) || "") ||
           year ||
           selectedYear ||
+          parseInt((router.query.year as string) || "") ||
           currentYear;
 
         // Use consolidated endpoint instead of multiple calls
@@ -273,9 +274,9 @@ export default function PaymentsPage() {
             ? statusOverride
             : filterStatus || (router.query.status as string) || "all";
         const paymentMethodValue =
-          (router.query.paymentMethod as string) ||
-          filterPaymentMethod ||
-          "all";
+          paymentMethodOverride !== undefined
+            ? paymentMethodOverride
+            : filterPaymentMethod || (router.query.paymentMethod as string) || "all";
 
         if (searchValue) filters.search = searchValue;
         if (statusValue !== "all") filters.status = statusValue;
@@ -452,8 +453,8 @@ export default function PaymentsPage() {
   const applyFilters = useCallback(() => {
     setCurrentPage(1); // Reset to first page
     setIsLoading(true);
-    // Load with current filter values - note: payment method is already in URL query handling
-    loadData(undefined, undefined, searchTerm, filterStatus).finally(() =>
+    // Load with current filter values
+    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod).finally(() =>
       setIsLoading(false),
     );
     // Update URL with filters - always include month/year
@@ -471,24 +472,54 @@ export default function PaymentsPage() {
     });
   }, [searchTerm, filterStatus, filterPaymentMethod, selectedMonth, selectedYear, itemsPerPage]);
 
-  // Load data when page or items per page changes
+  // Load data when page or items per page changes (but not on initial load)
   useEffect(() => {
+    // Skip if initial load hasn't completed yet
+    if (!initialLoadDoneRef.current) return;
+    
     setIsLoading(true);
-    loadData().finally(() => setIsLoading(false));
+    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod).finally(() => setIsLoading(false));
+    
+    // Update URL with current pagination
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+    params.set("month", selectedMonth);
+    params.set("year", selectedYear.toString());
+    params.set("page", currentPage.toString());
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, itemsPerPage]);
 
   // Refetch data when page regains focus (preserves current filters)
   const refetchData = useCallback(() => {
     setIsLoading(true);
-    loadData().finally(() => setIsLoading(false));
-  }, [searchTerm, filterStatus, selectedMonth, selectedYear, currentPage, itemsPerPage]);
+    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod).finally(() => setIsLoading(false));
+  }, [searchTerm, filterStatus, filterPaymentMethod, selectedMonth, selectedYear, currentPage, itemsPerPage]);
   useRefetchOnFocus(refetchData);
 
   const handleMonthChange = (month: string, year: number) => {
     setSelectedMonth(month);
     setSelectedYear(year);
-    // Let the effect handle the data load
+    setCurrentPage(1); // Reset to first page when month changes
+    setIsLoading(true);
+    // Load data with new month/year
+    loadData(month, year, searchTerm, filterStatus, filterPaymentMethod).finally(() =>
+      setIsLoading(false),
+    );
+    // Update URL with new month/year
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    if (filterPaymentMethod !== "all")
+      params.set("paymentMethod", filterPaymentMethod);
+    params.set("month", month);
+    params.set("year", year.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -667,7 +698,7 @@ export default function PaymentsPage() {
 
     resetForm();
     setEditingPaymentId(null);
-    loadData();
+    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod);
     setIsDialogOpen(false);
     setIsSubmitting(false);
   };
@@ -732,7 +763,7 @@ export default function PaymentsPage() {
     setProcessingPaymentId(id);
     try {
       await apiDeletePayment(id);
-      await loadData();
+      await loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod);
       toast({ title: t("paymentDeleted"), variant: "success" });
     } catch (error) {
       console.error("Failed to delete payment:", error);
@@ -745,7 +776,7 @@ export default function PaymentsPage() {
           description: "Payment was already removed",
           variant: "default",
         });
-        await loadData();
+        await loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod);
       } else {
         toast({
           title: t("error"),
@@ -844,7 +875,7 @@ export default function PaymentsPage() {
       });
     }
 
-    loadData();
+    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod);
     setIsBulkPaymentOpen(false);
     setSelectedStudentIds([]);
     setBulkPaymentData({
@@ -1146,14 +1177,15 @@ export default function PaymentsPage() {
     setCurrentPage(1);
     setSearchTerm(searchInput);
     setIsLoading(true);
-    // Load data immediately with new search term - pass the override value
-    loadData(undefined, undefined, searchInput, filterStatus).finally(() =>
+    // Load data immediately with new search term - pass all filter values
+    loadData(selectedMonth, selectedYear, searchInput, filterStatus, filterPaymentMethod).finally(() =>
       setIsLoading(false),
     );
     // Update URL with search - always include month/year for consistency
     const params = new URLSearchParams();
     if (searchInput) params.set("search", searchInput);
     if (filterStatus !== "all") params.set("status", filterStatus);
+    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
     params.set("month", selectedMonth);
     params.set("year", selectedYear.toString());
     params.set("page", "1");
@@ -1172,13 +1204,14 @@ export default function PaymentsPage() {
     setCurrentPage(1);
     setSearchTerm("");
     setIsLoading(true);
-    // Load data immediately with cleared search - pass empty string as override
-    loadData(undefined, undefined, "", filterStatus).finally(() =>
+    // Load data immediately with cleared search - pass all filter values
+    loadData(selectedMonth, selectedYear, "", filterStatus, filterPaymentMethod).finally(() =>
       setIsLoading(false),
     );
     // Update URL to clear search - always include month/year for consistency
     const params = new URLSearchParams();
     if (filterStatus !== "all") params.set("status", filterStatus);
+    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
     params.set("month", selectedMonth);
     params.set("year", selectedYear.toString());
     params.set("page", "1");
@@ -2127,7 +2160,32 @@ export default function PaymentsPage() {
 
             <div className="space-y-3">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <Select
+                  value={filterStatus}
+                  onValueChange={(value) => {
+                    setFilterStatus(value);
+                    // Apply filter immediately when status changes
+                    setCurrentPage(1);
+                    setIsLoading(true);
+                    loadData(
+                      selectedMonth,
+                      selectedYear,
+                      searchTerm,
+                      value,
+                    ).finally(() => setIsLoading(false));
+                    const params = new URLSearchParams();
+                    if (searchTerm) params.set("search", searchTerm);
+                    if (value !== "all") params.set("status", value);
+                    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+                    params.set("month", selectedMonth);
+                    params.set("year", selectedYear.toString());
+                    params.set("page", "1");
+                    params.set("limit", itemsPerPage.toString());
+                    router.push(`/payments?${params.toString()}`, undefined, {
+                      shallow: true,
+                    });
+                  }}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
@@ -2145,10 +2203,11 @@ export default function PaymentsPage() {
                     setCurrentPage(1);
                     setIsLoading(true);
                     loadData(
-                      undefined,
-                      undefined,
+                      selectedMonth,
+                      selectedYear,
                       searchTerm,
                       filterStatus,
+                      value,
                     ).finally(() => setIsLoading(false));
                     const params = new URLSearchParams();
                     if (searchTerm) params.set("search", searchTerm);
@@ -2179,7 +2238,7 @@ export default function PaymentsPage() {
                     const limit = parseInt(val);
                     setItemsPerPage(limit);
                     setCurrentPage(1);
-                    router.push(`/payments?page=1&limit=${limit}`);
+                    // The useEffect for pagination changes will handle URL update and data load
                   }}
                 >
                   <SelectTrigger className="w-full">
