@@ -78,6 +78,7 @@ export default function ExpensesPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<number>(0);
   const initialLoadDoneRef = useRef(false);
+  const currentLoadIdRef = useRef(0);
   const filterChangeInProgressRef = useRef(false);
   const currentUser = getCurrentUser();
   const isAdmin =
@@ -245,6 +246,7 @@ export default function ExpensesPage() {
     pageOverride?: number,
   ) => {
     try {
+      const loadId = ++currentLoadIdRef.current;
       const branchId = await waitForSelectedBranchId();
       if (!branchId) {
         return;
@@ -286,6 +288,9 @@ export default function ExpensesPage() {
 
       // Call consolidated API
       const result = await getExpensesConsolidatedData(branchId, queryPage, itemsPerPage, filters);
+      if (loadId !== currentLoadIdRef.current) {
+        return;
+      }
       
       setExpenses(result.items || []);
       setTotalExpenses(result.total || 0);

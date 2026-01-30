@@ -95,6 +95,7 @@ export default function StudentsPage() {
   const itemsPerPage = 10;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initialLoadDoneRef = useRef(false);
+  const currentLoadIdRef = useRef(0);
   // Track if filter change is in progress to prevent duplicate API calls
   const filterChangeInProgressRef = useRef(false);
   const language = useLanguage();
@@ -166,6 +167,7 @@ export default function StudentsPage() {
       setBranchData(null);
       return;
     }
+    const loadId = ++currentLoadIdRef.current;
     const selectedBranchId = await waitForSelectedBranchId();
     try {
       if (selectedBranchId) {
@@ -194,6 +196,9 @@ export default function StudentsPage() {
         if (paymentStatusValue !== "all") filters.paymentStatus = paymentStatusValue;
 
         const consolidated = await apiGetStudentsConsolidatedData(selectedBranchId, page, limit, filters);
+        if (loadId !== currentLoadIdRef.current) {
+          return;
+        }
         const studentsList = consolidated?.items || consolidated?.data || [];
         const classesList = consolidated?.classes || [];
         const totalVal = consolidated?.total || 0;
