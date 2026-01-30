@@ -227,13 +227,17 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 		FROM students s
 		LEFT JOIN classes c ON c.id = s.class_id
 		LEFT JOIN LATERAL (
-			SELECT status, amount
+			SELECT 
+				COALESCE(SUM(amount), 0) AS total_amount,
+				CASE 
+					WHEN COALESCE(SUM(amount), 0) >= s.monthly_payment THEN 'paid'
+					WHEN COALESCE(SUM(amount), 0) > 0 THEN 'partial'
+					ELSE 'unpaid'
+				END AS status
 			FROM payments
 			WHERE student_id = s.id
 			AND month = $` + strconv.Itoa(argID) + `
 			AND year = $` + strconv.Itoa(argID+1) + `
-			ORDER BY created_at DESC
-			LIMIT 1
 		) p ON true
 		` + where
 
@@ -265,17 +269,21 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 			c.name AS class_name,
 
 			COALESCE(p.status, 'unpaid') AS payment_status,
-			COALESCE(p.amount, 0)        AS payment_amount
+			COALESCE(p.total_amount, 0)  AS payment_amount
 		FROM students s
 		LEFT JOIN classes c ON c.id = s.class_id
 		LEFT JOIN LATERAL (
-			SELECT status, amount
+			SELECT 
+				COALESCE(SUM(amount), 0) AS total_amount,
+				CASE 
+					WHEN COALESCE(SUM(amount), 0) >= s.monthly_payment THEN 'paid'
+					WHEN COALESCE(SUM(amount), 0) > 0 THEN 'partial'
+					ELSE 'unpaid'
+				END AS status
 			FROM payments
 			WHERE student_id = s.id
 			AND month = $` + strconv.Itoa(argID) + `
 			AND year = $` + strconv.Itoa(argID+1) + `
-			ORDER BY created_at DESC
-			LIMIT 1
 		) p ON true
 		` + where + `
 		ORDER BY s.full_name ASC

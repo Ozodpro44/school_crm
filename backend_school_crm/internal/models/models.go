@@ -280,3 +280,27 @@ type PaymentSummary struct {
 	TotalUnpaid float64            `json:"totalUnpaid"`
 	ByMethod    map[string]float64 `json:"byMethod"`
 }
+
+// ExpenseListResponse is the consolidated response for expenses endpoint
+type ExpenseListResponse struct {
+	Items      []Expense       `json:"items"`
+	Indicators ExpenseSummary  `json:"indicators"`
+	Total      int             `json:"total"`
+	Page       int             `json:"page"`
+	Limit      int             `json:"limit"`
+}
+
+// ExpenseSummary contains expense summary statistics
+type ExpenseSummary struct {
+	TotalAmount float64            `json:"totalAmount"`
+	ByCategory  map[string]float64 `json:"byCategory"`
+	ByMethod    map[string]float64 `json:"byMethod"`
+}
+
+// ExpenseFilterResult is the result from expense service with filters
+type ExpenseFilterResult struct {
+	Items []Expense `json:"items"`
+	Total int       `json:"total"`
+	Page  int       `json:"page"`
+	Limit int       `json:"limit"`
+}

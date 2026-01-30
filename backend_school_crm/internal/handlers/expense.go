@@ -14,6 +14,7 @@ func RegisterExpenseRoutes(router *gin.RouterGroup, expenseService *service.Expe
 	expenses := router.Group("/expenses")
 	// Authenticated users can view and edit expenses
 	expenses.POST("", middleware.PermissionChecker(userService, "canCreateExpenses"), createExpense(expenseService, branchService))
+	expenses.GET("/consolidated/data", middleware.PermissionChecker(userService, "canViewExpenses"), getExpensesConsolidatedData(expenseService, branchService, userService))
 	expenses.GET("/:id", middleware.PermissionChecker(userService, "canViewExpenses"), getExpense(expenseService))
 	expenses.GET("", middleware.PermissionChecker(userService, "canViewExpenses"), listExpenses(expenseService, branchService, userService))
 	expenses.PUT("/:id", middleware.PermissionChecker(userService, "canEditExpenses"), updateExpense(expenseService, branchService, userService))
@@ -217,5 +218,82 @@ func deleteExpense(expenseService *service.ExpenseService, branchService *servic
 		}
 
 		c.JSON(http.StatusOK, gin.H{"message": "expense deleted"})
+	}
+}
+
+// getExpensesConsolidatedData returns expenses with filters, pagination, and indicators
+func getExpensesConsolidatedData(expenseService *service.ExpenseService, branchService *service.BranchService, userService *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		branchID := c.Query("branchId")
+		search := c.Query("search")
+		category := c.Query("category")
+		paymentMethod := c.Query("paymentMethod")
+		month := c.Query("month")
+		year := c.Query("year")
+
+		// Pagination parameters
+		page := c.DefaultQuery("page", "1")
+		limit := c.DefaultQuery("limit", "10")
+
+		if branchID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+			return
+		}
+
+		// Get user role for access control
+		userRole, _ := middleware.GetUserRole(c, userService)
+		isAdmin := userRole == models.RoleAdmin || userRole == models.RoleBranchAdmin
+
+		// Get branch's current month if not provided
+		if month == "" || year == "" {
+			currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), branchID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+				return
+			}
+			month = currentMonth
+			year = strconv.Itoa(currentYear)
+		}
+
+		// For non-admin users (managers), enforce current month only
+		if !isAdmin {
+			currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), branchID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+				return
+			}
+			month = currentMonth
+			year = strconv.Itoa(currentYear)
+		}
+
+		// Get expenses with filters using service function
+		result, err := expenseService.GetByBranchIDWithFilters(c.Request.Context(), branchID, page, limit, search, category, paymentMethod, month, year)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Get expense summary/indicators
+		yearInt, _ := strconv.Atoi(year)
+		indicators, err := expenseService.GetExpenseSummaryForPeriod(c.Request.Context(), branchID, month, yearInt)
+		if err != nil {
+			// Continue even if summary fails, return empty indicators
+			indicators = models.ExpenseSummary{
+				TotalAmount: 0,
+				ByCategory:  make(map[string]float64),
+				ByMethod:    make(map[string]float64),
+			}
+		}
+
+		// Build consolidated response
+		response := models.ExpenseListResponse{
+			Items:      result.Items,
+			Indicators: indicators,
+			Total:      result.Total,
+			Page:       result.Page,
+			Limit:      result.Limit,
+		}
+
+		c.JSON(http.StatusOK, response)
 	}
 }

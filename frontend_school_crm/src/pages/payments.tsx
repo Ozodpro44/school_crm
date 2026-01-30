@@ -98,6 +98,20 @@ export default function PaymentsPage() {
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isBulkPaymentOpen, setIsBulkPaymentOpen] = useState(false);
   const [bulkSearchTerm, setBulkSearchTerm] = useState("");
+  const [isBulkSearching, setIsBulkSearching] = useState(false);
+  const [bulkStudentsList, setBulkStudentsList] = useState<
+    Array<{
+      id: string;
+      fullName: string;
+      phone: string;
+      classId: string;
+      className: string;
+      monthlyPayment: number;
+      paidAmount: number;
+      status: "paid" | "partial" | "none";
+      branchId: string;
+    }>
+  >([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const getDefaultMonth = () => {
@@ -787,15 +801,14 @@ export default function PaymentsPage() {
 
     // Use backend payments for checking
     for (const studentId of selectedStudentIds) {
-      // Try to find student in filteredStudentsForModal first, then fallback
-      const student = filteredStudentsForModal.find(
+      // Try to find student in bulkStudentsList
+      const student = bulkStudentsList.find(
         (s) => s.id === studentId,
       );
 
-      // If not found in filtered list, we need to get the monthly payment amount some other way
-      // This shouldn't happen if filteredStudentsForModal is properly populated
+      // If not found in bulk list, skip
       if (!student) {
-        console.warn(`Student ${studentId} not found in filtered list`);
+        console.warn(`Student ${studentId} not found in bulk list`);
         continue;
       }
 
@@ -866,6 +879,8 @@ export default function PaymentsPage() {
     loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod);
     setIsBulkPaymentOpen(false);
     setSelectedStudentIds([]);
+    setBulkSearchTerm("");
+    setBulkStudentsList([]);
     setBulkPaymentData({
       month: "",
       year: getDefaultYear().toString(),
@@ -882,17 +897,14 @@ export default function PaymentsPage() {
   };
 
   const toggleSelectAll = () => {
-    // Use filtered students from modal for bulk payment selection
-    const activeStudents = filteredStudentsForModal.filter(
-      (s) => s.status !== undefined,
-    );
+    // Use bulk students list for bulk payment selection
     if (
-      selectedStudentIds.length === activeStudents.length &&
-      activeStudents.length > 0
+      selectedStudentIds.length === bulkStudentsList.length &&
+      bulkStudentsList.length > 0
     ) {
       setSelectedStudentIds([]);
     } else {
-      setSelectedStudentIds(activeStudents.map((s) => s.id));
+      setSelectedStudentIds(bulkStudentsList.map((s) => s.id));
     }
   };
 
@@ -930,7 +942,7 @@ export default function PaymentsPage() {
     return;
   };
 
-  // Load all active students when bulk payment dialog opens
+  // Load students when bulk payment dialog opens or search term changes
   useEffect(() => {
     const loadBulkPaymentStudents = async () => {
       if (!isBulkPaymentOpen) return;
@@ -938,23 +950,31 @@ export default function PaymentsPage() {
       const selectedBranchId = localStorage.getItem("selectedBranchId");
       if (!selectedBranchId) return;
 
+      setIsBulkSearching(true);
       try {
-        // Load all active students for the bulk payment dialog
+        // Load students for the bulk payment dialog with search
         const results = await searchStudentsWithPayments(
           selectedBranchId,
-          "", // Empty search to get all students
+          bulkSearchTerm, // Use search term
           bulkPaymentData.month,
           bulkPaymentData.year,
         );
-        setFilteredStudentsForModal(results || []);
+        setBulkStudentsList(results || []);
       } catch (error) {
         console.error("Failed to load students for bulk payment:", error);
-        setFilteredStudentsForModal([]);
+        setBulkStudentsList([]);
+      } finally {
+        setIsBulkSearching(false);
       }
     };
 
-    loadBulkPaymentStudents();
-  }, [isBulkPaymentOpen, bulkPaymentData.month, bulkPaymentData.year]);
+    // Debounce the search
+    const timer = setTimeout(() => {
+      loadBulkPaymentStudents();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [isBulkPaymentOpen, bulkPaymentData.month, bulkPaymentData.year, bulkSearchTerm]);
 
   // Close student dropdown when clicking outside
   useEffect(() => {
@@ -990,21 +1010,39 @@ export default function PaymentsPage() {
     }
 
     // Use backend payments instead of localStorage
+    // When editing, exclude the current payment from the total so remaining is calculated correctly
     const paidTotal = payments
       .filter(
         (p) =>
           p.studentId === studentId &&
           p.month === month &&
-          p.year === parseInt(year),
+          p.year === parseInt(year) &&
+          p.id !== editingPaymentId, // Exclude the payment being edited
       )
       .reduce((sum, p) => sum + p.amount, 0);
 
+    // When editing, don't override the amount - keep the original payment amount
+    if (editingPaymentId) {
+      // Just update the summary for display, don't change form amount
+      const remaining = parseFloat((monthly - paidTotal).toFixed(2));
+      if (paidTotal >= monthly) {
+        setPaymentSummary({ paidTotal, remaining: 0, status: "paid" });
+      } else if (paidTotal > 0) {
+        setPaymentSummary({ paidTotal, remaining, status: "partial" });
+      } else {
+        setPaymentSummary({ paidTotal: 0, remaining: monthly, status: "none" });
+      }
+      return;
+    }
+
+    // For new payments, auto-fill amount as before
+    // Always use "partial" status for individual payments - the overall status is calculated separately
     if (paidTotal >= monthly) {
       setPaymentSummary({ paidTotal, remaining: 0, status: "paid" });
       setFormData((prev) => ({
         ...prev,
         amount: monthly.toString(),
-        status: "paid",
+        status: "partial",
       }));
     } else if (paidTotal > 0) {
       const remaining = parseFloat((monthly - paidTotal).toFixed(2));
@@ -1024,7 +1062,7 @@ export default function PaymentsPage() {
     }
     // Only depend on modal form data and selected student info, not all payments
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.studentId, formData.month, formData.year, selectedStudentInfo]);
+  }, [formData.studentId, formData.month, formData.year, selectedStudentInfo, editingPaymentId]);
 
   const getStudentName = (studentId: string) => {
     // First check selected student from modal
@@ -1515,16 +1553,19 @@ export default function PaymentsPage() {
                   <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3 bg-slate-50 dark:bg-slate-900/50">
                     <Checkbox
                       checked={
-                        selectedStudentIds.length ===
-                          students.filter((s) => s.status === "active")
-                            .length &&
-                        students.filter((s) => s.status === "active").length > 0
+                        selectedStudentIds.length === bulkStudentsList.length &&
+                        bulkStudentsList.length > 0
                       }
-                      onCheckedChange={toggleSelectAll}
+                      onCheckedChange={() => {
+                        if (selectedStudentIds.length === bulkStudentsList.length) {
+                          setSelectedStudentIds([]);
+                        } else {
+                          setSelectedStudentIds(bulkStudentsList.map((s) => s.id));
+                        }
+                      }}
                     />
                     <Label className="cursor-pointer font-medium">
-                      {t("selectAllActiveStudents")} (
-                      {students.filter((s) => s.status === "active").length})
+                      {t("selectAllActiveStudents")} ({bulkStudentsList.length})
                     </Label>
                   </div>
 
@@ -1534,58 +1575,66 @@ export default function PaymentsPage() {
                       placeholder={t("searchStudents") || "Search students..."}
                       value={bulkSearchTerm}
                       onChange={(e) => setBulkSearchTerm(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 pr-10"
                     />
+                    {bulkSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setBulkSearchTerm("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+                        title={t("clear") || "Clear"}
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </button>
+                    )}
                   </div>
 
                   <div className="max-h-96 overflow-y-auto divide-y divide-slate-200 dark:divide-slate-800">
-                    {students.filter(
-                      (s) =>
-                        s.status === "active" &&
-                        (searchMatchesCrossScript(s.fullName, bulkSearchTerm) ||
-                          searchMatchesCrossScript(
-                            getClassName(s.id),
-                            bulkSearchTerm,
-                          ) ||
-                          s.phone.includes(bulkSearchTerm)),
-                    ).length === 0 ? (
+                    {isBulkSearching ? (
+                      <div className="px-3 py-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
+                          <span className="text-sm text-slate-600 dark:text-slate-400">
+                            {t("searching") || "Searching..."}
+                          </span>
+                        </div>
+                      </div>
+                    ) : bulkStudentsList.length === 0 ? (
                       <div className="p-8 text-center text-slate-500 dark:text-slate-400">
                         {t("noActiveStudentsFound")}
                       </div>
                     ) : (
-                      students
-                        .filter(
-                          (s) =>
-                            s.status === "active" &&
-                            (searchMatchesCrossScript(
-                              s.fullName,
-                              bulkSearchTerm,
-                            ) ||
-                              searchMatchesCrossScript(
-                                getClassName(s.id),
-                                bulkSearchTerm,
-                              ) ||
-                              s.phone.includes(bulkSearchTerm)),
-                        )
-                        .map((student) => (
-                          <div
-                            key={student.id}
-                            className="flex items-center gap-3 p-4 hover:bg-slate-50 dark:hover:bg-slate-900/50 cursor-pointer transition-colors"
-                            onClick={() => toggleStudentSelection(student.id)}
-                          >
-                            <Checkbox
-                              checked={selectedStudentIds.includes(student.id)}
-                              onCheckedChange={() =>
-                                toggleStudentSelection(student.id)
-                              }
-                            />
-                            <div className="flex-1">
-                              <p className="font-medium text-slate-900 dark:text-slate-100">
-                                {student.fullName}
-                              </p>
-                              <p className="text-sm text-slate-500 dark:text-slate-400">
-                                {getClassName(student.id)} •{" "}
-                                {formatCurrency(student.monthlyPayment)}/
+                      bulkStudentsList.map((student) => (
+                        <div
+                          key={student.id}
+                          className="flex items-center gap-3 p-4 hover:bg-slate-50 dark:hover:bg-slate-900/50 cursor-pointer transition-colors"
+                          onClick={() => toggleStudentSelection(student.id)}
+                        >
+                          <Checkbox
+                            checked={selectedStudentIds.includes(student.id)}
+                            onCheckedChange={() =>
+                              toggleStudentSelection(student.id)
+                            }
+                          />
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-900 dark:text-slate-100">
+                              {student.fullName}
+                            </p>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                              {student.className} •{" "}
+                              {formatCurrency(student.monthlyPayment)}/
                                 {t("month")}
                               </p>
                             </div>
@@ -1606,7 +1655,7 @@ export default function PaymentsPage() {
                           {t("totalIncome")}:{" "}
                           {formatCurrency(
                             selectedStudentIds.reduce((sum, id) => {
-                              const student = filteredStudentsForModal.find(
+                              const student = bulkStudentsList.find(
                                 (s) => s.id === id,
                               );
                               return sum + (student?.monthlyPayment || 0);
@@ -1633,6 +1682,8 @@ export default function PaymentsPage() {
                     onClick={() => {
                       setIsBulkPaymentOpen(false);
                       setSelectedStudentIds([]);
+                      setBulkSearchTerm("");
+                      setBulkStudentsList([]);
                     }}
                   >
                     {t("cancel")}

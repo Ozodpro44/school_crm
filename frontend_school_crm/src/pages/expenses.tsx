@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,11 +38,12 @@ import {
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
   createExpense,
-  listExpenses,
   deleteExpense,
   updateExpense,
   getUser,
   getBranch,
+  getExpensesConsolidatedData,
+  ExpenseSummary,
 } from "@/lib/api";
 import { Branch } from "@/types";
 import MonthYearSelector from "@/components/MonthYearSelector";
@@ -54,12 +55,13 @@ import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DialogFooter } from "@/components/ui/dialog";
-import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 
 export default function ExpensesPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("all");
@@ -68,10 +70,15 @@ export default function ExpensesPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [totalExpenses, setTotalExpenses] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [indicators, setIndicators] = useState<ExpenseSummary | null>(null);
   const [userCache, setUserCache] = useState<{ [key: string]: string }>({});
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<number>(0);
+  const initialLoadDoneRef = useRef(false);
+  const filterChangeInProgressRef = useRef(false);
   const currentUser = getCurrentUser();
   const isAdmin =
     currentUser?.role === "admin" || currentUser?.role === "branch_admin";
@@ -142,25 +149,31 @@ export default function ExpensesPage() {
     return keyMap[category] || category.toLowerCase();
   };
 
-  useEffect(() => {
-    // Set currentPage and itemsPerPage from URL query params
-    if (router.isReady) {
-      const page = router.query.page
-        ? parseInt(router.query.page as string, 10)
-        : 1;
-      const limit = router.query.limit
-        ? parseInt(router.query.limit as string, 10)
-        : 10;
-      setCurrentPage(Math.max(1, page));
-      setItemsPerPage(limit);
-    }
-  }, [router.isReady, router.query.page, router.query.limit]);
+  const t = (key: string) => getTranslation(key, language);
 
+  // Initialize state from URL params
   useEffect(() => {
-    if (router.isReady) {
-      setIsLoading(true);
-      loadData().finally(() => setIsLoading(false));
+    if (!router.isReady) return;
+    
+    const { page, limit, search, category, paymentMethod, month, year } = router.query;
+    if (page) setCurrentPage(parseInt(page as string) || 1);
+    if (limit) setItemsPerPage(parseInt(limit as string) || 10);
+    if (search) {
+      setSearchTerm(search as string);
+      setSearchInput(search as string);
     }
+    if (category) setFilterCategory(category as string);
+    if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
+    if (month) setSelectedMonth(month as string);
+    if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
+
+    // Load initial data
+    setIsLoading(true);
+    loadData().finally(() => {
+      setIsLoading(false);
+      initialLoadDoneRef.current = true;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
   // Refetch when branch changes
@@ -168,7 +181,6 @@ export default function ExpensesPage() {
     const handleBranchChange = async () => {
       setIsLoading(true);
       setCurrentPage(1);
-      // Reset selectedMonth to force reload from new branch
       setSelectedMonth("");
       loadData().finally(() => setIsLoading(false));
     };
@@ -177,46 +189,100 @@ export default function ExpensesPage() {
     return () => window.removeEventListener("branchChange", handleBranchChange);
   }, []);
 
-  const t = (key: string) => getTranslation(key, language);
+  // Reload data when page or items per page changes
+  useEffect(() => {
+    if (!initialLoadDoneRef.current) return;
+    
+    // Skip if a filter change is in progress
+    if (filterChangeInProgressRef.current) {
+      filterChangeInProgressRef.current = false;
+      return;
+    }
+    
+    setIsLoading(true);
+    loadData().finally(() => setIsLoading(false));
+    
+    // Update URL
+    updateURL();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, itemsPerPage]);
 
-  const loadData = async (month?: string, year?: number) => {
+  // Refetch on focus
+  const refetchData = useCallback(() => {
+    setIsLoading(true);
+    loadData().finally(() => setIsLoading(false));
+  }, [searchTerm, filterCategory, filterPaymentMethod, selectedMonth, selectedYear, currentPage, itemsPerPage]);
+  useRefetchOnFocus(refetchData);
+
+  const updateURL = () => {
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (filterCategory !== "all") params.set("category", filterCategory);
+    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+    if (selectedMonth) params.set("month", selectedMonth);
+    if (selectedYear) params.set("year", selectedYear.toString());
+    params.set("page", currentPage.toString());
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
+  };
+
+  const loadData = async (
+    monthOverride?: string,
+    yearOverride?: number,
+    searchOverride?: string,
+    categoryOverride?: string,
+    paymentMethodOverride?: string,
+  ) => {
     try {
       const branchId = localStorage.getItem("selectedBranchId") || "";
-      let data: Expense[] = [];
-
-      // Load branch data to get current month
-      if (branchId) {
-        const branch = await getBranch(branchId);
-        setBranchData(branch);
-
-        // Use financial month data if available, otherwise fall back to current date
-        const currentMonth =
-          branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
-          new Date().getMonth().toString().padStart(2, "0");
-        const currentYear =
-          branch.currentFinancialMonth?.year || new Date().getFullYear();
-
-        // Set selected month to branch's current month if not already set and not provided
-        const targetMonth = month || selectedMonth || currentMonth;
-        const targetYear = year || selectedYear || currentYear;
-
-        if (!selectedMonth) {
-          setSelectedMonth(currentMonth);
-          setSelectedYear(currentYear);
-        }
-
-        // Always use the current branch month for filtering
-        const queryMonth = targetMonth;
-        const queryYear = targetYear;
-
-        data = await listExpenses(branchId, queryMonth, queryYear);
-        setExpenses(data);
+      if (!branchId) {
+        setExpenses([]);
+        return;
       }
 
+      // Load branch data to get current month
+      const branch = await getBranch(branchId);
+      setBranchData(branch);
+
+      // Use financial month data if available
+      const currentMonth =
+        branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
+        String(new Date().getMonth() + 1).padStart(2, "0");
+      const currentYear =
+        branch.currentFinancialMonth?.year || new Date().getFullYear();
+
+      // Set selected month to branch's current month if not already set
+      if (!selectedMonth) {
+        setSelectedMonth(currentMonth);
+        setSelectedYear(currentYear);
+      }
+
+      // Use override values first, then state, then URL params
+      const queryMonth = monthOverride || selectedMonth || currentMonth;
+      const queryYear = yearOverride || selectedYear || currentYear;
+      const querySearch = searchOverride !== undefined ? searchOverride : searchTerm;
+      const queryCategory = categoryOverride !== undefined ? categoryOverride : filterCategory;
+      const queryPaymentMethod = paymentMethodOverride !== undefined ? paymentMethodOverride : filterPaymentMethod;
+
+      // Build filters
+      const filters: any = {
+        month: queryMonth,
+        year: queryYear.toString(),
+      };
+      if (querySearch) filters.search = querySearch;
+      if (queryCategory !== "all") filters.category = queryCategory;
+      if (queryPaymentMethod !== "all") filters.paymentMethod = queryPaymentMethod;
+
+      // Call consolidated API
+      const result = await getExpensesConsolidatedData(branchId, currentPage, itemsPerPage, filters);
+      
+      setExpenses(result.items || []);
+      setTotalExpenses(result.total || 0);
+      setTotalPages(Math.ceil((result.total || 0) / itemsPerPage));
+      setIndicators(result.indicators);
+
       // Fetch user names for all unique creators
-      const creatorIds = [
-        ...new Set(data.map((e) => e.createdBy).filter(Boolean)),
-      ];
+      const creatorIds = [...new Set((result.items || []).map((e) => e.createdBy).filter(Boolean))];
       for (const userId of creatorIds) {
         await fetchAndCacheUserName(userId);
       }
@@ -231,9 +297,94 @@ export default function ExpensesPage() {
   };
 
   const handleMonthChange = (month: string, year: number) => {
+    filterChangeInProgressRef.current = true;
     setSelectedMonth(month);
     setSelectedYear(year);
-    loadData(month, year);
+    setCurrentPage(1);
+    setIsLoading(true);
+    loadData(month, year, searchTerm, filterCategory, filterPaymentMethod).finally(() => setIsLoading(false));
+    // Update URL
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (filterCategory !== "all") params.set("category", filterCategory);
+    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+    params.set("month", month);
+    params.set("year", year.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
+  };
+
+  const handleSearch = () => {
+    filterChangeInProgressRef.current = true;
+    setCurrentPage(1);
+    setSearchTerm(searchInput);
+    setIsLoading(true);
+    loadData(selectedMonth, selectedYear, searchInput, filterCategory, filterPaymentMethod).finally(() => setIsLoading(false));
+    // Update URL
+    const params = new URLSearchParams();
+    if (searchInput) params.set("search", searchInput);
+    if (filterCategory !== "all") params.set("category", filterCategory);
+    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+    if (selectedMonth) params.set("month", selectedMonth);
+    if (selectedYear) params.set("year", selectedYear.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
+  };
+
+  const handleClearSearch = () => {
+    filterChangeInProgressRef.current = true;
+    setSearchInput("");
+    setCurrentPage(1);
+    setSearchTerm("");
+    setIsLoading(true);
+    loadData(selectedMonth, selectedYear, "", filterCategory, filterPaymentMethod).finally(() => setIsLoading(false));
+    // Update URL
+    const params = new URLSearchParams();
+    if (filterCategory !== "all") params.set("category", filterCategory);
+    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+    if (selectedMonth) params.set("month", selectedMonth);
+    if (selectedYear) params.set("year", selectedYear.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
+  };
+
+  const handleCategoryChange = (value: string) => {
+    filterChangeInProgressRef.current = true;
+    setFilterCategory(value);
+    setCurrentPage(1);
+    setIsLoading(true);
+    loadData(selectedMonth, selectedYear, searchTerm, value, filterPaymentMethod).finally(() => setIsLoading(false));
+    // Update URL
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (value !== "all") params.set("category", value);
+    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+    if (selectedMonth) params.set("month", selectedMonth);
+    if (selectedYear) params.set("year", selectedYear.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
+  };
+
+  const handlePaymentMethodChange = (value: string) => {
+    filterChangeInProgressRef.current = true;
+    setFilterPaymentMethod(value);
+    setCurrentPage(1);
+    setIsLoading(true);
+    loadData(selectedMonth, selectedYear, searchTerm, filterCategory, value).finally(() => setIsLoading(false));
+    // Update URL
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (filterCategory !== "all") params.set("category", filterCategory);
+    if (value !== "all") params.set("paymentMethod", value);
+    if (selectedMonth) params.set("month", selectedMonth);
+    if (selectedYear) params.set("year", selectedYear.toString());
+    params.set("page", "1");
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
   };
 
   const getUserName = (userId: string) => {
@@ -447,39 +598,15 @@ export default function ExpensesPage() {
     }
   };
 
-  const filteredExpenses = expenses.filter((expense) => {
-    const matchesSearch =
-      searchMatchesCrossScript(expense.title, searchTerm) ||
-      searchMatchesCrossScript(expense.category, searchTerm);
+  // Server-side filtering and pagination - no client-side filtering needed
+  const paginatedExpenses = expenses;
 
-    const matchesCategory =
-      filterCategory === "all" || expense.category === filterCategory;
-
-    const matchesPaymentMethod =
-      filterPaymentMethod === "all" ||
-      expense.paymentMethod === filterPaymentMethod;
-
-    return matchesSearch && matchesCategory && matchesPaymentMethod;
-  });
-
-  const totalPages = Math.ceil(filteredExpenses.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedExpenses = filteredExpenses.slice(
-    startIndex,
-    startIndex + itemsPerPage,
-  );
-
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+  // Use API indicators if available, otherwise calculate from current page data
+  const totalExpenseAmount = indicators?.totalAmount || expenses.reduce((sum, e) => sum + e.amount, 0);
   const totalByMethod = {
-    card: expenses
-      .filter((e) => e.paymentMethod === "card")
-      .reduce((sum, e) => sum + e.amount, 0),
-    cash: expenses
-      .filter((e) => e.paymentMethod === "cash")
-      .reduce((sum, e) => sum + e.amount, 0),
-    bank: expenses
-      .filter((e) => e.paymentMethod === "bank")
-      .reduce((sum, e) => sum + e.amount, 0),
+    card: indicators?.byMethod?.card || 0,
+    cash: indicators?.byMethod?.cash || 0,
+    bank: indicators?.byMethod?.bank || 0,
   };
 
   if (isLoading) {
@@ -797,10 +924,10 @@ export default function ExpensesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-              {formatCurrency(totalExpenses)}
+              {formatCurrency(totalExpenseAmount)}
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("allTime")}
+              {t("thisMonth")}
             </p>
           </CardContent>
         </Card>
@@ -884,58 +1011,91 @@ export default function ExpensesPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-              <Input
-                placeholder={t("searchExpenses")}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <Input
+                  placeholder={t("searchExpenses")}
+                  value={searchInput}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSearchInput(value);
+                    // Auto-clear search when input is empty
+                    if (value === "" && searchTerm !== "") {
+                      handleClearSearch();
+                    }
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter") {
+                      handleSearch();
+                    }
+                  }}
+                  className="pl-10"
+                />
+              </div>
+              <Button
+                onClick={handleSearch}
+                className="bg-blue-600 hover:bg-blue-700"
+                size="sm"
+              >
+                {t("search") || "Search"}
+              </Button>
+              {searchInput && (
+                <Button
+                  onClick={handleClearSearch}
+                  variant="outline"
+                  size="sm"
+                >
+                  {t("clear") || "Clear"}
+                </Button>
+              )}
             </div>
-            <Select value={filterCategory} onValueChange={setFilterCategory}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder={t("allCategories")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("allCategories")}</SelectItem>
-                {categories.map((category) => (
-                  <SelectItem key={category} value={category}>
-                    {t(getCategoryTranslationKey(category))}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={filterPaymentMethod}
-              onValueChange={setFilterPaymentMethod}
-            >
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder={t("allMethods")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("allMethods")}</SelectItem>
-                <SelectItem value="card">{t("card")}</SelectItem>
-                <SelectItem value="cash">{t("cash")}</SelectItem>
-                <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={itemsPerPage.toString()} onValueChange={(val) => {
-                  const limit = parseInt(val);
-                  setItemsPerPage(limit);                    setCurrentPage(1);
-                  router.push(`/expenses?page=1&limit=${limit}`);
-                }}>
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10 {t("perPage")}</SelectItem>
-                    <SelectItem value="20">20 {t("perPage")}</SelectItem>
-                    <SelectItem value="50">50 {t("perPage")}</SelectItem>
-                    <SelectItem value="100">100 {t("perPage")}</SelectItem>
-                  </SelectContent>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Select value={filterCategory} onValueChange={handleCategoryChange}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder={t("allCategories")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allCategories")}</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {t(getCategoryTranslationKey(category))}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
               </Select>
+              <Select
+                value={filterPaymentMethod}
+                onValueChange={handlePaymentMethodChange}
+              >
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder={t("allMethods")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allMethods")}</SelectItem>
+                  <SelectItem value="card">{t("card")}</SelectItem>
+                  <SelectItem value="cash">{t("cash")}</SelectItem>
+                  <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={itemsPerPage.toString()} onValueChange={(val) => {
+                    const limit = parseInt(val);
+                    filterChangeInProgressRef.current = true;
+                    setItemsPerPage(limit);
+                    setCurrentPage(1);
+                  }}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10 {t("perPage")}</SelectItem>
+                      <SelectItem value="20">20 {t("perPage")}</SelectItem>
+                      <SelectItem value="50">50 {t("perPage")}</SelectItem>
+                      <SelectItem value="100">100 {t("perPage")}</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -946,10 +1106,10 @@ export default function ExpensesPage() {
                   <th className="text-left py-3 px-4">
                     <Checkbox
                       checked={
-                        areAllSelected(filteredExpenses) ||
-                        areSomeSelected(filteredExpenses)
+                        areAllSelected(paginatedExpenses) ||
+                        areSomeSelected(paginatedExpenses)
                       }
-                      onCheckedChange={() => toggleSelectAll(filteredExpenses)}
+                      onCheckedChange={() => toggleSelectAll(paginatedExpenses)}
                     />
                   </th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
@@ -1057,7 +1217,7 @@ export default function ExpensesPage() {
               </tbody>
             </table>
 
-            {filteredExpenses.length === 0 && (
+            {paginatedExpenses.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-slate-500 dark:text-slate-400">
                   {t("noExpensesFound")}
@@ -1066,13 +1226,13 @@ export default function ExpensesPage() {
             )}
 
             {/* Pagination */}
-            {filteredExpenses.length > 0 && (
+            {totalExpenses > 0 && (
               <div className="flex flex-col gap-4 mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("showing")} {startIndex + 1} -{" "}
-                    {Math.min(startIndex + itemsPerPage, filteredExpenses.length)}{" "}
-                    {t("of")} {filteredExpenses.length}
+                    {t("showing")} {(currentPage - 1) * itemsPerPage + 1} -{" "}
+                    {Math.min(currentPage * itemsPerPage, totalExpenses)}{" "}
+                    {t("of")} {totalExpenses}
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -1082,7 +1242,6 @@ export default function ExpensesPage() {
                     onClick={() => {
                       const newPage = Math.max(1, currentPage - 1);
                       setCurrentPage(newPage);
-                      router.push(`/expenses?page=${newPage}&limit=${itemsPerPage}`);
                     }}
                     disabled={currentPage === 1}
                   >
@@ -1090,21 +1249,24 @@ export default function ExpensesPage() {
                     {t("previous")}
                   </Button>
                   <div className="flex items-center gap-2">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                      (page) => (
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      const startPage = Math.max(1, currentPage - 2);
+                      return startPage + i;
+                    })
+                      .filter((page) => page <= totalPages)
+                      .map((page) => (
                         <Button
                            key={page}
                            variant={currentPage === page ? "default" : "outline"}
                            size="sm"
                            onClick={() => {
                              setCurrentPage(page);
-                             router.push(`/expenses?page=${page}&limit=${itemsPerPage}`);
                            }}
+                           className="h-8 w-8 p-0"
                          >
                            {page}
                          </Button>
-                      ),
-                    )}
+                      ))}
                   </div>
                   <Button
                     variant="outline"
@@ -1112,9 +1274,8 @@ export default function ExpensesPage() {
                     onClick={() => {
                       const newPage = Math.min(totalPages, currentPage + 1);
                       setCurrentPage(newPage);
-                      router.push(`/expenses?page=${newPage}&limit=${itemsPerPage}`);
                     }}
-                    disabled={currentPage === totalPages}
+                    disabled={currentPage === totalPages || totalPages === 0}
                   >
                     {t("next")}
                     <ChevronRight className="w-4 h-4 ml-1" />

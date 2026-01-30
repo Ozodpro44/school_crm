@@ -1167,6 +1167,52 @@ export async function listExpenses(
 }
 
 /**
+ * Expense summary indicators
+ */
+export interface ExpenseSummary {
+  totalAmount: number;
+  byCategory: Record<string, number>;
+  byMethod: Record<string, number>;
+}
+
+/**
+ * Expense list response with pagination and indicators
+ */
+export interface ExpenseListResponse {
+  items: Expense[];
+  indicators: ExpenseSummary;
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/**
+ * Get expenses with filters, pagination, and indicators (consolidated endpoint)
+ */
+export async function getExpensesConsolidatedData(
+  branchId: string,
+  page?: number,
+  limit?: number,
+  filters?: {
+    search?: string;
+    category?: string;
+    paymentMethod?: string;
+    month?: string;
+    year?: string;
+  }
+): Promise<ExpenseListResponse> {
+  let query = `/expenses/consolidated/data?branchId=${branchId}`;
+  if (page) query += `&page=${page}`;
+  if (limit) query += `&limit=${limit}`;
+  if (filters?.search) query += `&search=${encodeURIComponent(filters.search)}`;
+  if (filters?.category) query += `&category=${filters.category}`;
+  if (filters?.paymentMethod) query += `&paymentMethod=${filters.paymentMethod}`;
+  if (filters?.month) query += `&month=${filters.month}`;
+  if (filters?.year) query += `&year=${filters.year}`;
+  return apiRequest<ExpenseListResponse>(query);
+}
+
+/**
  * Delete expense
  */
 export async function deleteExpense(id: string): Promise<{ success: boolean }> {
