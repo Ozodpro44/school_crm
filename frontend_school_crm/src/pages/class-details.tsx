@@ -45,6 +45,9 @@ import {
   listTeachers as apiListTeachers,
   listPayments as apiListPayments,
   getBranch,
+  updateStudent as apiUpdateStudent,
+  updateClass as apiUpdateClass,
+  deleteClass as apiDeleteClass,
 } from "@/lib/api";
 import type { Payment } from "@/lib/api";
 import type { Branch } from "@/types";
@@ -240,14 +243,23 @@ export default function ClassDetailsPage() {
       message:
         t("removeStudentFromClassConfirmation") ||
         "Remove this student from the class?",
-      onConfirm: () => {
-        studentsDB.update(studentId, { classId: undefined });
-        loadData();
-        toast({
-          title: t("success"),
-          description: "Student removed from class",
-          variant: "success",
-        });
+      onConfirm: async () => {
+        try {
+          await apiUpdateStudent(studentId, { classId: "" });
+          await loadData();
+          toast({
+            title: t("success"),
+            description: "Student removed from class",
+            variant: "success",
+          });
+        } catch (error) {
+          console.error("Failed to remove student:", error);
+          toast({
+            title: t("error"),
+            description: "Failed to remove student from class",
+            variant: "destructive",
+          });
+        }
         setConfirmDialog({ ...confirmDialog, isOpen: false });
       },
       onCancel: () => {
@@ -287,18 +299,29 @@ export default function ClassDetailsPage() {
       message:
         t("switchConfirmation") ||
         `Switch ${selectedCount} student(s) to ${targetClass.name}?`,
-      onConfirm: () => {
-        ids.forEach((studentId) => {
-          studentsDB.update(studentId, { classId: targetClassId });
-        });
-        clearSelection();
-        setTargetClassId("");
-        loadData();
-        toast({
-          title: t("success"),
-          description: `${selectedCount} student(s) switched to new class`,
-          variant: "success",
-        });
+      onConfirm: async () => {
+        try {
+          await Promise.all(
+            ids.map((studentId) =>
+              apiUpdateStudent(studentId, { classId: targetClassId })
+            )
+          );
+          clearSelection();
+          setTargetClassId("");
+          await loadData();
+          toast({
+            title: t("success"),
+            description: `${selectedCount} student(s) switched to new class`,
+            variant: "success",
+          });
+        } catch (error) {
+          console.error("Failed to switch students:", error);
+          toast({
+            title: t("error"),
+            description: "Failed to switch students to new class",
+            variant: "destructive",
+          });
+        }
         setConfirmDialog({ ...confirmDialog, isOpen: false });
       },
       onCancel: () => {
@@ -416,7 +439,7 @@ export default function ClassDetailsPage() {
     }
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!classData || !editFormData.name.trim()) {
       toast({
         title: t("error"),
@@ -426,18 +449,27 @@ export default function ClassDetailsPage() {
       return;
     }
 
-    classesDB.update(classData.id, {
-      name: editFormData.name,
-      teacherId: editFormData.teacherId || undefined,
-    });
+    try {
+      await apiUpdateClass(classData.id, {
+        name: editFormData.name,
+        teacherId: editFormData.teacherId || undefined,
+      });
 
-    loadData();
-    setIsEditModalOpen(false);
-    toast({
-      title: t("success"),
-      description: "Class updated successfully",
-      variant: "success",
-    });
+      await loadData();
+      setIsEditModalOpen(false);
+      toast({
+        title: t("success"),
+        description: "Class updated successfully",
+        variant: "success",
+      });
+    } catch (error) {
+      console.error("Failed to update class:", error);
+      toast({
+        title: t("error"),
+        description: "Failed to update class",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDelete = () => {
@@ -456,15 +488,25 @@ export default function ClassDetailsPage() {
       message:
         t("deleteClassConfirmation") ||
         "Are you sure you want to delete this class?",
-      onConfirm: () => {
-        classesDB.delete(classData!.id);
-        toast({
-          title: t("success"),
-          description:
-            t("classDeletedSuccessfully") || "Class deleted successfully",
-          variant: "success",
-        });
-        router.push("/classes");
+      onConfirm: async () => {
+        try {
+          await apiDeleteClass(classData!.id);
+          toast({
+            title: t("success"),
+            description:
+              t("classDeletedSuccessfully") || "Class deleted successfully",
+            variant: "success",
+          });
+          router.push("/classes");
+        } catch (error) {
+          console.error("Failed to delete class:", error);
+          toast({
+            title: t("error"),
+            description: "Failed to delete class",
+            variant: "destructive",
+          });
+          setConfirmDialog({ ...confirmDialog, isOpen: false });
+        }
       },
       onCancel: () => {
         setConfirmDialog({ ...confirmDialog, isOpen: false });
