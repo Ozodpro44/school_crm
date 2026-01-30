@@ -94,6 +94,7 @@ export default function PaymentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("all");
+  const [filterClassId, setFilterClassId] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isBulkPaymentOpen, setIsBulkPaymentOpen] = useState(false);
@@ -232,6 +233,7 @@ export default function PaymentsPage() {
     searchOverride?: string,
     statusOverride?: string,
     paymentMethodOverride?: string,
+    classIdOverride?: string,
   ) => {
     try {
       // Generate a unique ID for this load request
@@ -293,11 +295,16 @@ export default function PaymentsPage() {
           paymentMethodOverride !== undefined
             ? paymentMethodOverride
             : filterPaymentMethod || (router.query.paymentMethod as string) || "all";
+        const classIdValue =
+          classIdOverride !== undefined
+            ? classIdOverride
+            : filterClassId || (router.query.classId as string) || "all";
 
         if (searchValue) filters.search = searchValue;
         if (statusValue !== "all") filters.status = statusValue;
         if (paymentMethodValue !== "all")
           filters.paymentMethod = paymentMethodValue;
+        if (classIdValue !== "all") filters.classId = classIdValue;
         filters.month = queryMonth;
         filters.year = queryYear.toString();
 
@@ -352,55 +359,10 @@ export default function PaymentsPage() {
         });
         setStudentInfoMap(studentMap);
 
-        // For display, consolidate partial payments by student + month + year
-        const paymentsByKey = new Map<string, Payment[]>();
-
-        paymentsList.forEach((payment: Payment) => {
-          const key = `${payment.studentId}-${payment.month}-${payment.year}`;
-          if (!paymentsByKey.has(key)) {
-            paymentsByKey.set(key, []);
-          }
-          paymentsByKey.get(key)!.push(payment);
-        });
-
-        // Consolidate: merge multiple partial payments into one
-        const consolidatedPayments: Payment[] = [];
-        const consolidationMap = new Map<string, string[]>();
-
-        paymentsByKey.forEach((paymentsForKey) => {
-          const partialPayments = paymentsForKey.filter(
-            (p) => p.status === "partial",
-          );
-          const paidPayments = paymentsForKey.filter(
-            (p) => p.status === "paid",
-          );
-
-          if (partialPayments.length > 1) {
-            // Multiple partials: consolidate them
-            const consolidated = {
-              ...partialPayments[0],
-              amount: partialPayments.reduce((sum, p) => sum + p.amount, 0),
-              invoiceNumber: "CONSOLIDATED",
-            };
-            consolidatedPayments.push(consolidated);
-            // Track which individual payment IDs are part of this consolidation
-            consolidationMap.set(
-              consolidated.id,
-              partialPayments.map((p) => p.id),
-            );
-            // Also add any paid payments separately
-            consolidatedPayments.push(...paidPayments);
-          } else {
-            // Single or no partial: keep as is
-            consolidatedPayments.push(...paymentsForKey);
-          }
-        });
-
-        // No need to fetch all students - we use search endpoint for modal
-        // and consolidated endpoint already has class information
-
-        setPayments(consolidatedPayments);
-        setConsolidatedPaymentMap(consolidationMap);
+        // Show all payments individually (no consolidation)
+        // Each partial payment is displayed with its own amount, method, and date
+        setPayments(paymentsList);
+        setConsolidatedPaymentMap(new Map());
         setStudents([]);
         setClasses(classesList);
       } else {
@@ -429,7 +391,7 @@ export default function PaymentsPage() {
   useEffect(() => {
     if (!router.isReady) return;
 
-    const { page, limit, search, status, month, year, paymentMethod } = router.query;
+    const { page, limit, search, status, month, year, paymentMethod, classId } = router.query;
 
     // Set state from URL params
     if (page) setCurrentPage(parseInt(page as string) || 1);
@@ -440,6 +402,7 @@ export default function PaymentsPage() {
     }
     if (status) setFilterStatus(status as string);
     if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
+    if (classId) setFilterClassId(classId as string);
     if (month) setSelectedMonth(month as string);
     if (year)
       setSelectedYear(parseInt(year as string) || new Date().getFullYear());
@@ -478,13 +441,14 @@ export default function PaymentsPage() {
     }
     
     setIsLoading(true);
-    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod).finally(() => setIsLoading(false));
+    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId).finally(() => setIsLoading(false));
     
     // Update URL with current pagination
     const params = new URLSearchParams();
     if (searchTerm) params.set("search", searchTerm);
     if (filterStatus !== "all") params.set("status", filterStatus);
     if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+    if (filterClassId !== "all") params.set("classId", filterClassId);
     params.set("month", selectedMonth);
     params.set("year", selectedYear.toString());
     params.set("page", currentPage.toString());
@@ -496,8 +460,8 @@ export default function PaymentsPage() {
   // Refetch data when page regains focus (preserves current filters)
   const refetchData = useCallback(() => {
     setIsLoading(true);
-    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod).finally(() => setIsLoading(false));
-  }, [searchTerm, filterStatus, filterPaymentMethod, selectedMonth, selectedYear, currentPage, itemsPerPage]);
+    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId).finally(() => setIsLoading(false));
+  }, [searchTerm, filterStatus, filterPaymentMethod, filterClassId, selectedMonth, selectedYear, currentPage, itemsPerPage]);
   useRefetchOnFocus(refetchData);
 
   const handleMonthChange = (month: string, year: number) => {
@@ -508,7 +472,7 @@ export default function PaymentsPage() {
     setCurrentPage(1); // Reset to first page when month changes
     setIsLoading(true);
     // Load data with new month/year
-    loadData(month, year, searchTerm, filterStatus, filterPaymentMethod).finally(() =>
+    loadData(month, year, searchTerm, filterStatus, filterPaymentMethod, filterClassId).finally(() =>
       setIsLoading(false),
     );
     // Update URL with new month/year
@@ -700,7 +664,7 @@ export default function PaymentsPage() {
 
     resetForm();
     setEditingPaymentId(null);
-    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod);
+    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId);
     setIsDialogOpen(false);
     setIsSubmitting(false);
   };
@@ -765,7 +729,7 @@ export default function PaymentsPage() {
     setProcessingPaymentId(id);
     try {
       await apiDeletePayment(id);
-      await loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod);
+      await loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId);
       toast({ title: t("paymentDeleted"), variant: "success" });
     } catch (error) {
       console.error("Failed to delete payment:", error);
@@ -778,7 +742,7 @@ export default function PaymentsPage() {
           description: "Payment was already removed",
           variant: "default",
         });
-        await loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod);
+        await loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId);
       } else {
         toast({
           title: t("error"),
@@ -876,7 +840,7 @@ export default function PaymentsPage() {
       });
     }
 
-    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod);
+    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId);
     setIsBulkPaymentOpen(false);
     setSelectedStudentIds([]);
     setBulkSearchTerm("");
@@ -1206,7 +1170,7 @@ export default function PaymentsPage() {
     setSearchTerm(searchInput);
     setIsLoading(true);
     // Load data immediately with new search term - pass all filter values
-    loadData(selectedMonth, selectedYear, searchInput, filterStatus, filterPaymentMethod).finally(() =>
+    loadData(selectedMonth, selectedYear, searchInput, filterStatus, filterPaymentMethod, filterClassId).finally(() =>
       setIsLoading(false),
     );
     // Update URL with search - always include month/year for consistency
@@ -1214,6 +1178,7 @@ export default function PaymentsPage() {
     if (searchInput) params.set("search", searchInput);
     if (filterStatus !== "all") params.set("status", filterStatus);
     if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+    if (filterClassId !== "all") params.set("classId", filterClassId);
     params.set("month", selectedMonth);
     params.set("year", selectedYear.toString());
     params.set("page", "1");
@@ -2294,6 +2259,47 @@ export default function PaymentsPage() {
                   </SelectContent>
                 </Select>
                 <Select
+                  value={filterClassId}
+                  onValueChange={(value) => {
+                    filterChangeInProgressRef.current = true;
+                    setFilterClassId(value);
+                    setCurrentPage(1);
+                    setIsLoading(true);
+                    loadData(
+                      selectedMonth,
+                      selectedYear,
+                      searchTerm,
+                      filterStatus,
+                      filterPaymentMethod,
+                      value,
+                    ).finally(() => setIsLoading(false));
+                    const params = new URLSearchParams();
+                    if (searchTerm) params.set("search", searchTerm);
+                    if (filterStatus !== "all") params.set("status", filterStatus);
+                    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+                    if (value !== "all") params.set("classId", value);
+                    params.set("month", selectedMonth);
+                    params.set("year", selectedYear.toString());
+                    params.set("page", "1");
+                    params.set("limit", itemsPerPage.toString());
+                    router.push(`/payments?${params.toString()}`, undefined, {
+                      shallow: true,
+                    });
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={t("allClasses")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("allClasses")}</SelectItem>
+                    {classes.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
                   value={itemsPerPage.toString()}
                   onValueChange={(val) => {
                     const limit = parseInt(val);
@@ -2439,31 +2445,28 @@ export default function PaymentsPage() {
                               size="sm"
                               variant="outline"
                               onClick={() => {
-                                const student = filteredStudentsForModal.find(
-                                  (s) => s.id === payment.studentId,
-                                );
-                                if (student) {
-                                  const selectedBranchId =
-                                    localStorage.getItem("selectedBranchId") ||
-                                    "";
-                                  setPosPreviewData({
-                                    payment,
-                                    student: {
-                                      id: student.id,
-                                      fullName: student.fullName,
-                                      phone: student.phone,
-                                      classId: student.classId,
-                                      monthlyPayment: student.monthlyPayment,
-                                      branchId: selectedBranchId,
-                                      status: "active",
-                                      parentPhone: "",
-                                      enrollmentDate: undefined,
-                                      createdAt: new Date().toISOString(),
-                                      updatedAt: new Date().toISOString(),
-                                    },
-                                    className: getClassName(payment.studentId),
-                                  });
-                                }
+                                // Use studentInfoMap from consolidated endpoint
+                                const studentInfo = studentInfoMap.get(payment.studentId);
+                                const selectedBranchId =
+                                  localStorage.getItem("selectedBranchId") || "";
+                                
+                                setPosPreviewData({
+                                  payment,
+                                  student: {
+                                    id: payment.studentId,
+                                    fullName: studentInfo?.fullName || getStudentName(payment.studentId),
+                                    phone: studentInfo?.phone || "",
+                                    classId: studentInfo?.classId || "",
+                                    monthlyPayment: studentInfo?.monthlyPayment || 0,
+                                    branchId: selectedBranchId,
+                                    status: "active",
+                                    parentPhone: "",
+                                    enrollmentDate: undefined,
+                                    createdAt: new Date().toISOString(),
+                                    updatedAt: new Date().toISOString(),
+                                  },
+                                  className: studentInfo?.className || getClassName(payment.studentId),
+                                });
                               }}
                               title={t("printReceipt")}
                             >

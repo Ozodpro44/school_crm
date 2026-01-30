@@ -392,6 +392,8 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 
 	// Second query: Calculate unpaid amount
 	// Unpaid = Total monthly fees for all active students - What they've already paid
+	// Only include students who were enrolled before the selected month started
+	// (students created during or after the month should not count as unpaid for that month)
 	unpaidQuery := `
 	WITH student_payments AS (
 		SELECT 
@@ -400,7 +402,9 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 			COALESCE(SUM(CASE WHEN p.status IN ('paid', 'partial') THEN p.amount ELSE 0 END), 0) as paid_amount
 		FROM students s
 		LEFT JOIN payments p ON s.id = p.student_id AND p.branch_id = $1 AND p.month = $2 AND p.year = $3
-		WHERE s.branch_id = $1 AND s.status = 'active'
+		WHERE s.branch_id = $1 
+		AND s.status = 'active'
+		AND s.created_at < make_date($3::int, $2::int, 1)
 		GROUP BY s.id, s.monthly_payment
 	)
 	SELECT COALESCE(SUM(GREATEST(0, monthly_payment - paid_amount)), 0) as total_unpaid
@@ -509,7 +513,7 @@ func (s *PaymentService) ConsolidatePayments(payments []models.Payment) []models
 
 // GetByBranchIDWithFilters returns payments with pagination and dynamic filtering
 // Similar to StudentService.GetByBranchIDWithFilters
-func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, paymentMethod, month, year string) (*models.PaymentListResponse, error) {
+func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, paymentMethod, month, year, classID string) (*models.PaymentListResponse, error) {
 	intPage, err := strconv.Atoi(page)
 	if err != nil || intPage < 1 {
 		intPage = 1
@@ -552,6 +556,12 @@ func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 	if paymentMethod != "" {
 		where += fmt.Sprintf(" AND p.payment_method = $%d", argID)
 		args = append(args, paymentMethod)
+		argID++
+	}
+
+	if classID != "" {
+		where += fmt.Sprintf(" AND s.class_id = $%d", argID)
+		args = append(args, classID)
 		argID++
 	}
 

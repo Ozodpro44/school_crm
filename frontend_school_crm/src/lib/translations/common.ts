@@ -454,6 +454,11 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Barcha to'lovlar",
     en: "All Payments",
   },
+  allPaymentMethods: {
+    "uz-cyrl": "Барча усуллар",
+    "uz-latn": "Barcha usullar",
+    en: "All Methods",
+  },
   searchStudents: {
     "uz-cyrl": "Ўқувчиларни қидириш...",
     "uz-latn": "O'quvchilarni qidirish...",

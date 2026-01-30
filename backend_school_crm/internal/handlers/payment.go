@@ -506,6 +506,7 @@ func getPaymentsConsolidatedData(paymentService *service.PaymentService, branchS
 		paymentMethod := c.Query("paymentMethod")
 		month := c.Query("month")
 		year := c.Query("year")
+		classID := c.Query("classId")
 
 		// Pagination parameters
 		page := c.DefaultQuery("page", "1")
@@ -528,7 +529,7 @@ func getPaymentsConsolidatedData(paymentService *service.PaymentService, branchS
 		}
 
 		// Get payments with filters using service function
-		result, err := paymentService.GetByBranchIDWithFilters(c.Request.Context(), branchID, page, limit, search, status, paymentMethod, month, year)
+		result, err := paymentService.GetByBranchIDWithFilters(c.Request.Context(), branchID, page, limit, search, status, paymentMethod, month, year, classID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
