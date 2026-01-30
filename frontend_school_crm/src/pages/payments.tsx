@@ -227,6 +227,16 @@ export default function PaymentsPage() {
     return true;
   };
 
+  const waitForSelectedBranchId = async () => {
+    let retries = 0;
+    const maxRetries = 20;
+    while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      retries++;
+    }
+    return localStorage.getItem("selectedBranchId");
+  };
+
   const loadData = async (
     month?: string,
     year?: number,
@@ -248,7 +258,7 @@ export default function PaymentsPage() {
         return;
       }
 
-      const selectedBranchId = localStorage.getItem("selectedBranchId");
+      const selectedBranchId = await waitForSelectedBranchId();
       if (selectedBranchId) {
         // Load branch data to get current month
         const branch = await getBranch(selectedBranchId);
@@ -365,18 +375,9 @@ export default function PaymentsPage() {
         setConsolidatedPaymentMap(new Map());
         setStudents([]);
         setClasses(classesList);
-      } else {
-        // Load from local storage as fallback if no branch selected
-        setStudents(studentsDB.getAll());
-        setClasses(classesDB.getAll());
-        setPayments(paymentsDB.getAll());
       }
     } catch (error) {
       console.error("Failed to load data:", error);
-      // Load from local storage as fallback
-      setStudents(studentsDB.getAll());
-      setClasses(classesDB.getAll());
-      setPayments(paymentsDB.getAll());
       toast({
         title: t("error"),
         description: "Failed to load payments",

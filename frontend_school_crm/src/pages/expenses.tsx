@@ -226,6 +226,16 @@ export default function ExpensesPage() {
     router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
   };
 
+  const waitForSelectedBranchId = async () => {
+    let retries = 0;
+    const maxRetries = 20;
+    while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      retries++;
+    }
+    return localStorage.getItem("selectedBranchId");
+  };
+
   const loadData = async (
     monthOverride?: string,
     yearOverride?: number,
@@ -235,9 +245,8 @@ export default function ExpensesPage() {
     pageOverride?: number,
   ) => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId") || "";
+      const branchId = await waitForSelectedBranchId();
       if (!branchId) {
-        setExpenses([]);
         return;
       }
 

@@ -238,6 +238,7 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 			WHERE student_id = s.id
 			AND month = $` + strconv.Itoa(argID) + `
 			AND year = $` + strconv.Itoa(argID+1) + `
+			AND status IN ('paid', 'partial')
 		) p ON true
 		` + where
 
@@ -284,6 +285,7 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 			WHERE student_id = s.id
 			AND month = $` + strconv.Itoa(argID) + `
 			AND year = $` + strconv.Itoa(argID+1) + `
+			AND status IN ('paid', 'partial')
 		) p ON true
 		` + where + `
 		ORDER BY s.full_name ASC

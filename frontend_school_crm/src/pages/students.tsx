@@ -143,6 +143,16 @@ export default function StudentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
+  const waitForSelectedBranchId = async () => {
+    let retries = 0;
+    const maxRetries = 20;
+    while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      retries++;
+    }
+    return localStorage.getItem("selectedBranchId");
+  };
+
   const loadData = async (
     searchOverride?: string,
     statusOverride?: string,
@@ -156,7 +166,7 @@ export default function StudentsPage() {
       setBranchData(null);
       return;
     }
-    const selectedBranchId = localStorage.getItem("selectedBranchId");
+    const selectedBranchId = await waitForSelectedBranchId();
     try {
       if (selectedBranchId) {
         const filters: any = {};
@@ -194,10 +204,6 @@ export default function StudentsPage() {
         setTotalPages(Math.ceil(totalVal / limit));
         setClasses(classesList);
         setBranchData(null); // Clear branch data since we're not fetching it
-      } else {
-        setStudents([]);
-        setClasses([]);
-        setBranchData(null);
       }
     } catch (error) {
       console.error("Failed to load data:", error);
