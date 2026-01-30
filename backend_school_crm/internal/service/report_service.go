@@ -704,14 +704,11 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	cardProfit := cardIncome - cardExpenses
 	bankProfit := bankIncome - bankExpenses
 	
-	// Count debtors
-	// Only include students who were enrolled before the end of the selected month
-	// (students created after the month should not count as debtors for that month)
+	// Count debtors - students who haven't fully paid for the month
 	debtorsQuery := `
 		SELECT COUNT(DISTINCT s.id)
 		FROM students s
 		WHERE s.branch_id = $1 AND s.status = 'active'
-		AND s.created_at < (make_date($3::int, $2::int, 1) + INTERVAL '1 month')
 		AND NOT EXISTS (
 			SELECT 1 FROM payments p
 			WHERE p.student_id = s.id AND p.month = $2 AND p.year = $3 AND p.status = 'paid'

@@ -392,8 +392,6 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 
 	// Second query: Calculate unpaid amount
 	// Unpaid = Total monthly fees for all active students - What they've already paid
-	// Only include students who were enrolled before the end of the selected month
-	// (students created after the month should not count as unpaid for that month)
 	unpaidQuery := `
 	WITH student_payments AS (
 		SELECT 
@@ -404,7 +402,6 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 		LEFT JOIN payments p ON s.id = p.student_id AND p.branch_id = $1 AND p.month = $2 AND p.year = $3
 		WHERE s.branch_id = $1 
 		AND s.status = 'active'
-		AND s.created_at < (make_date($3::int, $2::int, 1) + INTERVAL '1 month')
 		GROUP BY s.id, s.monthly_payment
 	)
 	SELECT COALESCE(SUM(GREATEST(0, monthly_payment - paid_amount)), 0) as total_unpaid
