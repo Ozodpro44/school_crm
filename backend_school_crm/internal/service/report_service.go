@@ -705,14 +705,19 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	bankProfit := bankIncome - bankExpenses
 	
 	// Count debtors - students who haven't fully paid for the month
+	// A student is considered paid if the sum of all their payments (partial or paid) >= monthly_payment
 	debtorsQuery := `
-		SELECT COUNT(DISTINCT s.id)
-		FROM students s
-		WHERE s.branch_id = $1 AND s.status = 'active'
-		AND NOT EXISTS (
-			SELECT 1 FROM payments p
-			WHERE p.student_id = s.id AND p.month = $2 AND p.year = $3 AND p.status = 'paid'
-		)
+		SELECT COUNT(*)
+		FROM (
+			SELECT s.id, s.monthly_payment, COALESCE(SUM(p.amount), 0) as total_paid
+			FROM students s
+			LEFT JOIN payments p ON p.student_id = s.id 
+				AND p.month = $2 AND p.year = $3 
+				AND p.status IN ('paid', 'partial')
+			WHERE s.branch_id = $1 AND s.status = 'active'
+			GROUP BY s.id, s.monthly_payment
+			HAVING COALESCE(SUM(p.amount), 0) < s.monthly_payment
+		) AS unpaid_students
 	`
 	var debtorsCount int
 	err = s.db.GetConn().QueryRowContext(ctx, debtorsQuery, branchID, monthStr, year).Scan(&debtorsCount)

@@ -232,6 +232,7 @@ export default function ExpensesPage() {
     searchOverride?: string,
     categoryOverride?: string,
     paymentMethodOverride?: string,
+    pageOverride?: number,
   ) => {
     try {
       const branchId = localStorage.getItem("selectedBranchId") || "";
@@ -263,6 +264,7 @@ export default function ExpensesPage() {
       const querySearch = searchOverride !== undefined ? searchOverride : searchTerm;
       const queryCategory = categoryOverride !== undefined ? categoryOverride : filterCategory;
       const queryPaymentMethod = paymentMethodOverride !== undefined ? paymentMethodOverride : filterPaymentMethod;
+      const queryPage = pageOverride !== undefined ? pageOverride : currentPage;
 
       // Build filters
       const filters: any = {
@@ -274,7 +276,7 @@ export default function ExpensesPage() {
       if (queryPaymentMethod !== "all") filters.paymentMethod = queryPaymentMethod;
 
       // Call consolidated API
-      const result = await getExpensesConsolidatedData(branchId, currentPage, itemsPerPage, filters);
+      const result = await getExpensesConsolidatedData(branchId, queryPage, itemsPerPage, filters);
       
       setExpenses(result.items || []);
       setTotalExpenses(result.total || 0);
@@ -302,7 +304,7 @@ export default function ExpensesPage() {
     setSelectedYear(year);
     setCurrentPage(1);
     setIsLoading(true);
-    loadData(month, year, searchTerm, filterCategory, filterPaymentMethod).finally(() => setIsLoading(false));
+    loadData(month, year, searchTerm, filterCategory, filterPaymentMethod, 1).finally(() => setIsLoading(false));
     // Update URL
     const params = new URLSearchParams();
     if (searchTerm) params.set("search", searchTerm);
@@ -320,7 +322,7 @@ export default function ExpensesPage() {
     setCurrentPage(1);
     setSearchTerm(searchInput);
     setIsLoading(true);
-    loadData(selectedMonth, selectedYear, searchInput, filterCategory, filterPaymentMethod).finally(() => setIsLoading(false));
+    loadData(selectedMonth, selectedYear, searchInput, filterCategory, filterPaymentMethod, 1).finally(() => setIsLoading(false));
     // Update URL
     const params = new URLSearchParams();
     if (searchInput) params.set("search", searchInput);
@@ -339,7 +341,7 @@ export default function ExpensesPage() {
     setCurrentPage(1);
     setSearchTerm("");
     setIsLoading(true);
-    loadData(selectedMonth, selectedYear, "", filterCategory, filterPaymentMethod).finally(() => setIsLoading(false));
+    loadData(selectedMonth, selectedYear, "", filterCategory, filterPaymentMethod, 1).finally(() => setIsLoading(false));
     // Update URL
     const params = new URLSearchParams();
     if (filterCategory !== "all") params.set("category", filterCategory);
@@ -356,7 +358,7 @@ export default function ExpensesPage() {
     setFilterCategory(value);
     setCurrentPage(1);
     setIsLoading(true);
-    loadData(selectedMonth, selectedYear, searchTerm, value, filterPaymentMethod).finally(() => setIsLoading(false));
+    loadData(selectedMonth, selectedYear, searchTerm, value, filterPaymentMethod, 1).finally(() => setIsLoading(false));
     // Update URL
     const params = new URLSearchParams();
     if (searchTerm) params.set("search", searchTerm);
@@ -374,7 +376,7 @@ export default function ExpensesPage() {
     setFilterPaymentMethod(value);
     setCurrentPage(1);
     setIsLoading(true);
-    loadData(selectedMonth, selectedYear, searchTerm, filterCategory, value).finally(() => setIsLoading(false));
+    loadData(selectedMonth, selectedYear, searchTerm, filterCategory, value, 1).finally(() => setIsLoading(false));
     // Update URL
     const params = new URLSearchParams();
     if (searchTerm) params.set("search", searchTerm);
