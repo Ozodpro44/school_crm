@@ -95,6 +95,8 @@ export default function StudentsPage() {
   const itemsPerPage = 10;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const initialLoadDoneRef = useRef(false);
+  // Track if filter change is in progress to prevent duplicate API calls
+  const filterChangeInProgressRef = useRef(false);
   const language = useLanguage();
   const { toast } = useToast();
   const {
@@ -228,6 +230,8 @@ export default function StudentsPage() {
        return;
      }
      
+     // Mark filter change in progress to prevent duplicate API calls from page useEffect
+     filterChangeInProgressRef.current = true;
      setPage(1); // Reset to first page on filter changes
      setIsListLoading(true);
      loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
@@ -246,6 +250,12 @@ export default function StudentsPage() {
    useEffect(() => {
      // Skip if initial load hasn't completed yet
      if (!initialLoadDoneRef.current) return;
+     
+     // Skip if a filter change is in progress (filter useEffect handles the load)
+     if (filterChangeInProgressRef.current) {
+       filterChangeInProgressRef.current = false;
+       return;
+     }
      
      setIsListLoading(true);
      loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));

@@ -188,6 +188,8 @@ export default function PaymentsPage() {
   const initialLoadDoneRef = useRef(false);
   // Track the current load request to prevent race conditions
   const currentLoadIdRef = useRef<number>(0);
+  // Track if filter change is in progress to prevent duplicate API calls
+  const filterChangeInProgressRef = useRef(false);
 
   const language = useLanguage();
   const { toast } = useToast();
@@ -413,7 +415,7 @@ export default function PaymentsPage() {
   useEffect(() => {
     if (!router.isReady) return;
 
-    const { page, limit, search, status, month, year } = router.query;
+    const { page, limit, search, status, month, year, paymentMethod } = router.query;
 
     // Set state from URL params
     if (page) setCurrentPage(parseInt(page as string) || 1);
@@ -423,6 +425,7 @@ export default function PaymentsPage() {
       setSearchInput(search as string);
     }
     if (status) setFilterStatus(status as string);
+    if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
     if (month) setSelectedMonth(month as string);
     if (year)
       setSelectedYear(parseInt(year as string) || new Date().getFullYear());
@@ -454,6 +457,12 @@ export default function PaymentsPage() {
     // Skip if initial load hasn't completed yet
     if (!initialLoadDoneRef.current) return;
     
+    // Skip if a filter change is in progress (filter handlers do their own loadData)
+    if (filterChangeInProgressRef.current) {
+      filterChangeInProgressRef.current = false;
+      return;
+    }
+    
     setIsLoading(true);
     loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod).finally(() => setIsLoading(false));
     
@@ -478,6 +487,8 @@ export default function PaymentsPage() {
   useRefetchOnFocus(refetchData);
 
   const handleMonthChange = (month: string, year: number) => {
+    // Mark filter change in progress to prevent duplicate API calls
+    filterChangeInProgressRef.current = true;
     setSelectedMonth(month);
     setSelectedYear(year);
     setCurrentPage(1); // Reset to first page when month changes
@@ -1151,6 +1162,8 @@ export default function PaymentsPage() {
   ]);
 
   const handleSearch = () => {
+    // Mark filter change in progress to prevent duplicate API calls
+    filterChangeInProgressRef.current = true;
     setCurrentPage(1);
     setSearchTerm(searchInput);
     setIsLoading(true);
@@ -1177,6 +1190,8 @@ export default function PaymentsPage() {
   };
 
   const handleClearSearch = () => {
+    // Mark filter change in progress to prevent duplicate API calls
+    filterChangeInProgressRef.current = true;
     setSearchInput("");
     setCurrentPage(1);
     setSearchTerm("");
@@ -2107,9 +2122,22 @@ export default function PaymentsPage() {
                       const value = e.target.value;
                       setSearchInput(value);
                       // Auto-clear search when input is empty
-                      if (value === "") {
+                      if (value === "" && searchTerm !== "") {
+                        // Mark filter change in progress to prevent duplicate API calls
+                        filterChangeInProgressRef.current = true;
                         setCurrentPage(1);
                         setSearchTerm("");
+                        setIsLoading(true);
+                        loadData(selectedMonth, selectedYear, "", filterStatus, filterPaymentMethod).finally(() => setIsLoading(false));
+                        // Update URL to clear search
+                        const params = new URLSearchParams();
+                        if (filterStatus !== "all") params.set("status", filterStatus);
+                        if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+                        params.set("month", selectedMonth);
+                        params.set("year", selectedYear.toString());
+                        params.set("page", "1");
+                        params.set("limit", itemsPerPage.toString());
+                        router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
                       }
                     }}
                     onKeyPress={handleSearchKeyPress}
@@ -2140,6 +2168,8 @@ export default function PaymentsPage() {
                 <Select
                   value={filterStatus}
                   onValueChange={(value) => {
+                    // Mark filter change in progress to prevent duplicate API calls
+                    filterChangeInProgressRef.current = true;
                     setFilterStatus(value);
                     // Apply filter immediately when status changes
                     setCurrentPage(1);
@@ -2149,6 +2179,7 @@ export default function PaymentsPage() {
                       selectedYear,
                       searchTerm,
                       value,
+                      filterPaymentMethod,
                     ).finally(() => setIsLoading(false));
                     const params = new URLSearchParams();
                     if (searchTerm) params.set("search", searchTerm);
@@ -2175,6 +2206,8 @@ export default function PaymentsPage() {
                 <Select
                   value={filterPaymentMethod}
                   onValueChange={(value) => {
+                    // Mark filter change in progress to prevent duplicate API calls
+                    filterChangeInProgressRef.current = true;
                     setFilterPaymentMethod(value);
                     // Apply filter immediately when payment method changes
                     setCurrentPage(1);
@@ -2452,9 +2485,15 @@ export default function PaymentsPage() {
                     onClick={() => {
                       const newPage = Math.max(1, currentPage - 1);
                       setCurrentPage(newPage);
-                      router.push(
-                        `/payments?page=${newPage}&limit=${itemsPerPage}`,
-                      );
+                      const params = new URLSearchParams();
+                      if (searchTerm) params.set("search", searchTerm);
+                      if (filterStatus !== "all") params.set("status", filterStatus);
+                      if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+                      params.set("month", selectedMonth);
+                      params.set("year", selectedYear.toString());
+                      params.set("page", newPage.toString());
+                      params.set("limit", itemsPerPage.toString());
+                      router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
                     }}
                     disabled={currentPage === 1}
                     className="px-2 sm:px-3"
@@ -2475,9 +2514,15 @@ export default function PaymentsPage() {
                           size="sm"
                           onClick={() => {
                             setCurrentPage(page);
-                            router.push(
-                              `/payments?page=${page}&limit=${itemsPerPage}`,
-                            );
+                            const params = new URLSearchParams();
+                            if (searchTerm) params.set("search", searchTerm);
+                            if (filterStatus !== "all") params.set("status", filterStatus);
+                            if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+                            params.set("month", selectedMonth);
+                            params.set("year", selectedYear.toString());
+                            params.set("page", page.toString());
+                            params.set("limit", itemsPerPage.toString());
+                            router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
                           }}
                           className="h-8 w-8 p-0"
                         >
@@ -2491,9 +2536,15 @@ export default function PaymentsPage() {
                     onClick={() => {
                       const newPage = Math.min(totalPages, currentPage + 1);
                       setCurrentPage(newPage);
-                      router.push(
-                        `/payments?page=${newPage}&limit=${itemsPerPage}`,
-                      );
+                      const params = new URLSearchParams();
+                      if (searchTerm) params.set("search", searchTerm);
+                      if (filterStatus !== "all") params.set("status", filterStatus);
+                      if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+                      params.set("month", selectedMonth);
+                      params.set("year", selectedYear.toString());
+                      params.set("page", newPage.toString());
+                      params.set("limit", itemsPerPage.toString());
+                      router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
                     }}
                     disabled={currentPage === totalPages}
                     className="px-2 sm:px-3"
