@@ -24,12 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  paymentsDB,
-  studentsDB,
-  classesDB,
   branchesDB,
-  usersDB,
-  monthArchivesDB,
 } from "@/lib/storage";
 import { Payment, PaymentStatus, PaymentMethod, Student, Class } from "@/types";
 import {
@@ -52,10 +47,10 @@ import {
   createPayment as apiCreatePayment,
   updatePayment as apiUpdatePayment,
   deletePayment as apiDeletePayment,
-  listStudents as apiListStudents,
   getBranch,
   getPaymentsConsolidatedData,
   searchStudentsWithPayments,
+  listClasses,
 } from "@/lib/api";
 import { Branch } from "@/types";
 import MonthYearSelector from "@/components/MonthYearSelector";
@@ -332,7 +327,15 @@ export default function PaymentsPage() {
 
         // Handle response
         const paymentsList = consolidated?.items || consolidated?.data || [];
-        const classesList = consolidated?.classes || [];
+        let classesList = consolidated?.classes || [];
+        if (!classesList || classesList.length === 0) {
+          try {
+            classesList = await listClasses(selectedBranchId);
+          } catch (classError) {
+            console.error("Failed to load classes:", classError);
+            classesList = [];
+          }
+        }
         const studentsList = consolidated?.students || [];
         const paymentIndicators = consolidated?.indicators || {
           totalPaid: 0,
@@ -1201,13 +1204,14 @@ export default function PaymentsPage() {
     setSearchTerm("");
     setIsLoading(true);
     // Load data immediately with cleared search - pass all filter values
-    loadData(selectedMonth, selectedYear, "", filterStatus, filterPaymentMethod).finally(() =>
+    loadData(selectedMonth, selectedYear, "", filterStatus, filterPaymentMethod, filterClassId).finally(() =>
       setIsLoading(false),
     );
     // Update URL to clear search - always include month/year for consistency
     const params = new URLSearchParams();
     if (filterStatus !== "all") params.set("status", filterStatus);
     if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+    if (filterClassId !== "all") params.set("classId", filterClassId);
     params.set("month", selectedMonth);
     params.set("year", selectedYear.toString());
     params.set("page", "1");

@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { classesDB, studentsDB, teachersDB } from "@/lib/storage";
 import { Class, Student, Teacher } from "@/types";
 import {
   ArrowLeft,
@@ -89,6 +88,7 @@ export default function ClassDetailsPage() {
   });
   const language = useLanguage();
   const { toast } = useToast();
+  const canEditStudents = hasPermission("canEditStudents");
   const canEditClasses = hasPermission("canEditClasses");
   const canDeleteClasses = hasPermission("canDeleteClasses");
   const {
@@ -227,11 +227,10 @@ export default function ClassDetailsPage() {
   };
 
   const handleRemoveStudent = (studentId: string) => {
-    if (!canEditClasses) {
+    if (!canEditStudents) {
       toast({
         title: t("error"),
-        description:
-          "You don't have permission to remove students from classes.",
+        description: "You don't have permission to update students.",
         variant: "destructive",
       });
       return;
@@ -245,7 +244,9 @@ export default function ClassDetailsPage() {
         "Remove this student from the class?",
       onConfirm: async () => {
         try {
-          await apiUpdateStudent(studentId, { classId: "" });
+          await apiUpdateStudent(studentId, {
+            classId: null as unknown as string,
+          });
           await loadData();
           toast({
             title: t("success"),
@@ -279,10 +280,10 @@ export default function ClassDetailsPage() {
       return;
     }
 
-    if (!canEditClasses) {
+    if (!canEditStudents) {
       toast({
         title: t("error"),
-        description: "You don't have permission to assign students to classes.",
+        description: "You don't have permission to update students.",
         variant: "destructive",
       });
       return;
@@ -341,11 +342,10 @@ export default function ClassDetailsPage() {
       return;
     }
 
-    if (!canEditClasses) {
+    if (!canEditStudents) {
       toast({
         title: t("error"),
-        description:
-          "You don't have permission to remove students from classes.",
+        description: "You don't have permission to update students.",
         variant: "destructive",
       });
       return;
@@ -357,17 +357,30 @@ export default function ClassDetailsPage() {
       isOpen: true,
       title: "Remove Students",
       message: `Remove ${selectedCount} student(s) from this class?`,
-      onConfirm: () => {
-        ids.forEach((studentId) => {
-          studentsDB.update(studentId, { classId: undefined });
-        });
-        clearSelection();
-        loadData();
-        toast({
-          title: t("success"),
-          description: `${selectedCount} student(s) removed from class`,
-          variant: "success",
-        });
+      onConfirm: async () => {
+        try {
+          await Promise.all(
+            ids.map((studentId) =>
+              apiUpdateStudent(studentId, {
+                classId: null as unknown as string,
+              })
+            )
+          );
+          clearSelection();
+          await loadData();
+          toast({
+            title: t("success"),
+            description: `${selectedCount} student(s) removed from class`,
+            variant: "success",
+          });
+        } catch (error) {
+          console.error("Failed to remove students:", error);
+          toast({
+            title: t("error"),
+            description: "Failed to remove students from class",
+            variant: "destructive",
+          });
+        }
         setConfirmDialog({ ...confirmDialog, isOpen: false });
       },
       onCancel: () => {
@@ -629,7 +642,7 @@ export default function ClassDetailsPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={!canEditClasses}
+                  disabled={!canEditStudents}
                   onClick={handleEdit}
                 >
                   <Edit2 className="mr-2 h-4 w-4" />
@@ -737,7 +750,7 @@ export default function ClassDetailsPage() {
                 size="sm"
                 onClick={handleSwitchStudents}
                 disabled={
-                  getSelectedCount() === 0 || !targetClassId || !canEditClasses
+                  getSelectedCount() === 0 || !targetClassId || !canEditStudents
                 }
                 className="whitespace-nowrap"
               >
@@ -748,7 +761,7 @@ export default function ClassDetailsPage() {
                 size="sm"
                 variant="destructive"
                 onClick={handleDeleteMultipleStudents}
-                disabled={getSelectedCount() === 0 || !canEditClasses}
+                disabled={getSelectedCount() === 0 || !canEditStudents}
                 className="whitespace-nowrap"
               >
                 <Trash2 className="w-4 h-4 mr-1" />
@@ -855,7 +868,7 @@ export default function ClassDetailsPage() {
                         e.stopPropagation();
                         handleRemoveStudent(student.id);
                       }}
-                      disabled={!canEditClasses}
+                      disabled={!canEditStudents}
                     >
                       <Trash2 className="w-4 h-4 text-red-500" />
                     </Button>

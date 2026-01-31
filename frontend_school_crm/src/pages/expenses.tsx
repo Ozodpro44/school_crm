@@ -313,7 +313,7 @@ export default function ExpensesPage() {
   };
 
   const handleMonthChange = (month: string, year: number) => {
-    filterChangeInProgressRef.current = true;
+    filterChangeInProgressRef.current = currentPage !== 1;
     setSelectedMonth(month);
     setSelectedYear(year);
     setCurrentPage(1);
@@ -332,7 +332,7 @@ export default function ExpensesPage() {
   };
 
   const handleSearch = () => {
-    filterChangeInProgressRef.current = true;
+    filterChangeInProgressRef.current = currentPage !== 1;
     setCurrentPage(1);
     setSearchTerm(searchInput);
     setIsLoading(true);
@@ -350,7 +350,7 @@ export default function ExpensesPage() {
   };
 
   const handleClearSearch = () => {
-    filterChangeInProgressRef.current = true;
+    filterChangeInProgressRef.current = currentPage !== 1;
     setSearchInput("");
     setCurrentPage(1);
     setSearchTerm("");
@@ -368,7 +368,7 @@ export default function ExpensesPage() {
   };
 
   const handleCategoryChange = (value: string) => {
-    filterChangeInProgressRef.current = true;
+    filterChangeInProgressRef.current = currentPage !== 1;
     setFilterCategory(value);
     setCurrentPage(1);
     setIsLoading(true);
@@ -386,7 +386,7 @@ export default function ExpensesPage() {
   };
 
   const handlePaymentMethodChange = (value: string) => {
-    filterChangeInProgressRef.current = true;
+    filterChangeInProgressRef.current = currentPage !== 1;
     setFilterPaymentMethod(value);
     setCurrentPage(1);
     setIsLoading(true);
