@@ -119,8 +119,8 @@ export default function PaymentsPage() {
     return new Date().getFullYear();
   };
 
-  const [selectedMonth, setSelectedMonth] = useState<string>(getDefaultMonth());
-  const [selectedYear, setSelectedYear] = useState<number>(getDefaultYear());
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [selectedYear, setSelectedYear] = useState<number>(0);
 
   const [bulkPaymentData, setBulkPaymentData] = useState({
     month: getDefaultMonth(),
@@ -261,17 +261,14 @@ export default function PaymentsPage() {
         const branch = await getBranch(selectedBranchId);
         setBranchData(branch);
 
-        const calendarMonth = String(new Date().getMonth() + 1).padStart(2, "0");
-        const calendarYear = new Date().getFullYear();
-        const branchMonth =
+        // Use financial month data if available, otherwise fall back to current date
+        const currentMonth =
           branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
-          calendarMonth;
-        const branchYear = branch.currentFinancialMonth?.year || calendarYear;
-        const isManager = user.role === "manager";
-        const currentMonth = isManager ? calendarMonth : branchMonth;
-        const currentYear = isManager ? calendarYear : branchYear;
+          String(new Date().getMonth() + 1).padStart(2, "0");
+        const currentYear =
+          branch.currentFinancialMonth?.year || new Date().getFullYear();
 
-        // Set selected month to current month if not already set
+        // Set selected month to branch's current month if not already set
         if (!selectedMonth) {
           setSelectedMonth(currentMonth);
           setSelectedYear(currentYear);
