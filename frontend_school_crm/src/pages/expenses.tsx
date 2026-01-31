@@ -69,7 +69,9 @@ export default function ExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(() =>
+    getCurrentUser()?.role === "manager" ? 50 : 10,
+  );
   const [totalExpenses, setTotalExpenses] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [indicators, setIndicators] = useState<ExpenseSummary | null>(null);

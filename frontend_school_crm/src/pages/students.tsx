@@ -89,7 +89,9 @@ export default function StudentsPage() {
   const [markLeftStudentId, setMarkLeftStudentId] = useState<string | null>(null);
   const [isMarkLeftLoading, setIsMarkLeftLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(() =>
+    getCurrentUser()?.role === "manager" ? 50 : 10,
+  );
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
   const itemsPerPage = 10;

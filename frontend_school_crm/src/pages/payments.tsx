@@ -128,7 +128,9 @@ export default function PaymentsPage() {
     paymentMethod: "cash" as PaymentMethod,
   });
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [itemsPerPage, setItemsPerPage] = useState(() =>
+    getCurrentUser()?.role === "manager" ? 50 : 10,
+  );
   const [totalPayments, setTotalPayments] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 

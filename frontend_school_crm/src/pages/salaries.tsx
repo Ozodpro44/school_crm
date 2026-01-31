@@ -48,7 +48,7 @@ export default function SalariesPage() {
      const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
      const [isSubmitting, setIsSubmitting] = useState(false);
      const [currentPage, setCurrentPage] = useState(1);
-     const itemsPerPage = 10;
+     const itemsPerPage = getCurrentUser()?.role === "manager" ? 50 : 10;
      const [branchData, setBranchData] = useState<Branch | null>(null);
     const language = useLanguage();
     const { toast } = useToast();
