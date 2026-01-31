@@ -261,14 +261,17 @@ export default function PaymentsPage() {
         const branch = await getBranch(selectedBranchId);
         setBranchData(branch);
 
-        // Use financial month data if available, otherwise fall back to current date
-        const currentMonth =
+        const calendarMonth = String(new Date().getMonth() + 1).padStart(2, "0");
+        const calendarYear = new Date().getFullYear();
+        const branchMonth =
           branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
-          String(new Date().getMonth() + 1).padStart(2, "0");
-        const currentYear =
-          branch.currentFinancialMonth?.year || new Date().getFullYear();
+          calendarMonth;
+        const branchYear = branch.currentFinancialMonth?.year || calendarYear;
+        const isManager = user.role === "manager";
+        const currentMonth = isManager ? calendarMonth : branchMonth;
+        const currentYear = isManager ? calendarYear : branchYear;
 
-        // Set selected month to branch's current month if not already set
+        // Set selected month to current month if not already set
         if (!selectedMonth) {
           setSelectedMonth(currentMonth);
           setSelectedYear(currentYear);
