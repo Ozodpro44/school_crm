@@ -229,6 +229,29 @@ export default function ExpensesPage() {
     router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
   };
 
+  const handlePageChange = (page: number) => {
+    filterChangeInProgressRef.current = false;
+    setCurrentPage(page);
+    setIsLoading(true);
+    loadData(
+      selectedMonth,
+      selectedYear,
+      searchTerm,
+      filterCategory,
+      filterPaymentMethod,
+      page,
+    ).finally(() => setIsLoading(false));
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (filterCategory !== "all") params.set("category", filterCategory);
+    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+    if (selectedMonth) params.set("month", selectedMonth);
+    if (selectedYear) params.set("year", selectedYear.toString());
+    params.set("page", page.toString());
+    params.set("limit", itemsPerPage.toString());
+    router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
+  };
+
   const waitForSelectedBranchId = async () => {
     let retries = 0;
     const maxRetries = 20;
@@ -1259,7 +1282,7 @@ export default function ExpensesPage() {
                     size="sm"
                     onClick={() => {
                       const newPage = Math.max(1, currentPage - 1);
-                      setCurrentPage(newPage);
+                      handlePageChange(newPage);
                     }}
                     disabled={currentPage === 1}
                   >
@@ -1276,12 +1299,12 @@ export default function ExpensesPage() {
                         <Button
                            key={page}
                            variant={currentPage === page ? "default" : "outline"}
-                           size="sm"
-                           onClick={() => {
-                             setCurrentPage(page);
-                           }}
-                           className="h-8 w-8 p-0"
-                         >
+                         size="sm"
+                         onClick={() => {
+                             handlePageChange(page);
+                          }}
+                          className="h-8 w-8 p-0"
+                        >
                            {page}
                          </Button>
                       ))}
@@ -1291,7 +1314,7 @@ export default function ExpensesPage() {
                     size="sm"
                     onClick={() => {
                       const newPage = Math.min(totalPages, currentPage + 1);
-                      setCurrentPage(newPage);
+                      handlePageChange(newPage);
                     }}
                     disabled={currentPage === totalPages || totalPages === 0}
                   >
