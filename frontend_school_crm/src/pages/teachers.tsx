@@ -16,7 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Teacher } from "@/types";
-import { Plus, Search, Edit2, Trash2, BookOpen } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, BookOpen, Loader2 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
@@ -35,6 +35,8 @@ export default function TeachersPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
+  const [deletingTeacherId, setDeletingTeacherId] = useState<string | null>(null);
   const language = useLanguage();
   const { toast } = useToast();
   const {
@@ -95,8 +97,8 @@ export default function TeachersPage() {
     } catch (error) {
       console.error("Failed to load teachers:", error);
       toast({
-        title: "Error",
-        description: "Failed to load teachers",
+        title: t("error"),
+        description: t("failedToLoadTeachers"),
         variant: "destructive",
       });
     } finally {
@@ -133,8 +135,8 @@ export default function TeachersPage() {
           email: formData.email,
         });
         toast({
-          title: "Success",
-          description: "Teacher updated successfully",
+          title: t("success"),
+          description: t("teacherUpdatedSuccess"),
           variant: "success",
         });
       } else {
@@ -147,8 +149,8 @@ export default function TeachersPage() {
           branchId: branchId,
         });
         toast({
-          title: "Success",
-          description: "Teacher created successfully",
+          title: t("success"),
+          description: t("teacherAddedSuccess"),
           variant: "success",
         });
       }
@@ -158,8 +160,8 @@ export default function TeachersPage() {
       setIsDialogOpen(false);
       } catch (error) {
       toast({
-        title: "Error",
-        description: editingTeacher ? "Failed to update teacher" : "Failed to create teacher",
+        title: t("error"),
+        description: editingTeacher ? t("failedToUpdateTeacher") : t("failedToCreateTeacher"),
         variant: "destructive",
       });
       } finally {
@@ -191,16 +193,21 @@ export default function TeachersPage() {
     }
 
     if (confirm(t("confirmDelete"))) {
+      setDeletingTeacherId(id);
+      setIsDeleteLoading(true);
       try {
         await deleteTeacher(id);
         await loadData();
         toast({ title: t("deleted"), description: t("teacherDeleted"), variant: "success" });
       } catch (error) {
         toast({
-          title: "Error",
-          description: "Failed to delete teacher",
+          title: t("error"),
+          description: t("failedToDeleteTeacher"),
           variant: "destructive",
         });
+      } finally {
+        setIsDeleteLoading(false);
+        setDeletingTeacherId(null);
       }
     }
   };
@@ -226,8 +233,8 @@ export default function TeachersPage() {
         });
       } catch (error) {
         toast({
-          title: "Error",
-          description: "Failed to delete teachers",
+          title: t("error"),
+          description: t("failedToDeleteTeachers"),
           variant: "destructive",
         });
       }
@@ -562,9 +569,13 @@ export default function TeachersPage() {
                             size="icon"
                             variant="ghost"
                             onClick={() => canDeleteTeachers && handleDelete(teacher.id)}
-                            disabled={!canDeleteTeachers}
+                            disabled={!canDeleteTeachers || (isDeleteLoading && deletingTeacherId === teacher.id)}
                           >
-                            <Trash2 className="w-4 h-4 text-red-500" />
+                            {isDeleteLoading && deletingTeacherId === teacher.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            )}
                           </Button>
                         </div>
                       </td>

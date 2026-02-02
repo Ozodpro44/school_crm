@@ -34,6 +34,7 @@ import {
   TrendingDown,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
@@ -330,8 +331,8 @@ export default function ExpensesPage() {
     } catch (error) {
       console.error("Failed to load expenses:", error);
       toast({
-        title: "Error",
-        description: "Failed to load expenses",
+        title: t("error"),
+        description: t("failedToLoadExpenses"),
         variant: "destructive",
       });
     }
@@ -513,8 +514,8 @@ export default function ExpensesPage() {
     } catch (error) {
       console.error("Failed to save expense:", error);
       toast({
-        title: "Error",
-        description: "Failed to save expense",
+        title: t("error"),
+        description: t("failedToSaveExpense"),
         variant: "destructive",
       });
     } finally {
@@ -542,7 +543,9 @@ export default function ExpensesPage() {
       isOpen: true,
       title: t("deleteExpense"),
       message: t("confirmDeleteExpenseMessage"),
+      isLoading: false,
       onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isLoading: true }));
         try {
           await deleteExpense(id);
           await loadData();
@@ -551,7 +554,6 @@ export default function ExpensesPage() {
             description: t("expenseDeleted"),
             variant: "success",
           });
-          setConfirmDialog({ ...confirmDialog, isOpen: false });
         } catch (error) {
           console.error("Failed to delete expense:", error);
           toast({
@@ -559,10 +561,12 @@ export default function ExpensesPage() {
             description: "Failed to delete expense",
             variant: "destructive",
           });
+        } finally {
+          setConfirmDialog(prev => ({ ...prev, isOpen: false, isLoading: false }));
         }
       },
       onCancel: () => {
-        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
       },
     });
   };
@@ -1351,6 +1355,7 @@ export default function ExpensesPage() {
               onClick={() => {
                 confirmDialog.onCancel();
               }}
+              disabled={confirmDialog.isLoading}
             >
               {t("cancel")}
             </Button>
@@ -1358,9 +1363,17 @@ export default function ExpensesPage() {
               onClick={() => {
                 confirmDialog.onConfirm();
               }}
+              disabled={confirmDialog.isLoading}
               className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
             >
-              {t("delete")}
+              {confirmDialog.isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("deleting")}
+                </>
+              ) : (
+                t("delete")
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -53,6 +53,7 @@ export default function DeveloperLogsPage() {
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
+  const [isClearingLogs, setIsClearingLogs] = useState(false);
 
   // Filters
   const [levelFilter, setLevelFilter] = useState<LogLevel>('all');
@@ -169,6 +170,7 @@ export default function DeveloperLogsPage() {
       return;
     }
 
+    setIsClearingLogs(true);
     try {
       const response = await fetch(`${API_BASE}/api/logs`, {
         method: 'DELETE',
@@ -180,6 +182,8 @@ export default function DeveloperLogsPage() {
       }
     } catch (err) {
       console.error('Failed to clear logs:', err);
+    } finally {
+      setIsClearingLogs(false);
     }
   };
 
@@ -241,9 +245,19 @@ export default function DeveloperLogsPage() {
                 size="sm"
                 variant="destructive"
                 className="gap-2"
+                disabled={isClearingLogs}
               >
-                <Trash2 className="w-4 h-4" />
-                Clear
+                {isClearingLogs ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Clearing...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    Clear
+                  </>
+                )}
               </Button>
             </div>
           </div>

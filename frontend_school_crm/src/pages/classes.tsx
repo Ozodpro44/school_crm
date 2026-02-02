@@ -33,6 +33,7 @@ import {
   BookOpen,
   Users,
   UserPlus,
+  Loader2,
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -111,8 +112,8 @@ export default function ClassesPage() {
     } catch (error) {
       console.error("Failed to load classes:", error);
       toast({
-        title: "Error",
-        description: "Failed to load classes",
+        title: t("error"),
+        description: t("failedToLoadClasses"),
         variant: "destructive",
       });
     } finally {
@@ -147,8 +148,8 @@ export default function ClassesPage() {
     setIsSubmitting(true);
     if (!canEditClasses) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to create or edit classes.",
+        title: t("permissionDenied"),
+        description: t("noPermissionEditClasses"),
         variant: "destructive",
       });
       setIsSubmitting(false);
@@ -168,8 +169,8 @@ export default function ClassesPage() {
           teacherId: formData.teacherId || null,
         });
         toast({
-          title: "Success",
-          description: "Class updated successfully",
+          title: t("success"),
+          description: t("classUpdatedSuccess"),
           variant: "success",
         });
       } else {
@@ -179,8 +180,8 @@ export default function ClassesPage() {
           branchId: branchId,
         });
         toast({
-          title: "Success",
-          description: "Class created successfully",
+          title: t("success"),
+          description: t("classAddedSuccess"),
           variant: "success",
         });
       }
@@ -190,8 +191,8 @@ export default function ClassesPage() {
       setIsDialogOpen(false);
       } catch (error) {
       toast({
-        title: "Error",
-        description: editingClass ? "Failed to update class" : "Failed to create class",
+        title: t("error"),
+        description: editingClass ? t("failedToUpdateClass") : t("failedToCreateClass"),
         variant: "destructive",
       });
       } finally {
@@ -202,8 +203,8 @@ export default function ClassesPage() {
   const handleEdit = (classData: Class) => {
     if (!canEditClasses) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to edit classes.",
+        title: t("permissionDenied"),
+        description: t("noPermissionEditClasses"),
         variant: "destructive",
       });
       return;
@@ -220,8 +221,8 @@ export default function ClassesPage() {
   const handleDelete = (id: string) => {
     if (!canDeleteClasses) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to delete classes.",
+        title: t("permissionDenied"),
+        description: t("noPermissionDeleteClasses"),
         variant: "destructive",
       });
       return;
@@ -229,29 +230,31 @@ export default function ClassesPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: "Delete Class",
-      message:
-        "Are you sure you want to delete this class? Students in this class will become unassigned.",
+      title: t("deleteClass"),
+      message: t("confirmDeleteClass"),
+      isLoading: false,
       onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isLoading: true }));
         try {
           await deleteClass(id);
           await loadData();
           toast({
-            title: "Deleted",
-            description: "Class deleted successfully",
+            title: t("deleted"),
+            description: t("classDeletedSuccess"),
             variant: "success",
           });
         } catch (error) {
           toast({
-            title: "Error",
-            description: "Failed to delete class",
+            title: t("error"),
+            description: t("failedToDeleteClass"),
             variant: "destructive",
           });
+        } finally {
+          setConfirmDialog(prev => ({ ...prev, isOpen: false, isLoading: false }));
         }
-        setConfirmDialog({ ...confirmDialog, isOpen: false });
       },
       onCancel: () => {
-        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
       },
     });
   };
@@ -259,8 +262,8 @@ export default function ClassesPage() {
   const handleBulkAddStudents = () => {
     if (!canEditClasses) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to assign students to classes.",
+        title: t("permissionDenied"),
+        description: t("noPermissionAssignStudents"),
         variant: "destructive",
       });
       return;
@@ -323,9 +326,8 @@ export default function ClassesPage() {
   const removeStudentFromClass = (studentId: string) => {
     if (!canEditClasses) {
       toast({
-        title: "Permission Denied",
-        description:
-          "You don't have permission to remove students from classes.",
+        title: t("permissionDenied"),
+        description: t("noPermissionRemoveStudents"),
         variant: "destructive",
       });
       return;
@@ -333,14 +335,14 @@ export default function ClassesPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: "Remove Student",
-      message: "Remove this student from the class?",
+      title: t("removeStudent"),
+      message: t("confirmRemoveStudent"),
       onConfirm: () => {
         studentsDB.update(studentId, { classId: undefined });
         loadData();
         toast({
-          title: "Updated",
-          description: "Student removed from class",
+          title: t("updated"),
+          description: t("studentRemovedFromClass"),
           variant: "success",
         });
         setConfirmDialog({ ...confirmDialog, isOpen: false });
@@ -404,8 +406,8 @@ export default function ClassesPage() {
 
     if (!canEditClasses) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to assign students to classes.",
+        title: t("permissionDenied"),
+        description: t("noPermissionAssignStudents"),
         variant: "destructive",
       });
       setDraggedStudent(null);
@@ -1029,13 +1031,14 @@ export default function ClassesPage() {
               disabled={confirmDialog.isLoading}
               className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
             >
-              {confirmDialog.isLoading && (
-                <svg className="w-4 h-4 mr-2 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
+              {confirmDialog.isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("deleting") || "Deleting..."}
+                </>
+              ) : (
+                t("confirm") || "Confirm"
               )}
-              {confirmDialog.isLoading ? t("loading") || "Loading..." : t("confirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -11,7 +11,7 @@ import {
   Users,
   AlertCircle,
   CheckCircle2,
-  Loader,
+  Loader2,
 } from "lucide-react";
 import {
   getSubscriptionPlans,
@@ -88,6 +88,8 @@ export default function SubscriptionPlans() {
   const [isDeleteSubOpen, setIsDeleteSubOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
   const [editingSub, setEditingSub] = useState<UserSubscription | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form states
   const [planForm, setPlanForm] = useState({
@@ -178,6 +180,7 @@ export default function SubscriptionPlans() {
       return;
     }
 
+    setIsSaving(true);
     try {
       if (editingPlan) {
         await updateSubscriptionPlan(editingPlan.id, planForm);
@@ -187,17 +190,19 @@ export default function SubscriptionPlans() {
         toast.success("Plan created successfully");
       }
       await loadData();
+      setIsPlanModalOpen(false);
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to save plan";
       toast.error(errorMessage);
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsPlanModalOpen(false);
   };
 
   const handleDeletePlan = async () => {
     if (!editingPlan) return;
+    setIsDeleting(true);
     try {
       await deleteSubscriptionPlan(editingPlan.id);
       toast.success("Plan deleted successfully");
@@ -206,8 +211,10 @@ export default function SubscriptionPlans() {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to delete plan";
       toast.error(errorMessage);
+    } finally {
+      setIsDeleting(false);
+      setIsDeletePlanOpen(false);
     }
-    setIsDeletePlanOpen(false);
   };
 
   // Subscription functions
@@ -239,6 +246,7 @@ export default function SubscriptionPlans() {
       return;
     }
 
+    setIsSaving(true);
     try {
       if (editingSub) {
         await updateUserSubscription(editingSub.id, {
@@ -257,17 +265,19 @@ export default function SubscriptionPlans() {
         toast.success("Subscription created successfully");
       }
       await loadData();
+      setIsSubscriptionModalOpen(false);
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to save subscription";
       toast.error(errorMessage);
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsSubscriptionModalOpen(false);
   };
 
   const handleDeleteSubscription = async () => {
     if (!editingSub) return;
+    setIsDeleting(true);
     try {
       await deleteUserSubscription(editingSub.id);
       toast.success("Subscription deleted successfully");
@@ -276,8 +286,10 @@ export default function SubscriptionPlans() {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to delete subscription";
       toast.error(errorMessage);
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteSubOpen(false);
     }
-    setIsDeleteSubOpen(false);
   };
 
   const formatCurrency = (amount: number) => {
@@ -292,7 +304,7 @@ export default function SubscriptionPlans() {
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center space-y-4">
-            <Loader className="w-12 h-12 animate-spin mx-auto text-primary" />
+            <Loader2 className="w-12 h-12 animate-spin mx-auto text-primary" />
             <p className="text-muted-foreground">Loading subscription data...</p>
           </div>
         </div>
@@ -711,8 +723,15 @@ export default function SubscriptionPlans() {
             >
               Cancel
             </Button>
-            <Button onClick={handleSavePlan}>
-              {editingPlan ? "Update" : "Create"}
+            <Button onClick={handleSavePlan} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                editingPlan ? "Update" : "Create"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -732,9 +751,17 @@ export default function SubscriptionPlans() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeletePlan}
+              disabled={isDeleting}
               className="bg-destructive hover:bg-destructive/90"
             >
-              Delete
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -847,8 +874,15 @@ export default function SubscriptionPlans() {
             >
               Cancel
             </Button>
-            <Button onClick={handleSaveSubscription}>
-              {editingSub ? "Update" : "Create"}
+            <Button onClick={handleSaveSubscription} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                editingSub ? "Update" : "Create"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -867,9 +901,17 @@ export default function SubscriptionPlans() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteSubscription}
+              disabled={isDeleting}
               className="bg-destructive hover:bg-destructive/90"
             >
-              Delete
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

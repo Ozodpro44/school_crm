@@ -20,7 +20,7 @@ import { Settings, Language, Branch } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { Save, Globe, DollarSign, Building2, Calendar, ChevronRight } from "lucide-react";
+import { Save, Globe, DollarSign, Building2, Calendar, ChevronRight, Loader2 } from "lucide-react";
 import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { useSetLanguage } from "@/hooks/use-language";
@@ -444,7 +444,14 @@ export default function SettingsPage() {
                 disabled={isSwitchingMonth}
                 className="bg-blue-600 hover:bg-blue-700"
               >
-                {isSwitchingMonth ? (t("switching") || "Переключение...") : (t("confirmSwitch") || "Подтвердить")}
+                {isSwitchingMonth ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {t("switching") || "Переключение..."}
+                  </>
+                ) : (
+                  t("confirmSwitch") || "Подтвердить"
+                )}
               </Button>
             </div>
           </div>

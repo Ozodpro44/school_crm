@@ -100,4 +100,25 @@ export const branchTranslations: Partial<Translation> = {
 
   error: { "uz-cyrl": "Хато", "uz-latn": "Xato", en: "Error" },
   success: { "uz-cyrl": "Муваффақият", "uz-latn": "Muvaffaqiyat", en: "Success" },
+  
+  failedToLoadBranches: {
+    "uz-cyrl": "Филиалларни юклаш муваффақиятсиз бўлди",
+    "uz-latn": "Filiallarni yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load branches",
+  },
+  failedToSaveBranch: {
+    "uz-cyrl": "Филиални сақлаш муваффақиятсиз бўлди",
+    "uz-latn": "Filialni saqlash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to save branch",
+  },
+  failedToDeleteBranch: {
+    "uz-cyrl": "Филиални ўчириш муваффақиятсиз бўлди",
+    "uz-latn": "Filialni o'chirish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to delete branch",
+  },
+  monthlyPaymentMustBePositive: {
+    "uz-cyrl": "Ойлик тўлов 0 дан катта бўлиши керак",
+    "uz-latn": "Oylik to'lov 0 dan katta bo'lishi kerak",
+    en: "Monthly payment must be greater than 0",
+  },
 };

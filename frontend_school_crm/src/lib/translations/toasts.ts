@@ -200,4 +200,251 @@ export const toastTranslations: Partial<Translation> = {
     "uz-latn": "Parol kamida 6 ta belgidan iborat bo‘lishi kerak",
     en: "Password must be at least 6 characters",
   },
+
+  // Loading states
+  saving: {
+    "uz-cyrl": "Сақланмоқда...",
+    "uz-latn": "Saqlanmoqda...",
+    en: "Saving...",
+  },
+  deleting: {
+    "uz-cyrl": "Ўчирилмоқда...",
+    "uz-latn": "O'chirilmoqda...",
+    en: "Deleting...",
+  },
+  updating: {
+    "uz-cyrl": "Янгиланмоқда...",
+    "uz-latn": "Yangilanmoqda...",
+    en: "Updating...",
+  },
+  loading: {
+    "uz-cyrl": "Юкланмоқда...",
+    "uz-latn": "Yuklanmoqda...",
+    en: "Loading...",
+  },
+  creating: {
+    "uz-cyrl": "Яратилмоқда...",
+    "uz-latn": "Yaratilmoqda...",
+    en: "Creating...",
+  },
+  clearing: {
+    "uz-cyrl": "Тозаланмоқда...",
+    "uz-latn": "Tozalanmoqda...",
+    en: "Clearing...",
+  },
+
+  // Failed operations
+  failedToLoadStudents: {
+    "uz-cyrl": "Ўқувчиларни юклаш муваффақиятсиз бўлди",
+    "uz-latn": "O'quvchilarni yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load students data",
+  },
+  failedToLoadTeachers: {
+    "uz-cyrl": "Ўқитувчиларни юклаш муваффақиятсиз бўлди",
+    "uz-latn": "O'qituvchilarni yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load teachers",
+  },
+  failedToLoadClasses: {
+    "uz-cyrl": "Синфларни юклаш муваффақиятсиз бўлди",
+    "uz-latn": "Sinflarni yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load classes",
+  },
+  failedToLoadPayments: {
+    "uz-cyrl": "Тўловларни юклаш муваффақиятсиз бўлди",
+    "uz-latn": "To'lovlarni yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load payments",
+  },
+  failedToLoadExpenses: {
+    "uz-cyrl": "Харажатларни юклаш муваффақиятсиз бўлди",
+    "uz-latn": "Xarajatlarni yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load expenses",
+  },
+  failedToLoadStudentDetails: {
+    "uz-cyrl": "Ўқувчи маълумотларини юклаш муваффақиятсиз бўлди",
+    "uz-latn": "O'quvchi ma'lumotlarini yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load student details",
+  },
+  failedToLoadClassDetails: {
+    "uz-cyrl": "Синф маълумотларини юклаш муваффақиятсиз бўлди",
+    "uz-latn": "Sinf ma'lumotlarini yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load class details",
+  },
+
+  // Save/update failures
+  failedToSaveStudent: {
+    "uz-cyrl": "Ўқувчини сақлаш муваффақиятсиз бўлди",
+    "uz-latn": "O'quvchini saqlash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to save student",
+  },
+  failedToUpdateTeacher: {
+    "uz-cyrl": "Ўқитувчини янгилаш муваффақиятсиз бўлди",
+    "uz-latn": "O'qituvchini yangilash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to update teacher",
+  },
+  failedToCreateTeacher: {
+    "uz-cyrl": "Ўқитувчини яратиш муваффақиятсиз бўлди",
+    "uz-latn": "O'qituvchini yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to create teacher",
+  },
+  failedToSaveClass: {
+    "uz-cyrl": "Синфни сақлаш муваффақиятсиз бўлди",
+    "uz-latn": "Sinfni saqlash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to save class",
+  },
+  failedToUpdatePayment: {
+    "uz-cyrl": "Тўловни янгилаш муваффақиятсиз бўлди",
+    "uz-latn": "To'lovni yangilash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to update payment",
+  },
+  failedToSaveExpense: {
+    "uz-cyrl": "Харажатни сақлаш муваффақиятсиз бўлди",
+    "uz-latn": "Xarajatni saqlash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to save expense",
+  },
+  failedToSaveSalary: {
+    "uz-cyrl": "Маошни сақлаш муваффақиятсиз бўлди",
+    "uz-latn": "Maoshni saqlash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to save salary",
+  },
+  failedToCreateManager: {
+    "uz-cyrl": "Менежерни яратиш муваффақиятсиз бўлди",
+    "uz-latn": "Menejerni yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to create manager",
+  },
+
+  // Delete failures
+  failedToDeleteStudent: {
+    "uz-cyrl": "Ўқувчини ўчириш муваффақиятсиз бўлди",
+    "uz-latn": "O'quvchini o'chirish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to delete student",
+  },
+  failedToDeleteTeacher: {
+    "uz-cyrl": "Ўқитувчини ўчириш муваффақиятсиз бўлди",
+    "uz-latn": "O'qituvchini o'chirish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to delete teacher",
+  },
+  failedToDeleteManager: {
+    "uz-cyrl": "Менежерни ўчириш муваффақиятсиз бўлди",
+    "uz-latn": "Menejerni o'chirish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to delete manager",
+  },
+
+  // Other failures
+  failedToRemoveStudentFromClass: {
+    "uz-cyrl": "Ўқувчини синфдан олиб ташлаш муваффақиятсиз бўлди",
+    "uz-latn": "O'quvchini sinfdan olib tashlash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to remove student from class",
+  },
+  failedToSwitchStudents: {
+    "uz-cyrl": "Ўқувчиларни алмаштириш муваффақиятсиз бўлди",
+    "uz-latn": "O'quvchilarni almashtirish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to switch students to new class",
+  },
+  failedToGeneratePaymentReport: {
+    "uz-cyrl": "Тўлов ҳисоботини яратиш муваффақиятсиз бўлди",
+    "uz-latn": "To'lov hisobotini yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to generate payment report",
+  },
+  failedToGenerateSalaryReport: {
+    "uz-cyrl": "Маош ҳисоботини яратиш муваффақиятсиз бўлди",
+    "uz-latn": "Maosh hisobotini yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to generate salary report",
+  },
+  failedToReadFile: {
+    "uz-cyrl": "Файлни ўқиш муваффақиятсиз бўлди",
+    "uz-latn": "Faylni o'qish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to read file",
+  },
+
+  // Success messages  
+  studentRemovedFromClass: {
+    "uz-cyrl": "Ўқувчи синфдан олиб ташланди",
+    "uz-latn": "O'quvchi sinfdan olib tashlandi",
+    en: "Student removed from class",
+  },
+  studentsSwitchedSuccess: {
+    "uz-cyrl": "Ўқувчилар янги синфга кўчирилди",
+    "uz-latn": "O'quvchilar yangi sinfga ko'chirildi",
+    en: "Students switched to new class",
+  },
+  studentsRemovedFromClass: {
+    "uz-cyrl": "Ўқувчилар синфдан олиб ташланди",
+    "uz-latn": "O'quvchilar sinfdan olib tashlandi",
+    en: "Students removed from class",
+  },
+
+  // Permission errors
+  permissionDeniedEdit: {
+    "uz-cyrl": "Таҳрирлаш учун рухсатингиз йўқ",
+    "uz-latn": "Tahrirlash uchun ruxsatingiz yo'q",
+    en: "You don't have permission to edit",
+  },
+  permissionDeniedDelete: {
+    "uz-cyrl": "Ўчириш учун рухсатингиз йўқ",
+    "uz-latn": "O'chirish uchun ruxsatingiz yo'q",
+    en: "You don't have permission to delete",
+  },
+  
+  // Additional failed operations
+  failedToDeleteTeachers: {
+    "uz-cyrl": "Ўқитувчиларни ўчириш муваффақиятсиз бўлди",
+    "uz-latn": "O'qituvchilarni o'chirish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to delete teachers",
+  },
+  failedToRemoveStudentsFromClass: {
+    "uz-cyrl": "Ўқувчиларни синфдан олиб ташлаш муваффақиятсиз бўлди",
+    "uz-latn": "O'quvchilarni sinfdan olib tashlash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to remove students from class",
+  },
+  
+  // Fill fields
+  fillRequiredFields: {
+    "uz-cyrl": "Илтимос, барча керакли майдонларни тўлдиринг",
+    "uz-latn": "Iltimos, barcha kerakli maydonlarni to'ldiring",
+    en: "Please fill in all required fields",
+  },
+  
+  // Permission messages
+  noPermissionToDeleteStudents: {
+    "uz-cyrl": "Ўқувчиларни ўчириш учун рухсатингиз йўқ",
+    "uz-latn": "O'quvchilarni o'chirish uchun ruxsatingiz yo'q",
+    en: "You don't have permission to delete students",
+  },
+  noPermissionToEditStudents: {
+    "uz-cyrl": "Ўқувчиларни таҳрирлаш учун рухсатингиз йўқ",
+    "uz-latn": "O'quvchilarni tahrirlash uchun ruxsatingiz yo'q",
+    en: "You don't have permission to edit students",
+  },
+  noPermissionToDeleteClasses: {
+    "uz-cyrl": "Синфларни ўчириш учун рухсатингиз йўқ",
+    "uz-latn": "Sinflarni o'chirish uchun ruxsatingiz yo'q",
+    en: "You don't have permission to delete classes",
+  },
+  noPermissionToEditClasses: {
+    "uz-cyrl": "Синфларни таҳрирлаш учун рухсатингиз йўқ",
+    "uz-latn": "Sinflarni tahrirlash uchun ruxsatingiz yo'q",
+    en: "You don't have permission to edit classes",
+  },
+  
+  // Class operations
+  failedToUpdateClass: {
+    "uz-cyrl": "Синфни янгилаш муваффақиятсиз бўлди",
+    "uz-latn": "Sinfni yangilash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to update class",
+  },
+  failedToCreateClass: {
+    "uz-cyrl": "Синфни яратиш муваффақиятсиз бўлди",
+    "uz-latn": "Sinfni yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to create class",
+  },
+  failedToDeleteClass: {
+    "uz-cyrl": "Синфни ўчириш муваффақиятсиз бўлди",
+    "uz-latn": "Sinfni o'chirish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to delete class",
+  },
+  noPermissionEditClasses: {
+    "uz-cyrl": "Синфларни таҳрирлаш учун рухсатингиз йўқ",
+    "uz-latn": "Sinflarni tahrirlash uchun ruxsatingiz yo'q",
+    en: "You don't have permission to edit classes",
+  },
 };

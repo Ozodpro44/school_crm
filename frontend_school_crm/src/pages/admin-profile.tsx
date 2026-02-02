@@ -24,6 +24,7 @@ import {
   LogOut,
   ArrowLeft,
   Edit2,
+  Loader2,
 } from "lucide-react";
 import { getCurrentUser, logout, hasPermission } from "@/lib/auth";
 import { User as UserType } from "@/types";
@@ -172,7 +173,7 @@ export default function AdminProfilePage() {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Error response:", errorText);
-        let errorMessage = t("updateFailed") || "Failed to update profile";
+        let errorMessage = t("updateFailed");
         try {
           const errorData = JSON.parse(errorText);
           errorMessage = errorData.error || errorData.message || errorMessage;
@@ -209,7 +210,7 @@ export default function AdminProfilePage() {
       });
 
       toast({
-        title: t("profileUpdated") || "Success",
+        title: t("profileUpdated"),
         description:
           t("profileUpdatedDescription") ||
           "Your profile has been updated successfully.",
@@ -260,7 +261,7 @@ export default function AdminProfilePage() {
       if (!response.ok) {
         const errorText = await response.text();
         console.error("Error response:", errorText);
-        let errorMessage = t("updateFailed") || "Failed to change password";
+        let errorMessage = t("updateFailed");
         try {
           const errorData = JSON.parse(errorText);
           errorMessage = errorData.error || errorData.message || errorMessage;
@@ -278,7 +279,7 @@ export default function AdminProfilePage() {
       });
 
       toast({
-        title: t("passwordUpdated") || "Success",
+        title: t("passwordUpdated"),
         description:
           t("passwordUpdatedDescription") ||
           "Your password has been changed successfully.",
@@ -610,7 +611,14 @@ export default function AdminProfilePage() {
               disabled={isSaving}
               className="bg-blue-600 hover:bg-blue-700"
             >
-              {isSaving ? t("saving") || "Saving..." : t("save") || "Save"}
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("saving")}
+                </>
+              ) : (
+                t("save") || "Save"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -737,9 +745,14 @@ export default function AdminProfilePage() {
               disabled={isSaving}
               className="bg-blue-600 hover:bg-blue-700"
             >
-              {isSaving
-                ? t("updating") || "Updating..."
-                : t("updatePassword") || "Update Password"}
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("updating")}
+                </>
+              ) : (
+                t("updatePassword") || "Update Password"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

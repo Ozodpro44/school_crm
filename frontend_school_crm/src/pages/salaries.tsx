@@ -23,7 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { salariesDB, teachersDB, usersDB, monthArchivesDB, branchesDB } from "@/lib/storage";
 import { Salary, PaymentStatus, Teacher, PaymentMethod, Branch } from "@/types";
-import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { listSalaries, getBranch } from "@/lib/api";
@@ -46,6 +46,7 @@ export default function SalariesPage() {
      const [isDialogOpen, setIsDialogOpen] = useState(false);
      const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
      const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+     const [isDeleteLoading, setIsDeleteLoading] = useState(false);
      const [isSubmitting, setIsSubmitting] = useState(false);
      const [currentPage, setCurrentPage] = useState(1);
      const itemsPerPage = getCurrentUser()?.role === "manager" ? 50 : 10;
@@ -246,12 +247,19 @@ export default function SalariesPage() {
     setDeleteConfirmId(id);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteConfirmId) {
-      salariesDB.delete(deleteConfirmId);
-      loadData();
-      toast({ title: t("deleted") || "Deleted", description: t("salaryRecordDeleted"), variant: "success" });
-      setDeleteConfirmId(null);
+      setIsDeleteLoading(true);
+      try {
+        salariesDB.delete(deleteConfirmId);
+        await loadData();
+        toast({ title: t("deleted") || "Deleted", description: t("salaryRecordDeleted"), variant: "success" });
+      } catch (error) {
+        toast({ title: "Error", description: "Failed to delete salary", variant: "destructive" });
+      } finally {
+        setIsDeleteLoading(false);
+        setDeleteConfirmId(null);
+      }
     }
   };
 
@@ -851,6 +859,7 @@ export default function SalariesPage() {
                    type="button"
                    variant="outline"
                    onClick={() => setDeleteConfirmId(null)}
+                   disabled={isDeleteLoading}
                  >
                    {t("cancel")}
                  </Button>
@@ -858,8 +867,16 @@ export default function SalariesPage() {
                    type="button"
                    variant="destructive"
                    onClick={confirmDelete}
+                   disabled={isDeleteLoading}
                  >
-                   {t("delete")}
+                   {isDeleteLoading ? (
+                     <>
+                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                       {t("deleting") || "Deleting..."}
+                     </>
+                   ) : (
+                     t("delete") || "Delete"
+                   )}
                  </Button>
                </div>
               </DialogContent>

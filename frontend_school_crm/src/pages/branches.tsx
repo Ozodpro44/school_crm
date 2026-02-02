@@ -10,7 +10,7 @@ import { Branch } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { Plus, Building2, MapPin, Phone, Edit, Trash2, Users, DollarSign } from "lucide-react";
+import { Plus, Building2, MapPin, Phone, Edit, Trash2, Users, DollarSign, Loader2 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +47,8 @@ export default function BranchesPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdminSubmitting, setIsAdminSubmitting] = useState(false);
+  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
+  const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasCheckedAuth) {
@@ -77,7 +79,7 @@ export default function BranchesPage() {
       console.error("Failed to load branches:", error);
       toast({
         title: t("error"),
-        description: t("failedToLoadBranches") || "Failed to load branches",
+        description: t("failedToLoadBranches"),
         variant: "destructive",
       });
       setLoading(false);
@@ -101,7 +103,7 @@ export default function BranchesPage() {
     if (formData.monthlyPayment <= 0) {
       toast({
         title: t("error"),
-        description: "Monthly payment must be greater than 0",
+        description: t("monthlyPaymentMustBePositive"),
         variant: "destructive",
       });
       setIsSubmitting(false);
@@ -148,7 +150,7 @@ export default function BranchesPage() {
       console.error("Error saving branch:", error);
       toast({
         title: t("error"),
-        description: t("failedToSaveBranch") || "Failed to save branch",
+        description: t("failedToSaveBranch"),
         variant: "destructive",
       });
       } finally {
@@ -170,6 +172,8 @@ export default function BranchesPage() {
 
   const handleDelete = async (id: string) => {
     if (confirm(t("branchDeleteConfirmation"))) {
+      setDeletingBranchId(id);
+      setIsDeleteLoading(true);
       try {
         await api.deleteBranch(id);
         toast({
@@ -186,6 +190,9 @@ export default function BranchesPage() {
           description: t("failedToDeleteBranch") || "Failed to delete branch",
           variant: "destructive",
         });
+      } finally {
+        setIsDeleteLoading(false);
+        setDeletingBranchId(null);
       }
     }
   };
@@ -439,8 +446,13 @@ export default function BranchesPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDelete(branch.id)}
+                          disabled={isDeleteLoading && deletingBranchId === branch.id}
                         >
-                          <Trash2 className="h-4 w-4 text-destructive" />
+                          {isDeleteLoading && deletingBranchId === branch.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          )}
                         </Button>
                       </div>
                     </div>

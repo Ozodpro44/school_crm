@@ -25,7 +25,7 @@ import { listUsers, deleteUser as deleteUserAPI, listBranches, getAuthToken, upd
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { User, Permission, Branch } from "@/types";
-import { Plus, Edit2, Trash2, Shield, UserCog, Lock } from "lucide-react";
+import { Plus, Edit2, Trash2, Shield, UserCog, Lock, Loader2 } from "lucide-react";
 import { getTranslation } from "@/lib/translations";
 import { updateUserPassword } from "@/lib/auth";
 import { useMultiSelect } from "@/hooks/use-multi-select";
@@ -43,6 +43,9 @@ export default function ManagersPage() {
      confirmPassword: "",
    });
    const [isSubmitting, setIsSubmitting] = useState(false);
+   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
+   const [deletingManagerId, setDeletingManagerId] = useState<string | null>(null);
+   const [isBulkDeleteLoading, setIsBulkDeleteLoading] = useState(false);
    const language = useLanguage();
      const { toast } = useToast();
      const { currentBranch } = useBranch();
@@ -259,6 +262,8 @@ export default function ManagersPage() {
 
   const handleDelete = async (id: string) => {
     if (confirm(t("confirmDelete") || "Are you sure you want to delete this manager?")) {
+      setDeletingManagerId(id);
+      setIsDeleteLoading(true);
       try {
         await deleteUserAPI(id);
         await loadData();
@@ -266,6 +271,9 @@ export default function ManagersPage() {
       } catch (error) {
         console.error("Failed to delete manager:", error);
         toast({ title: "Error", description: "Failed to delete manager", variant: "destructive" });
+      } finally {
+        setIsDeleteLoading(false);
+        setDeletingManagerId(null);
       }
     }
   };
@@ -275,6 +283,7 @@ export default function ManagersPage() {
     if (selectedIds.length === 0) return;
 
     if (confirm(`${t("confirmDelete") || "Are you sure?"} (${selectedIds.length} ${t("items")})`)) {
+      setIsBulkDeleteLoading(true);
       try {
         await Promise.all(selectedIds.map((id) => deleteUserAPI(id)));
         clearSelection();
@@ -287,6 +296,8 @@ export default function ManagersPage() {
       } catch (error) {
         console.error("Failed to delete managers:", error);
         toast({ title: "Error", description: "Failed to delete managers", variant: "destructive" });
+      } finally {
+        setIsBulkDeleteLoading(false);
       }
     }
   };
@@ -723,9 +734,16 @@ export default function ManagersPage() {
                 size="sm"
                 variant="destructive"
                 onClick={handleBulkDelete}
-                disabled={getSelectedCount() === 0}
+                disabled={getSelectedCount() === 0 || isBulkDeleteLoading}
               >
-                {t("deleteSelected") || "Delete Selected"}
+                {isBulkDeleteLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    {t("deleting") || "Deleting..."}
+                  </>
+                ) : (
+                  t("deleteSelected") || "Delete Selected"
+                )}
               </Button>
               <Button
                 size="sm"
@@ -827,8 +845,13 @@ export default function ManagersPage() {
                             variant="ghost"
                             onClick={() => handleDelete(manager.id)}
                             title={t("delete")}
+                            disabled={isDeleteLoading && deletingManagerId === manager.id}
                           >
-                            <Trash2 className="w-4 h-4 text-red-500" />
+                            {isDeleteLoading && deletingManagerId === manager.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            )}
                           </Button>
                         </div>
                       </td>

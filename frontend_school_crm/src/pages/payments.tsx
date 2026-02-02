@@ -41,6 +41,7 @@ import {
   Edit2,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
@@ -385,7 +386,7 @@ export default function PaymentsPage() {
       console.error("Failed to load data:", error);
       toast({
         title: t("error"),
-        description: "Failed to load payments",
+        description: t("failedToLoadPayments"),
         variant: "destructive",
       });
     } finally {
@@ -573,7 +574,7 @@ export default function PaymentsPage() {
         console.error("Failed to update payment:", error);
         toast({
           title: t("error"),
-          description: "Failed to update payment",
+          description: t("failedToUpdatePayment"),
           variant: "destructive",
         });
         setIsSubmitting(false);
@@ -2769,6 +2770,7 @@ export default function PaymentsPage() {
               onClick={() =>
                 setDeleteConfirmDialog({ isOpen: false, paymentId: null })
               }
+              disabled={processingPaymentId === deleteConfirmDialog.paymentId}
             >
               {t("cancel")}
             </Button>
@@ -2778,7 +2780,14 @@ export default function PaymentsPage() {
               onClick={confirmDelete}
               disabled={processingPaymentId === deleteConfirmDialog.paymentId}
             >
-              {t("delete")}
+              {processingPaymentId === deleteConfirmDialog.paymentId ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("deleting")}
+                </>
+              ) : (
+                t("delete")
+              )}
             </Button>
           </div>
         </DialogContent>

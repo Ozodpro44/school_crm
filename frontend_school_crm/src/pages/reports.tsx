@@ -305,7 +305,7 @@ export default function ReportsPage() {
       console.error("Failed to generate payment report:", error);
       toast({
         title: t("error"),
-        description: "Failed to generate payment report",
+        description: t("failedToGeneratePaymentReport"),
         variant: "destructive",
       });
       setReportData([]);
@@ -376,7 +376,7 @@ export default function ReportsPage() {
       console.error("Failed to generate salary report:", error);
       toast({
         title: t("error"),
-        description: "Failed to generate salary report",
+        description: t("failedToGenerateSalaryReport"),
         variant: "destructive",
       });
       setReportData([]);

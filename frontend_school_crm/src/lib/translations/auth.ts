@@ -172,4 +172,46 @@ export const authTranslations: Partial<Translation> = {
     "uz-latn": "Parolni kiriting",
     en: "Enter password"
   },
+  
+  // Profile updates
+  updateFailed: {
+    "uz-cyrl": "Янгилаш муваффақиятсиз бўлди",
+    "uz-latn": "Yangilash muvaffaqiyatsiz bo'ldi",
+    en: "Update failed",
+  },
+  profileUpdated: {
+    "uz-cyrl": "Профил янгиланди",
+    "uz-latn": "Profil yangilandi",
+    en: "Profile updated",
+  },
+  profileUpdatedDescription: {
+    "uz-cyrl": "Профилингиз муваффақиятли янгиланди",
+    "uz-latn": "Profilingiz muvaffaqiyatli yangilandi",
+    en: "Your profile has been updated successfully",
+  },
+  passwordUpdated: {
+    "uz-cyrl": "Парол янгиланди",
+    "uz-latn": "Parol yangilandi",
+    en: "Password updated",
+  },
+  passwordUpdatedDescription: {
+    "uz-cyrl": "Паролингиз муваффақиятли ўзгартирилди",
+    "uz-latn": "Parolingiz muvaffaqiyatli o'zgartirildi",
+    en: "Your password has been changed successfully",
+  },
+  save: {
+    "uz-cyrl": "Сақлаш",
+    "uz-latn": "Saqlash",
+    en: "Save",
+  },
+  updatePassword: {
+    "uz-cyrl": "Паролни янгилаш",
+    "uz-latn": "Parolni yangilash",
+    en: "Update Password",
+  },
+  changePassword: {
+    "uz-cyrl": "Паролни ўзгартириш",
+    "uz-latn": "Parolni o'zgartirish",
+    en: "Change Password",
+  },
 };

@@ -38,6 +38,7 @@ import {
   Download,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
@@ -226,7 +227,7 @@ export default function StudentsPage() {
       console.error("Failed to load data:", error);
       toast({
         title: t("error"),
-        description: "Failed to load students data",
+        description: t("failedToLoadStudents"),
         variant: "destructive",
       });
       setClasses([]);
@@ -486,7 +487,7 @@ export default function StudentsPage() {
       } catch (error) {
         toast({
           title: t("importError"),
-          description: "Failed to read file",
+          description: t("failedToReadFile"),
           variant: "destructive",
         });
         console.error(error);
@@ -501,7 +502,7 @@ export default function StudentsPage() {
     reader.onerror = () => {
       toast({
         title: t("importError"),
-        description: "Failed to read file",
+        description: t("failedToReadFile"),
         variant: "destructive",
       });
       setIsImporting(false);
@@ -533,8 +534,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     setIsSubmitting(true);
     if (!canEditStudents) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to create or edit students.",
+        title: t("permissionDenied"),
+        description: t("noPermissionToCreateOrEditStudents"),
         variant: "destructive",
       });
       setIsSubmitting(false);
@@ -581,7 +582,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       console.error("Failed to save student:", error);
       toast({
         title: t("error"),
-        description: "Failed to save student",
+        description: t("failedToSaveStudent"),
         variant: "destructive",
       });
     } finally {
@@ -592,8 +593,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
   const handleEdit = (student: Student) => {
     if (!canEditStudents) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to edit students.",
+        title: t("permissionDenied"),
+        description: t("noPermissionToEditStudents"),
         variant: "destructive",
       });
       return;
@@ -614,8 +615,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
   const handleDelete = (id: string) => {
     if (!canDeleteStudents) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to delete students.",
+        title: t("permissionDenied"),
+        description: t("noPermissionToDeleteStudents"),
         variant: "destructive",
       });
       return;
@@ -642,7 +643,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
         console.error("Failed to delete student:", error);
         toast({
           title: t("error"),
-          description: "Failed to delete student",
+          description: t("failedToDeleteStudent"),
           variant: "destructive",
         });
       } finally {
@@ -654,8 +655,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
   const handleBulkDelete = () => {
     if (!canDeleteStudents) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to delete students.",
+        title: t("permissionDenied"),
+        description: t("noPermissionToDeleteStudents"),
         variant: "destructive",
       });
       return;
@@ -685,7 +686,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       console.error("Failed to delete students:", error);
       toast({
         title: t("error"),
-        description: "Failed to delete some students",
+        description: t("failedToDeleteStudents"),
         variant: "destructive",
       });
     } finally {
@@ -696,8 +697,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
   const handleBulkChangeClass = async () => {
     if (!canEditStudents) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to edit students.",
+        title: t("permissionDenied"),
+        description: t("noPermissionToEditStudents"),
         variant: "destructive",
       });
       return;
@@ -715,8 +716,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     setIsBulkChangeClassOpen(false);
     setBulkChangeClassId("");
     toast({
-      title: "Updated",
-      description: `${selectedIds.length} students moved to ${getClassName(
+      title: t("updated"),
+      description: `${selectedIds.length} ${t("students")} ${t("movedTo")} ${getClassName(
         bulkChangeClassId
       )}`,
       variant: "success",
@@ -748,7 +749,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
         console.error("Failed to mark student as left:", error);
         toast({
           title: t("error"),
-          description: "Failed to update student status",
+          description: t("failedToUpdateStudentStatus"),
           variant: "destructive",
         });
       } finally {
@@ -1692,7 +1693,14 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                  onClick={confirmDelete}
                  disabled={isDeleteLoading}
                >
-                 {isDeleteLoading ? "Deleting..." : t("delete")}
+                 {isDeleteLoading ? (
+                   <>
+                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                     {t("deleting") || "Deleting..."}
+                   </>
+                 ) : (
+                   t("delete")
+                 )}
                </Button>
              </div>
            </DialogContent>
@@ -1728,7 +1736,14 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                  onClick={confirmBulkDelete}
                  disabled={isBulkDeleteLoading}
                >
-                 {isBulkDeleteLoading ? "Deleting..." : t("delete")}
+                 {isBulkDeleteLoading ? (
+                   <>
+                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                     {t("deleting") || "Deleting..."}
+                   </>
+                 ) : (
+                   t("delete")
+                 )}
                </Button>
              </div>
            </DialogContent>
@@ -1766,7 +1781,14 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                  onClick={confirmMarkLeft}
                  disabled={isMarkLeftLoading}
                >
-                 {isMarkLeftLoading ? "Updating..." : t("confirm")}
+                 {isMarkLeftLoading ? (
+                   <>
+                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                     {t("updating") || "Updating..."}
+                   </>
+                 ) : (
+                   t("confirm")
+                 )}
                </Button>
              </div>
            </DialogContent>

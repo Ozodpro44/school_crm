@@ -33,6 +33,7 @@ import {
   Edit2,
   Trash2,
   UserX,
+  Loader2,
 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -53,6 +54,8 @@ export default function StudentDetailsPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [markLeftConfirmOpen, setMarkLeftConfirmOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
+  const [isMarkLeftLoading, setIsMarkLeftLoading] = useState(false);
   const [classes, setClasses] = useState<any[]>([]);
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [editFormData, setEditFormData] = useState({
@@ -159,8 +162,8 @@ export default function StudentDetailsPage() {
     } catch (error) {
       console.error("Failed to load student details:", error);
       toast({
-        title: "Error",
-        description: "Failed to load student details",
+        title: t("error"),
+        description: t("failedToLoadStudentDetails"),
         variant: "destructive",
       });
       setStudent(null);
@@ -234,8 +237,8 @@ export default function StudentDetailsPage() {
   const handleSaveEdit = () => {
     if (!student || !editFormData.fullName || !editFormData.classId) {
       toast({
-        title: "Error",
-        description: "Please fill in all required fields",
+        title: t("error"),
+        description: t("fillRequiredFields"),
         variant: "destructive",
       });
       return;
@@ -271,8 +274,8 @@ export default function StudentDetailsPage() {
   const handleDelete = () => {
     if (!canDeleteStudents) {
       toast({
-        title: "Permission Denied",
-        description: "You don't have permission to delete students.",
+        title: t("permissionDenied"),
+        description: t("noPermissionToDeleteStudents"),
         variant: "destructive",
       });
       return;
@@ -280,16 +283,27 @@ export default function StudentDetailsPage() {
     setDeleteConfirmOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (student) {
-      studentsDB.delete(student.id);
-      toast({
-        title: t("deleted"),
-        description: t("successfullyDeleted"),
-        variant: "success",
-      });
-      setDeleteConfirmOpen(false);
-      router.push(backRoute);
+      setIsDeleteLoading(true);
+      try {
+        studentsDB.delete(student.id);
+        toast({
+          title: t("deleted"),
+          description: t("successfullyDeleted"),
+          variant: "success",
+        });
+        router.push(backRoute);
+      } catch (error) {
+        toast({
+          title: t("error"),
+          description: t("failedToDeleteStudent"),
+          variant: "destructive",
+        });
+      } finally {
+        setIsDeleteLoading(false);
+        setDeleteConfirmOpen(false);
+      }
     }
   };
 
@@ -305,24 +319,35 @@ export default function StudentDetailsPage() {
     setMarkLeftConfirmOpen(true);
   };
 
-  const confirmMarkLeft = () => {
+  const confirmMarkLeft = async () => {
     if (student && student.status !== "left") {
-      const updatedStudent = {
-        ...student,
-        status: "left" as const,
-        leftDate: new Date().toISOString(),
-      };
-      studentsDB.update(student.id, {
-        status: "left",
-        leftDate: new Date().toISOString(),
-      });
-      setStudent(updatedStudent);
-      toast({
-        title: t("updated"),
-        description: t("statusUpdated"),
-        variant: "success",
-      });
-      setMarkLeftConfirmOpen(false);
+      setIsMarkLeftLoading(true);
+      try {
+        const updatedStudent = {
+          ...student,
+          status: "left" as const,
+          leftDate: new Date().toISOString(),
+        };
+        studentsDB.update(student.id, {
+          status: "left",
+          leftDate: new Date().toISOString(),
+        });
+        setStudent(updatedStudent);
+        toast({
+          title: t("updated"),
+          description: t("statusUpdated"),
+          variant: "success",
+        });
+      } catch (error) {
+        toast({
+          title: t("error"),
+          description: "Failed to update student status",
+          variant: "destructive",
+        });
+      } finally {
+        setIsMarkLeftLoading(false);
+        setMarkLeftConfirmOpen(false);
+      }
     }
   };
 
@@ -770,11 +795,23 @@ export default function StudentDetailsPage() {
               <Button
                 variant="outline"
                 onClick={() => setDeleteConfirmOpen(false)}
+                disabled={isDeleteLoading}
               >
                 {t("cancel")}
               </Button>
-              <Button variant="destructive" onClick={confirmDelete}>
-                {t("delete")}
+              <Button 
+                variant="destructive" 
+                onClick={confirmDelete}
+                disabled={isDeleteLoading}
+              >
+                {isDeleteLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {t("deleting")}
+                  </>
+                ) : (
+                  t("delete")
+                )}
               </Button>
             </div>
           </DialogContent>
@@ -801,11 +838,22 @@ export default function StudentDetailsPage() {
               <Button
                 variant="outline"
                 onClick={() => setMarkLeftConfirmOpen(false)}
+                disabled={isMarkLeftLoading}
               >
                 {t("cancel")}
               </Button>
-              <Button onClick={confirmMarkLeft}>
-                {t("confirm")}
+              <Button 
+                onClick={confirmMarkLeft}
+                disabled={isMarkLeftLoading}
+              >
+                {isMarkLeftLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {t("updating")}
+                  </>
+                ) : (
+                  t("confirm")
+                )}
               </Button>
             </div>
           </DialogContent>
