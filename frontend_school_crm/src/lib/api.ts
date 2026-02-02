@@ -10,6 +10,8 @@ export async function getStudentsConsolidatedData(
     classId?: string;
     status?: string;
     paymentStatus?: string;
+    month?: string;
+    year?: string;
   }
 ): Promise<any> {
   let query = `/students/consolidated/data?branchId=${branchId}`;
@@ -19,6 +21,8 @@ export async function getStudentsConsolidatedData(
   if (filters?.classId) query += `&classId=${filters.classId}`;
   if (filters?.status) query += `&status=${filters.status}`;
   if (filters?.paymentStatus) query += `&paymentStatus=${filters.paymentStatus}`;
+  if (filters?.month) query += `&month=${filters.month}`;
+  if (filters?.year) query += `&year=${filters.year}`;
   return apiRequest<any>(query);
 }
 /**

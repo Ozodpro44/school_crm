@@ -214,9 +214,11 @@ func getStudentsConsolidatedData(studentService *service.StudentService, classSe
 		status := c.Query("status")
 		classID := c.Query("classId")
 		paymentStatus := c.Query("paymentStatus")
+		month := c.Query("month")
+		year := c.Query("year")
 
 		// Fetch students and classes in parallel
-		studentsData, err := studentService.GetByBranchIDWithFilters(c.Request.Context(), branchID, page, limit, search, status, classID, paymentStatus)
+		studentsData, err := studentService.GetByBranchIDWithFilters(c.Request.Context(), branchID, page, limit, search, status, classID, paymentStatus, month, year)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

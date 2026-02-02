@@ -168,7 +168,7 @@ func (s *StudentService) Delete(ctx context.Context, id string) error {
 	return err
 }
 
-func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, classID, paymentStatus string) (*models.StudentListResponse, error) {
+func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, classID, paymentStatus, month, year string) (*models.StudentListResponse, error) {
 	intPage, err := strconv.Atoi(page)
 	if err != nil || intPage < 1 {
 		intPage = 1
@@ -184,6 +184,15 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 	currentTime := time.Now()
 	currentMonth := currentTime.Format("01")
 	currentYear := currentTime.Year()
+
+	if month != "" {
+		currentMonth = month
+	}
+	if year != "" {
+		if parsedYear, parseErr := strconv.Atoi(year); parseErr == nil {
+			currentYear = parsedYear
+		}
+	}
 
 	// -------------------------
 	// dynamic filters

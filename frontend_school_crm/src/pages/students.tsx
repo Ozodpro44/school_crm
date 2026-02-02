@@ -46,6 +46,7 @@ import {
    updateStudent as apiUpdateStudent,
    deleteStudent as apiDeleteStudent,
    createClass as apiCreateClass,
+   getBranch,
  } from "@/lib/api";
 import { Branch } from "@/types";
 import type { Student as ApiStudent } from "@/lib/api";
@@ -173,6 +174,13 @@ export default function StudentsPage() {
     const selectedBranchId = await waitForSelectedBranchId();
     try {
       if (selectedBranchId) {
+        const branch = await getBranch(selectedBranchId);
+        setBranchData(branch);
+        const currentMonth =
+          branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
+          String(new Date().getMonth() + 1).padStart(2, "0");
+        const currentYear =
+          branch.currentFinancialMonth?.year || new Date().getFullYear();
         const filters: any = {};
         // Use override values first, then state, then URL params
         const searchValue =
@@ -196,6 +204,8 @@ export default function StudentsPage() {
         if (statusValue !== "all") filters.status = statusValue;
         if (classValue !== "all") filters.classId = classValue;
         if (paymentStatusValue !== "all") filters.paymentStatus = paymentStatusValue;
+        filters.month = currentMonth;
+        filters.year = currentYear.toString();
 
         const consolidated = await apiGetStudentsConsolidatedData(selectedBranchId, page, limit, filters);
         if (loadId !== currentLoadIdRef.current) {
@@ -210,7 +220,7 @@ export default function StudentsPage() {
         setTotal(totalVal);
         setTotalPages(Math.ceil(totalVal / limit));
         setClasses(classesList);
-        setBranchData(null); // Clear branch data since we're not fetching it
+        setBranchData(branch);
       }
     } catch (error) {
       console.error("Failed to load data:", error);
