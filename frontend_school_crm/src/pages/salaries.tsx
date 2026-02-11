@@ -162,8 +162,8 @@ export default function SalariesPage() {
     } catch (error) {
       console.error("Failed to load salaries:", error);
       toast({
-        title: "Error",
-        description: "Failed to load salaries",
+        title: t("error"),
+        description: t("failedToLoadSalaries"),
         variant: "destructive",
       });
     }
@@ -211,8 +211,8 @@ export default function SalariesPage() {
     } catch (error) {
       console.error("Failed to save salary:", error);
       toast({
-        title: "Error",
-        description: "Failed to save salary",
+        title: t("error"),
+        description: t("failedToSaveSalary"),
         variant: "destructive",
       });
     } finally {

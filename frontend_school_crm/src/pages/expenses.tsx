@@ -557,8 +557,8 @@ export default function ExpensesPage() {
         } catch (error) {
           console.error("Failed to delete expense:", error);
           toast({
-            title: "Error",
-            description: "Failed to delete expense",
+            title: t("error"),
+            description: t("expenseDeletedError"),
             variant: "destructive",
           });
         } finally {
@@ -595,8 +595,8 @@ export default function ExpensesPage() {
         } catch (error) {
           console.error("Failed to delete expenses:", error);
           toast({
-            title: "Error",
-            description: "Failed to delete expenses",
+            title: t("error"),
+            description: t("failedToDeleteExpenses"),
             variant: "destructive",
           });
         }

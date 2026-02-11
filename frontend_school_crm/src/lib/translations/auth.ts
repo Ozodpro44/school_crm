@@ -214,4 +214,46 @@ export const authTranslations: Partial<Translation> = {
     "uz-latn": "Parolni o'zgartirish",
     en: "Change Password",
   },
+  
+  // Validation
+  fullNameRequired: {
+    "uz-cyrl": "Тўлиқ ism киритилиши керак",
+    "uz-latn": "To'liq ism kiritilishi kerak",
+    en: "Full name is required",
+  },
+  emailRequired: {
+    "uz-cyrl": "Электрон почта киритилиши керак",
+    "uz-latn": "Elektron pochta kiritilishi kerak",
+    en: "Email is required",
+  },
+  invalidEmail: {
+    "uz-cyrl": "Нотўғри электрон почта формати",
+    "uz-latn": "Noto'g'ri elektron pochta formati",
+    en: "Invalid email format",
+  },
+  currentPasswordRequired: {
+    "uz-cyrl": "Жорий парол киритилиши керак",
+    "uz-latn": "Joriy parol kiritilishi kerak",
+    en: "Current password is required",
+  },
+  newPasswordRequired: {
+    "uz-cyrl": "Янги парол киритилиши керак",
+    "uz-latn": "Yangi parol kiritilishi kerak",
+    en: "New password is required",
+  },
+  passwordTooShort: {
+    "uz-cyrl": "Парол камида 6 та белгидан иборат бўлиши керак",
+    "uz-latn": "Parol kamida 6 ta belgidan iborat bo'lishi kerak",
+    en: "Password must be at least 6 characters",
+  },
+  confirmPasswordRequired: {
+    "uz-cyrl": "Паролни тасдиқлаш талаб қилинади",
+    "uz-latn": "Parolni tasdiqlash talab qilinadi",
+    en: "Confirm password is required",
+  },
+  passwordMismatch: {
+    "uz-cyrl": "Пароллар мос келмайди",
+    "uz-latn": "Parollar mos kelmaydi",
+    en: "Passwords do not match",
+  },
 };

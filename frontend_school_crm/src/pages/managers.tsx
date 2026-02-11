@@ -152,8 +152,8 @@ export default function ManagersPage() {
      } catch (error) {
        console.error("Failed to load managers:", error);
        toast({
-         title: "Error",
-         description: "Failed to load managers",
+         title: t("error"),
+         description: t("failedToLoadManagers"),
          variant: "destructive",
        });
      } finally {

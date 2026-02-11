@@ -447,4 +447,25 @@ export const toastTranslations: Partial<Translation> = {
     "uz-latn": "Sinflarni tahrirlash uchun ruxsatingiz yo'q",
     en: "You don't have permission to edit classes",
   },
+  
+  failedToLoadManagers: {
+    "uz-cyrl": "Менежерларни юклаш муваффақиятсиз бўлди",
+    "uz-latn": "Menejerlarni yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load managers",
+  },
+  failedToLoadSalaries: {
+    "uz-cyrl": "Маошларни юклаш муваффақиятсиз бўлди",
+    "uz-latn": "Maoshlarni yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load salaries",
+  },
+  expenseDeletedError: {
+    "uz-cyrl": "Харажатни ўчириш муваффақиятсиз бўлди",
+    "uz-latn": "Xarajatni o'chirish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to delete expense",
+  },
+  failedToDeleteExpenses: {
+    "uz-cyrl": "Харажатларни ўчириш муваффақиятсиз бўлди",
+    "uz-latn": "Xarajatlarni o'chirish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to delete expenses",
+  },
 };
