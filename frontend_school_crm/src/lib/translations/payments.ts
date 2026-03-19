@@ -20,9 +20,10 @@ export const paymentTranslations: Partial<Translation> = {
     en: "Payment Method"
   },
 
-  card: { "uz-cyrl": "Карта", "uz-latn": "Karta", en: "Card" },
+  click: { "uz-cyrl": "Клик", "uz-latn": "Click", en: "Click" },
   cash: { "uz-cyrl": "Нақд", "uz-latn": "Naqd", en: "Cash" },
   bank: { "uz-cyrl": "Банк", "uz-latn": "Bank", en: "Bank" },
+  terminal: { "uz-cyrl": "Терминал", "uz-latn": "Terminal", en: "Terminal" },
 
   addPayment: {
     "uz-cyrl": "Тўлов қўшиш",

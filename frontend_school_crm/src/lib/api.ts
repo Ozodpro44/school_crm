@@ -121,7 +121,7 @@ export interface Payment {
   amount: number;
   month: string;
   year: number;
-  paymentMethod: "cash" | "card" | "bank";
+  paymentMethod: "cash" | "click" | "bank" | "terminal";
   status: "paid" | "partial";
   invoiceNumber: string;
   notes?: string;
@@ -136,7 +136,7 @@ export interface Payment {
   amount: number;
   month: string;
   year: number;
-  paymentMethod: "cash" | "card" | "bank";
+  paymentMethod: "cash" | "click" | "bank" | "terminal";
   status: "paid" | "partial";
   invoiceNumber: string;
   notes?: string;
@@ -144,9 +144,9 @@ export interface Payment {
   branchId: string;
   }
 
-  export interface UpdatePaymentRequest {
+export interface UpdatePaymentRequest {
   status?: "paid" | "partial";
-  paymentMethod?: "cash" | "card" | "bank";
+  paymentMethod?: "cash" | "click" | "bank" | "terminal";
   amount?: number;
   notes?: string;
   paidDate?: string;
@@ -157,9 +157,10 @@ export interface PaymentSummary {
   totalUnpaid: number;
   totalPartial: number;
   byMethod: {
-    card: number;
+    click: number;
     cash: number;
     bank: number;
+    terminal: number;
   };
 }
 

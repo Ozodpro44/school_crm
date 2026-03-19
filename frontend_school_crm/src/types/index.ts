@@ -1,5 +1,6 @@
 export type UserRole = "admin" | "branch_admin" | "manager" | "accountant" | "teacher" | "student" | "parent";
 export type PaymentMethod = "card" | "cash" | "bank";
+export type StudentPaymentMethod = "click" | "cash" | "bank" | "terminal";
 export type StudentStatus = "active" | "left" | "suspended";
 export type PaymentStatus = "paid" | "partial";
 export type Language = "uz-cyrl" | "uz-latn" | "en";
@@ -132,7 +133,7 @@ export interface Payment {
   amount: number;
   month: string;
   year: number;
-  paymentMethod: PaymentMethod;
+  paymentMethod: StudentPaymentMethod;
   status: PaymentStatus;
   invoiceNumber: string;
   notes?: string;

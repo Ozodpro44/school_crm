@@ -567,7 +567,9 @@ export const commonTranslations: Partial<Translation> = {
     en: "Payment Method",
   },
   card: { "uz-cyrl": "Карта", "uz-latn": "Karta", en: "Card" },
+  click: { "uz-cyrl": "Клик", "uz-latn": "Click", en: "Click" },
   cash: { "uz-cyrl": "Нақд", "uz-latn": "Naqd", en: "Cash" },
+  terminal: { "uz-cyrl": "Терминал", "uz-latn": "Terminal", en: "Terminal" },
   bankTransfer: {
     "uz-cyrl": "Банк ўтказмаси",
     "uz-latn": "Bank o'tkazmasi",
@@ -1809,7 +1811,6 @@ export const commonTranslations: Partial<Translation> = {
     en: "Notes",
   },
   };
-
 
 
 

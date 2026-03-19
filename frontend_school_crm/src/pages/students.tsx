@@ -42,13 +42,13 @@ import {
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
-   getStudentsConsolidatedData as apiGetStudentsConsolidatedData,
-   createStudent as apiCreateStudent,
-   updateStudent as apiUpdateStudent,
-   deleteStudent as apiDeleteStudent,
-   createClass as apiCreateClass,
-   getBranch,
- } from "@/lib/api";
+  getStudentsConsolidatedData as apiGetStudentsConsolidatedData,
+  createStudent as apiCreateStudent,
+  updateStudent as apiUpdateStudent,
+  deleteStudent as apiDeleteStudent,
+  createClass as apiCreateClass,
+  getBranch,
+} from "@/lib/api";
 import { Branch } from "@/types";
 import type { Student as ApiStudent } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -91,9 +91,7 @@ export default function StudentsPage() {
   const [markLeftStudentId, setMarkLeftStudentId] = useState<string | null>(null);
   const [isMarkLeftLoading, setIsMarkLeftLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(() =>
-    getCurrentUser()?.role === "manager" ? 50 : 10,
-  );
+  const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
   const itemsPerPage = 10;
@@ -134,7 +132,7 @@ export default function StudentsPage() {
   // Initialize state from URL params (only on first router ready)
   useEffect(() => {
     if (!router.isReady) return;
-    
+
     const { page, limit, search, status, classId, paymentStatus } = router.query;
     if (page) setPage(parseInt(page as string) || 1);
     if (limit) setLimit(parseInt(limit as string) || 10);
@@ -200,7 +198,7 @@ export default function StudentsPage() {
           paymentStatusOverride !== undefined
             ? paymentStatusOverride
             : filterPaymentStatus || (router.query.paymentStatus as string) || "all";
-        
+
         if (searchValue) filters.search = searchValue;
         if (statusValue !== "all") filters.status = statusValue;
         if (classValue !== "all") filters.classId = classValue;
@@ -216,7 +214,7 @@ export default function StudentsPage() {
         const classesList = consolidated?.classes || [];
         const totalVal = consolidated?.total || 0;
         const totalPagesVal = consolidated?.totalPages || consolidated?.total_pages || 0;
-        
+
         setStudents(studentsList);
         setTotal(totalVal);
         setTotalPages(Math.ceil(totalVal / limit));
@@ -237,81 +235,81 @@ export default function StudentsPage() {
 
   // Initialize and load initial data
   useEffect(() => {
-     setIsLoading(true);
-     const timer = setTimeout(async () => {
-       await loadData();
-       setIsLoading(false);
-       // Mark initial load as done AFTER data is loaded to prevent filter effects from running prematurely
-       initialLoadDoneRef.current = true;
-     }, 300);
-     return () => clearTimeout(timer);
-   }, []);
+    setIsLoading(true);
+    const timer = setTimeout(async () => {
+      await loadData();
+      setIsLoading(false);
+      // Mark initial load as done AFTER data is loaded to prevent filter effects from running prematurely
+      initialLoadDoneRef.current = true;
+    }, 300);
+    return () => clearTimeout(timer);
+  }, []);
 
-   // Reload data when filters change
-   useEffect(() => {
-     // Skip if this is the initial load (URL params are being set)
-     if (!initialLoadDoneRef.current) {
-       return;
-     }
-     
-     // Mark filter change in progress to prevent duplicate API calls from page useEffect
-     filterChangeInProgressRef.current = true;
-     setPage(1); // Reset to first page on filter changes
-     setIsListLoading(true);
-     loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
-     // Update URL with filters
-     const params = new URLSearchParams();
-     if (searchTerm) params.set('search', searchTerm);
-     if (filterStatus !== 'all') params.set('status', filterStatus);
-     if (filterClass !== 'all') params.set('classId', filterClass);
-     if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
-     params.set('page', '1');
-     params.set('limit', limit.toString());
-     router.push(`/students?${params.toString()}`, undefined, { shallow: true });
-   }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, limit]);
+  // Reload data when filters change
+  useEffect(() => {
+    // Skip if this is the initial load (URL params are being set)
+    if (!initialLoadDoneRef.current) {
+      return;
+    }
 
-   // Reload data when page changes
-   useEffect(() => {
-     // Skip if initial load hasn't completed yet
-     if (!initialLoadDoneRef.current) return;
-     
-     // Skip if a filter change is in progress (filter useEffect handles the load)
-     if (filterChangeInProgressRef.current) {
-       filterChangeInProgressRef.current = false;
-       return;
-     }
-     
-     setIsListLoading(true);
-     loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
-     // Update URL with current page
-     const params = new URLSearchParams();
-     if (searchTerm) params.set('search', searchTerm);
-     if (filterStatus !== 'all') params.set('status', filterStatus);
-     if (filterClass !== 'all') params.set('classId', filterClass);
-     if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
-     params.set('page', page.toString());
-     params.set('limit', limit.toString());
-     router.push(`/students?${params.toString()}`, undefined, { shallow: true });
-   }, [page]);
+    // Mark filter change in progress to prevent duplicate API calls from page useEffect
+    filterChangeInProgressRef.current = true;
+    setPage(1); // Reset to first page on filter changes
+    setIsListLoading(true);
+    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
+    // Update URL with filters
+    const params = new URLSearchParams();
+    if (searchTerm) params.set('search', searchTerm);
+    if (filterStatus !== 'all') params.set('status', filterStatus);
+    if (filterClass !== 'all') params.set('classId', filterClass);
+    if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
+    params.set('page', '1');
+    params.set('limit', limit.toString());
+    router.push(`/students?${params.toString()}`, undefined, { shallow: true });
+  }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, limit]);
 
-   // Reload data when branch is switched
-   useEffect(() => {
-     const handleBranchChange = async () => {
-       setPage(1);
-       setIsListLoading(true);
-       await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
-       setIsListLoading(false);
-     };
-     window.addEventListener("branchChange", handleBranchChange);
-     return () => window.removeEventListener("branchChange", handleBranchChange);
-   }, []);
+  // Reload data when page changes
+  useEffect(() => {
+    // Skip if initial load hasn't completed yet
+    if (!initialLoadDoneRef.current) return;
 
-   // Refetch data when page regains focus (preserves current filters)
-   const refetchData = useCallback(() => {
-     setIsListLoading(true);
-     loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
-   }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, page, limit]);
-   useRefetchOnFocus(refetchData);
+    // Skip if a filter change is in progress (filter useEffect handles the load)
+    if (filterChangeInProgressRef.current) {
+      filterChangeInProgressRef.current = false;
+      return;
+    }
+
+    setIsListLoading(true);
+    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
+    // Update URL with current page
+    const params = new URLSearchParams();
+    if (searchTerm) params.set('search', searchTerm);
+    if (filterStatus !== 'all') params.set('status', filterStatus);
+    if (filterClass !== 'all') params.set('classId', filterClass);
+    if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
+    params.set('page', page.toString());
+    params.set('limit', limit.toString());
+    router.push(`/students?${params.toString()}`, undefined, { shallow: true });
+  }, [page]);
+
+  // Reload data when branch is switched
+  useEffect(() => {
+    const handleBranchChange = async () => {
+      setPage(1);
+      setIsListLoading(true);
+      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
+      setIsListLoading(false);
+    };
+    window.addEventListener("branchChange", handleBranchChange);
+    return () => window.removeEventListener("branchChange", handleBranchChange);
+  }, []);
+
+  // Refetch data when page regains focus (preserves current filters)
+  const refetchData = useCallback(() => {
+    setIsListLoading(true);
+    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
+  }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, page, limit]);
+  useRefetchOnFocus(refetchData);
 
 
 
@@ -388,7 +386,7 @@ export default function StudentsPage() {
             const classObj = classes.find(
               (c) => c.name.toLowerCase() === className.toLowerCase()
             );
-            
+
             if (!classObj) {
               // Try to create the class
               try {
@@ -401,10 +399,8 @@ export default function StudentsPage() {
                 classes.push(newClass);
               } catch (classError) {
                 warnings.push(
-                  `Row ${
-                    i + 1
-                  }: Could not create class "${className}" (student added without class) - ${
-                    classError instanceof Error ? classError.message : "Unknown error"
+                  `Row ${i + 1
+                  }: Could not create class "${className}" (student added without class) - ${classError instanceof Error ? classError.message : "Unknown error"
                   }`
                 );
               }
@@ -430,21 +426,21 @@ export default function StudentsPage() {
               `Row ${i + 1}: Failed to import "${fullName}" - ${(err as any)?.message || "Unknown error"}`
             );
           }
-          }
-          }
+        }
+      }
 
-          if (importedCount > 0) {
-          toast({
+      if (importedCount > 0) {
+        toast({
           title: t("importComplete"),
           description: `${t("successfullyImported")} ${importedCount} ${t(
             "students"
           )}`,
           variant: "success",
-          });
-          }
+        });
+      }
 
-          if (warnings.length > 0) {
-          toast({
+      if (warnings.length > 0) {
+        toast({
           title: "Import Completed with Warnings",
           description:
             warnings.slice(0, 3).join("\n") +
@@ -452,22 +448,22 @@ export default function StudentsPage() {
               ? `\n... and ${warnings.length - 3} more`
               : ""),
           variant: "default",
-          });
-          }
+        });
+      }
 
-          setImportData("");
-          setIsImportDialogOpen(false);
-          setCurrentPage(1);
-          await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
-          } catch (error) {
-          toast({
-          title: t("importError"),
-          description: t("errorCheckFormat"),
-          variant: "destructive",
-          });
-          console.error(error);
-          }
-          };
+      setImportData("");
+      setIsImportDialogOpen(false);
+      setCurrentPage(1);
+      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
+    } catch (error) {
+      toast({
+        title: t("importError"),
+        description: t("errorCheckFormat"),
+        variant: "destructive",
+      });
+      console.error(error);
+    }
+  };
 
   const handleImport = async () => {
     processCSVData(importData);
@@ -825,569 +821,567 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   if (isLoading) {
     return (
-      
-        <div className="space-y-6">
-          {/* Header Skeleton */}
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-48" />
-            <Skeleton className="h-4 w-64" />
-          </div>
 
-          {/* Action Buttons Skeleton */}
-          <div className="flex gap-4">
-            <Skeleton className="h-10 w-32" />
-            <Skeleton className="h-10 w-32" />
-          </div>
+      <div className="space-y-6">
+        {/* Header Skeleton */}
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-48" />
+          <Skeleton className="h-4 w-64" />
+        </div>
 
-          {/* Filters Skeleton */}
-          <div className="flex gap-4">
-            <Skeleton className="h-10 w-full sm:w-64" />
-            <Skeleton className="h-10 w-full sm:w-40" />
-            <Skeleton className="h-10 w-full sm:w-40" />
-          </div>
+        {/* Action Buttons Skeleton */}
+        <div className="flex gap-4">
+          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-32" />
+        </div>
 
-          {/* Table Rows Skeleton */}
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-4 w-32" />
-            </CardHeader>
-            <CardContent className="space-y-4">
+        {/* Filters Skeleton */}
+        <div className="flex gap-4">
+          <Skeleton className="h-10 w-full sm:w-64" />
+          <Skeleton className="h-10 w-full sm:w-40" />
+          <Skeleton className="h-10 w-full sm:w-40" />
+        </div>
+
+        {/* Table Rows Skeleton */}
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-4 w-32" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="flex items-center gap-4 py-4 border-b">
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-8 w-20" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+    );
+  }
+
+  return (
+
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
+            {t("students")}
+          </h1>
+          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mt-1">
+            {t("manageStudents")}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+          <Dialog
+            open={isImportDialogOpen}
+            onOpenChange={setIsImportDialogOpen}
+          >
+            <DialogTrigger asChild>
+              <Button variant="outline" className="w-full sm:w-auto">
+                <Upload className="w-4 h-4 mr-2" />
+                {t("importStudents")}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>{t("importStudentsFromCSV")}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <p className="text-sm text-blue-900 dark:text-blue-100 font-medium mb-2">
+                    {t("csvFormat")} ({t("csvFormatOptions")}):
+                  </p>
+                  <p className="text-sm text-blue-900 dark:text-blue-100">
+                    • {t("withClass")}: {t("fullName")}, {t("class")}, {t("phone")}, {t("parentPhone")},
+                    {t("monthlyPayment")} ({t("optional")})
+                  </p>
+                  <p className="text-sm text-blue-900 dark:text-blue-100 mt-1">
+                    • {t("withoutClass")}: {t("fullName")}, {t("phone")}, {t("parentPhone")}, {t("monthlyPayment")}
+                    ({t("optional")})
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <Label>{t("uploadCSVFile")}</Label>
+                  <div
+                    className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                      {t("clickToUploadOrDragDrop")}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      {t("csvFilesOnly")}
+                    </p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  onClick={downloadTemplate}
+                  className="w-full"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  {t("downloadTemplate")}
+                </Button>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 py-2 border-t border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex-1">
+                      <Label className="text-xs text-slate-600 dark:text-slate-400">
+                        {t("orPasteCSVDataBelow")}
+                      </Label>
+                    </div>
+                  </div>
+                  <textarea
+                    id="importData"
+                    className="w-full h-40 p-3 border rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                    placeholder={t("pasteYourCSVDataHere")}
+                    value={importData}
+                    onChange={(e) => setImportData(e.target.value)}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsImportDialogOpen(false)}
+                  >
+                    {t("cancel")}
+                  </Button>
+                  <Button
+                    onClick={handleImport}
+                    disabled={
+                      isImporting ||
+                      (!importData.trim() &&
+                        !fileInputRef.current?.files?.length)
+                    }
+                  >
+                    {isImporting ? t("importing") : t("importStudents")}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                onClick={handleOpenDialog}
+                disabled={!canCreateStudents}
+                title={!canCreateStudents ? t("noPermission") || "No permission to create students" : ""}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {t("addStudent")}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>
+                  {editingStudent ? t("editStudent") : t("addNewStudent")}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="fullName">{t("fullName")} *</Label>
+                    <Input
+                      id="fullName"
+                      value={formData.fullName}
+                      onChange={(e) =>
+                        setFormData({ ...formData, fullName: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="classId">{t("selectClass")} *</Label>
+                    <Select
+                      value={formData.classId}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, classId: value })
+                      }
+                      required
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("selectClass")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {classes.map((cls) => (
+                          <SelectItem key={cls.id} value={cls.id}>
+                            {cls.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">{t("phone")} *</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      value={formData.phone}
+                      onChange={(e) =>
+                        setFormData({ ...formData, phone: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="parentPhone">{t("parentPhone")} *</Label>
+                    <Input
+                      id="parentPhone"
+                      type="tel"
+                      value={formData.parentPhone}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          parentPhone: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="status">{t("status")} *</Label>
+                    <Select
+                      value={formData.status}
+                      onValueChange={(value: StudentStatus) =>
+                        setFormData({ ...formData, status: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">{t("active")}</SelectItem>
+                        <SelectItem value="suspended">
+                          {t("suspended")}
+                        </SelectItem>
+                        <SelectItem value="left">{t("left")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsDialogOpen(false)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
+                        {editingStudent ? t("updating") : t("creating")}
+                      </>
+                    ) : (
+                      editingStudent ? t("update") : t("create")
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3">
+            <div className="w-full">
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+                  <Input
+                    placeholder={t("searchStudents")}
+                    value={searchInput}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setSearchInput(value);
+                      // Auto-clear search when input is empty
+                      if (value === "") {
+                        setPage(1);
+                        setSearchTerm("");
+                      }
+                    }}
+                    onKeyPress={handleSearchKeyPress}
+                    className="pl-10 w-full"
+                  />
+                </div>
+                <Button
+                  onClick={handleSearch}
+                  className="bg-blue-600 hover:bg-blue-700"
+                  size="sm"
+                >
+                  {t("search") || "Search"}
+                </Button>
+                {searchInput && (
+                  <Button
+                    onClick={handleClearSearch}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {t("clear") || "Clear"}
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <Select value={filterClass} onValueChange={setFilterClass}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t("allClasses")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allClasses")}</SelectItem>
+                  {classes.map((cls) => (
+                    <SelectItem key={cls.id} value={cls.id}>
+                      {cls.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t("allStatus")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allStatus")}</SelectItem>
+                  <SelectItem value="active">{t("active")}</SelectItem>
+                  <SelectItem value="suspended">{t("suspended")}</SelectItem>
+                  <SelectItem value="left">{t("left")}</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={filterPaymentStatus}
+                onValueChange={setFilterPaymentStatus}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t("paymentStatus")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("allPayments")}</SelectItem>
+                  <SelectItem value="paid">{t("paid")}</SelectItem>
+                  <SelectItem value="partial">{t("partial")}</SelectItem>
+                  <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <Card className={`border-l-4 transition-all ${getSelectedCount() > 0
+          ? "border-l-blue-500 bg-blue-50 dark:bg-blue-900/20"
+          : "border-l-slate-300 dark:border-l-slate-600 bg-slate-50 dark:bg-slate-900/50 opacity-50"
+        }`}>
+        <CardContent className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">
+              {getSelectedCount()} {t("itemsSelected") || "items selected"}
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+            <Dialog
+              open={isBulkChangeClassOpen}
+              onOpenChange={setIsBulkChangeClassOpen}
+            >
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setBulkChangeClassId("")}
+                  disabled={getSelectedCount() === 0}
+                  className="w-full sm:w-auto"
+                >
+                  {t("changeClass") || "Change Class"}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>
+                    Change Class for Selected Students
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="bulkChangeClassId">
+                      {t("selectClass")} *
+                    </Label>
+                    <Select
+                      value={bulkChangeClassId}
+                      onValueChange={setBulkChangeClassId}
+                      required
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t("selectClass")} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {classes.map((cls) => (
+                          <SelectItem key={cls.id} value={cls.id}>
+                            {cls.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                    <p className="text-sm text-blue-900 dark:text-blue-100">
+                      {getSelectedCount()} students will be moved to the
+                      selected class
+                    </p>
+                  </div>
+                  <div className="flex justify-end gap-3 pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setIsBulkChangeClassOpen(false);
+                        setBulkChangeClassId("");
+                      }}
+                    >
+                      {t("cancel")}
+                    </Button>
+                    <Button
+                      onClick={handleBulkChangeClass}
+                      disabled={!bulkChangeClassId}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      {t("change") || "Change Class"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleBulkDelete}
+              disabled={getSelectedCount() === 0}
+              className="w-full sm:w-auto"
+            >
+              {t("deleteSelected") || "Delete Selected"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={clearSelection}
+              disabled={getSelectedCount() === 0}
+              className="w-full sm:w-auto"
+            >
+              {t("cancel")}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          {isListLoading ? (
+            <div className="space-y-4">
               {[...Array(5)].map((_, i) => (
                 <div key={i} className="flex items-center gap-4 py-4 border-b">
+                  <Skeleton className="h-4 w-4" />
+                  <Skeleton className="h-4 flex-1" />
+                  <Skeleton className="h-4 flex-1" />
+                  <Skeleton className="h-4 flex-1" />
                   <Skeleton className="h-4 flex-1" />
                   <Skeleton className="h-4 flex-1" />
                   <Skeleton className="h-4 flex-1" />
                   <Skeleton className="h-8 w-20" />
                 </div>
               ))}
-            </CardContent>
-          </Card>
-        </div>
-      
-    );
-  }
-
-  return (
-    
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {t("students")}
-            </h1>
-            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mt-1">
-              {t("manageStudents")}
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <Dialog
-              open={isImportDialogOpen}
-              onOpenChange={setIsImportDialogOpen}
-            >
-              <DialogTrigger asChild>
-                <Button variant="outline" className="w-full sm:w-auto">
-                  <Upload className="w-4 h-4 mr-2" />
-                  {t("importStudents")}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl">
-                <DialogHeader>
-                  <DialogTitle>{t("importStudentsFromCSV")}</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                   <div className="bg-blue-50 dark:bg-blue-950/30 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-                     <p className="text-sm text-blue-900 dark:text-blue-100 font-medium mb-2">
-                       {t("csvFormat")} ({t("csvFormatOptions")}):
-                     </p>
-                     <p className="text-sm text-blue-900 dark:text-blue-100">
-                       • {t("withClass")}: {t("fullName")}, {t("class")}, {t("phone")}, {t("parentPhone")},
-                       {t("monthlyPayment")} ({t("optional")})
-                     </p>
-                     <p className="text-sm text-blue-900 dark:text-blue-100 mt-1">
-                       • {t("withoutClass")}: {t("fullName")}, {t("phone")}, {t("parentPhone")}, {t("monthlyPayment")}
-                       ({t("optional")})
-                     </p>
-                   </div>
-
-                   <div className="space-y-3">
-                     <Label>{t("uploadCSVFile")}</Label>
-                     <div
-                       className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-6 text-center hover:border-blue-400 transition-colors cursor-pointer"
-                       onClick={() => fileInputRef.current?.click()}
-                     >
-                       <Upload className="w-8 h-8 mx-auto mb-2 text-slate-400" />
-                       <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                         {t("clickToUploadOrDragDrop")}
-                       </p>
-                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                         {t("csvFilesOnly")}
-                       </p>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".csv"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    onClick={downloadTemplate}
-                    className="w-full"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    {t("downloadTemplate")}
-                  </Button>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 py-2 border-t border-b border-slate-200 dark:border-slate-800">
-                      <div className="flex-1">
-                        <Label className="text-xs text-slate-600 dark:text-slate-400">
-                          {t("orPasteCSVDataBelow")}
-                        </Label>
-                      </div>
-                    </div>
-                    <textarea
-                      id="importData"
-                      className="w-full h-40 p-3 border rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
-                      placeholder={t("pasteYourCSVDataHere")}
-                      value={importData}
-                      onChange={(e) => setImportData(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="flex justify-end gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsImportDialogOpen(false)}
-                    >
-                      {t("cancel")}
-                    </Button>
-                    <Button
-                       onClick={handleImport}
-                       disabled={
-                         isImporting ||
-                         (!importData.trim() &&
-                           !fileInputRef.current?.files?.length)
-                       }
-                     >
-                       {isImporting ? t("importing") : t("importStudents")}
-                     </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button
-                    className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-                    onClick={handleOpenDialog}
-                    disabled={!canCreateStudents}
-                    title={!canCreateStudents ? t("noPermission") || "No permission to create students" : ""}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    {t("addStudent")}
-                  </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingStudent ? t("editStudent") : t("addNewStudent")}
-                  </DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="fullName">{t("fullName")} *</Label>
-                      <Input
-                        id="fullName"
-                        value={formData.fullName}
-                        onChange={(e) =>
-                          setFormData({ ...formData, fullName: e.target.value })
-                        }
-                        required
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="classId">{t("selectClass")} *</Label>
-                      <Select
-                        value={formData.classId}
-                        onValueChange={(value) =>
-                          setFormData({ ...formData, classId: value })
-                        }
-                        required
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={t("selectClass")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {classes.map((cls) => (
-                            <SelectItem key={cls.id} value={cls.id}>
-                              {cls.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">{t("phone")} *</Label>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        value={formData.phone}
-                        onChange={(e) =>
-                          setFormData({ ...formData, phone: e.target.value })
-                        }
-                        required
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="parentPhone">{t("parentPhone")} *</Label>
-                      <Input
-                        id="parentPhone"
-                        type="tel"
-                        value={formData.parentPhone}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            parentPhone: e.target.value,
-                          })
-                        }
-                        required
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="status">{t("status")} *</Label>
-                      <Select
-                        value={formData.status}
-                        onValueChange={(value: StudentStatus) =>
-                          setFormData({ ...formData, status: value })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="active">{t("active")}</SelectItem>
-                          <SelectItem value="suspended">
-                            {t("suspended")}
-                          </SelectItem>
-                          <SelectItem value="left">{t("left")}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-3 pt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsDialogOpen(false)}
-                      disabled={isSubmitting}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={isSubmitting}>
-                      {isSubmitting ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
-                          {editingStudent ? t("updating") : t("creating")}
-                        </>
-                      ) : (
-                        editingStudent ? t("update") : t("create")
-                      )}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col gap-3">
-              <div className="w-full">
-                <div className="flex gap-2">
-                  <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                    <Input
-                      placeholder={t("searchStudents")}
-                      value={searchInput}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setSearchInput(value);
-                        // Auto-clear search when input is empty
-                        if (value === "") {
-                          setPage(1);
-                          setSearchTerm("");
-                        }
-                      }}
-                      onKeyPress={handleSearchKeyPress}
-                      className="pl-10 w-full"
-                    />
-                  </div>
-                  <Button
-                    onClick={handleSearch}
-                    className="bg-blue-600 hover:bg-blue-700"
-                    size="sm"
-                  >
-                    {t("search") || "Search"}
-                  </Button>
-                  {searchInput && (
-                    <Button
-                      onClick={handleClearSearch}
-                      variant="outline"
-                      size="sm"
-                    >
-                      {t("clear") || "Clear"}
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                <Select value={filterClass} onValueChange={setFilterClass}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t("allClasses")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t("allClasses")}</SelectItem>
-                    {classes.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.id}>
-                        {cls.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                   <SelectTrigger className="w-full">
-                     <SelectValue placeholder={t("allStatus")} />
-                   </SelectTrigger>
-                   <SelectContent>
-                     <SelectItem value="all">{t("allStatus")}</SelectItem>
-                     <SelectItem value="active">{t("active")}</SelectItem>
-                     <SelectItem value="suspended">{t("suspended")}</SelectItem>
-                     <SelectItem value="left">{t("left")}</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Select
-                   value={filterPaymentStatus}
-                   onValueChange={setFilterPaymentStatus}
-                 >
-                   <SelectTrigger className="w-full">
-                     <SelectValue placeholder={t("paymentStatus")} />
-                   </SelectTrigger>
-                   <SelectContent>
-                      <SelectItem value="all">{t("allPayments")}</SelectItem>
-                      <SelectItem value="paid">{t("paid")}</SelectItem>
-                      <SelectItem value="partial">{t("partial")}</SelectItem>
-                      <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
-                   </SelectContent>
-                </Select>
-              </div>
             </div>
-          </CardHeader>
-        </Card>
-
-        <Card className={`border-l-4 transition-all ${
-          getSelectedCount() > 0
-            ? "border-l-blue-500 bg-blue-50 dark:bg-blue-900/20"
-            : "border-l-slate-300 dark:border-l-slate-600 bg-slate-50 dark:bg-slate-900/50 opacity-50"
-        }`}>
-          <CardContent className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium">
-                {getSelectedCount()} {t("itemsSelected") || "items selected"}
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-              <Dialog
-                open={isBulkChangeClassOpen}
-                onOpenChange={setIsBulkChangeClassOpen}
-              >
-                <DialogTrigger asChild>
-                   <Button
-                     size="sm"
-                     variant="outline"
-                     onClick={() => setBulkChangeClassId("")}
-                     disabled={getSelectedCount() === 0}
-                     className="w-full sm:w-auto"
-                   >
-                     {t("changeClass") || "Change Class"}
-                   </Button>
-                 </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>
-                      Change Class for Selected Students
-                    </DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="bulkChangeClassId">
-                        {t("selectClass")} *
-                      </Label>
-                      <Select
-                        value={bulkChangeClassId}
-                        onValueChange={setBulkChangeClassId}
-                        required
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={t("selectClass")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {classes.map((cls) => (
-                            <SelectItem key={cls.id} value={cls.id}>
-                              {cls.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                      <p className="text-sm text-blue-900 dark:text-blue-100">
-                        {getSelectedCount()} students will be moved to the
-                        selected class
-                      </p>
-                    </div>
-                    <div className="flex justify-end gap-3 pt-4">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setIsBulkChangeClassOpen(false);
-                          setBulkChangeClassId("");
-                        }}
-                      >
-                        {t("cancel")}
-                      </Button>
-                      <Button
-                        onClick={handleBulkChangeClass}
-                        disabled={!bulkChangeClassId}
-                        className="bg-blue-600 hover:bg-blue-700"
-                      >
-                        {t("change") || "Change Class"}
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={handleBulkDelete}
-                disabled={getSelectedCount() === 0}
-                className="w-full sm:w-auto"
-              >
-                {t("deleteSelected") || "Delete Selected"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={clearSelection}
-                disabled={getSelectedCount() === 0}
-                className="w-full sm:w-auto"
-              >
-                {t("cancel")}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent>
-            {isListLoading ? (
-              <div className="space-y-4">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="flex items-center gap-4 py-4 border-b">
-                    <Skeleton className="h-4 w-4" />
-                    <Skeleton className="h-4 flex-1" />
-                    <Skeleton className="h-4 flex-1" />
-                    <Skeleton className="h-4 flex-1" />
-                    <Skeleton className="h-4 flex-1" />
-                    <Skeleton className="h-4 flex-1" />
-                    <Skeleton className="h-4 flex-1" />
-                    <Skeleton className="h-8 w-20" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <>
-                {/* Desktop Table */}
-                <div className="hidden md:overflow-x-auto md:block">
-                  <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-800">
-                    <th className="text-left py-3 px-4">
-                      <Checkbox
-                        checked={
-                          areAllSelected(paginatedStudents) ||
-                          areSomeSelected(paginatedStudents)
-                        }
-                        onCheckedChange={() =>
-                          toggleSelectAll(paginatedStudents)
-                        }
-                      />
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("fullName")}
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("class")}
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("phone")}
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("monthlyPayment")}
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("status")}
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("payment")}
-                    </th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("actions")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedStudents.map((student) => {
-                    const paymentStatus = student.payment?.status || 'unpaid';
-                    const paymentStatusColor = paymentStatus === "paid" 
-                      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                      : paymentStatus === "partial"
-                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                      : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
-                    return (
-                      <tr
-                        key={student.id}
-                        className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 ${
-                          isSelected(student.id)
-                            ? "bg-blue-50 dark:bg-blue-900/20"
-                            : ""
-                        }`}
-                      >
-                        <td className="py-3 px-4">
-                          <Checkbox
-                            checked={isSelected(student.id)}
-                            onCheckedChange={() => toggleSelect(student.id)}
-                          />
-                        </td>
-                        <td className="py-3 px-4">
-                           <div
+          ) : (
+            <>
+              {/* Desktop Table */}
+              <div className="hidden md:overflow-x-auto md:block">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200 dark:border-slate-800">
+                      <th className="text-left py-3 px-4">
+                        <Checkbox
+                          checked={
+                            areAllSelected(paginatedStudents) ||
+                            areSomeSelected(paginatedStudents)
+                          }
+                          onCheckedChange={() =>
+                            toggleSelectAll(paginatedStudents)
+                          }
+                        />
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                        {t("fullName")}
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                        {t("class")}
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                        {t("phone")}
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                        {t("monthlyPayment")}
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                        {t("status")}
+                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                        {t("payment")}
+                      </th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
+                        {t("actions")}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedStudents.map((student) => {
+                      const paymentStatus = student.payment?.status || 'unpaid';
+                      const paymentStatusColor = paymentStatus === "paid"
+                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                        : paymentStatus === "partial"
+                          ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                          : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
+                      return (
+                        <tr
+                          key={student.id}
+                          className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 ${isSelected(student.id)
+                              ? "bg-blue-50 dark:bg-blue-900/20"
+                              : ""
+                            }`}
+                        >
+                          <td className="py-3 px-4">
+                            <Checkbox
+                              checked={isSelected(student.id)}
+                              onCheckedChange={() => toggleSelect(student.id)}
+                            />
+                          </td>
+                          <td className="py-3 px-4">
+                            <div
                               className="cursor-pointer hover:opacity-70 transition-opacity"
                               onClick={() =>
                                 router.push(
@@ -1402,398 +1396,397 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                                 {formatPhoneNumber(student.parentPhone)}
                               </p>
                             </div>
-                        </td>
-                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                          {student.class?.name || 'N/A'}
-                        </td>
-                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                          {formatPhoneNumber(student.phone)}
-                        </td>
-                        <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                          {formatCurrency(student.monthlyPayment)}
-                        </td>
-                        <td className="py-3 px-4">
-                          <Badge className={getStatusColor(student.status)}>
-                            {t(student.status)}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4">
-                          <Badge className={paymentStatusColor}>
-                            {t(paymentStatus)}
-                          </Badge>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() =>
-                                canEditStudents && handleEdit(student)
-                              }
-                              disabled={!canEditStudents}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
-                            {student.status === "active" && (
+                          </td>
+                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                            {student.class?.name || 'N/A'}
+                          </td>
+                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                            {formatPhoneNumber(student.phone)}
+                          </td>
+                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                            {formatCurrency(student.monthlyPayment)}
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge className={getStatusColor(student.status)}>
+                              {t(student.status)}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-4">
+                            <Badge className={paymentStatusColor}>
+                              {t(paymentStatus)}
+                            </Badge>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center justify-end gap-2">
                               <Button
                                 size="icon"
                                 variant="ghost"
                                 onClick={() =>
-                                  canEditStudents && handleMarkLeft(student.id)
+                                  canEditStudents && handleEdit(student)
                                 }
                                 disabled={!canEditStudents}
                               >
-                                <UserX className="w-4 h-4" />
+                                <Edit2 className="w-4 h-4" />
                               </Button>
-                            )}
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() =>
-                                canDeleteStudents && handleDelete(student.id)
-                              }
-                              disabled={!canDeleteStudents}
-                            >
-                              <Trash2 className="w-4 h-4 text-red-500" />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                              {student.status === "active" && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    canEditStudents && handleMarkLeft(student.id)
+                                  }
+                                  disabled={!canEditStudents}
+                                >
+                                  <UserX className="w-4 h-4" />
+                                </Button>
+                              )}
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() =>
+                                  canDeleteStudents && handleDelete(student.id)
+                                }
+                                disabled={!canDeleteStudents}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
 
-            {/* Mobile Card View */}
-            <div className="md:hidden space-y-4">
-              {paginatedStudents.map((student) => {
-                const paymentStatus = student.payment?.status || 'unpaid';
-                const paymentStatusColor = paymentStatus === "paid" 
-                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                  : paymentStatus === "partial"
-                  ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                  : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
-                return (
-                  <div
-                    key={student.id}
-                    className={`border rounded-lg p-4 transition-all ${
-                      isSelected(student.id)
-                        ? "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700"
-                        : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3 mb-3">
-                      <Checkbox
-                        checked={isSelected(student.id)}
-                        onCheckedChange={() => toggleSelect(student.id)}
-                        className="mt-1"
-                      />
-                      <div
-                        className="flex-1 cursor-pointer hover:opacity-70 transition-opacity"
-                        onClick={() =>
-                          router.push(
-                            `/student-details?id=${student.id}&from=students`
-                          )
-                        }
-                      >
-                        <p className="font-semibold text-slate-900 dark:text-slate-100 text-blue-600 dark:text-blue-400 hover:underline">
-                          {student.fullName}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {formatPhoneNumber(student.parentPhone)}
-                        </p>
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-4">
+                {paginatedStudents.map((student) => {
+                  const paymentStatus = student.payment?.status || 'unpaid';
+                  const paymentStatusColor = paymentStatus === "paid"
+                    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                    : paymentStatus === "partial"
+                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                      : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
+                  return (
+                    <div
+                      key={student.id}
+                      className={`border rounded-lg p-4 transition-all ${isSelected(student.id)
+                          ? "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700"
+                          : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
+                        }`}
+                    >
+                      <div className="flex items-start gap-3 mb-3">
+                        <Checkbox
+                          checked={isSelected(student.id)}
+                          onCheckedChange={() => toggleSelect(student.id)}
+                          className="mt-1"
+                        />
+                        <div
+                          className="flex-1 cursor-pointer hover:opacity-70 transition-opacity"
+                          onClick={() =>
+                            router.push(
+                              `/student-details?id=${student.id}&from=students`
+                            )
+                          }
+                        >
+                          <p className="font-semibold text-slate-900 dark:text-slate-100 text-blue-600 dark:text-blue-400 hover:underline">
+                            {student.fullName}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {formatPhoneNumber(student.parentPhone)}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="space-y-2 mb-3">
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-slate-600 dark:text-slate-400">{t("class")}:</span>
-                        <span className="font-medium text-slate-900 dark:text-slate-100">
-                          {student.class?.name || 'N/A'}
-                        </span>
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <span className="text-slate-600 dark:text-slate-400 text-sm">{t("phone")}:</span>
-                        <ul className="list-disc list-inside space-y-1">
-                          <li className="font-medium text-slate-900 dark:text-slate-100 text-sm">
-                            {formatPhoneNumber(student.phone)}
-                          </li>
-                          {student.parentPhone && (
+                      <div className="space-y-2 mb-3">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600 dark:text-slate-400">{t("class")}:</span>
+                          <span className="font-medium text-slate-900 dark:text-slate-100">
+                            {student.class?.name || 'N/A'}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1">
+                          <span className="text-slate-600 dark:text-slate-400 text-sm">{t("phone")}:</span>
+                          <ul className="list-disc list-inside space-y-1">
                             <li className="font-medium text-slate-900 dark:text-slate-100 text-sm">
-                              {formatPhoneNumber(student.parentPhone)}
+                              {formatPhoneNumber(student.phone)}
                             </li>
-                          )}
-                        </ul>
-                      </div>
-                      
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-slate-600 dark:text-slate-400">{t("monthlyPayment")}:</span>
-                        <span className="font-medium text-slate-900 dark:text-slate-100">
-                          {formatCurrency(student.monthlyPayment)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center text-sm gap-2">
-                        <span className="text-slate-600 dark:text-slate-400">{t("status")}:</span>
-                        <Badge className={getStatusColor(student.status)}>
-                          {t(student.status)}
-                        </Badge>
-                      </div>
-                      <div className="flex justify-between items-center text-sm gap-2">
-                        <span className="text-slate-600 dark:text-slate-400">{t("payment")}:</span>
-                        <Badge className={paymentStatusColor}>
-                          {t(paymentStatus)}
-                        </Badge>
-                      </div>
-                    </div>
+                            {student.parentPhone && (
+                              <li className="font-medium text-slate-900 dark:text-slate-100 text-sm">
+                                {formatPhoneNumber(student.parentPhone)}
+                              </li>
+                            )}
+                          </ul>
+                        </div>
 
-                    <div className="flex gap-2 justify-start">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          canEditStudents && handleEdit(student)
-                        }
-                        disabled={!canEditStudents}
-                        className="flex-1"
-                      >
-                        <Edit2 className="w-4 h-4 mr-1" />
-                        {t("edit")}
-                      </Button>
-                      {student.status === "active" && (
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-600 dark:text-slate-400">{t("monthlyPayment")}:</span>
+                          <span className="font-medium text-slate-900 dark:text-slate-100">
+                            {formatCurrency(student.monthlyPayment)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm gap-2">
+                          <span className="text-slate-600 dark:text-slate-400">{t("status")}:</span>
+                          <Badge className={getStatusColor(student.status)}>
+                            {t(student.status)}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between items-center text-sm gap-2">
+                          <span className="text-slate-600 dark:text-slate-400">{t("payment")}:</span>
+                          <Badge className={paymentStatusColor}>
+                            {t(paymentStatus)}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 justify-start">
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() =>
-                            canEditStudents && handleMarkLeft(student.id)
+                            canEditStudents && handleEdit(student)
                           }
                           disabled={!canEditStudents}
                           className="flex-1"
                         >
-                          <UserX className="w-4 h-4 mr-1" />
-                          {t("left")}
+                          <Edit2 className="w-4 h-4 mr-1" />
+                          {t("edit")}
                         </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() =>
-                          canDeleteStudents && handleDelete(student.id)
-                        }
-                        disabled={!canDeleteStudents}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {paginatedStudents.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-slate-500 dark:text-slate-400">
-                  {t("noStudentsYet")}
-                </p>
-              </div>
-            )}
-
-            {total > 0 && (
-              <div className="flex flex-col sm:flex-row items-center justify-between mt-6 px-4 py-3 border-t border-slate-200 dark:border-slate-800 gap-4">
-                <div className="flex items-center gap-4">
-                  <Label className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("perPage") || "Per Page"}
-                  </Label>
-                  <Select value={limit.toString()} onValueChange={(val) => setLimit(parseInt(val))}>
-                    <SelectTrigger className="w-20">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="5">5</SelectItem>
-                      <SelectItem value="10">10</SelectItem>
-                      <SelectItem value="20">20</SelectItem>
-                      <SelectItem value="50">50</SelectItem>
-                      <SelectItem value="100">100</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-                    {t("showing") || "Showing"} {(page - 1) * limit + 1} {t("to") || "to"} {Math.min(page * limit, total)} {t("of") || "of"} {total}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage(Math.max(1, page - 1))}
-                    disabled={page === 1}
-                    className="h-8"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                    <span className="hidden sm:inline ml-1">{t("previous") || "Previous"}</span>
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      const startPage = Math.max(1, page - 2);
-                      return startPage + i;
-                    })
-                      .filter((pageNum) => pageNum <= totalPages)
-                      .map((pageNum) => (
+                        {student.status === "active" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              canEditStudents && handleMarkLeft(student.id)
+                            }
+                            disabled={!canEditStudents}
+                            className="flex-1"
+                          >
+                            <UserX className="w-4 h-4 mr-1" />
+                            {t("left")}
+                          </Button>
+                        )}
                         <Button
-                          key={pageNum}
-                          variant={page === pageNum ? "default" : "outline"}
                           size="sm"
-                          onClick={() => setPage(pageNum)}
-                          className="h-8 w-8 p-0"
+                          variant="destructive"
+                          onClick={() =>
+                            canDeleteStudents && handleDelete(student.id)
+                          }
+                          disabled={!canDeleteStudents}
                         >
-                          {pageNum}
+                          <Trash2 className="w-4 h-4" />
                         </Button>
-                      ))}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPage(Math.min(totalPages, page + 1))}
-                    disabled={page === totalPages || totalPages === 0}
-                    className="h-8"
-                  >
-                    <span className="hidden sm:inline mr-1">{t("next") || "Next"}</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </Button>
-                </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            )}
-              </>
-            )}
-          </CardContent>
-        </Card>
 
-        {/* Delete Confirmation Dialog */}
-         <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-           <DialogContent>
-             <DialogHeader>
-               <DialogTitle>{t("confirmDelete")}</DialogTitle>
-             </DialogHeader>
-             <p className="text-slate-600 dark:text-slate-400">
-               {t("confirmDeleteStudent")}
-             </p>
-             <div className="flex justify-end gap-3 pt-4">
-               <Button
-                 variant="outline"
-                 onClick={() => {
-                   setDeleteConfirmOpen(false);
-                   setDeleteStudentId(null);
-                 }}
-                 disabled={isDeleteLoading}
-               >
-                 {t("cancel")}
-               </Button>
-               <Button 
-                 variant="destructive" 
-                 onClick={confirmDelete}
-                 disabled={isDeleteLoading}
-               >
-                 {isDeleteLoading ? (
-                   <>
-                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                     {t("deleting") || "Deleting..."}
-                   </>
-                 ) : (
-                   t("delete")
-                 )}
-               </Button>
-             </div>
-           </DialogContent>
-         </Dialog>
+              {paginatedStudents.length === 0 && (
+                <div className="text-center py-12">
+                  <p className="text-slate-500 dark:text-slate-400">
+                    {t("noStudentsYet")}
+                  </p>
+                </div>
+              )}
 
-        {/* Bulk Delete Confirmation Dialog */}
-         <Dialog
-           open={bulkDeleteConfirmOpen}
-           onOpenChange={setBulkDeleteConfirmOpen}
-         >
-           <DialogContent>
-             <DialogHeader>
-               <DialogTitle>{t("confirmDelete")}</DialogTitle>
-             </DialogHeader>
-             <p className="text-slate-600 dark:text-slate-400">
-               {t("confirmDeleteMultiple")}
-             </p>
-             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
-               <p className="text-sm text-amber-900 dark:text-amber-100">
-                 {getSelectedCount()} {t("students")} {t("willBeDeleted")}
-               </p>
-             </div>
-             <div className="flex justify-end gap-3 pt-4">
-               <Button
-                 variant="outline"
-                 onClick={() => setBulkDeleteConfirmOpen(false)}
-                 disabled={isBulkDeleteLoading}
-               >
-                 {t("cancel")}
-               </Button>
-               <Button 
-                 variant="destructive" 
-                 onClick={confirmBulkDelete}
-                 disabled={isBulkDeleteLoading}
-               >
-                 {isBulkDeleteLoading ? (
-                   <>
-                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                     {t("deleting") || "Deleting..."}
-                   </>
-                 ) : (
-                   t("delete")
-                 )}
-               </Button>
-             </div>
-           </DialogContent>
-         </Dialog>
+              {total > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between mt-6 px-4 py-3 border-t border-slate-200 dark:border-slate-800 gap-4">
+                  <div className="flex items-center gap-4">
+                    <Label className="text-sm text-slate-600 dark:text-slate-400">
+                      {t("perPage") || "Per Page"}
+                    </Label>
+                    <Select value={limit.toString()} onValueChange={(val) => setLimit(parseInt(val))}>
+                      <SelectTrigger className="w-20">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5</SelectItem>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="20">20</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+                      {t("showing") || "Showing"} {(page - 1) * limit + 1} {t("to") || "to"} {Math.min(page * limit, total)} {t("of") || "of"} {total}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(Math.max(1, page - 1))}
+                      disabled={page === 1}
+                      className="h-8"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      <span className="hidden sm:inline ml-1">{t("previous") || "Previous"}</span>
+                    </Button>
+                    <div className="flex items-center gap-2">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        const startPage = Math.max(1, page - 2);
+                        return startPage + i;
+                      })
+                        .filter((pageNum) => pageNum <= totalPages)
+                        .map((pageNum) => (
+                          <Button
+                            key={pageNum}
+                            variant={page === pageNum ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setPage(pageNum)}
+                            className="h-8 w-8 p-0"
+                          >
+                            {pageNum}
+                          </Button>
+                        ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(Math.min(totalPages, page + 1))}
+                      disabled={page === totalPages || totalPages === 0}
+                      className="h-8"
+                    >
+                      <span className="hidden sm:inline mr-1">{t("next") || "Next"}</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
 
-        {/* Mark Left Confirmation Dialog */}
-         <Dialog
-           open={markLeftConfirmOpen}
-           onOpenChange={setMarkLeftConfirmOpen}
-         >
-           <DialogContent>
-             <DialogHeader>
-               <DialogTitle>{t("confirm")}</DialogTitle>
-             </DialogHeader>
-             <p className="text-slate-600 dark:text-slate-400">
-               {t("confirmMarkLeft")}
-             </p>
-             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-               <p className="text-sm text-blue-900 dark:text-blue-100">
-                 {t("willStopPaymentTracking")}
-               </p>
-             </div>
-             <div className="flex justify-end gap-3 pt-4">
-               <Button
-                 variant="outline"
-                 onClick={() => {
-                   setMarkLeftConfirmOpen(false);
-                   setMarkLeftStudentId(null);
-                 }}
-                 disabled={isMarkLeftLoading}
-               >
-                 {t("cancel")}
-               </Button>
-               <Button 
-                 onClick={confirmMarkLeft}
-                 disabled={isMarkLeftLoading}
-               >
-                 {isMarkLeftLoading ? (
-                   <>
-                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                     {t("updating") || "Updating..."}
-                   </>
-                 ) : (
-                   t("confirm")
-                 )}
-               </Button>
-             </div>
-           </DialogContent>
-         </Dialog>
-      </div>
-    
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("confirmDelete")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-slate-600 dark:text-slate-400">
+            {t("confirmDeleteStudent")}
+          </p>
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteConfirmOpen(false);
+                setDeleteStudentId(null);
+              }}
+              disabled={isDeleteLoading}
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={isDeleteLoading}
+            >
+              {isDeleteLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("deleting") || "Deleting..."}
+                </>
+              ) : (
+                t("delete")
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog
+        open={bulkDeleteConfirmOpen}
+        onOpenChange={setBulkDeleteConfirmOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("confirmDelete")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-slate-600 dark:text-slate-400">
+            {t("confirmDeleteMultiple")}
+          </p>
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+            <p className="text-sm text-amber-900 dark:text-amber-100">
+              {getSelectedCount()} {t("students")} {t("willBeDeleted")}
+            </p>
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => setBulkDeleteConfirmOpen(false)}
+              disabled={isBulkDeleteLoading}
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmBulkDelete}
+              disabled={isBulkDeleteLoading}
+            >
+              {isBulkDeleteLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("deleting") || "Deleting..."}
+                </>
+              ) : (
+                t("delete")
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Mark Left Confirmation Dialog */}
+      <Dialog
+        open={markLeftConfirmOpen}
+        onOpenChange={setMarkLeftConfirmOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("confirm")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-slate-600 dark:text-slate-400">
+            {t("confirmMarkLeft")}
+          </p>
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+            <p className="text-sm text-blue-900 dark:text-blue-100">
+              {t("willStopPaymentTracking")}
+            </p>
+          </div>
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setMarkLeftConfirmOpen(false);
+                setMarkLeftStudentId(null);
+              }}
+              disabled={isMarkLeftLoading}
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={confirmMarkLeft}
+              disabled={isMarkLeftLoading}
+            >
+              {isMarkLeftLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("updating") || "Updating..."}
+                </>
+              ) : (
+                t("confirm")
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+
   );
 }

@@ -26,7 +26,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   branchesDB,
 } from "@/lib/storage";
-import { Payment, PaymentStatus, PaymentMethod, Student, Class } from "@/types";
+import {
+  Payment,
+  PaymentStatus,
+  StudentPaymentMethod,
+  Student,
+  Class,
+} from "@/types";
 import {
   Plus,
   Search,
@@ -126,12 +132,10 @@ export default function PaymentsPage() {
   const [bulkPaymentData, setBulkPaymentData] = useState({
     month: getDefaultMonth(),
     year: getDefaultYear().toString(),
-    paymentMethod: "cash" as PaymentMethod,
+    paymentMethod: "cash" as StudentPaymentMethod,
   });
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(() =>
-    getCurrentUser()?.role === "manager" ? 50 : 10,
-  );
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalPayments, setTotalPayments] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -141,7 +145,7 @@ export default function PaymentsPage() {
     month: getDefaultMonth(),
     year: getDefaultYear().toString(),
     status: "partial" as PaymentStatus,
-    paymentMethod: "cash" as PaymentMethod,
+    paymentMethod: "cash" as StudentPaymentMethod,
     notes: "",
   });
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
@@ -194,7 +198,12 @@ export default function PaymentsPage() {
     totalPaid?: number;
     totalUnpaid?: number;
     totalPartial?: number;
-    byMethod?: { card: number; cash: number; bank: number };
+    byMethod?: {
+      click: number;
+      cash: number;
+      bank: number;
+      terminal: number;
+    };
   } | null>(null);
 
   // Track if initial load has been done to prevent double-loading from filter effects
@@ -343,7 +352,7 @@ export default function PaymentsPage() {
         const paymentIndicators = consolidated?.indicators || {
           totalPaid: 0,
           totalUnpaid: 0,
-          byMethod: { card: 0, cash: 0, bank: 0 },
+          byMethod: { click: 0, cash: 0, bank: 0, terminal: 0 },
         };
 
         setTotalPayments(consolidated?.total || 0);
@@ -1222,25 +1231,31 @@ export default function PaymentsPage() {
     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
   };
 
-  const getPaymentMethodIcon = (method: PaymentMethod) => {
+  const getPaymentMethodIcon = (method: string) => {
     switch (method) {
+      case "click":
       case "card":
         return <CreditCard className="w-3 h-3" />;
       case "cash":
         return <Banknote className="w-3 h-3" />;
       case "bank":
         return <Building2 className="w-3 h-3" />;
+      case "terminal":
+        return <Printer className="w-3 h-3" />;
     }
   };
 
-  const getPaymentMethodColor = (method: PaymentMethod) => {
+  const getPaymentMethodColor = (method: string) => {
     switch (method) {
+      case "click":
       case "card":
         return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
       case "cash":
         return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
       case "bank":
         return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400";
+      case "terminal":
+        return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
     }
   };
 
@@ -1278,9 +1293,10 @@ export default function PaymentsPage() {
   const totalIncome = indicators?.totalPaid || 0;
   const totalPending = indicators?.totalUnpaid || 0;
   const totalByMethod = {
-    card: indicators?.byMethod?.card || 0,
+    click: indicators?.byMethod?.click || 0,
     cash: indicators?.byMethod?.cash || 0,
     bank: indicators?.byMethod?.bank || 0,
+    terminal: indicators?.byMethod?.terminal || 0,
   };
 
   const months = [
@@ -1332,9 +1348,11 @@ export default function PaymentsPage() {
 
   const getPaymentMethodLabel = (method: string) => {
     const methodMap: { [key: string]: string } = {
-      card: "card",
+      click: "click",
+      card: "click",
       cash: "cash",
       bank: "bankTransfer",
+      terminal: "terminal",
     };
     return t(methodMap[method] || method) || method;
   };
@@ -1488,7 +1506,7 @@ export default function PaymentsPage() {
                     </Label>
                     <Select
                       value={bulkPaymentData.paymentMethod}
-                      onValueChange={(value: PaymentMethod) =>
+                      onValueChange={(value: StudentPaymentMethod) =>
                         setBulkPaymentData({
                           ...bulkPaymentData,
                           paymentMethod: value,
@@ -1499,16 +1517,22 @@ export default function PaymentsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="card">
+                        <SelectItem value="click">
                           <div className="flex items-center gap-2">
                             <CreditCard className="w-4 h-4" />
-                            {t("card")}
+                            {t("click")}
                           </div>
                         </SelectItem>
                         <SelectItem value="cash">
                           <div className="flex items-center gap-2">
                             <Banknote className="w-4 h-4" />
                             {t("cash")}
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="terminal">
+                          <div className="flex items-center gap-2">
+                            <Printer className="w-4 h-4" />
+                            {t("terminal")}
                           </div>
                         </SelectItem>
                         <SelectItem value="bank">
@@ -1959,7 +1983,7 @@ export default function PaymentsPage() {
                     </Label>
                     <Select
                       value={formData.paymentMethod}
-                      onValueChange={(value: PaymentMethod) =>
+                      onValueChange={(value: StudentPaymentMethod) =>
                         setFormData({ ...formData, paymentMethod: value })
                       }
                     >
@@ -1967,8 +1991,9 @@ export default function PaymentsPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="card">{t("card")}</SelectItem>
+                        <SelectItem value="click">{t("click")}</SelectItem>
                         <SelectItem value="cash">{t("cash")}</SelectItem>
+                        <SelectItem value="terminal">{t("terminal")}</SelectItem>
                         <SelectItem value="bank">
                           {t("bankTransfer")}
                         </SelectItem>
@@ -2054,7 +2079,7 @@ export default function PaymentsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
         <Card className="border-l-4 border-l-green-500">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
@@ -2093,12 +2118,12 @@ export default function PaymentsPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <CreditCard className="w-4 h-4" />
-              {t("card")}
+              {t("click")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {formatCurrency(totalByMethod.card)}
+              {formatCurrency(totalByMethod.click)}
             </div>
           </CardContent>
         </Card>
@@ -2113,6 +2138,20 @@ export default function PaymentsPage() {
           <CardContent>
             <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
               {formatCurrency(totalByMethod.cash)}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
+              <Printer className="w-4 h-4" />
+              {t("terminal")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+              {formatCurrency(totalByMethod.terminal)}
             </div>
           </CardContent>
         </Card>
@@ -2262,8 +2301,9 @@ export default function PaymentsPage() {
                   <SelectContent>
                     <SelectItem value="all">{t("allPaymentMethods")}</SelectItem>
                     <SelectItem value="cash">{t("cash")}</SelectItem>
-                    <SelectItem value="card">{t("card")}</SelectItem>
+                    <SelectItem value="click">{t("click")}</SelectItem>
                     <SelectItem value="bank">{t("bank")}</SelectItem>
+                    <SelectItem value="terminal">{t("terminal")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select
