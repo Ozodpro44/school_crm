@@ -3,7 +3,7 @@ import {
   Teacher,
   Class,
   Payment,
-  PaymentMethod,
+  StudentPaymentMethod,
   Salary,
   Expense,
   Income,
@@ -542,22 +542,30 @@ export const paymentHelpers = {
     studentId: string,
     month: string,
     year: number
-  ): Record<PaymentMethod, number> => {
+  ): Record<StudentPaymentMethod, number> => {
     const periodPayments = paymentHelpers.getPaymentsByPeriod(
       studentId,
       month,
       year
     );
+
+    const getMethodTotal = (method: StudentPaymentMethod): number =>
+      periodPayments
+        .filter((p) => {
+          if (method === "click") {
+            // Treat legacy local "card" values as "click" for backwards compatibility.
+            return p.paymentMethod === "click" || (p.paymentMethod as string) === "card";
+          }
+
+          return p.paymentMethod === method;
+        })
+        .reduce((sum, p) => sum + p.amount, 0);
+
     return {
-      cash: periodPayments
-        .filter((p) => p.paymentMethod === "cash")
-        .reduce((sum, p) => sum + p.amount, 0),
-      card: periodPayments
-        .filter((p) => p.paymentMethod === "card")
-        .reduce((sum, p) => sum + p.amount, 0),
-      bank: periodPayments
-        .filter((p) => p.paymentMethod === "bank")
-        .reduce((sum, p) => sum + p.amount, 0),
+      click: getMethodTotal("click"),
+      cash: getMethodTotal("cash"),
+      bank: getMethodTotal("bank"),
+      terminal: getMethodTotal("terminal"),
     };
   },
 };
