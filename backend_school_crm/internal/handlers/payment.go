@@ -558,7 +558,7 @@ func getPaymentsConsolidatedData(paymentService *service.PaymentService, branchS
 
 		// Build a map of class ID to class name for quick lookup
 		classNameMap := make(map[string]string)
-		
+
 		// Fetch full class details for all unique classes first
 		for classID := range classIDMap {
 			classData, err := classService.GetByID(c.Request.Context(), classID)
@@ -608,9 +608,10 @@ func getPaymentsConsolidatedData(paymentService *service.PaymentService, branchS
 				"totalPaid":   0,
 				"totalUnpaid": 0,
 				"byMethod": map[string]float64{
-					"card": 0,
-					"cash": 0,
-					"bank": 0,
+					"click":    0,
+					"cash":     0,
+					"bank":     0,
+					"terminal": 0,
 				},
 			}
 		}

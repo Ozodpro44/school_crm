@@ -70,9 +70,7 @@ export default function ExpensesPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(() =>
-    getCurrentUser()?.role === "manager" ? 50 : 10,
-  );
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalExpenses, setTotalExpenses] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [indicators, setIndicators] = useState<ExpenseSummary | null>(null);
@@ -97,8 +95,8 @@ export default function ExpensesPage() {
     isOpen: false,
     title: "",
     message: "",
-    onConfirm: () => {},
-    onCancel: () => {},
+    onConfirm: () => { },
+    onCancel: () => { },
     isLoading: false,
   });
   const language = useLanguage();
@@ -158,7 +156,7 @@ export default function ExpensesPage() {
   // Initialize state from URL params
   useEffect(() => {
     if (!router.isReady) return;
-    
+
     const { page, limit, search, category, paymentMethod, month, year } = router.query;
     if (page) setCurrentPage(parseInt(page as string) || 1);
     if (limit) setItemsPerPage(parseInt(limit as string) || 10);
@@ -196,16 +194,16 @@ export default function ExpensesPage() {
   // Reload data when page or items per page changes
   useEffect(() => {
     if (!initialLoadDoneRef.current) return;
-    
+
     // Skip if a filter change is in progress
     if (filterChangeInProgressRef.current) {
       filterChangeInProgressRef.current = false;
       return;
     }
-    
+
     setIsLoading(true);
     loadData().finally(() => setIsLoading(false));
-    
+
     // Update URL
     updateURL();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -317,7 +315,7 @@ export default function ExpensesPage() {
       if (loadId !== currentLoadIdRef.current) {
         return;
       }
-      
+
       setExpenses(result.items || []);
       setTotalExpenses(result.total || 0);
       setTotalPages(Math.ceil((result.total || 0) / itemsPerPage));
@@ -586,9 +584,8 @@ export default function ExpensesPage() {
           await loadData();
           toast({
             title: t("deleted"),
-            description: `${selectedIds.length} ${
-              t("expensesDeleted") || "expenses deleted"
-            }`,
+            description: `${selectedIds.length} ${t("expensesDeleted") || "expenses deleted"
+              }`,
             variant: "success",
           });
           setConfirmDialog({ ...confirmDialog, isOpen: false });
@@ -842,7 +839,7 @@ export default function ExpensesPage() {
                         {categories.map((category) => (
                           <SelectItem key={category} value={category}>
                             {t(category.toLowerCase()) !==
-                            String(category.toLowerCase())
+                              String(category.toLowerCase())
                               ? t(category.toLowerCase())
                               : category}
                           </SelectItem>
@@ -1021,11 +1018,10 @@ export default function ExpensesPage() {
       </div>
 
       <Card
-        className={`border-l-4 transition-all ${
-          getSelectedCount() > 0
+        className={`border-l-4 transition-all ${getSelectedCount() > 0
             ? "border-l-blue-500 bg-blue-50 dark:bg-blue-900/20"
             : "border-l-slate-300 dark:border-l-slate-600 bg-slate-50 dark:bg-slate-900/50 opacity-50"
-        }`}
+          }`}
       >
         <CardContent className="py-4 flex items-center justify-between">
           <div>
@@ -1125,21 +1121,21 @@ export default function ExpensesPage() {
                 </SelectContent>
               </Select>
               <Select value={itemsPerPage.toString()} onValueChange={(val) => {
-                    const limit = parseInt(val);
-                    filterChangeInProgressRef.current = true;
-                    setItemsPerPage(limit);
-                    setCurrentPage(1);
-                  }}>
-                    <SelectTrigger className="w-[140px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10 {t("perPage")}</SelectItem>
-                      <SelectItem value="20">20 {t("perPage")}</SelectItem>
-                      <SelectItem value="50">50 {t("perPage")}</SelectItem>
-                      <SelectItem value="100">100 {t("perPage")}</SelectItem>
-                    </SelectContent>
-                </Select>
+                const limit = parseInt(val);
+                filterChangeInProgressRef.current = true;
+                setItemsPerPage(limit);
+                setCurrentPage(1);
+              }}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 {t("perPage")}</SelectItem>
+                  <SelectItem value="20">20 {t("perPage")}</SelectItem>
+                  <SelectItem value="50">50 {t("perPage")}</SelectItem>
+                  <SelectItem value="100">100 {t("perPage")}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -1184,11 +1180,10 @@ export default function ExpensesPage() {
                 {paginatedExpenses.map((expense) => (
                   <tr
                     key={expense.id}
-                    className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 ${
-                      isSelected(expense.id)
+                    className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 ${isSelected(expense.id)
                         ? "bg-blue-50 dark:bg-blue-900/20"
                         : ""
-                    }`}
+                      }`}
                   >
                     <td className="py-3 px-4">
                       <Checkbox
@@ -1219,13 +1214,13 @@ export default function ExpensesPage() {
                         )}`}
                       >
                         {getPaymentMethodIcon(expense.paymentMethod)}
-                          <span>
-                            {t(
-                              expense.paymentMethod === "bank"
-                                ? "bankTransfer"
-                                : expense.paymentMethod,
-                            )}
-                          </span>
+                        <span>
+                          {t(
+                            expense.paymentMethod === "bank"
+                              ? "bankTransfer"
+                              : expense.paymentMethod,
+                          )}
+                        </span>
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
@@ -1301,16 +1296,16 @@ export default function ExpensesPage() {
                       .filter((page) => page <= totalPages)
                       .map((page) => (
                         <Button
-                           key={page}
-                           variant={currentPage === page ? "default" : "outline"}
-                         size="sm"
-                         onClick={() => {
-                             handlePageChange(page);
+                          key={page}
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => {
+                            handlePageChange(page);
                           }}
                           className="h-8 w-8 p-0"
                         >
-                           {page}
-                         </Button>
+                          {page}
+                        </Button>
                       ))}
                   </div>
                   <Button

@@ -91,23 +91,23 @@ type FinancialSummary struct {
 
 // DashboardData represents consolidated dashboard data
 type DashboardData struct {
-	Students            int                `json:"totalStudents"`
-	ActiveStudents      int                `json:"activeStudents"`
-	Teachers            int                `json:"totalTeachers"`
-	TotalIncome         float64            `json:"totalIncome"`
-	TotalExpenses       float64            `json:"totalExpenses"`
-	Profit              float64            `json:"profit"`
-	DebtorsCount        int                `json:"debtorsCount"`
-	UnpaidSalariesCount int                `json:"unpaidSalariesCount"`
-	CashIncome          float64            `json:"cashIncome"`
-	CashExpenses        float64            `json:"cashExpenses"`
-	CashProfit          float64            `json:"cashProfit"`
-	CardIncome          float64            `json:"cardIncome"`
-	CardExpenses        float64            `json:"cardExpenses"`
-	CardProfit          float64            `json:"cardProfit"`
-	BankIncome          float64            `json:"bankIncome"`
-	BankExpenses        float64            `json:"bankExpenses"`
-	BankProfit          float64            `json:"bankProfit"`
+	Students            int                 `json:"totalStudents"`
+	ActiveStudents      int                 `json:"activeStudents"`
+	Teachers            int                 `json:"totalTeachers"`
+	TotalIncome         float64             `json:"totalIncome"`
+	TotalExpenses       float64             `json:"totalExpenses"`
+	Profit              float64             `json:"profit"`
+	DebtorsCount        int                 `json:"debtorsCount"`
+	UnpaidSalariesCount int                 `json:"unpaidSalariesCount"`
+	CashIncome          float64             `json:"cashIncome"`
+	CashExpenses        float64             `json:"cashExpenses"`
+	CashProfit          float64             `json:"cashProfit"`
+	CardIncome          float64             `json:"cardIncome"`
+	CardExpenses        float64             `json:"cardExpenses"`
+	CardProfit          float64             `json:"cardProfit"`
+	BankIncome          float64             `json:"bankIncome"`
+	BankExpenses        float64             `json:"bankExpenses"`
+	BankProfit          float64             `json:"bankProfit"`
 	Payments            []PaymentReportItem `json:"payments"`
 	Salaries            []SalaryReportItem  `json:"salaries"`
 	Expenses            []ExpenseReportItem `json:"expenses"`
@@ -117,7 +117,7 @@ type DashboardData struct {
 func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, startDate, endDate time.Time, status, classID string, page, limit int) ([]PaymentReportItem, int64, error) {
 	startMonth := fmt.Sprintf("%02d", int(startDate.Month()))
 	startYear := startDate.Year()
-	
+
 	// Get total count first
 	countQuery := `
 	SELECT COUNT(*)
@@ -189,7 +189,7 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 	}
 
 	query += " ORDER BY p.created_at DESC"
-	
+
 	// Add pagination
 	offset := (page - 1) * limit
 	query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
@@ -220,6 +220,7 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 		); err != nil {
 			return []PaymentReportItem{}, 0, err
 		}
+		item.PaymentMethod = normalizeStudentPaymentMethod(item.PaymentMethod)
 		items = append(items, item)
 	}
 
@@ -475,7 +476,7 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 	}
 
 	// Get payments by method
-	paymentsByMethod := make(map[string]float64)
+	paymentsByMethod := newStudentPaymentMethodTotals()
 	methodQuery := `
 	SELECT payment_method, COALESCE(SUM(amount), 0)
 	FROM payments
@@ -495,7 +496,7 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 		if err := rows.Scan(&method, &amount); err != nil {
 			return nil, err
 		}
-		paymentsByMethod[method] = amount
+		addStudentPaymentAmountByMethod(paymentsByMethod, method, amount)
 	}
 
 	// Get salaries by status
@@ -542,31 +543,31 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, month int, year int) (*DashboardData, error) {
 	// Convert month to 2-digit string format (e.g., 1 -> "01")
 	monthStr := fmt.Sprintf("%02d", month)
-	
+
 	// Count students
 	var totalStudents, activeStudents, totalTeachers int
-	
-	err := s.db.GetConn().QueryRowContext(ctx, 
+
+	err := s.db.GetConn().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM students WHERE branch_id = $1", branchID).
 		Scan(&totalStudents)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	err = s.db.GetConn().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM students WHERE branch_id = $1 AND status = 'active'", branchID).
 		Scan(&activeStudents)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	err = s.db.GetConn().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM teachers WHERE branch_id = $1", branchID).
 		Scan(&totalTeachers)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	// Get payments for the month
 	var totalIncome sql.NullFloat64
 	err = s.db.GetConn().QueryRowContext(ctx,
@@ -577,7 +578,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	// Get salaries and expenses for the month
 	var totalSalaries, totalExpensesOnly sql.NullFloat64
 	err = s.db.GetConn().QueryRowContext(ctx,
@@ -588,7 +589,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM expenses 
 		 WHERE branch_id = $1 AND LPAD(EXTRACT(MONTH FROM date)::text, 2, '0') = $2 AND EXTRACT(YEAR FROM date) = $3`,
@@ -597,45 +598,45 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	totalExpenses := totalSalaries.Float64 + totalExpensesOnly.Float64
 	income := totalIncome.Float64
 	profit := income - totalExpenses
-	
+
 	// Get income by payment method
 	cashIncome := 0.0
 	cardIncome := 0.0
 	bankIncome := 0.0
-	
+
 	paymentMethodQuery := `
 		SELECT payment_method, COALESCE(SUM(amount), 0)
 		FROM payments
 		WHERE branch_id = $1 AND month = $2 AND year = $3 AND (status = 'paid' OR status = 'partial')
 		GROUP BY payment_method
 	`
-	
+
 	rows, err := s.db.GetConn().QueryContext(ctx, paymentMethodQuery, branchID, monthStr, year)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	
+
 	for rows.Next() {
 		var method string
 		var amount float64
 		if err := rows.Scan(&method, &amount); err != nil {
 			return nil, err
 		}
-		switch method {
+		switch normalizeStudentPaymentMethod(method) {
 		case "cash":
 			cashIncome = amount
-		case "card":
-			cardIncome = amount
+		case "click":
+			cardIncome += amount
 		case "bank":
 			bankIncome = amount
 		}
 	}
-	
+
 	// Get salaries by payment method for expenses calculation
 	var cashSalaries, cardSalaries, bankSalaries sql.NullFloat64
 	err = s.db.GetConn().QueryRowContext(ctx,
@@ -646,7 +647,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM salaries 
 		 WHERE branch_id = $1 AND month = $2 AND year = $3 AND status = 'paid' AND payment_method = 'card'`,
@@ -655,7 +656,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM salaries 
 		 WHERE branch_id = $1 AND month = $2 AND year = $3 AND status = 'paid' AND payment_method = 'bank'`,
@@ -664,7 +665,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	// Get expenses by payment method
 	var cashExpensesOnly, cardExpensesOnly, bankExpensesOnly sql.NullFloat64
 	err = s.db.GetConn().QueryRowContext(ctx,
@@ -675,7 +676,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM expenses 
 		 WHERE branch_id = $1 AND LPAD(EXTRACT(MONTH FROM date)::text, 2, '0') = $2 AND EXTRACT(YEAR FROM date) = $3 AND payment_method = 'card'`,
@@ -684,7 +685,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	err = s.db.GetConn().QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(amount), 0) FROM expenses 
 		 WHERE branch_id = $1 AND LPAD(EXTRACT(MONTH FROM date)::text, 2, '0') = $2 AND EXTRACT(YEAR FROM date) = $3 AND payment_method = 'bank'`,
@@ -693,17 +694,17 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	// Calculate total expenses for each payment method (salaries + expenses)
 	cashExpenses := cashSalaries.Float64 + cashExpensesOnly.Float64
 	cardExpenses := cardSalaries.Float64 + cardExpensesOnly.Float64
 	bankExpenses := bankSalaries.Float64 + bankExpensesOnly.Float64
-	
+
 	// Calculate profit for each payment method
 	cashProfit := cashIncome - cashExpenses
 	cardProfit := cardIncome - cardExpenses
 	bankProfit := bankIncome - bankExpenses
-	
+
 	// Count debtors - students who haven't fully paid for the month
 	// A student is considered paid if the sum of all their payments (partial or paid) >= monthly_payment
 	debtorsQuery := `
@@ -724,7 +725,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	// Count unpaid salaries
 	unpaidSalariesQuery := `
 		SELECT COUNT(DISTINCT t.id)
@@ -740,16 +741,16 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
-	
+
 	// Get payments list
-	paymentsData, _, err := s.GetPaymentReport(ctx, branchID, 
+	paymentsData, _, err := s.GetPaymentReport(ctx, branchID,
 		time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC),
 		time.Date(year, time.Month(month)+1, 0, 23, 59, 59, 0, time.UTC),
 		"", "", 1, 10000)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Get salaries list
 	salariesData, err := s.GetSalaryReport(ctx, branchID,
 		time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC),
@@ -758,7 +759,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Get expenses list
 	expensesData, err := s.GetExpensesReport(ctx, branchID,
 		time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC),
@@ -767,7 +768,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &DashboardData{
 		Students:            totalStudents,
 		ActiveStudents:      activeStudents,

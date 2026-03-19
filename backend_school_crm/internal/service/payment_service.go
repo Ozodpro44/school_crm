@@ -55,7 +55,7 @@ func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, 
 		Amount:        req.Amount,
 		Month:         req.Month,
 		Year:          req.Year,
-		PaymentMethod: models.PaymentMethod(req.PaymentMethod),
+		PaymentMethod: models.PaymentMethod(normalizeStudentPaymentMethod(req.PaymentMethod)),
 		Status:        models.PaymentStatus(req.Status),
 		InvoiceNumber: req.InvoiceNumber,
 		Notes:         req.Notes,
@@ -89,6 +89,7 @@ func (s *PaymentService) GetByID(ctx context.Context, id string) (*models.Paymen
 	if err == sql.ErrNoRows {
 		return nil, errors.New("payment not found")
 	}
+	payment.PaymentMethod = models.PaymentMethod(normalizeStudentPaymentMethod(string(payment.PaymentMethod)))
 	return payment, err
 }
 
@@ -111,6 +112,7 @@ func (s *PaymentService) GetByBranchID(ctx context.Context, branchID string) ([]
 			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName); err != nil {
 			return nil, err
 		}
+		payment.PaymentMethod = models.PaymentMethod(normalizeStudentPaymentMethod(string(payment.PaymentMethod)))
 		payments = append(payments, payment)
 	}
 
@@ -136,6 +138,7 @@ func (s *PaymentService) GetByBranchIDAndPeriod(ctx context.Context, branchID, m
 			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName); err != nil {
 			return nil, err
 		}
+		payment.PaymentMethod = models.PaymentMethod(normalizeStudentPaymentMethod(string(payment.PaymentMethod)))
 		payments = append(payments, payment)
 	}
 
@@ -171,6 +174,7 @@ func (s *PaymentService) GetByBranchIDAndPeriodPaginated(ctx context.Context, br
 			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName); err != nil {
 			return nil, err
 		}
+		payment.PaymentMethod = models.PaymentMethod(normalizeStudentPaymentMethod(string(payment.PaymentMethod)))
 		payments = append(payments, payment)
 	}
 
@@ -246,6 +250,7 @@ func (s *PaymentService) GetByBranchIDAndPeriodPaginatedWithSearch(ctx context.C
 			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName); err != nil {
 			return nil, err
 		}
+		payment.PaymentMethod = models.PaymentMethod(normalizeStudentPaymentMethod(string(payment.PaymentMethod)))
 		payments = append(payments, payment)
 	}
 
@@ -304,6 +309,9 @@ func (s *PaymentService) Update(ctx context.Context, id string, updates map[stri
 	}
 
 	updates = utils.ConvertKeysToSnakeCase(updates)
+	if paymentMethodValue, ok := updates["payment_method"].(string); ok {
+		updates["payment_method"] = normalizeStudentPaymentMethod(paymentMethodValue)
+	}
 
 	query := `UPDATE payments SET `
 	args := []interface{}{}
@@ -342,21 +350,43 @@ func (s *PaymentService) Delete(ctx context.Context, id string) error {
 }
 
 func (s *PaymentService) GetPaymentSummary(ctx context.Context, branchID string) (map[string]interface{}, error) {
-	query := `
+	statusQuery := `
 	SELECT 
 		SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) as total_paid,
 		SUM(CASE WHEN status = 'unpaid' THEN amount ELSE 0 END) as total_unpaid,
-		SUM(CASE WHEN status = 'partial' THEN amount ELSE 0 END) as total_partial,
-		SUM(CASE WHEN payment_method = 'card' THEN amount ELSE 0 END) as card,
-		SUM(CASE WHEN payment_method = 'cash' THEN amount ELSE 0 END) as cash,
-		SUM(CASE WHEN payment_method = 'bank' THEN amount ELSE 0 END) as bank
+		SUM(CASE WHEN status = 'partial' THEN amount ELSE 0 END) as total_partial
 	FROM payments WHERE branch_id = $1
 	`
 
-	var totalPaid, totalUnpaid, totalPartial, card, cash, bank sql.NullFloat64
+	var totalPaid, totalUnpaid, totalPartial sql.NullFloat64
 
-	err := s.db.GetConn().QueryRowContext(ctx, query, branchID).Scan(&totalPaid, &totalUnpaid, &totalPartial, &card, &cash, &bank)
+	err := s.db.GetConn().QueryRowContext(ctx, statusQuery, branchID).Scan(&totalPaid, &totalUnpaid, &totalPartial)
 	if err != nil {
+		return nil, err
+	}
+
+	byMethod := newStudentPaymentMethodTotals()
+	methodRows, err := s.db.GetConn().QueryContext(ctx, `
+		SELECT payment_method, COALESCE(SUM(amount), 0)
+		FROM payments
+		WHERE branch_id = $1
+		GROUP BY payment_method
+	`, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer methodRows.Close()
+
+	for methodRows.Next() {
+		var method string
+		var amount float64
+		if err := methodRows.Scan(&method, &amount); err != nil {
+			return nil, err
+		}
+		addStudentPaymentAmountByMethod(byMethod, method, amount)
+	}
+
+	if err := methodRows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -364,11 +394,7 @@ func (s *PaymentService) GetPaymentSummary(ctx context.Context, branchID string)
 		"totalPaid":    totalPaid.Float64,
 		"totalUnpaid":  totalUnpaid.Float64,
 		"totalPartial": totalPartial.Float64,
-		"byMethod": map[string]float64{
-			"card": card.Float64,
-			"cash": cash.Float64,
-			"bank": bank.Float64,
-		},
+		"byMethod":     byMethod,
 	}, nil
 }
 
@@ -376,16 +402,13 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 	// First query: Get paid amounts and payment methods
 	paymentQuery := `
 	SELECT 
-		SUM(CASE WHEN status = 'paid' OR status = 'partial' THEN amount ELSE 0 END) as total_paid,
-		SUM(CASE WHEN payment_method = 'card' THEN amount ELSE 0 END) as card,
-		SUM(CASE WHEN payment_method = 'cash' THEN amount ELSE 0 END) as cash,
-		SUM(CASE WHEN payment_method = 'bank' THEN amount ELSE 0 END) as bank
+		SUM(CASE WHEN status = 'paid' OR status = 'partial' THEN amount ELSE 0 END) as total_paid
 	FROM payments WHERE branch_id = $1 AND month = $2 AND year = $3
 	`
 
-	var totalPaid, card, cash, bank sql.NullFloat64
+	var totalPaid sql.NullFloat64
 
-	err := s.db.GetConn().QueryRowContext(ctx, paymentQuery, branchID, month, year).Scan(&totalPaid, &card, &cash, &bank)
+	err := s.db.GetConn().QueryRowContext(ctx, paymentQuery, branchID, month, year).Scan(&totalPaid)
 	if err != nil {
 		return nil, err
 	}
@@ -415,14 +438,35 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 		return nil, err
 	}
 
+	byMethod := newStudentPaymentMethodTotals()
+	methodRows, err := s.db.GetConn().QueryContext(ctx, `
+		SELECT payment_method, COALESCE(SUM(amount), 0)
+		FROM payments
+		WHERE branch_id = $1 AND month = $2 AND year = $3
+		GROUP BY payment_method
+	`, branchID, month, year)
+	if err != nil {
+		return nil, err
+	}
+	defer methodRows.Close()
+
+	for methodRows.Next() {
+		var method string
+		var amount float64
+		if err := methodRows.Scan(&method, &amount); err != nil {
+			return nil, err
+		}
+		addStudentPaymentAmountByMethod(byMethod, method, amount)
+	}
+
+	if err := methodRows.Err(); err != nil {
+		return nil, err
+	}
+
 	return map[string]interface{}{
 		"totalPaid":   totalPaid.Float64,
 		"totalUnpaid": totalUnpaid.Float64,
-		"byMethod": map[string]float64{
-			"card": card.Float64,
-			"cash": cash.Float64,
-			"bank": bank.Float64,
-		},
+		"byMethod":    byMethod,
 	}, nil
 }
 
@@ -445,6 +489,7 @@ func (s *PaymentService) GetByStudentID(ctx context.Context, studentID string) (
 			&payment.PaymentMethod, &payment.Status, &payment.InvoiceNumber, &payment.Notes, &payment.PaidDate, &payment.BranchID, &payment.CreatedBy, &payment.CreatedAt, &payment.CreatedByName); err != nil {
 			return nil, err
 		}
+		payment.PaymentMethod = models.PaymentMethod(normalizeStudentPaymentMethod(string(payment.PaymentMethod)))
 		payments = append(payments, payment)
 	}
 
@@ -551,9 +596,17 @@ func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 	}
 
 	if paymentMethod != "" {
-		where += fmt.Sprintf(" AND p.payment_method = $%d", argID)
-		args = append(args, paymentMethod)
-		argID++
+		filterValues := studentPaymentMethodFilterValues(paymentMethod)
+		switch len(filterValues) {
+		case 1:
+			where += fmt.Sprintf(" AND p.payment_method = $%d", argID)
+			args = append(args, filterValues[0])
+			argID++
+		case 2:
+			where += fmt.Sprintf(" AND p.payment_method IN ($%d, $%d)", argID, argID+1)
+			args = append(args, filterValues[0], filterValues[1])
+			argID += 2
+		}
 	}
 
 	if classID != "" {
@@ -617,6 +670,7 @@ func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 		if createdByName.Valid {
 			p.CreatedByName = &createdByName.String
 		}
+		p.PaymentMethod = models.PaymentMethod(normalizeStudentPaymentMethod(string(p.PaymentMethod)))
 		payments = append(payments, p)
 	}
 
@@ -661,6 +715,7 @@ func (s *PaymentService) GetByStudentAndPeriod(ctx context.Context, studentID, m
 		if err != nil {
 			return nil, err
 		}
+		p.PaymentMethod = models.PaymentMethod(normalizeStudentPaymentMethod(string(p.PaymentMethod)))
 		payments = append(payments, p)
 	}
 
