@@ -83,9 +83,11 @@ export default function ManagersPage() {
     canViewPayments: true,
     canCreatePayments: false,
     canEditPayments: false,
+    canDeletePayments: false,
     canViewSalaries: true,
     canCreateSalaries: false,
     canEditSalaries: false,
+    canDeleteSalaries: false,
     canViewExpenses: true,
     canCreateExpenses: false,
     canEditExpenses: false,
@@ -365,9 +367,11 @@ export default function ManagersPage() {
     canViewPayments: true,
     canCreatePayments: false,
     canEditPayments: false,
+    canDeletePayments: false,
     canViewSalaries: true,
     canCreateSalaries: false,
     canEditSalaries: false,
+    canDeleteSalaries: false,
     canViewExpenses: true,
     canCreateExpenses: false,
     canEditExpenses: false,
@@ -436,6 +440,7 @@ export default function ManagersPage() {
         { key: "canViewPayments" as keyof Permission, label: t("canView") },
         { key: "canCreatePayments" as keyof Permission, label: t("canCreate") || "Create" },
         { key: "canEditPayments" as keyof Permission, label: t("canEdit") },
+        { key: "canDeletePayments" as keyof Permission, label: t("canDelete") },
       ],
     },
     {
@@ -444,6 +449,7 @@ export default function ManagersPage() {
         { key: "canViewSalaries" as keyof Permission, label: t("canView") },
         { key: "canCreateSalaries" as keyof Permission, label: t("canCreate") || "Create" },
         { key: "canEditSalaries" as keyof Permission, label: t("canEdit") },
+        { key: "canDeleteSalaries" as keyof Permission, label: t("canDelete") },
       ],
     },
     {
@@ -608,6 +614,7 @@ export default function ManagersPage() {
                       }
                       required
                       disabled={!!editingManager}
+                      autoComplete="off"
                     />
                   </div>
 
@@ -622,6 +629,7 @@ export default function ManagersPage() {
                           setFormData({ ...formData, password: e.target.value })
                         }
                         required
+                        autoComplete="new-password"
                       />
                     </div>
                   )}
@@ -649,7 +657,7 @@ export default function ManagersPage() {
                     </Select>
                     {!editingManager && (
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Manager can only manage this assigned branch
+                        {t("managerBranchNote") || "Menejer faqat tayinlangan filialini boshqara oladi"}
                       </p>
                     )}
                   </div>

@@ -106,13 +106,14 @@ export default function ClassDetailsPage() {
   const t = (key: string) => getTranslation(key, language);
 
   const getCurrentMonthPaymentStatus = (studentId: string): string => {
-    // Use branch's current month, not system month
-    if (!branchData?.currentFinancialMonth) return "unpaid";
-
-    const currentMonth = branchData.currentFinancialMonth.month
+    // Use branch's current month, fall back to system month
+    const currentMonth = (
+      branchData?.currentFinancialMonth?.month || new Date().getMonth() + 1
+    )
       .toString()
       .padStart(2, "0");
-    const currentYear = branchData.currentFinancialMonth.year;
+    const currentYear =
+      branchData?.currentFinancialMonth?.year || new Date().getFullYear();
 
     const student = students.find((s) => s.id === studentId);
     if (!student) return "unpaid";
@@ -216,7 +217,7 @@ export default function ClassDetailsPage() {
           );
           setTeacherName(teacher?.fullName || "Unknown");
         } else {
-          setTeacherName("No teacher assigned");
+          setTeacherName(t("noTeacherAssigned"));
         }
       } else {
         setClassData(null);
@@ -859,7 +860,7 @@ export default function ClassDetailsPage() {
                         <p className="text-sm text-slate-500 dark:text-slate-400">
                           {student.phone} •{" "}
                           {formatCurrency(student.monthlyPayment)}/
-                          {t("month") || "month"}
+                          {t("month").toLowerCase()}
                         </p>
                         <Badge className="mt-2">{t(student.status)}</Badge>
                       </div>

@@ -63,6 +63,8 @@ export default function StudentDetailsPage() {
     classId: "",
     phone: "",
     parentPhone: "",
+    status: "active" as Student["status"],
+    monthlyPayment: "",
   });
   const language = useLanguage();
   const { toast } = useToast();
@@ -229,6 +231,8 @@ export default function StudentDetailsPage() {
         classId: student.classId,
         phone: student.phone,
         parentPhone: student.parentPhone,
+        status: student.status,
+        monthlyPayment: student.monthlyPayment?.toString() || "",
       });
       setEditDialogOpen(true);
     }
@@ -244,11 +248,15 @@ export default function StudentDetailsPage() {
       return;
     }
 
+    const updatedMonthlyPayment = parseInt(editFormData.monthlyPayment) || student.monthlyPayment;
+
     studentsDB.update(student.id, {
       fullName: editFormData.fullName,
       classId: editFormData.classId,
       phone: editFormData.phone,
       parentPhone: editFormData.parentPhone,
+      status: editFormData.status,
+      monthlyPayment: updatedMonthlyPayment,
     });
 
     setStudent({
@@ -257,6 +265,8 @@ export default function StudentDetailsPage() {
       classId: editFormData.classId,
       phone: editFormData.phone,
       parentPhone: editFormData.parentPhone,
+      status: editFormData.status,
+      monthlyPayment: updatedMonthlyPayment,
     });
 
     const classData = classesDB.getById(editFormData.classId);
@@ -680,7 +690,11 @@ export default function StudentDetailsPage() {
                         </td>
                         <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
                           {payment.paidDate
-                            ? new Date(payment.paidDate).toLocaleDateString()
+                            ? new Date(payment.paidDate).toLocaleDateString("en-GB", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                              }).replace(/\//g, ".")
                             : "-"}
                         </td>
                       </tr>
@@ -764,6 +778,40 @@ export default function StudentDetailsPage() {
                       parentPhone: e.target.value,
                     })
                   }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-status">{t("status")} *</Label>
+                <Select
+                  value={editFormData.status}
+                  onValueChange={(value: Student["status"]) =>
+                    setEditFormData({ ...editFormData, status: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">{t("active")}</SelectItem>
+                    <SelectItem value="suspended">{t("suspended")}</SelectItem>
+                    <SelectItem value="left">{t("left")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="edit-monthlyPayment">{t("monthlyPayment")} *</Label>
+                <Input
+                  id="edit-monthlyPayment"
+                  type="number"
+                  min="0"
+                  step="500"
+                  value={editFormData.monthlyPayment}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, monthlyPayment: e.target.value })
+                  }
+                  placeholder="0"
                 />
               </div>
 

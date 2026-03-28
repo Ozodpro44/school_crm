@@ -99,8 +99,8 @@ export const commonTranslations: Partial<Translation> = {
     en: "Select teacher (optional)",
   },
   noTeacherAssigned: {
-    "uz-cyrl": "Ўқитувчи берилмаган",
-    "uz-latn": "O'qituvchi berilmagan",
+    "uz-cyrl": "Ўқитувчи тайинланмаган",
+    "uz-latn": "O'qituvchi tayinlanmagan",
     en: "No teacher assigned",
   },
   assignedStudents: {
@@ -197,13 +197,13 @@ export const commonTranslations: Partial<Translation> = {
   left: { "uz-cyrl": "Чиқиб кетган", "uz-latn": "Chiqib ketgan", en: "Left" },
   amount: { "uz-cyrl": "Миқдор", "uz-latn": "Miqdor", en: "Amount" },
   date: { "uz-cyrl": "Сана", "uz-latn": "Sana", en: "Date" },
-  period: { "uz-cyrl": "Период", "uz-latn": "Period", en: "Period" },
+  period: { "uz-cyrl": "Davr", "uz-latn": "Davr", en: "Period" },
   description: { "uz-cyrl": "Тавсиф", "uz-latn": "Tavsif", en: "Description" },
   actions: { "uz-cyrl": "Амаллар", "uz-latn": "Amallar", en: "Actions" },
 
   // Time periods
-  month: { "uz-cyrl": "ой", "uz-latn": "oy", en: "month" },
-  year: { "uz-cyrl": "йил", "uz-latn": "yil", en: "year" },
+  month: { "uz-cyrl": "Ой", "uz-latn": "Oy", en: "Month" },
+  year: { "uz-cyrl": "Йил", "uz-latn": "Yil", en: "Year" },
 
   // Drag and drop
   dragToMove: {

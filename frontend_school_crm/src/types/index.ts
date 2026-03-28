@@ -27,9 +27,11 @@ export interface Permission {
   canViewPayments: boolean;
   canCreatePayments: boolean;
   canEditPayments: boolean;
+  canDeletePayments: boolean;
   canViewSalaries: boolean;
   canCreateSalaries: boolean;
   canEditSalaries: boolean;
+  canDeleteSalaries: boolean;
   canViewExpenses: boolean;
   canCreateExpenses: boolean;
   canEditExpenses: boolean;

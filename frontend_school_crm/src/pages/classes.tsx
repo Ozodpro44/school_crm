@@ -476,9 +476,9 @@ export default function ClassesPage() {
   };
 
   const getTeacherName = (teacherId?: string) => {
-    if (!teacherId) return "No teacher assigned";
-    const teacher = teachers.find((t) => t.id === teacherId);
-    return teacher?.fullName || "Unknown";
+    if (!teacherId) return t("noTeacherAssigned");
+    const teacher = teachers.find((tc) => tc.id === teacherId);
+    return teacher?.fullName || t("noTeacherAssigned");
   };
 
   const getClassStudents = (classId: string) => {
@@ -963,7 +963,7 @@ export default function ClassesPage() {
                           {student.phone}
                         </p>
                         <p className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1 sm:mt-2">
-                          {formatCurrency(student.monthlyPayment)}/{t("month")}
+                          {formatCurrency(student.monthlyPayment)}/{t("month").toLowerCase()}
                         </p>
                         <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 sm:mt-2">
                           📱 {t("dragToMove")}

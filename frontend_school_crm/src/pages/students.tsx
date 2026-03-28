@@ -540,8 +540,10 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
     const branchId = localStorage.getItem("selectedBranchId");
     const branch = branchId ? branchesDB.getById(branchId) : null;
-    const monthlyPayment =
+    const defaultMonthlyPayment =
       branch?.monthlyPayment || settings?.monthlyPayment || 500000;
+    const monthlyPayment =
+      parseInt(formData.monthlyPayment) || defaultMonthlyPayment;
 
     try {
       if (editingStudent) {
@@ -1080,6 +1082,22 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                       </SelectContent>
                     </Select>
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="monthlyPayment">{t("monthlyPayment")} *</Label>
+                    <Input
+                      id="monthlyPayment"
+                      type="number"
+                      min="0"
+                      step="500"
+                      value={formData.monthlyPayment}
+                      onChange={(e) =>
+                        setFormData({ ...formData, monthlyPayment: e.target.value })
+                      }
+                      placeholder="0"
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
@@ -1089,7 +1107,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     onClick={() => setIsDialogOpen(false)}
                     disabled={isSubmitting}
                   >
-                    Cancel
+                    {t("cancel")}
                   </Button>
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? (
@@ -1611,7 +1629,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                       </SelectContent>
                     </Select>
                     <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-                      {t("showing") || "Showing"} {(page - 1) * limit + 1} {t("to") || "to"} {Math.min(page * limit, total)} {t("of") || "of"} {total}
+                      {t("showing") || "Ko'rsatilyotgan"} {(page - 1) * limit + 1} – {Math.min(page * limit, total)} {t("of") || "dan"} {total}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">

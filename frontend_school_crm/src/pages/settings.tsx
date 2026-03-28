@@ -378,9 +378,14 @@ export default function SettingsPage() {
                   {t("created")}
                 </Label>
                 <p className="text-sm font-medium">
-                  {new Date(settings.createdDate).toLocaleString("sv-SE", {
+                  {new Date(settings.createdDate).toLocaleString("ru-RU", {
                     timeZone: "Asia/Tashkent",
-                  })}
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }).replace(",", "")}
                 </p>
               </div>
               <div className="space-y-2">
@@ -388,9 +393,14 @@ export default function SettingsPage() {
                   {t("lastUpdated")}
                 </Label>
                 <p className="text-sm font-medium">
-                  {new Date(settings.updatedDate).toLocaleString("sv-SE", {
+                  {new Date(settings.updatedDate).toLocaleString("ru-RU", {
                     timeZone: "Asia/Tashkent",
-                  })}
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }).replace(",", "")}
                 </p>
               </div>
             </div>

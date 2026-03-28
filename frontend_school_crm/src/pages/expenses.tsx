@@ -858,7 +858,7 @@ export default function ExpensesPage() {
                         setFormData({ ...formData, amount: e.target.value })
                       }
                       required
-                      placeholder="10000"
+                      placeholder="0"
                       step="0.01"
                     />
                   </div>
@@ -1270,7 +1270,7 @@ export default function ExpensesPage() {
               <div className="flex flex-col gap-4 mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("showing")} {(currentPage - 1) * itemsPerPage + 1} -{" "}
+                    {t("showing")} {(currentPage - 1) * itemsPerPage + 1} –{" "}
                     {Math.min(currentPage * itemsPerPage, totalExpenses)}{" "}
                     {t("of")} {totalExpenses}
                   </div>

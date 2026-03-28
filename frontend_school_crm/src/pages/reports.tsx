@@ -702,7 +702,7 @@ export default function ReportsPage() {
           {t("reports") || "Reports"}
         </h1>
         <p className="text-slate-600 dark:text-slate-400 mt-1">
-          Generate detailed reports with custom date ranges
+          {t("reportsSubtitle") || "Moslashtirilgan sana oralig'i bilan batafsil hisobotlar yarating"}
         </p>
       </div>
 
