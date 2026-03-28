@@ -1115,8 +1115,10 @@ export default function ExpensesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">{t("allMethods")}</SelectItem>
-                  <SelectItem value="card">{t("card")}</SelectItem>
                   <SelectItem value="cash">{t("cash")}</SelectItem>
+                  <SelectItem value="click">Click</SelectItem>
+                  <SelectItem value="terminal">{t("terminal") || "Terminal"}</SelectItem>
+                  <SelectItem value="card">{t("card")}</SelectItem>
                   <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
                 </SelectContent>
               </Select>

@@ -65,7 +65,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
+import { formatNumberWithSpaces, removeNumberFormatting, toTitleCase } from "@/lib/utils";
 import { useSettings } from "@/hooks/use-settings";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
@@ -421,13 +421,19 @@ export default function PaymentsPage() {
     if (status) setFilterStatus(status as string);
     if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
     if (classId) setFilterClassId(classId as string);
-    if (month) setSelectedMonth(month as string);
-    if (year)
-      setSelectedYear(parseInt(year as string) || new Date().getFullYear());
+    const initMonth = (month as string) || selectedMonth;
+    const initYear = parseInt(year as string) || selectedYear || new Date().getFullYear();
+    if (month) setSelectedMonth(initMonth);
+    if (year) setSelectedYear(initYear);
 
-    // Load initial data once router is ready
+    const initSearch = (search as string) || "";
+    const initStatus = (status as string) || "all";
+    const initPaymentMethod = (paymentMethod as string) || "all";
+    const initClassId = (classId as string) || "all";
+
+    // Load initial data with URL params passed directly as overrides (avoids stale closure issues)
     setIsLoading(true);
-    loadData().finally(() => {
+    loadData(initMonth, initYear, initSearch, initStatus, initPaymentMethod, initClassId).finally(() => {
       setIsLoading(false);
       // Mark initial load as done AFTER data is loaded to prevent filter effects from running prematurely
       initialLoadDoneRef.current = true;
@@ -1427,8 +1433,8 @@ export default function PaymentsPage() {
           </p>
         </div>
 
-        {/* Month Selector for Admin */}
-        {isAdmin && branchData && selectedMonth && (
+        {/* Month Selector for all roles */}
+        {branchData && selectedMonth && (
           <MonthYearSelector
             month={selectedMonth}
             year={selectedYear}
@@ -2212,6 +2218,7 @@ export default function PaymentsPage() {
                   />
                 </div>
                 <Button
+                  type="button"
                   onClick={handleSearch}
                   className="bg-blue-600 hover:bg-blue-700"
                   size="sm"
@@ -2434,7 +2441,7 @@ export default function PaymentsPage() {
                       <td className="py-3 px-4">
                         <div>
                           <p className="font-medium text-slate-900 dark:text-slate-100">
-                            {getStudentName(payment.studentId)}
+                            {toTitleCase(getStudentName(payment.studentId))}
                           </p>
                           <p className="text-sm text-slate-500 dark:text-slate-400">
                             {getClassName(payment.studentId)}

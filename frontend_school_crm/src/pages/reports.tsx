@@ -79,7 +79,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (!canViewReports) {
-      router.push("/");
+      setIsLoading(false);
       return;
     }
 
@@ -691,6 +691,18 @@ export default function ReportsPage() {
       <div className="space-y-6">
         <Skeleton className="h-10 w-48" />
         <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (!canViewReports) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 space-y-4">
+        <AlertCircle className="w-16 h-16 text-red-500" />
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">403 – Ruxsat yo'q</h2>
+        <p className="text-slate-600 dark:text-slate-400 text-center max-w-md">
+          Hisobotlar bo'limiga kirish huquqingiz yo'q.
+        </p>
       </div>
     );
   }

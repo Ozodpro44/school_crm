@@ -6,6 +6,25 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Converts a string to title case (each word capitalized)
+ * Used for displaying student names stored in ALL CAPS
+ */
+export function toTitleCase(str: string): string {
+  if (!str) return "";
+  return str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Formats a date to DD.MM.YYYY format
+ */
+export function formatDate(date: string | Date | null | undefined): string {
+  if (!date) return "—";
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, ".");
+}
+
+/**
  * Formats a number with space as thousands separator (e.g., 10000 -> "10 000")
  */
 export function formatNumberWithSpaces(value: string | number): string {

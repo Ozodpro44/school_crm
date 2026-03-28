@@ -620,9 +620,9 @@ export const commonTranslations: Partial<Translation> = {
     en: "Teacher deleted",
   },
   manageFaculty: {
-    "uz-cyrl": "Факультет аъзоларини бошқариш",
-    "uz-latn": "Fakultet a'zolarini boshqarish",
-    en: "Manage faculty members and assignments",
+    "uz-cyrl": "О'қитувчиларни бошқариш",
+    "uz-latn": "O'qituvchilarni boshqarish",
+    en: "Manage teachers",
   },
 
   // Class specific

@@ -40,7 +40,7 @@ import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { useToast } from "@/hooks/use-toast";
 import { hasPermission, getCurrentUser } from "@/lib/auth";
-import { formatPhoneNumber } from "@/lib/utils";
+import { formatPhoneNumber, toTitleCase, formatDate } from "@/lib/utils";
 import { getStudent, listPayments, listClasses, getStudentPaymentHistory, getBranch } from "@/lib/api";
 
 export default function StudentDetailsPage() {
@@ -120,11 +120,11 @@ export default function StudentDetailsPage() {
           if (branchId && studentData.classId) {
             const classesData = await listClasses(branchId);
             const classData = classesData.find((c: any) => c.id === studentData.classId);
-            setClassName(classData?.name || "N/A");
+            setClassName(classData?.name || "—");
           }
         } catch (error) {
           console.error("Failed to fetch class name:", error);
-          setClassName("N/A");
+          setClassName("—");
         }
         
         const branchId = localStorage.getItem("selectedBranchId");
@@ -216,13 +216,22 @@ export default function StudentDetailsPage() {
     return "partial";
   };
 
-  const totalPaid = payments
-    .filter((p) => getEffectivePaymentStatus(p) === "paid" || getEffectivePaymentStatus(p) === "partial")
-    .reduce((sum, p) => sum + p.amount, 0);
+  const totalPaid = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
 
-  const totalPending = payments
-    .filter((p) => getEffectivePaymentStatus(p) === "unpaid")
-    .reduce((sum, p) => sum + p.amount, 0);
+  // Outstanding = total due (months active × monthly fee) minus total paid
+  const totalPending = (() => {
+    if (!student) return 0;
+    const enrollDate = student.enrollmentDate ? new Date(student.enrollmentDate) : new Date();
+    const now = new Date();
+    const monthsActive = Math.max(
+      1,
+      (now.getFullYear() - enrollDate.getFullYear()) * 12 +
+        (now.getMonth() - enrollDate.getMonth()) +
+        1,
+    );
+    const totalDue = (student.monthlyPayment || 0) * monthsActive;
+    return Math.max(0, totalDue - totalPaid);
+  })();
 
   const handleEdit = () => {
     if (student) {
@@ -270,7 +279,7 @@ export default function StudentDetailsPage() {
     });
 
     const classData = classesDB.getById(editFormData.classId);
-    setClassName(classData?.name || "N/A");
+    setClassName(classData?.name || "—");
 
     toast({
       title: t("updated"),
@@ -461,7 +470,7 @@ export default function StudentDetailsPage() {
             </Button>
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
-                {student.fullName}
+                {toTitleCase(student.fullName)}
               </h1>
               <p className="text-slate-600 dark:text-slate-400 mt-1">
                 {t("studentDetails")}
@@ -628,7 +637,7 @@ export default function StudentDetailsPage() {
                 {t("enrollmentDate")}
               </p>
               <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                {new Date(student.enrollmentDate).toLocaleDateString()}
+                {formatDate(student.enrollmentDate)}
               </p>
             </div>
             {student.leftDate && (
@@ -637,7 +646,7 @@ export default function StudentDetailsPage() {
                   {t("leftDate")}
                 </p>
                 <p className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                  {new Date(student.leftDate).toLocaleDateString()}
+                  {formatDate(student.leftDate)}
                 </p>
               </div>
             )}
