@@ -62,6 +62,8 @@ export function Layout({ children }: LayoutProps) {
     }
 
     // Auto-set manager's branch when they login
+    // Guard: only set if not already set to the correct branch, to avoid
+    // dispatching spurious branchChange events on every shallow URL update.
     if (
       currentUser &&
       (currentUser.role === "manager" || currentUser.role === "branch_admin") &&
@@ -69,7 +71,8 @@ export function Layout({ children }: LayoutProps) {
       branches.length > 0
     ) {
       const userBranch = branches.find((b) => b.id === currentUser.branchId);
-      if (userBranch) {
+      const alreadySet = localStorage.getItem("selectedBranchId") === currentUser.branchId;
+      if (userBranch && !alreadySet) {
         setCurrentBranchById(currentUser.branchId);
       }
     }
