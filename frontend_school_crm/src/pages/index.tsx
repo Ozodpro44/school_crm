@@ -456,7 +456,7 @@ export default function HomePage() {
               {stats.totalTeachers}
             </div>
             <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("activeFacultyMembers")}
+              {t("activeTeachers") || "Faol o'qituvchilar"}
             </p>
           </CardContent>
         </Card>
@@ -477,6 +477,9 @@ export default function HomePage() {
             </div>
             <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
               {t("fromStudentPayments")}
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">
+              {t("ushbuOyUchun") || "Ushbu oy uchun"}
             </p>
           </CardContent>
         </Card>

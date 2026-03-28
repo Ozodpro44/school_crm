@@ -1,5 +1,7 @@
 
 import { useEffect, useRef } from "react";
+import { useLanguage } from "@/hooks/use-language";
+import { getTranslation } from "@/lib/translations";
 
 interface ChartData {
   label: string;
@@ -13,6 +15,8 @@ interface FinancialChartProps {
 
 export function FinancialChart({ data }: FinancialChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const language = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
 
   useEffect(() => {
     if (!canvasRef.current || data.length === 0) return;
@@ -87,7 +91,7 @@ export function FinancialChart({ data }: FinancialChartProps) {
       ctx.font = "10px Inter";
       ctx.textAlign = "right";
       ctx.fillText(
-        `$${Math.round((maxValue / 5) * i)}`,
+        `${Math.round((maxValue / 5) * i)}`,
         padding - 5,
         y + 3
       );
@@ -100,11 +104,11 @@ export function FinancialChart({ data }: FinancialChartProps) {
       <div className="flex justify-center gap-6 mt-4">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 bg-green-500 rounded"></div>
-          <span className="text-sm text-slate-600 dark:text-slate-400">Income</span>
+          <span className="text-sm text-slate-600 dark:text-slate-400">{t("income") || "Daromad"}</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 bg-red-500 rounded"></div>
-          <span className="text-sm text-slate-600 dark:text-slate-400">Expenses</span>
+          <span className="text-sm text-slate-600 dark:text-slate-400">{t("expenses") || "Xarajatlar"}</span>
         </div>
       </div>
     </div>

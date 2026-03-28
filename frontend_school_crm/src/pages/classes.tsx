@@ -476,9 +476,9 @@ export default function ClassesPage() {
   };
 
   const getTeacherName = (teacherId?: string) => {
-    if (!teacherId) return "No teacher assigned";
-    const teacher = teachers.find((t) => t.id === teacherId);
-    return teacher?.fullName || "Unknown";
+    if (!teacherId) return t("noTeacherAssigned");
+    const teacher = teachers.find((tc) => tc.id === teacherId);
+    return teacher?.fullName || t("noTeacherAssigned");
   };
 
   const getClassStudents = (classId: string) => {
@@ -791,20 +791,20 @@ export default function ClassesPage() {
               <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
                 <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span className="hidden sm:inline">
-                  {classes.length} {t("classes")}
+                  {filteredClasses.length} {t("classes")}
                 </span>
                 <span className="sm:hidden">
-                  {classes.length} {t("classes")}
+                  {filteredClasses.length} {t("classes")}
                 </span>
               </Badge>
               <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
                 <Users className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span className="hidden sm:inline">
-                  {students.filter((s) => s.classId).length}{" "}
+                  {students.filter((s) => filteredClasses.some((c) => c.id === s.classId)).length}{" "}
                   {t("assignedStudents")}
                 </span>
                 <span className="sm:hidden">
-                  {students.filter((s) => s.classId).length}
+                  {students.filter((s) => filteredClasses.some((c) => c.id === s.classId)).length}
                 </span>
               </Badge>
             </div>
@@ -963,7 +963,7 @@ export default function ClassesPage() {
                           {student.phone}
                         </p>
                         <p className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mt-1 sm:mt-2">
-                          {formatCurrency(student.monthlyPayment)}/{t("month")}
+                          {formatCurrency(student.monthlyPayment)}/{t("month").toLowerCase()}
                         </p>
                         <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 sm:mt-2">
                           📱 {t("dragToMove")}

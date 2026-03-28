@@ -79,7 +79,7 @@ export default function ReportsPage() {
 
   useEffect(() => {
     if (!canViewReports) {
-      router.push("/");
+      setIsLoading(false);
       return;
     }
 
@@ -695,6 +695,18 @@ export default function ReportsPage() {
     );
   }
 
+  if (!canViewReports) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 space-y-4">
+        <AlertCircle className="w-16 h-16 text-red-500" />
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">403 – Ruxsat yo'q</h2>
+        <p className="text-slate-600 dark:text-slate-400 text-center max-w-md">
+          Hisobotlar bo'limiga kirish huquqingiz yo'q.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -702,7 +714,7 @@ export default function ReportsPage() {
           {t("reports") || "Reports"}
         </h1>
         <p className="text-slate-600 dark:text-slate-400 mt-1">
-          Generate detailed reports with custom date ranges
+          {t("reportsSubtitle") || "Moslashtirilgan sana oralig'i bilan batafsil hisobotlar yarating"}
         </p>
       </div>
 

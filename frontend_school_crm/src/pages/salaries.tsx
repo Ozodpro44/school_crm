@@ -55,7 +55,7 @@ export default function SalariesPage() {
   const { toast } = useToast();
   const canCreateSalaries = hasPermission("canCreateSalaries");
   const canEditSalaries = hasPermission("canEditSalaries");
-  const canDeleteSalaries = canEditSalaries && getCurrentUser()?.role !== "manager";
+  const canDeleteSalaries = hasPermission("canDeleteSalaries");
 
   const getDefaultYear = () => {
     return new Date().getFullYear().toString();
@@ -493,7 +493,7 @@ export default function SalariesPage() {
                         setFormData({ ...formData, amount: removeNumberFormatting(e.target.value) })
                       }
                       required
-                      placeholder="10 000"
+                      placeholder="0"
                       step="500"
                     />
                   </div>
@@ -511,14 +511,13 @@ export default function SalariesPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="paid">{t("paid")}</SelectItem>
-                        <SelectItem value="partial">{t("partial")}</SelectItem>
                         <SelectItem value="partial">{t("partialPaid")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="month">{t("period")} *</Label>
+                    <Label htmlFor="month">{t("month")} *</Label>
                     <Select
                       value={formData.month}
                       onValueChange={(value) =>
@@ -540,7 +539,7 @@ export default function SalariesPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="year">Year *</Label>
+                    <Label htmlFor="year">{t("year")} *</Label>
                     <Input
                       id="year"
                       type="number"
@@ -611,7 +610,7 @@ export default function SalariesPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="border-l-4 border-l-red-500">
+        <Card className="border-l-4 border-l-green-500">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <Wallet className="w-4 h-4" />
@@ -619,7 +618,7 @@ export default function SalariesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-600 dark:text-red-400">
+            <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
               {formatCurrency(totalPaid)}
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -682,7 +681,6 @@ export default function SalariesPage() {
               <SelectContent>
                 <SelectItem value="all">{t("allStatus")}</SelectItem>
                 <SelectItem value="paid">{t("paid")}</SelectItem>
-                <SelectItem value="partial">{t("partial")}</SelectItem>
                 <SelectItem value="partial">{t("partialPaid")}</SelectItem>
               </SelectContent>
             </Select>
@@ -796,7 +794,7 @@ export default function SalariesPage() {
             {filteredSalaries.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-slate-500 dark:text-slate-400">
-                  No salary records found
+                  {t("noSalaryRecordsFound")}
                 </p>
               </div>
             )}
@@ -805,7 +803,7 @@ export default function SalariesPage() {
             {filteredSalaries.length > 0 && (
               <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
                 <div className="text-sm text-slate-600 dark:text-slate-400">
-                  {t("showing")} {startIndex + 1} - {Math.min(startIndex + itemsPerPage, filteredSalaries.length)} {t("of")} {filteredSalaries.length}
+                  {t("showing")} {startIndex + 1} – {Math.min(startIndex + itemsPerPage, filteredSalaries.length)} {t("of")} {filteredSalaries.length}
                 </div>
                 <div className="flex gap-2">
                   <Button

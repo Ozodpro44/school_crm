@@ -39,6 +39,7 @@ import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/exportUtils";
+import { formatPhoneNumber, toTitleCase } from "@/lib/utils";
 import {
   listStudents as apiListStudents,
   listClasses as apiListClasses,
@@ -106,13 +107,14 @@ export default function ClassDetailsPage() {
   const t = (key: string) => getTranslation(key, language);
 
   const getCurrentMonthPaymentStatus = (studentId: string): string => {
-    // Use branch's current month, not system month
-    if (!branchData?.currentFinancialMonth) return "unpaid";
-
-    const currentMonth = branchData.currentFinancialMonth.month
+    // Use branch's current month, fall back to system month
+    const currentMonth = (
+      branchData?.currentFinancialMonth?.month || new Date().getMonth() + 1
+    )
       .toString()
       .padStart(2, "0");
-    const currentYear = branchData.currentFinancialMonth.year;
+    const currentYear =
+      branchData?.currentFinancialMonth?.year || new Date().getFullYear();
 
     const student = students.find((s) => s.id === studentId);
     if (!student) return "unpaid";
@@ -216,7 +218,7 @@ export default function ClassDetailsPage() {
           );
           setTeacherName(teacher?.fullName || "Unknown");
         } else {
-          setTeacherName("No teacher assigned");
+          setTeacherName(t("noTeacherAssigned"));
         }
       } else {
         setClassData(null);
@@ -789,7 +791,7 @@ export default function ClassDetailsPage() {
           <div className="flex flex-col gap-4">
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5" />
-              {t("students")} ({classStudents.length})
+              {t("students")} ({filteredStudents.length < classStudents.length ? `${filteredStudents.length} / ${classStudents.length}` : classStudents.length})
             </CardTitle>
 
             <div className="flex-1 relative">
@@ -845,21 +847,25 @@ export default function ClassDetailsPage() {
                               );
                             }}
                           >
-                            {student.fullName}
+                            {toTitleCase(student.fullName)}
                           </p>
-                          {hasCurrentMonthPayment(student.id) && (
+                          {hasCurrentMonthPayment(student.id) ? (
                             <div className="flex items-center gap-1">
                               <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
                               <span className="text-xs text-green-600 dark:text-green-400">
                                 {t("paid")}
                               </span>
                             </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-red-500 dark:text-red-400">✗ {t("unpaid") || "To'lanmadi"}</span>
+                            </div>
                           )}
                         </div>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
-                          {student.phone} •{" "}
+                          {formatPhoneNumber(student.phone) || "—"} •{" "}
                           {formatCurrency(student.monthlyPayment)}/
-                          {t("month") || "month"}
+                          {t("month").toLowerCase()}
                         </p>
                         <Badge className="mt-2">{t(student.status)}</Badge>
                       </div>

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import * as api from "@/lib/api";
 import { Branch } from "@/types";
+import type { User } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -19,6 +20,7 @@ import { useBranch } from "@/context/BranchContext";
 
 export default function BranchesPage() {
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,8 +74,12 @@ export default function BranchesPage() {
     }
 
     try {
-      const branchList = await api.listBranches();
+      const [branchList, userList] = await Promise.all([
+        api.listBranches(),
+        api.listUsers().catch(() => [] as User[]),
+      ]);
       setBranches(branchList);
+      setUsers(userList);
       setLoading(false);
     } catch (error) {
       console.error("Failed to load branches:", error);
@@ -464,11 +470,11 @@ export default function BranchesPage() {
                         </div>
                         <div className="flex items-center gap-2 text-sm">
                           <Phone className="h-4 w-4" />
-                          {formatPhoneNumber(branch.phone)}
+                          {formatPhoneNumber(branch.phone) || "-"}
                         </div>
                         <div className="flex items-center gap-2 text-sm">
                           <DollarSign className="h-4 w-4" />
-                          {branch.monthlyPayment.toLocaleString()} UZS/ой
+                          UZS {branch.monthlyPayment.toLocaleString()}/oy
                         </div>
                       </div>
                     </CardDescription>
@@ -479,7 +485,9 @@ export default function BranchesPage() {
                         <Label className="text-xs text-muted-foreground">{t("admin")}</Label>
                         {branch.adminId ? (
                           <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="secondary"></Badge>
+                            <Badge variant="secondary">
+                              {users.find((u) => u.id === branch.adminId)?.fullName || branch.adminId}
+                            </Badge>
                           </div>
                         ) : (
                           <Button

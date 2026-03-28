@@ -65,7 +65,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
+import { formatNumberWithSpaces, removeNumberFormatting, toTitleCase } from "@/lib/utils";
 import { useSettings } from "@/hooks/use-settings";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
@@ -206,6 +206,8 @@ export default function PaymentsPage() {
     };
   } | null>(null);
 
+  const [formSubmitted, setFormSubmitted] = useState(false);
+
   // Track if initial load has been done to prevent double-loading from filter effects
   const initialLoadDoneRef = useRef(false);
   // Track the current load request to prevent race conditions
@@ -224,7 +226,7 @@ export default function PaymentsPage() {
     [],
   );
   const canEditPayments = useMemo(() => hasPermission("canEditPayments"), []);
-  const canDeletePayments = canEditPayments && currentUser?.role !== "manager";
+  const canDeletePayments = useMemo(() => hasPermission("canDeletePayments"), []);
   const isAdmin =
     currentUser?.role === "admin" || currentUser?.role === "branch_admin";
 
@@ -419,13 +421,19 @@ export default function PaymentsPage() {
     if (status) setFilterStatus(status as string);
     if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
     if (classId) setFilterClassId(classId as string);
-    if (month) setSelectedMonth(month as string);
-    if (year)
-      setSelectedYear(parseInt(year as string) || new Date().getFullYear());
+    const initMonth = (month as string) || selectedMonth;
+    const initYear = parseInt(year as string) || selectedYear || new Date().getFullYear();
+    if (month) setSelectedMonth(initMonth);
+    if (year) setSelectedYear(initYear);
 
-    // Load initial data once router is ready
+    const initSearch = (search as string) || "";
+    const initStatus = (status as string) || "all";
+    const initPaymentMethod = (paymentMethod as string) || "all";
+    const initClassId = (classId as string) || "all";
+
+    // Load initial data with URL params passed directly as overrides (avoids stale closure issues)
     setIsLoading(true);
-    loadData().finally(() => {
+    loadData(initMonth, initYear, initSearch, initStatus, initPaymentMethod, initClassId).finally(() => {
       setIsLoading(false);
       // Mark initial load as done AFTER data is loaded to prevent filter effects from running prematurely
       initialLoadDoneRef.current = true;
@@ -506,6 +514,7 @@ export default function PaymentsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormSubmitted(true);
     setIsSubmitting(true);
     const user = getCurrentUser();
     if (!user) {
@@ -909,6 +918,7 @@ export default function PaymentsPage() {
     setSelectedStudentInfo(null);
     setStudentSearchTerm("");
     setPaymentSummary(null);
+    setFormSubmitted(false);
   };
 
   const recomputePaymentStatus = (
@@ -1423,8 +1433,8 @@ export default function PaymentsPage() {
           </p>
         </div>
 
-        {/* Month Selector for Admin */}
-        {isAdmin && branchData && selectedMonth && (
+        {/* Month Selector for all roles */}
+        {branchData && selectedMonth && (
           <MonthYearSelector
             month={selectedMonth}
             year={selectedYear}
@@ -1460,7 +1470,7 @@ export default function PaymentsPage() {
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="bulkMonth">{t("period")} *</Label>
+                    <Label htmlFor="bulkMonth">{t("month")} *</Label>
                     <Select
                       value={bulkPaymentData.month}
                       onValueChange={(value) =>
@@ -1908,7 +1918,7 @@ export default function PaymentsPage() {
                         </div>
                       )}
                     </div>
-                    {!formData.studentId && (
+                    {formSubmitted && !formData.studentId && (
                       <p className="text-red-500 text-sm mt-1">
                         {t("studentRequired") || "Student is required"}
                       </p>
@@ -1954,7 +1964,7 @@ export default function PaymentsPage() {
                         })
                       }
                       required
-                      placeholder="10 000"
+                      placeholder="0"
                       step="500"
                     />
                   </div>
@@ -2088,7 +2098,7 @@ export default function PaymentsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+            <div className="text-base sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400 truncate">
               {formatCurrency(totalIncome)}
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -2105,7 +2115,7 @@ export default function PaymentsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+            <div className="text-base sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400 truncate">
               {formatCurrency(totalPending)}
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -2122,7 +2132,7 @@ export default function PaymentsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            <div className="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
               {formatCurrency(totalByMethod.click)}
             </div>
           </CardContent>
@@ -2136,7 +2146,7 @@ export default function PaymentsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            <div className="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
               {formatCurrency(totalByMethod.cash)}
             </div>
           </CardContent>
@@ -2150,7 +2160,7 @@ export default function PaymentsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            <div className="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
               {formatCurrency(totalByMethod.terminal)}
             </div>
           </CardContent>
@@ -2164,7 +2174,7 @@ export default function PaymentsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            <div className="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
               {formatCurrency(totalByMethod.bank)}
             </div>
           </CardContent>
@@ -2208,6 +2218,7 @@ export default function PaymentsPage() {
                   />
                 </div>
                 <Button
+                  type="button"
                   onClick={handleSearch}
                   className="bg-blue-600 hover:bg-blue-700"
                   size="sm"
@@ -2430,7 +2441,7 @@ export default function PaymentsPage() {
                       <td className="py-3 px-4">
                         <div>
                           <p className="font-medium text-slate-900 dark:text-slate-100">
-                            {getStudentName(payment.studentId)}
+                            {toTitleCase(getStudentName(payment.studentId))}
                           </p>
                           <p className="text-sm text-slate-500 dark:text-slate-400">
                             {getClassName(payment.studentId)}
@@ -2470,15 +2481,12 @@ export default function PaymentsPage() {
                       </td>
                       <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
                         {payment.paidDate
-                          ? new Date(payment.paidDate).toLocaleString("en-GB", {
+                          ? new Date(payment.paidDate).toLocaleDateString("en-GB", {
                               timeZone: "Asia/Tashkent",
                               year: "numeric",
                               month: "2-digit",
                               day: "2-digit",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              second: "2-digit",
-                            })
+                            }).replace(/\//g, ".")
                           : "-"}
                       </td>
                       <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
@@ -2575,7 +2583,7 @@ export default function PaymentsPage() {
             <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
               <div className="text-sm text-slate-600 dark:text-slate-400">
                 {t("showing")}{" "}
-                {currentPage === 1 ? 1 : (currentPage - 1) * itemsPerPage + 1} -{" "}
+                {currentPage === 1 ? 1 : (currentPage - 1) * itemsPerPage + 1} –{" "}
                 {Math.min(currentPage * itemsPerPage, totalPayments)} {t("of")}{" "}
                 {totalPayments}
               </div>

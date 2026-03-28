@@ -55,7 +55,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber } from "@/lib/utils";
+import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber, toTitleCase, formatDate } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useSettings } from "@/hooks/use-settings";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
@@ -129,20 +129,31 @@ export default function StudentsPage() {
   const canEditStudents = useMemo(() => hasPermission("canEditStudents"), []);
   const canDeleteStudents = useMemo(() => hasPermission("canDeleteStudents"), []);
 
-  // Initialize state from URL params (only on first router ready)
+  // Initialize state from URL params and load initial data (waits for router.isReady)
   useEffect(() => {
     if (!router.isReady) return;
 
-    const { page, limit, search, status, classId, paymentStatus } = router.query;
-    if (page) setPage(parseInt(page as string) || 1);
-    if (limit) setLimit(parseInt(limit as string) || 10);
-    if (search) {
-      setSearchTerm(search as string);
-      setSearchInput(search as string);
-    }
-    if (status) setFilterStatus(status as string);
-    if (classId) setFilterClass(classId as string);
-    if (paymentStatus) setFilterPaymentStatus(paymentStatus as string);
+    const { page: qPage, limit: qLimit, search: qSearch, status: qStatus, classId: qClassId, paymentStatus: qPaymentStatus } = router.query;
+
+    const initSearch = (qSearch as string) || "";
+    const initStatus = (qStatus as string) || "all";
+    const initClassId = (qClassId as string) || "all";
+    const initPaymentStatus = (qPaymentStatus as string) || "all";
+
+    if (qPage) setPage(parseInt(qPage as string) || 1);
+    if (qLimit) setLimit(parseInt(qLimit as string) || 10);
+    setSearchTerm(initSearch);
+    setSearchInput(initSearch);
+    setFilterStatus(initStatus);
+    setFilterClass(initClassId);
+    setFilterPaymentStatus(initPaymentStatus);
+
+    setIsLoading(true);
+    // Pass URL params directly as overrides to avoid stale closure issues
+    loadData(initSearch, initStatus, initClassId, initPaymentStatus).finally(() => {
+      setIsLoading(false);
+      initialLoadDoneRef.current = true;
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
@@ -233,17 +244,7 @@ export default function StudentsPage() {
     }
   };
 
-  // Initialize and load initial data
-  useEffect(() => {
-    setIsLoading(true);
-    const timer = setTimeout(async () => {
-      await loadData();
-      setIsLoading(false);
-      // Mark initial load as done AFTER data is loaded to prevent filter effects from running prematurely
-      initialLoadDoneRef.current = true;
-    }, 300);
-    return () => clearTimeout(timer);
-  }, []);
+  // Initial load is handled in the [router.isReady] effect above
 
   // Reload data when filters change
   useEffect(() => {
@@ -540,8 +541,10 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
     const branchId = localStorage.getItem("selectedBranchId");
     const branch = branchId ? branchesDB.getById(branchId) : null;
-    const monthlyPayment =
+    const defaultMonthlyPayment =
       branch?.monthlyPayment || settings?.monthlyPayment || 500000;
+    const monthlyPayment =
+      parseInt(formData.monthlyPayment) || defaultMonthlyPayment;
 
     try {
       if (editingStudent) {
@@ -1080,6 +1083,22 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                       </SelectContent>
                     </Select>
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="monthlyPayment">{t("monthlyPayment")} *</Label>
+                    <Input
+                      id="monthlyPayment"
+                      type="number"
+                      min="0"
+                      step="500"
+                      value={formData.monthlyPayment}
+                      onChange={(e) =>
+                        setFormData({ ...formData, monthlyPayment: e.target.value })
+                      }
+                      placeholder="0"
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-3 pt-4">
@@ -1089,7 +1108,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     onClick={() => setIsDialogOpen(false)}
                     disabled={isSubmitting}
                   >
-                    Cancel
+                    {t("cancel")}
                   </Button>
                   <Button type="submit" disabled={isSubmitting}>
                     {isSubmitting ? (
@@ -1390,7 +1409,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                               }
                             >
                               <p className="font-medium text-slate-900 dark:text-slate-100 text-blue-600 dark:text-blue-400 hover:underline">
-                                {student.fullName}
+                                {toTitleCase(student.fullName)}
                               </p>
                               <p className="text-sm text-slate-500 dark:text-slate-400">
                                 {formatPhoneNumber(student.parentPhone)}
@@ -1398,7 +1417,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                             </div>
                           </td>
                           <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                            {student.class?.name || 'N/A'}
+                            {student.class?.name || "—"}
                           </td>
                           <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
                             {formatPhoneNumber(student.phone)}
@@ -1491,7 +1510,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                           }
                         >
                           <p className="font-semibold text-slate-900 dark:text-slate-100 text-blue-600 dark:text-blue-400 hover:underline">
-                            {student.fullName}
+                            {toTitleCase(student.fullName)}
                           </p>
                           <p className="text-xs text-slate-500 dark:text-slate-400">
                             {formatPhoneNumber(student.parentPhone)}
@@ -1503,7 +1522,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                         <div className="flex justify-between items-center text-sm">
                           <span className="text-slate-600 dark:text-slate-400">{t("class")}:</span>
                           <span className="font-medium text-slate-900 dark:text-slate-100">
-                            {student.class?.name || 'N/A'}
+                            {student.class?.name || "—"}
                           </span>
                         </div>
 
@@ -1611,7 +1630,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                       </SelectContent>
                     </Select>
                     <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-                      {t("showing") || "Showing"} {(page - 1) * limit + 1} {t("to") || "to"} {Math.min(page * limit, total)} {t("of") || "of"} {total}
+                      {t("showing") || "Ko'rsatilyotgan"} {(page - 1) * limit + 1} – {Math.min(page * limit, total)} {t("of") || "dan"} {total}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">

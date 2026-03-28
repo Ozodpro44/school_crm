@@ -249,8 +249,8 @@ export const helpTranslations: Partial<Translation> = {
     en: "Tips & Best Practices",
   },
   regularDataBackups: {
-    "uz-cyrl": "Мунтазам маълумотлар Резервилаш",
-    "uz-latn": "Muntazam ma'lumotlar Rezervilash",
+    "uz-cyrl": "Мунтазам маълумотларни захиралаш",
+    "uz-latn": "Muntazam ma'lumotlarni zaxiralash",
     en: "Regular Data Backups",
   },
   regularDataBackupsDesc: {
@@ -273,8 +273,8 @@ export const helpTranslations: Partial<Translation> = {
     en: "Every page has search functionality. Use it to quickly find students, teachers, or records.",
   },
   monitorDashboard: {
-    "uz-cyrl": "Информацион панельни мониторинг қилинг",
-    "uz-latn": "Informatsion panelni monitoring qilinq",
+    "uz-cyrl": "Бошқарув панелини мунтазам кузатиб боринг",
+    "uz-latn": "Boshqaruv panelinini muntazam kuzatib boring",
     en: "Monitor the Dashboard",
   },
   monitorDashboardDesc: {

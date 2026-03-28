@@ -497,7 +497,7 @@ export default function TeachersPage() {
                       {t("salary")}
                     </th>
                     <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      Actions
+                      {t("actions")}
                     </th>
                   </tr>
                 </thead>
