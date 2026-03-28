@@ -1433,8 +1433,8 @@ export default function PaymentsPage() {
           </p>
         </div>
 
-        {/* Month Selector for all roles */}
-        {branchData && selectedMonth && (
+        {/* Month Selector for Admin */}
+        {isAdmin && branchData && selectedMonth && (
           <MonthYearSelector
             month={selectedMonth}
             year={selectedYear}
