@@ -154,6 +154,11 @@ func main() {
 	publicDev := router.Group("/api")
 	handlers.RegisterDeveloperRoutes(publicDev, database, subscriptionService)
 
+	// Authenticated developer routes (require developer JWT)
+	devProtected := router.Group("/api")
+	devProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret))
+	handlers.RegisterDevSettingsRoutes(devProtected, database)
+
 	// Protected routes
 	protected := router.Group("/api")
 	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))

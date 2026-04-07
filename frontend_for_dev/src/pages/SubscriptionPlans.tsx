@@ -293,9 +293,10 @@ export default function SubscriptionPlans() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("uz-UZ", {
       style: "currency",
-      currency: "USD",
+      currency: "UZS",
+      maximumFractionDigits: 0,
     }).format(amount);
   };
 

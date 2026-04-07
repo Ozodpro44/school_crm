@@ -454,8 +454,23 @@ export class ApiClient {
   // ==================== HEALTH ====================
 
   async healthCheck(): Promise<any> {
-    return this.request('/health', {
-      method: 'GET',
+    // /health is at root level, not under /api
+    const rootUrl = this.baseUrl.replace(/\/api\/?$/, '');
+    const response = await fetch(`${rootUrl}/health`);
+    if (!response.ok) throw new Error(`Health check failed: HTTP ${response.status}`);
+    return response.json();
+  }
+
+  // ==================== DEV SETTINGS ====================
+
+  async getDevSettings(): Promise<Record<string, any>> {
+    return this.request('/dev/settings', { method: 'GET' });
+  }
+
+  async updateDevSettings(settings: Record<string, any>): Promise<Record<string, any>> {
+    return this.request('/dev/settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
     });
   }
 

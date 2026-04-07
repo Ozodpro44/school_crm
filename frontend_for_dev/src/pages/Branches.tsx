@@ -98,9 +98,9 @@ export default function Branches() {
   );
 
   const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("ru-RU", {
+    new Intl.NumberFormat("uz-UZ", {
       style: "currency",
-      currency: "RUB",
+      currency: "UZS",
       maximumFractionDigits: 0,
     }).format(value || 0);
 
@@ -360,7 +360,7 @@ export default function Branches() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Monthly Payment (RUB)</Label>
+              <Label>Monthly Payment (UZS)</Label>
               <Input
                 type="number"
                 placeholder="25000"
@@ -411,7 +411,7 @@ export default function Branches() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Monthly Payment (RUB)</Label>
+              <Label>Monthly Payment (UZS)</Label>
               <Input
                 type="number"
                 value={formData.monthlyPayment || ""}
