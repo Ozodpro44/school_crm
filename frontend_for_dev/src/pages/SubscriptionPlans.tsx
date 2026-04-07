@@ -86,8 +86,8 @@ export default function SubscriptionPlans() {
   const [isDeletePlanOpen, setIsDeletePlanOpen] = useState(false);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [isDeleteSubOpen, setIsDeleteSubOpen] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
-  const [editingSub, setEditingSub] = useState<UserSubscription | null>(null);
+  const [editingPlan, setEditingPlan] = useState<SubscriptionPlanType | null>(null);
+  const [editingSub, setEditingSub] = useState<UserSubscriptionType | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -160,7 +160,7 @@ export default function SubscriptionPlans() {
     setIsPlanModalOpen(true);
   };
 
-  const handleEditPlan = (plan: SubscriptionPlan) => {
+  const handleEditPlan = (plan: SubscriptionPlanType) => {
     setEditingPlan(plan);
     setPlanForm({
       name: plan.name,
@@ -229,7 +229,7 @@ export default function SubscriptionPlans() {
     setIsSubscriptionModalOpen(true);
   };
 
-  const handleEditSubscription = (sub: UserSubscription) => {
+  const handleEditSubscription = (sub: UserSubscriptionType) => {
     setEditingSub(sub);
     setSubForm({
       userId: sub.userId,

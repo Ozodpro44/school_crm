@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
   CreditCard,
@@ -55,6 +55,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import {
+  getUserSubscriptions,
+  updateUserSubscription,
+  type UserSubscription as BackendSub,
+} from "@/services/subscription-api";
+import { apiClient } from "@/services/api-client";
 
 type SubscriptionStatus = "active" | "trial" | "expired" | "cancelled";
 type SubscriptionPlan = "trial" | "monthly" | "yearly";
@@ -80,82 +86,29 @@ interface Subscription {
   paymentHistory: PaymentHistory[];
 }
 
-const initialSubscriptions: Subscription[] = [
-  {
-    id: "1",
-    branchName: "Moscow Central",
-    plan: "yearly",
-    status: "active",
-    startDate: "2024-01-01",
-    endDate: "2024-12-31",
-    amount: 240000,
-    autoRenew: true,
-    lastPayment: "2024-01-01",
-    nextBilling: "2025-01-01",
-    paymentHistory: [
-      { date: "2024-01-01", amount: 240000, status: "success", method: "Bank Transfer" },
-      { date: "2023-01-01", amount: 220000, status: "success", method: "Bank Transfer" },
-    ],
-  },
-  {
-    id: "2",
-    branchName: "Saint Petersburg Main",
+function mapBackendSubscription(
+  sub: BackendSub,
+  branchMap: Record<string, string>
+): Subscription {
+  const statusMap: Record<string, SubscriptionStatus> = {
+    active: "active",
+    paused: "trial",
+    cancelled: "cancelled",
+    expired: "expired",
+  };
+  return {
+    id: sub.id,
+    branchName: branchMap[sub.branchId || ""] || sub.branchId || "Unknown Branch",
     plan: "monthly",
-    status: "active",
-    startDate: "2024-01-01",
-    endDate: "2024-02-01",
-    amount: 25000,
-    autoRenew: true,
-    lastPayment: "2024-01-01",
-    nextBilling: "2024-02-01",
-    paymentHistory: [
-      { date: "2024-01-01", amount: 25000, status: "success", method: "Card" },
-      { date: "2023-12-01", amount: 25000, status: "success", method: "Card" },
-      { date: "2023-11-01", amount: 25000, status: "success", method: "Card" },
-    ],
-  },
-  {
-    id: "3",
-    branchName: "Kazan Academy",
-    plan: "monthly",
-    status: "expired",
-    startDate: "2023-12-01",
-    endDate: "2024-01-01",
-    amount: 25000,
-    autoRenew: false,
-    lastPayment: "2023-12-01",
-    paymentHistory: [
-      { date: "2023-12-01", amount: 25000, status: "success", method: "Card" },
-      { date: "2024-01-01", amount: 25000, status: "failed", method: "Card" },
-    ],
-  },
-  {
-    id: "4",
-    branchName: "Sochi Campus",
-    plan: "trial",
-    status: "trial",
-    startDate: "2024-01-07",
-    endDate: "2024-01-21",
+    status: statusMap[sub.status] ?? "active",
+    startDate: sub.startDate ? sub.startDate.split("T")[0] : "—",
+    endDate: sub.endDate ? sub.endDate.split("T")[0] : "—",
     amount: 0,
-    autoRenew: false,
+    autoRenew: sub.autoRenew,
+    nextBilling: sub.renewalDate ? sub.renewalDate.split("T")[0] : undefined,
     paymentHistory: [],
-  },
-  {
-    id: "5",
-    branchName: "Novosibirsk Center",
-    plan: "yearly",
-    status: "active",
-    startDate: "2023-06-15",
-    endDate: "2024-06-15",
-    amount: 240000,
-    autoRenew: true,
-    lastPayment: "2023-06-15",
-    nextBilling: "2024-06-15",
-    paymentHistory: [
-      { date: "2023-06-15", amount: 240000, status: "success", method: "Bank Transfer" },
-    ],
-  },
-];
+  };
+}
 
 const statusConfig: Record<SubscriptionStatus, { icon: typeof CheckCircle2; color: string; bgColor: string }> = {
   active: { icon: CheckCircle2, color: "text-status-healthy", bgColor: "bg-status-healthy/15" },
@@ -178,8 +131,39 @@ const planPrices: Record<SubscriptionPlan, number> = {
 
 export default function Subscriptions() {
   const [selectedStatus, setSelectedStatus] = useState("all");
-  const [subscriptionData, setSubscriptionData] = useState(initialSubscriptions);
-  
+  const [subscriptionData, setSubscriptionData] = useState<Subscription[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [branchesResult, subsResult] = await Promise.allSettled([
+          apiClient.getBranches(),
+          getUserSubscriptions(),
+        ]);
+
+        const branchMap: Record<string, string> = {};
+        if (branchesResult.status === "fulfilled") {
+          for (const b of branchesResult.value) {
+            if (b.id) branchMap[b.id] = b.name;
+          }
+        }
+
+        if (subsResult.status === "fulfilled" && subsResult.value.length > 0) {
+          setSubscriptionData(
+            subsResult.value.map((s) => mapBackendSubscription(s, branchMap))
+          );
+        }
+      } catch {
+        // No data from backend — page stays empty
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
   // Modal states
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -200,9 +184,12 @@ export default function Subscriptions() {
 
   const toggleAutoRenew = (id: string) => {
     setSubscriptionData((prev) =>
-      prev.map((sub) =>
-        sub.id === id ? { ...sub, autoRenew: !sub.autoRenew } : sub
-      )
+      prev.map((sub) => {
+        if (sub.id !== id) return sub;
+        const newVal = !sub.autoRenew;
+        updateUserSubscription(id, { autoRenew: newVal }).catch(console.error);
+        return { ...sub, autoRenew: newVal };
+      })
     );
     toast.success("Auto-renew setting updated");
   };
@@ -244,15 +231,16 @@ export default function Subscriptions() {
   const handleRenewSubscription = () => {
     if (!selectedSubscription) return;
     const now = new Date();
-    const endDate = selectedSubscription.plan === "yearly" 
+    const endDate = selectedSubscription.plan === "yearly"
       ? new Date(now.setFullYear(now.getFullYear() + 1))
       : new Date(now.setMonth(now.getMonth() + 1));
-    
+
+    updateUserSubscription(selectedSubscription.id, { status: "active" }).catch(console.error);
     setSubscriptionData((prev) =>
       prev.map((sub) =>
         sub.id === selectedSubscription.id
-          ? { 
-              ...sub, 
+          ? {
+              ...sub,
               status: "active",
               startDate: new Date().toISOString().split("T")[0],
               endDate: endDate.toISOString().split("T")[0],
@@ -273,6 +261,7 @@ export default function Subscriptions() {
 
   const handleCancelSubscription = () => {
     if (!selectedSubscription) return;
+    updateUserSubscription(selectedSubscription.id, { status: "cancelled" }).catch(console.error);
     setSubscriptionData((prev) =>
       prev.map((sub) =>
         sub.id === selectedSubscription.id
@@ -398,6 +387,15 @@ export default function Subscriptions() {
 
       {/* Subscriptions Table */}
       <div className="glass-card rounded-lg overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">Loading subscriptions...</div>
+        ) : filteredSubscriptions.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">
+            {subscriptionData.length === 0
+              ? "No subscription data available from backend"
+              : "No subscriptions match the selected filter"}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
@@ -513,6 +511,7 @@ export default function Subscriptions() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
 
       {/* View Subscription Modal */}

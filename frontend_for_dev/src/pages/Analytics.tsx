@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
   Activity,
@@ -7,13 +8,12 @@ import {
   Zap,
   ArrowUpRight,
   ArrowDownRight,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   AreaChart,
   Area,
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   Tooltip,
@@ -23,39 +23,150 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { apiClient } from "@/services/api-client";
+import { toast } from "sonner";
 
-const requestsData = [
-  { time: "00:00", requests: 1200, latency: 45 },
-  { time: "02:00", requests: 800, latency: 42 },
-  { time: "04:00", requests: 600, latency: 38 },
-  { time: "06:00", requests: 900, latency: 41 },
-  { time: "08:00", requests: 3500, latency: 52 },
-  { time: "10:00", requests: 5200, latency: 58 },
-  { time: "12:00", requests: 4800, latency: 55 },
-  { time: "14:00", requests: 5500, latency: 62 },
-  { time: "16:00", requests: 4200, latency: 48 },
-  { time: "18:00", requests: 3800, latency: 45 },
-  { time: "20:00", requests: 2800, latency: 43 },
-  { time: "22:00", requests: 1800, latency: 40 },
-];
+interface LogEntry {
+  id: string;
+  level: string;
+  message: string;
+  module: string;
+  timestamp: string;
+  metadata?: Record<string, string>;
+}
 
-const endpointStats = [
-  { endpoint: "GET /students", requests: 12500, avgLatency: 45, errorRate: 0.2 },
-  { endpoint: "POST /auth/login", requests: 8200, avgLatency: 120, errorRate: 1.5 },
-  { endpoint: "GET /payments", requests: 6800, avgLatency: 85, errorRate: 0.8 },
-  { endpoint: "POST /enrollments", requests: 4500, avgLatency: 150, errorRate: 0.5 },
-  { endpoint: "GET /teachers", requests: 3200, avgLatency: 38, errorRate: 0.1 },
-  { endpoint: "POST /notifications", requests: 2800, avgLatency: 200, errorRate: 2.1 },
-];
+interface HealthData {
+  status: string;
+  uptime?: number;
+  responseTime?: number;
+  activeConnections?: number;
+  memoryUsage?: number;
+  version?: string;
+}
 
-const errorDistribution = [
-  { name: "400 Bad Request", value: 45, color: "hsl(38, 92%, 50%)" },
-  { name: "401 Unauthorized", value: 25, color: "hsl(0, 72%, 51%)" },
-  { name: "404 Not Found", value: 18, color: "hsl(280, 65%, 60%)" },
-  { name: "500 Server Error", value: 12, color: "hsl(0, 72%, 40%)" },
-];
+interface HourlyBucket {
+  time: string;
+  errors: number;
+  total: number;
+}
+
+const ERROR_COLORS: Record<string, string> = {
+  "500": "hsl(0, 72%, 40%)",
+  "401": "hsl(0, 72%, 51%)",
+  "404": "hsl(280, 65%, 60%)",
+  "400": "hsl(38, 92%, 50%)",
+  "Other": "hsl(215, 20%, 55%)",
+};
 
 export default function Analytics() {
+  const [health, setHealth] = useState<HealthData | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [healthData, logsData] = await Promise.allSettled([
+        apiClient.healthCheck(),
+        apiClient.getLogs(500),
+      ]);
+
+      if (healthData.status === "fulfilled") {
+        setHealth(healthData.value);
+      }
+      if (logsData.status === "fulfilled") {
+        setLogs(Array.isArray(logsData.value) ? logsData.value : []);
+      }
+      setLastRefresh(new Date());
+    } catch {
+      toast.error("Failed to fetch analytics data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Compute error rate from logs
+  const errorLogs = logs.filter((l) => l.level === "ERROR");
+  const warnLogs = logs.filter((l) => l.level === "WARN");
+  const totalLogs = logs.length;
+  const errorRate = totalLogs > 0 ? ((errorLogs.length / totalLogs) * 100).toFixed(1) : "0.0";
+
+  // Build hourly buckets from logs for the area chart (last 12 hours)
+  const hourlyData: Record<string, HourlyBucket> = {};
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const h = new Date(now);
+    h.setHours(now.getHours() - i, 0, 0, 0);
+    const label = `${String(h.getHours()).padStart(2, "0")}:00`;
+    hourlyData[label] = { time: label, errors: 0, total: 0 };
+  }
+
+  logs.forEach((log) => {
+    const ts = new Date(log.timestamp);
+    const diffH = Math.floor((now.getTime() - ts.getTime()) / (1000 * 60 * 60));
+    if (diffH >= 0 && diffH < 12) {
+      const label = `${String(ts.getHours()).padStart(2, "0")}:00`;
+      if (hourlyData[label]) {
+        hourlyData[label].total++;
+        if (log.level === "ERROR") hourlyData[label].errors++;
+      }
+    }
+  });
+  const requestsData = Object.values(hourlyData);
+
+  // Error distribution by module
+  const moduleCounts: Record<string, number> = {};
+  errorLogs.forEach((l) => {
+    const mod = l.module || "Unknown";
+    moduleCounts[mod] = (moduleCounts[mod] || 0) + 1;
+  });
+  const topModules = Object.entries(moduleCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const pieColors = [
+    "hsl(0, 72%, 51%)",
+    "hsl(38, 92%, 50%)",
+    "hsl(280, 65%, 60%)",
+    "hsl(0, 72%, 40%)",
+    "hsl(215, 20%, 55%)",
+  ];
+  const pieData = topModules.map(([name, value], i) => ({
+    name,
+    value,
+    color: pieColors[i % pieColors.length],
+  }));
+
+  // Top endpoints from logs
+  const endpointCounts: Record<string, { total: number; errors: number }> = {};
+  logs.forEach((l) => {
+    const ep = l.metadata?.endpoint || l.module || "unknown";
+    if (!endpointCounts[ep]) endpointCounts[ep] = { total: 0, errors: 0 };
+    endpointCounts[ep].total++;
+    if (l.level === "ERROR") endpointCounts[ep].errors++;
+  });
+  const topEndpoints = Object.entries(endpointCounts)
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, 6)
+    .map(([endpoint, counts]) => ({
+      endpoint,
+      requests: counts.total,
+      errorRate: counts.total > 0 ? +((counts.errors / counts.total) * 100).toFixed(1) : 0,
+    }));
+
+  const maxRequests = topEndpoints.reduce((m, e) => Math.max(m, e.requests), 1);
+
+  const uptimePercent = health?.status === "ok" || health?.status === "healthy"
+    ? "99.9%"
+    : health?.status
+    ? "degraded"
+    : "—";
+
   return (
     <DashboardLayout>
       {/* Header */}
@@ -66,6 +177,14 @@ export default function Analytics() {
             Performance metrics and API usage statistics
           </p>
         </div>
+        <button
+          onClick={fetchData}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors text-primary text-sm"
+        >
+          <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
+          {loading ? "Refreshing..." : `Refreshed ${lastRefresh.toLocaleTimeString()}`}
+        </button>
       </div>
 
       {/* Summary Cards */}
@@ -74,178 +193,235 @@ export default function Analytics() {
           <div className="flex items-center justify-between mb-2">
             <Activity className="w-5 h-5 text-primary" />
             <span className="flex items-center gap-1 text-xs text-status-healthy">
-              <ArrowUpRight className="w-3 h-3" /> 12%
+              <TrendingUp className="w-3 h-3" /> live
             </span>
           </div>
-          <p className="text-2xl font-bold text-foreground">45.2K</p>
-          <p className="text-sm text-muted-foreground">Requests Today</p>
+          <p className="text-2xl font-bold text-foreground">{loading ? "—" : totalLogs.toLocaleString()}</p>
+          <p className="text-sm text-muted-foreground">Log Entries (500 latest)</p>
         </div>
         <div className="metric-card">
           <div className="flex items-center justify-between mb-2">
             <Clock className="w-5 h-5 text-primary" />
-            <span className="flex items-center gap-1 text-xs text-status-healthy">
-              <ArrowDownRight className="w-3 h-3" /> 8%
-            </span>
           </div>
-          <p className="text-2xl font-bold text-foreground">52ms</p>
-          <p className="text-sm text-muted-foreground">Avg. Latency</p>
+          <p className="text-2xl font-bold text-foreground">
+            {loading ? "—" : health?.responseTime ? `${health.responseTime}ms` : "—"}
+          </p>
+          <p className="text-sm text-muted-foreground">Response Time</p>
         </div>
         <div className="metric-card">
           <div className="flex items-center justify-between mb-2">
             <AlertTriangle className="w-5 h-5 text-status-warning" />
-            <span className="flex items-center gap-1 text-xs text-status-critical">
-              <ArrowUpRight className="w-3 h-3" /> 3%
-            </span>
+            {!loading && parseFloat(errorRate) > 5 && (
+              <span className="flex items-center gap-1 text-xs text-status-critical">
+                <ArrowUpRight className="w-3 h-3" /> high
+              </span>
+            )}
+            {!loading && parseFloat(errorRate) <= 5 && (
+              <span className="flex items-center gap-1 text-xs text-status-healthy">
+                <ArrowDownRight className="w-3 h-3" /> low
+              </span>
+            )}
           </div>
-          <p className="text-2xl font-bold text-foreground">0.8%</p>
+          <p className="text-2xl font-bold text-foreground">{loading ? "—" : `${errorRate}%`}</p>
           <p className="text-sm text-muted-foreground">Error Rate</p>
         </div>
         <div className="metric-card">
           <div className="flex items-center justify-between mb-2">
             <Zap className="w-5 h-5 text-status-healthy" />
+            <span className={cn(
+              "text-xs px-2 py-0.5 rounded-full",
+              health?.status === "ok" || health?.status === "healthy"
+                ? "bg-status-healthy/15 text-status-healthy"
+                : "bg-status-critical/15 text-status-critical"
+            )}>
+              {loading ? "..." : health?.status || "unknown"}
+            </span>
           </div>
-          <p className="text-2xl font-bold text-foreground">99.95%</p>
+          <p className="text-2xl font-bold text-foreground">{loading ? "—" : uptimePercent}</p>
           <p className="text-sm text-muted-foreground">Uptime</p>
         </div>
       </div>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-        {/* Requests Over Time */}
+        {/* Log Activity Over Time */}
         <div className="xl:col-span-2 glass-card rounded-lg p-4">
-          <h3 className="font-semibold text-foreground mb-4">Requests Over Time</h3>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={requestsData}>
-                <defs>
-                  <linearGradient id="requestsGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(187, 85%, 53%)" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="hsl(187, 85%, 53%)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 47%, 16%)" />
-                <XAxis dataKey="time" stroke="hsl(215, 20%, 55%)" fontSize={11} tickLine={false} />
-                <YAxis stroke="hsl(215, 20%, 55%)" fontSize={11} tickLine={false} axisLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(222, 47%, 10%)",
-                    border: "1px solid hsl(222, 47%, 16%)",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="requests"
-                  stroke="hsl(187, 85%, 53%)"
-                  strokeWidth={2}
-                  fill="url(#requestsGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+          <h3 className="font-semibold text-foreground mb-4">Log Activity (Last 12h)</h3>
+          {loading ? (
+            <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">Loading...</div>
+          ) : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={requestsData}>
+                  <defs>
+                    <linearGradient id="totalGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(187, 85%, 53%)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(187, 85%, 53%)" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="errorsGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(0, 72%, 51%)" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="hsl(0, 72%, 51%)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 47%, 16%)" />
+                  <XAxis dataKey="time" stroke="hsl(215, 20%, 55%)" fontSize={11} tickLine={false} />
+                  <YAxis stroke="hsl(215, 20%, 55%)" fontSize={11} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(222, 47%, 10%)",
+                      border: "1px solid hsl(222, 47%, 16%)",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                    }}
+                  />
+                  <Area type="monotone" dataKey="total" name="Total" stroke="hsl(187, 85%, 53%)" strokeWidth={2} fill="url(#totalGradient)" />
+                  <Area type="monotone" dataKey="errors" name="Errors" stroke="hsl(0, 72%, 51%)" strokeWidth={2} fill="url(#errorsGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
 
-        {/* Error Distribution */}
+        {/* Error Distribution by Module */}
         <div className="glass-card rounded-lg p-4">
-          <h3 className="font-semibold text-foreground mb-4">Error Distribution</h3>
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={errorDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={70}
-                  paddingAngle={2}
-                  dataKey="value"
-                >
-                  {errorDistribution.map((entry, index) => (
-                    <Cell key={index} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(222, 47%, 10%)",
-                    border: "1px solid hsl(222, 47%, 16%)",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-4 space-y-2">
-            {errorDistribution.map((item) => (
-              <div key={item.name} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-muted-foreground">{item.name}</span>
-                </div>
-                <span className="text-foreground font-medium">{item.value}%</span>
+          <h3 className="font-semibold text-foreground mb-4">Errors by Module</h3>
+          {loading ? (
+            <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">Loading...</div>
+          ) : pieData.length === 0 ? (
+            <div className="h-48 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <Zap className="w-8 h-8 text-status-healthy opacity-50" />
+              <p className="text-sm">No errors found</p>
+            </div>
+          ) : (
+            <>
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={70}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={index} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "hsl(222, 47%, 10%)",
+                        border: "1px solid hsl(222, 47%, 16%)",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-            ))}
-          </div>
+              <div className="mt-4 space-y-2">
+                {pieData.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                      <span className="text-muted-foreground truncate">{item.name}</span>
+                    </div>
+                    <span className="text-foreground font-medium ml-2">{item.value}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Endpoint Stats */}
+      {/* Log Stats */}
+      {!loading && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="glass-card rounded-lg p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-status-critical/15 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-status-critical" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{errorLogs.length}</p>
+              <p className="text-sm text-muted-foreground">Errors</p>
+            </div>
+          </div>
+          <div className="glass-card rounded-lg p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-status-warning/15 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-status-warning" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{warnLogs.length}</p>
+              <p className="text-sm text-muted-foreground">Warnings</p>
+            </div>
+          </div>
+          <div className="glass-card rounded-lg p-4 flex items-center gap-4">
+            <div className="w-10 h-10 rounded-lg bg-status-healthy/15 flex items-center justify-center">
+              <Activity className="w-5 h-5 text-status-healthy" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{totalLogs - errorLogs.length - warnLogs.length}</p>
+              <p className="text-sm text-muted-foreground">Info / Debug</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top Modules Table */}
       <div className="glass-card rounded-lg overflow-hidden">
         <div className="p-4 border-b border-border">
-          <h3 className="font-semibold text-foreground">Top Endpoints</h3>
+          <h3 className="font-semibold text-foreground">Top Log Sources</h3>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-xs text-muted-foreground border-b border-border">
-                <th className="text-left py-3 px-4 font-medium">Endpoint</th>
-                <th className="text-right py-3 px-4 font-medium">Requests</th>
-                <th className="text-right py-3 px-4 font-medium">Avg. Latency</th>
-                <th className="text-right py-3 px-4 font-medium">Error Rate</th>
-                <th className="text-left py-3 px-4 font-medium w-48">Distribution</th>
-              </tr>
-            </thead>
-            <tbody>
-              {endpointStats.map((endpoint) => (
-                <tr key={endpoint.endpoint} className="data-table-row border-b border-border last:border-0">
-                  <td className="py-3 px-4">
-                    <span className="font-mono text-sm text-foreground">{endpoint.endpoint}</span>
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <span className="text-foreground">{endpoint.requests.toLocaleString()}</span>
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <span className={cn(
-                      endpoint.avgLatency > 100 && "text-status-warning",
-                      endpoint.avgLatency > 150 && "text-status-critical",
-                      endpoint.avgLatency <= 100 && "text-status-healthy"
-                    )}>
-                      {endpoint.avgLatency}ms
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <span className={cn(
-                      endpoint.errorRate > 1 && "text-status-warning",
-                      endpoint.errorRate > 2 && "text-status-critical",
-                      endpoint.errorRate <= 1 && "text-status-healthy"
-                    )}>
-                      {endpoint.errorRate}%
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full"
-                        style={{ width: `${(endpoint.requests / 12500) * 100}%` }}
-                      />
-                    </div>
-                  </td>
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">Loading...</div>
+        ) : topEndpoints.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground text-sm">No log data available</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-xs text-muted-foreground border-b border-border">
+                  <th className="text-left py-3 px-4 font-medium">Module / Endpoint</th>
+                  <th className="text-right py-3 px-4 font-medium">Log Count</th>
+                  <th className="text-right py-3 px-4 font-medium">Error Rate</th>
+                  <th className="text-left py-3 px-4 font-medium w-48">Distribution</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {topEndpoints.map((endpoint) => (
+                  <tr key={endpoint.endpoint} className="data-table-row border-b border-border last:border-0">
+                    <td className="py-3 px-4">
+                      <span className="font-mono text-sm text-foreground">{endpoint.endpoint}</span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <span className="text-foreground">{endpoint.requests.toLocaleString()}</span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <span className={cn(
+                        endpoint.errorRate > 10 && "text-status-critical",
+                        endpoint.errorRate > 5 && endpoint.errorRate <= 10 && "text-status-warning",
+                        endpoint.errorRate <= 5 && "text-status-healthy"
+                      )}>
+                        {endpoint.errorRate}%
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-primary rounded-full"
+                          style={{ width: `${(endpoint.requests / maxRequests) * 100}%` }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );
