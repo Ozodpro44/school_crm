@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
-  Settings as SettingsIcon,
   Server,
   Database,
   Shield,
@@ -11,6 +10,7 @@ import {
   CheckCircle2,
   XCircle,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,9 +26,8 @@ import {
 import { apiClient } from "@/services/api-client";
 import { toast } from "sonner";
 
-const SETTINGS_KEY = "dev_dashboard_settings";
-
-const defaultSettings = {
+// Default values shown before backend data loads
+const defaults = {
   requestTimeout: "30",
   rateLimiting: true,
   connectionPool: "20",
@@ -50,50 +49,107 @@ const defaultSettings = {
   },
 };
 
-type Settings = typeof defaultSettings;
+type DevSettings = typeof defaults;
 
-function loadSettings(): Settings {
-  try {
-    const saved = localStorage.getItem(SETTINGS_KEY);
-    if (saved) return { ...defaultSettings, ...JSON.parse(saved) };
-  } catch {}
-  return defaultSettings;
+function mergeWithDefaults(raw: Record<string, any>): DevSettings {
+  return {
+    ...defaults,
+    ...raw,
+    notifications: {
+      ...defaults.notifications,
+      ...(raw.notifications || {}),
+    },
+  };
 }
 
 export default function Settings() {
-  const [settings, setSettings] = useState<Settings>(loadSettings);
+  const [settings, setSettings] = useState<DevSettings>(defaults);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [healthStatus, setHealthStatus] = useState<"loading" | "ok" | "error">("loading");
+  const [healthDetail, setHealthDetail] = useState<string>("");
+
   const apiUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
 
-  useEffect(() => {
-    apiClient
-      .healthCheck()
-      .then(() => setHealthStatus("ok"))
-      .catch(() => setHealthStatus("error"));
+  // ── Load from backend on mount ───────────────────────────────────────────────
+
+  const loadSettings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const raw = await apiClient.getDevSettings();
+      setSettings(mergeWithDefaults(raw));
+      setDirty(false);
+    } catch {
+      // Backend may not have settings yet (new account) — use defaults silently
+      setSettings(defaults);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const set = (key: keyof Settings, value: unknown) =>
-    setSettings((prev) => ({ ...prev, [key]: value }));
+  const checkHealth = useCallback(async () => {
+    setHealthStatus("loading");
+    try {
+      const h = await apiClient.healthCheck();
+      setHealthStatus("ok");
+      setHealthDetail(h?.status || "healthy");
+    } catch (e) {
+      setHealthStatus("error");
+      setHealthDetail(e instanceof Error ? e.message : "unreachable");
+    }
+  }, []);
 
-  const setNotif = (key: keyof Settings["notifications"], value: boolean) =>
+  useEffect(() => {
+    loadSettings();
+    checkHealth();
+  }, [loadSettings, checkHealth]);
+
+  // ── Setters ──────────────────────────────────────────────────────────────────
+
+  const set = <K extends keyof DevSettings>(key: K, value: DevSettings[K]) => {
+    setSettings((prev) => ({ ...prev, [key]: value }));
+    setDirty(true);
+  };
+
+  const setNotif = (key: keyof DevSettings["notifications"], value: boolean) => {
     setSettings((prev) => ({
       ...prev,
       notifications: { ...prev.notifications, [key]: value },
     }));
+    setDirty(true);
+  };
+
+  // ── Save to backend ──────────────────────────────────────────────────────────
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-      await new Promise((r) => setTimeout(r, 300));
-      toast.success("Settings saved");
-    } catch {
-      toast.error("Failed to save settings");
+      const saved = await apiClient.updateDevSettings(settings as Record<string, any>);
+      setSettings(mergeWithDefaults(saved));
+      setDirty(false);
+      toast.success("Settings saved to backend");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save settings");
     } finally {
       setSaving(false);
     }
   };
+
+  const handleDiscard = async () => {
+    await loadSettings();
+    toast.info("Changes discarded");
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -102,21 +158,25 @@ export default function Settings() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Configure system preferences and integrations
+            Developer dashboard preferences — saved per account to the backend
           </p>
         </div>
-        <Button onClick={handleSave} disabled={saving} className="gap-2">
-          {saving ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Save className="w-4 h-4" />
+        <div className="flex items-center gap-2">
+          {dirty && (
+            <Button variant="outline" onClick={handleDiscard} disabled={saving}>
+              Discard
+            </Button>
           )}
-          {saving ? "Saving..." : "Save Changes"}
-        </Button>
+          <Button onClick={handleSave} disabled={saving || !dirty} className="gap-2">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? "Saving..." : dirty ? "Save Changes" : "Saved"}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* API Configuration */}
+
+        {/* ── API Configuration ──────────────────────────────────────────────── */}
         <div className="glass-card rounded-lg overflow-hidden">
           <div className="p-4 border-b border-border">
             <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -125,18 +185,29 @@ export default function Settings() {
             </h3>
           </div>
           <div className="p-4 space-y-4">
+            {/* API URL (read-only) */}
             <div className="space-y-2">
               <Label>Backend API URL</Label>
               <Input
                 value={apiUrl}
                 readOnly
-                className="bg-background font-mono text-sm opacity-70 cursor-not-allowed"
+                className="bg-background font-mono text-sm opacity-60 cursor-not-allowed"
               />
-              <p className="text-xs text-muted-foreground">Configured via VITE_API_BASE_URL environment variable</p>
+              <p className="text-xs text-muted-foreground">Set via VITE_API_BASE_URL env variable</p>
             </div>
+
+            {/* Live health status */}
             <div className="space-y-2">
-              <Label>Backend Status</Label>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between">
+                <Label>Backend Status</Label>
+                <button
+                  onClick={checkHealth}
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+                >
+                  <RefreshCw className="w-3 h-3" /> Check
+                </button>
+              </div>
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-accent/30">
                 {healthStatus === "loading" && (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -146,17 +217,22 @@ export default function Settings() {
                 {healthStatus === "ok" && (
                   <>
                     <CheckCircle2 className="w-4 h-4 text-status-healthy" />
-                    <span className="text-sm text-status-healthy">Connected and healthy</span>
+                    <span className="text-sm text-status-healthy">Connected — {healthDetail}</span>
                   </>
                 )}
                 {healthStatus === "error" && (
                   <>
                     <XCircle className="w-4 h-4 text-status-critical" />
                     <span className="text-sm text-status-critical">Cannot reach backend</span>
+                    {healthDetail && (
+                      <span className="text-xs text-muted-foreground ml-1">({healthDetail})</span>
+                    )}
                   </>
                 )}
               </div>
             </div>
+
+            {/* Request timeout */}
             <div className="space-y-2">
               <Label>Request Timeout (seconds)</Label>
               <Input
@@ -166,10 +242,12 @@ export default function Settings() {
                 className="bg-background w-32"
               />
             </div>
+
+            {/* Rate limiting */}
             <div className="flex items-center justify-between py-2">
               <div>
                 <p className="font-medium text-foreground">Rate Limiting</p>
-                <p className="text-sm text-muted-foreground">Enable API rate limiting</p>
+                <p className="text-sm text-muted-foreground">Enable API rate limiting alerts in dashboard</p>
               </div>
               <Switch
                 checked={settings.rateLimiting}
@@ -179,7 +257,7 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Database Settings */}
+        {/* ── Database Settings ──────────────────────────────────────────────── */}
         <div className="glass-card rounded-lg overflow-hidden">
           <div className="p-4 border-b border-border">
             <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -209,7 +287,7 @@ export default function Settings() {
             <div className="flex items-center justify-between py-2">
               <div>
                 <p className="font-medium text-foreground">Query Logging</p>
-                <p className="text-sm text-muted-foreground">Log all database queries</p>
+                <p className="text-sm text-muted-foreground">Show DB query logs in the Logs page</p>
               </div>
               <Switch
                 checked={settings.queryLogging}
@@ -219,7 +297,7 @@ export default function Settings() {
             <div className="flex items-center justify-between py-2">
               <div>
                 <p className="font-medium text-foreground">Slow Query Alerts</p>
-                <p className="text-sm text-muted-foreground">Alert on queries &gt; 1000ms</p>
+                <p className="text-sm text-muted-foreground">Highlight queries &gt; 1000ms as incidents</p>
               </div>
               <Switch
                 checked={settings.slowQueryAlerts}
@@ -229,7 +307,7 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Security Settings */}
+        {/* ── Security Settings ──────────────────────────────────────────────── */}
         <div className="glass-card rounded-lg overflow-hidden">
           <div className="p-4 border-b border-border">
             <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -259,7 +337,7 @@ export default function Settings() {
             <div className="flex items-center justify-between py-2">
               <div>
                 <p className="font-medium text-foreground">Require MFA</p>
-                <p className="text-sm text-muted-foreground">Enforce 2FA for all admins</p>
+                <p className="text-sm text-muted-foreground">Enforce 2FA for all admin accounts</p>
               </div>
               <Switch
                 checked={settings.requireMFA}
@@ -269,7 +347,7 @@ export default function Settings() {
             <div className="flex items-center justify-between py-2">
               <div>
                 <p className="font-medium text-foreground">IP Whitelisting</p>
-                <p className="text-sm text-muted-foreground">Restrict admin access by IP</p>
+                <p className="text-sm text-muted-foreground">Restrict admin access by IP address</p>
               </div>
               <Switch
                 checked={settings.ipWhitelisting}
@@ -279,7 +357,7 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Environment */}
+        {/* ── Environment ───────────────────────────────────────────────────── */}
         <div className="glass-card rounded-lg overflow-hidden">
           <div className="p-4 border-b border-border">
             <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -324,7 +402,7 @@ export default function Settings() {
             <div className="flex items-center justify-between py-2">
               <div>
                 <p className="font-medium text-foreground">Maintenance Mode</p>
-                <p className="text-sm text-muted-foreground">Disable access for all users</p>
+                <p className="text-sm text-muted-foreground">Show maintenance banner across dashboard</p>
               </div>
               <Switch
                 checked={settings.maintenanceMode}
@@ -334,7 +412,7 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* Notifications */}
+        {/* ── Notifications ─────────────────────────────────────────────────── */}
         <div className="glass-card rounded-lg overflow-hidden lg:col-span-2">
           <div className="p-4 border-b border-border">
             <h3 className="font-semibold text-foreground flex items-center gap-2">
@@ -345,11 +423,11 @@ export default function Settings() {
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             {(
               [
-                ["errorAlerts", "Error Alerts", "Get notified when error rate spikes"],
-                ["deployAlerts", "Deploy Alerts", "Notifications on new deployments"],
-                ["securityAlerts", "Security Alerts", "Unusual login or access attempts"],
-                ["weeklyReport", "Weekly Report", "Summary of metrics every Monday"],
-              ] as [keyof Settings["notifications"], string, string][]
+                ["errorAlerts",    "Error Alerts",    "Alert when error rate spikes in logs"],
+                ["deployAlerts",   "Deploy Alerts",   "Notify on new deployments detected"],
+                ["securityAlerts", "Security Alerts", "Unusual login or suspicious access attempts"],
+                ["weeklyReport",   "Weekly Report",   "Summary digest of metrics every Monday"],
+              ] as [keyof DevSettings["notifications"], string, string][]
             ).map(([key, title, desc]) => (
               <div key={key} className="flex items-center justify-between py-2">
                 <div>
@@ -364,7 +442,15 @@ export default function Settings() {
             ))}
           </div>
         </div>
+
       </div>
+
+      {/* Dirty indicator */}
+      {dirty && (
+        <p className="text-xs text-muted-foreground text-center mt-6">
+          You have unsaved changes — click Save Changes to persist them to the backend.
+        </p>
+      )}
     </DashboardLayout>
   );
 }

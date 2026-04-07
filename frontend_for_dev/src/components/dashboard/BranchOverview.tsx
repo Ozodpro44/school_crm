@@ -25,9 +25,9 @@ export function BranchOverview() {
   }, []);
 
   const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("ru-RU", {
+    new Intl.NumberFormat("uz-UZ", {
       style: "currency",
-      currency: "RUB",
+      currency: "UZS",
       maximumFractionDigits: 0,
     }).format(value || 0);
 

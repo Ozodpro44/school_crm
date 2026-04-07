@@ -66,9 +66,9 @@ export function QuickStats() {
   }, []);
 
   const formatRevenue = (value: number) =>
-    new Intl.NumberFormat("ru-RU", {
+    new Intl.NumberFormat("uz-UZ", {
       style: "currency",
-      currency: "RUB",
+      currency: "UZS",
       notation: "compact",
       maximumFractionDigits: 1,
     }).format(value);

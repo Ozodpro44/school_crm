@@ -1,0 +1,1 @@
+ALTER TABLE developers DROP COLUMN IF EXISTS settings;

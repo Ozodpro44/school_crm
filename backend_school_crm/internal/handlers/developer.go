@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
@@ -668,4 +669,106 @@ func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database, sub
 	// Subscriptions and users data (dev endpoints)
 	router.GET("/dev/subscriptions", GetDevSubscriptions(database))
 	router.GET("/dev/users", GetDevUsers(database))
+}
+
+// ==================== DEV SETTINGS ====================
+
+// RegisterDevSettingsRoutes registers authenticated developer settings routes.
+// Must be called with a router group that uses DevAuthMiddleware.
+func RegisterDevSettingsRoutes(router *gin.RouterGroup, database *db.Database) {
+	router.GET("/dev/settings", GetDevSettings(database))
+	router.PUT("/dev/settings", UpdateDevSettings(database))
+}
+
+// GetDevSettings returns the authenticated developer's stored settings.
+func GetDevSettings(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		developerID, _ := c.Get("developer_id")
+		devID, ok := developerID.(string)
+		if !ok || devID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "developer not authenticated"})
+			return
+		}
+
+		var raw []byte
+		err := database.GetConn().QueryRowContext(
+			c.Request.Context(),
+			"SELECT COALESCE(settings, '{}') FROM developers WHERE id = $1",
+			devID,
+		).Scan(&raw)
+		if err == sql.ErrNoRows {
+			c.JSON(http.StatusNotFound, gin.H{"error": "developer not found"})
+			return
+		}
+		if err != nil {
+			log.Printf("[DEV SETTINGS] DB error reading settings: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read settings"})
+			return
+		}
+
+		var settings map[string]interface{}
+		if err := json.Unmarshal(raw, &settings); err != nil {
+			settings = map[string]interface{}{}
+		}
+
+		c.JSON(http.StatusOK, settings)
+	}
+}
+
+// UpdateDevSettings merges the request body into the developer's stored settings.
+func UpdateDevSettings(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		developerID, _ := c.Get("developer_id")
+		devID, ok := developerID.(string)
+		if !ok || devID == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "developer not authenticated"})
+			return
+		}
+
+		var incoming map[string]interface{}
+		if err := c.ShouldBindJSON(&incoming); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+			return
+		}
+
+		// Read current settings
+		var raw []byte
+		err := database.GetConn().QueryRowContext(
+			c.Request.Context(),
+			"SELECT COALESCE(settings, '{}') FROM developers WHERE id = $1",
+			devID,
+		).Scan(&raw)
+		if err != nil && err != sql.ErrNoRows {
+			log.Printf("[DEV SETTINGS] DB error reading settings: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read settings"})
+			return
+		}
+
+		// Merge: existing + incoming (top-level merge)
+		current := map[string]interface{}{}
+		_ = json.Unmarshal(raw, &current)
+		for k, v := range incoming {
+			current[k] = v
+		}
+
+		merged, err := json.Marshal(current)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to serialize settings"})
+			return
+		}
+
+		_, err = database.GetConn().ExecContext(
+			c.Request.Context(),
+			"UPDATE developers SET settings = $1, updated_at = $2 WHERE id = $3",
+			string(merged), time.Now(), devID,
+		)
+		if err != nil {
+			log.Printf("[DEV SETTINGS] DB error updating settings: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save settings"})
+			return
+		}
+
+		log.Printf("[DEV SETTINGS] Saved settings for developer %s", devID)
+		c.JSON(http.StatusOK, current)
+	}
 }

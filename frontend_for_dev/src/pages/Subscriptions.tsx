@@ -195,9 +195,9 @@ export default function Subscriptions() {
   };
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("ru-RU", {
+    return new Intl.NumberFormat("uz-UZ", {
       style: "currency",
-      currency: "RUB",
+      currency: "UZS",
       maximumFractionDigits: 0,
     }).format(value);
   };
