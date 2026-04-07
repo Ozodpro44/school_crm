@@ -80,73 +80,24 @@ export default function Logs() {
     try {
       setIsLoading(true);
       setError(null);
-      
-      // Fetch real Railway production logs
-      try {
-        const response = await fetch('/api/logs/railway?limit=100');
-        
-        if (response.ok) {
-          const railwayLogs = await response.json();
-          
-          if (railwayLogs && Array.isArray(railwayLogs) && railwayLogs.length > 0) {
-            const convertedLogs: LogEntry[] = railwayLogs.map((log, index) => {
-              let level: LogLevel = 'INFO';
-              const upperLevel = (log.level || 'info').toUpperCase();
-              if (upperLevel === 'ERROR') level = 'ERROR';
-              else if (upperLevel === 'WARN') level = 'WARN';
-              
-              return {
-                id: log.id || `railway-${index}`,
-                timestamp: log.timestamp || new Date().toISOString(),
-                level,
-                module: log.service || 'railway',
-                message: log.message || '',
-              };
-            });
-            
-            setLogData(convertedLogs);
-            return;
-          }
-        }
-      } catch (railwayError) {
-        console.warn('Railway logs not available, trying backend...', railwayError);
-      }
-      
-      // Fall back to backend logs if Railway not available
-      try {
-        const backendLogs = await apiClient.getLogs(100);
-        
-        if (backendLogs && Array.isArray(backendLogs) && backendLogs.length > 0) {
-          const convertedLogs: LogEntry[] = backendLogs.map((log, index) => {
-            let level: LogLevel = 'INFO';
-            const upperLevel = (log.level || 'info').toUpperCase();
-            if (upperLevel === 'ERROR') level = 'ERROR';
-            else if (upperLevel === 'WARN') level = 'WARN';
-            
-            return {
-              id: log.id || String(index),
-              timestamp: log.timestamp || new Date().toISOString(),
-              level,
-              module: log.module || log.service || 'backend',
-              message: log.message || '',
-              details: log.details || (log.metadata ? JSON.stringify(log.metadata, null, 2) : undefined),
-              stackTrace: log.stackTrace,
-              requestId: log.requestId,
-              userId: log.userId,
-              branch: log.branch,
-            };
-          });
-          
-          setLogData(convertedLogs);
-          return;
-        }
-      } catch (apiError) {
-        console.warn('Backend logs not available', apiError);
-      }
-      
-      // No logs available
-      setLogData([]);
-      setError('No logs available. Check Railway credentials or backend running.');
+
+      const raw = await apiClient.getDevLogs({ limit: 200 });
+      const entries: LogEntry[] = (raw || []).map((log: any, index: number) => {
+        let level: LogLevel = 'INFO';
+        const upperLevel = (log.level || 'info').toUpperCase();
+        if (upperLevel === 'ERROR') level = 'ERROR';
+        else if (upperLevel === 'WARN') level = 'WARN';
+
+        return {
+          id: log.id || String(index),
+          timestamp: log.timestamp || new Date().toISOString(),
+          level,
+          module: log.module || log.service || 'api',
+          message: log.message || '',
+          details: log.metadata ? JSON.stringify(log.metadata, null, 2) : undefined,
+        };
+      });
+      setLogData(entries);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch logs';
       setError(message);
@@ -188,10 +139,16 @@ export default function Logs() {
     toast.success("Log copied to clipboard");
   };
 
-  const handleClearLogs = () => {
-    setLogData([]);
-    setIsClearDialogOpen(false);
-    toast.success("Logs cleared");
+  const handleClearLogs = async () => {
+    try {
+      await apiClient.clearDevLogs();
+      setLogData([]);
+      setIsClearDialogOpen(false);
+      toast.success("Logs cleared");
+    } catch (err) {
+      toast.error("Failed to clear logs");
+      setIsClearDialogOpen(false);
+    }
   };
 
   const handleRefreshLogs = () => {
@@ -209,7 +166,7 @@ export default function Logs() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Logs & Errors</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Real-time application logs from Railway deployment
+            Real-time application logs from the backend
           </p>
           {error && <p className="text-sm text-status-critical mt-1">{error}</p>}
         </div>
@@ -328,11 +285,13 @@ export default function Logs() {
           {isLoading ? (
             <div className="p-8 text-center text-muted-foreground flex items-center justify-center gap-2">
               <Loader className="w-4 h-4 animate-spin" />
-              Loading logs from Railway...
+              Loading logs...
             </div>
           ) : filteredLogs.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
-              No logs found matching your filters
+              {logData.length === 0
+                ? "No log entries yet — errors and warnings appear here automatically"
+                : "No logs found matching your filters"}
             </div>
           ) : (
             filteredLogs.map((log) => {

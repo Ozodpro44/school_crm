@@ -129,6 +129,7 @@ func main() {
 	// Middleware
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandling())
+	router.Use(handlers.SafeRequestLogger(database)) // auto-log 4xx/5xx responses
 
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
@@ -158,6 +159,13 @@ func main() {
 	devProtected := router.Group("/api")
 	devProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret))
 	handlers.RegisterDevSettingsRoutes(devProtected, database)
+	handlers.RegisterDevLogsRoutes(devProtected, database)
+
+	// Log ingestion endpoint (LOGS_TOKEN bearer auth)
+	handlers.RegisterLogsIngestRoute(router, database, cfg.LogsToken)
+
+	// Log startup status
+	handlers.CheckLogsTable(database)
 
 	// Protected routes
 	protected := router.Group("/api")

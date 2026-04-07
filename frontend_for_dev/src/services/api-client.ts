@@ -461,6 +461,21 @@ export class ApiClient {
     return response.json();
   }
 
+  // ==================== DEV LOGS ====================
+
+  async getDevLogs(params?: { limit?: number; level?: string; module?: string }): Promise<any[]> {
+    const q = new URLSearchParams();
+    if (params?.limit) q.set('limit', String(params.limit));
+    if (params?.level) q.set('level', params.level);
+    if (params?.module) q.set('module', params.module);
+    const qs = q.toString() ? `?${q}` : '';
+    return this.request(`/dev/logs${qs}`, { method: 'GET' });
+  }
+
+  async clearDevLogs(): Promise<void> {
+    return this.request('/dev/logs', { method: 'DELETE' });
+  }
+
   // ==================== DEV SETTINGS ====================
 
   async getDevSettings(): Promise<Record<string, any>> {
