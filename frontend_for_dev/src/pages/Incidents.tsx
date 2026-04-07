@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
   AlertTriangle,
@@ -14,6 +14,8 @@ import {
   Edit,
   Trash2,
   MessageSquare,
+  Loader2,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,10 +55,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { apiClient } from "@/services/api-client";
 
 type IncidentStatus = "open" | "investigating" | "resolved";
-type IncidentType = "api" | "payment" | "email" | "database" | "redis";
 type IncidentSeverity = "low" | "medium" | "high" | "critical";
+type IncidentSource = "auto" | "manual";
 
 interface TimelineEvent {
   time: string;
@@ -68,8 +71,8 @@ interface Incident {
   title: string;
   description: string;
   status: IncidentStatus;
-  type: IncidentType;
   severity: IncidentSeverity;
+  source: IncidentSource;
   branch?: string;
   createdAt: string;
   updatedAt: string;
@@ -77,88 +80,38 @@ interface Incident {
   timeline: TimelineEvent[];
 }
 
-const initialIncidents: Incident[] = [
-  {
-    id: "INC-2024-001",
-    title: "Payment Gateway Timeout",
-    description: "Sberbank payment gateway experiencing intermittent timeouts causing transaction failures",
-    status: "resolved",
-    type: "payment",
-    severity: "high",
-    branch: "Moscow Central",
-    createdAt: "2024-01-14 10:15:00",
-    updatedAt: "2024-01-14 12:30:00",
-    affectedUsers: 23,
-    timeline: [
-      { time: "10:15", action: "Incident detected - Multiple payment failures" },
-      { time: "10:22", action: "Investigation started" },
-      { time: "11:00", action: "Root cause identified - Gateway rate limiting" },
-      { time: "12:30", action: "Resolved - Increased timeout threshold" },
-    ],
-  },
-  {
-    id: "INC-2024-002",
-    title: "Email Delivery Delays",
-    description: "SMTP relay experiencing high latency, notification emails delayed by 15-30 minutes",
-    status: "investigating",
-    type: "email",
-    severity: "medium",
-    createdAt: "2024-01-14 13:45:00",
-    updatedAt: "2024-01-14 14:20:00",
-    affectedUsers: 156,
-    timeline: [
-      { time: "13:45", action: "Monitoring alert triggered" },
-      { time: "14:00", action: "Investigation started" },
-      { time: "14:20", action: "Checking SMTP server configuration" },
-    ],
-  },
-  {
-    id: "INC-2024-003",
-    title: "Slow API Response on /students",
-    description: "GET /api/v1/students endpoint responding slower than 2s threshold",
+const STORAGE_KEY = "dev_manual_incidents";
+
+function loadManualIncidents(): Incident[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveManualIncidents(incidents: Incident[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(incidents));
+}
+
+function logToIncident(log: any, index: number): Incident {
+  const level = (log.level || "info").toUpperCase();
+  const severity: IncidentSeverity = level === "ERROR" ? "high" : "medium";
+  const ts = log.timestamp ? new Date(log.timestamp).toISOString() : new Date().toISOString();
+  const time = ts.slice(11, 16);
+  return {
+    id: `AUTO-${String(index + 1).padStart(3, "0")}`,
+    title: log.message?.slice(0, 80) || "Unknown error",
+    description: log.details || log.message || "",
     status: "open",
-    type: "api",
-    severity: "low",
-    createdAt: "2024-01-14 14:30:00",
-    updatedAt: "2024-01-14 14:30:00",
-    timeline: [
-      { time: "14:30", action: "Automated alert - Response time > 2000ms" },
-    ],
-  },
-  {
-    id: "INC-2024-004",
-    title: "Redis Memory Warning",
-    description: "Redis cache memory usage exceeded 80% threshold",
-    status: "resolved",
-    type: "redis",
-    severity: "medium",
-    createdAt: "2024-01-13 22:00:00",
-    updatedAt: "2024-01-13 23:30:00",
-    timeline: [
-      { time: "22:00", action: "Memory threshold alert triggered" },
-      { time: "22:15", action: "Cache eviction policy reviewed" },
-      { time: "23:30", action: "Resolved - Cleared stale sessions" },
-    ],
-  },
-  {
-    id: "INC-2024-005",
-    title: "Database Connection Pool Exhausted",
-    description: "PostgreSQL connection pool reached maximum capacity during peak hours",
-    status: "resolved",
-    type: "database",
-    severity: "critical",
-    branch: "All Branches",
-    createdAt: "2024-01-12 09:00:00",
-    updatedAt: "2024-01-12 09:45:00",
-    affectedUsers: 420,
-    timeline: [
-      { time: "09:00", action: "Connection errors detected" },
-      { time: "09:05", action: "Incident escalated to critical" },
-      { time: "09:15", action: "Pool size increased temporarily" },
-      { time: "09:45", action: "Resolved - Optimized connection handling" },
-    ],
-  },
-];
+    severity,
+    source: "auto",
+    branch: log.branch,
+    createdAt: ts,
+    updatedAt: ts,
+    timeline: [{ time, action: `Auto-detected from logs (${level})` }],
+  };
+}
 
 const statusConfig: Record<IncidentStatus, { icon: typeof AlertCircle; label: string; className: string }> = {
   open: { icon: AlertCircle, label: "Open", className: "badge-critical" },
@@ -174,180 +127,177 @@ const severityColors: Record<IncidentSeverity, string> = {
 };
 
 export default function Incidents() {
+  const [autoIncidents, setAutoIncidents] = useState<Incident[]>([]);
+  const [manualIncidents, setManualIncidents] = useState<Incident[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedStatus, setSelectedStatus] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [expandedIncident, setExpandedIncident] = useState<string | null>(null);
-  const [incidentData, setIncidentData] = useState(initialIncidents);
-  
-  // Modal states
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isAddNoteModalOpen, setIsAddNoteModalOpen] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
-  
-  // Form state
+  const [noteText, setNoteText] = useState("");
+
   const [formData, setFormData] = useState({
     title: "",
     description: "",
-    type: "api" as IncidentType,
     severity: "medium" as IncidentSeverity,
     branch: "",
   });
-  const [noteText, setNoteText] = useState("");
 
-  const filteredIncidents = incidentData.filter((incident) => {
-    const matchesStatus = selectedStatus === "all" || incident.status === selectedStatus;
-    const matchesSearch = incident.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          incident.description.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesStatus && matchesSearch;
+  // Load auto-detected incidents from logs
+  const fetchAutoIncidents = useCallback(async () => {
+    try {
+      setLoading(true);
+      const logs = await apiClient.getLogs(200);
+      const arr = Array.isArray(logs) ? logs : [];
+      const errLogs = arr.filter((l: any) => {
+        const lvl = (l.level || "").toUpperCase();
+        return lvl === "ERROR" || lvl === "WARN";
+      });
+      setAutoIncidents(errLogs.map(logToIncident));
+    } catch {
+      setAutoIncidents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAutoIncidents();
+    setManualIncidents(loadManualIncidents());
+  }, [fetchAutoIncidents]);
+
+  const allIncidents = [...autoIncidents, ...manualIncidents];
+
+  const filtered = allIncidents.filter((i) => {
+    const matchStatus = selectedStatus === "all" || i.status === selectedStatus;
+    const matchSearch =
+      i.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      i.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchStatus && matchSearch;
   });
 
-  const generateIncidentId = () => {
-    const year = new Date().getFullYear();
-    const num = String(incidentData.length + 1).padStart(3, "0");
-    return `INC-${year}-${num}`;
+  const updateManual = (updated: Incident[]) => {
+    setManualIncidents(updated);
+    saveManualIncidents(updated);
   };
 
-  const handleCreateIncident = () => {
+  const generateId = () => `INC-${Date.now()}`;
+
+  const handleCreate = () => {
     const now = new Date();
-    const timestamp = now.toISOString().replace("T", " ").slice(0, 19);
-    const time = now.toTimeString().slice(0, 5);
-    
+    const ts = now.toISOString();
+    const time = ts.slice(11, 16);
     const newIncident: Incident = {
-      id: generateIncidentId(),
+      id: generateId(),
       title: formData.title,
       description: formData.description,
       status: "open",
-      type: formData.type,
       severity: formData.severity,
+      source: "manual",
       branch: formData.branch || undefined,
-      createdAt: timestamp,
-      updatedAt: timestamp,
+      createdAt: ts,
+      updatedAt: ts,
       timeline: [{ time, action: "Incident created manually" }],
     };
-    
-    setIncidentData((prev) => [newIncident, ...prev]);
+    updateManual([newIncident, ...manualIncidents]);
     setIsCreateModalOpen(false);
     resetForm();
-    toast.success("Incident created successfully");
+    toast.success("Incident created");
   };
 
-  const handleEditIncident = () => {
-    if (!selectedIncident) return;
-    setIncidentData((prev) =>
-      prev.map((incident) =>
-        incident.id === selectedIncident.id
-          ? { 
-              ...incident, 
-              title: formData.title, 
-              description: formData.description,
-              type: formData.type,
-              severity: formData.severity,
-              branch: formData.branch || undefined,
-              updatedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
-            }
-          : incident
-      )
+  const handleEdit = () => {
+    if (!selectedIncident || selectedIncident.source === "auto") return;
+    const updated = manualIncidents.map((i) =>
+      i.id === selectedIncident.id
+        ? {
+            ...i,
+            title: formData.title,
+            description: formData.description,
+            severity: formData.severity,
+            branch: formData.branch || undefined,
+            updatedAt: new Date().toISOString(),
+          }
+        : i
     );
+    updateManual(updated);
     setIsEditModalOpen(false);
     setSelectedIncident(null);
-    toast.success("Incident updated successfully");
+    toast.success("Incident updated");
   };
 
-  const handleDeleteIncident = () => {
-    if (!selectedIncident) return;
-    setIncidentData((prev) => prev.filter((incident) => incident.id !== selectedIncident.id));
+  const handleDelete = () => {
+    if (!selectedIncident || selectedIncident.source === "auto") return;
+    updateManual(manualIncidents.filter((i) => i.id !== selectedIncident.id));
     setIsDeleteDialogOpen(false);
     setSelectedIncident(null);
-    toast.success("Incident deleted successfully");
+    toast.success("Incident deleted");
   };
 
   const handleUpdateStatus = (incident: Incident, newStatus: IncidentStatus) => {
-    const time = new Date().toTimeString().slice(0, 5);
-    const statusAction = newStatus === "resolved" 
-      ? "Incident marked as resolved" 
-      : newStatus === "investigating" 
-        ? "Investigation started" 
-        : "Incident reopened";
-    
-    setIncidentData((prev) =>
-      prev.map((i) =>
-        i.id === incident.id
-          ? { 
-              ...i, 
-              status: newStatus,
-              updatedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
-              timeline: [...i.timeline, { time, action: statusAction }],
-            }
-          : i
-      )
-    );
+    const time = new Date().toISOString().slice(11, 16);
+    const action =
+      newStatus === "resolved"
+        ? "Marked as resolved"
+        : newStatus === "investigating"
+          ? "Investigation started"
+          : "Incident reopened";
+
+    if (incident.source === "manual") {
+      updateManual(
+        manualIncidents.map((i) =>
+          i.id === incident.id
+            ? { ...i, status: newStatus, updatedAt: new Date().toISOString(), timeline: [...i.timeline, { time, action }] }
+            : i
+        )
+      );
+    } else {
+      // For auto incidents, promote to manual with updated status
+      const promoted: Incident = { ...incident, source: "manual", status: newStatus, updatedAt: new Date().toISOString(), timeline: [...incident.timeline, { time, action }] };
+      setAutoIncidents((prev) => prev.filter((i) => i.id !== incident.id));
+      updateManual([promoted, ...manualIncidents]);
+    }
     toast.success(`Status updated to ${newStatus}`);
   };
 
   const handleAddNote = () => {
     if (!selectedIncident || !noteText.trim()) return;
-    const time = new Date().toTimeString().slice(0, 5);
-    
-    setIncidentData((prev) =>
-      prev.map((incident) =>
-        incident.id === selectedIncident.id
-          ? { 
-              ...incident, 
-              timeline: [...incident.timeline, { time, action: noteText }],
-              updatedAt: new Date().toISOString().replace("T", " ").slice(0, 19),
-            }
-          : incident
-      )
-    );
+    const time = new Date().toISOString().slice(11, 16);
+    const updatedIncident = { ...selectedIncident, timeline: [...selectedIncident.timeline, { time, action: noteText }], updatedAt: new Date().toISOString() };
+
+    if (selectedIncident.source === "manual") {
+      updateManual(manualIncidents.map((i) => (i.id === selectedIncident.id ? updatedIncident : i)));
+    } else {
+      setAutoIncidents((prev) => prev.filter((i) => i.id !== selectedIncident.id));
+      updateManual([{ ...updatedIncident, source: "manual" }, ...manualIncidents]);
+    }
     setIsAddNoteModalOpen(false);
     setNoteText("");
     setSelectedIncident(null);
-    toast.success("Note added to timeline");
+    toast.success("Note added");
   };
 
-  const resetForm = () => {
-    setFormData({
-      title: "",
-      description: "",
-      type: "api",
-      severity: "medium",
-      branch: "",
-    });
-  };
+  const resetForm = () => setFormData({ title: "", description: "", severity: "medium", branch: "" });
 
-  const openEditModal = (incident: Incident) => {
-    setSelectedIncident(incident);
-    setFormData({
-      title: incident.title,
-      description: incident.description,
-      type: incident.type,
-      severity: incident.severity,
-      branch: incident.branch || "",
-    });
+  const openEdit = (i: Incident) => {
+    if (i.source === "auto") { toast.error("Auto-detected incidents cannot be edited"); return; }
+    setSelectedIncident(i);
+    setFormData({ title: i.title, description: i.description, severity: i.severity, branch: i.branch || "" });
     setIsEditModalOpen(true);
   };
 
-  const openViewModal = (incident: Incident) => {
-    setSelectedIncident(incident);
-    setIsViewModalOpen(true);
-  };
+  const openView = (i: Incident) => { setSelectedIncident(i); setIsViewModalOpen(true); };
+  const openDelete = (i: Incident) => { if (i.source === "auto") { toast.error("Auto-detected incidents cannot be deleted"); return; } setSelectedIncident(i); setIsDeleteDialogOpen(true); };
+  const openNote = (i: Incident) => { setSelectedIncident(i); setIsAddNoteModalOpen(true); };
 
-  const openDeleteDialog = (incident: Incident) => {
-    setSelectedIncident(incident);
-    setIsDeleteDialogOpen(true);
-  };
-
-  const openAddNoteModal = (incident: Incident) => {
-    setSelectedIncident(incident);
-    setIsAddNoteModalOpen(true);
-  };
-
-  const openCount = incidentData.filter((i) => i.status === "open").length;
-  const investigatingCount = incidentData.filter((i) => i.status === "investigating").length;
-  const resolvedCount = incidentData.filter((i) => i.status === "resolved").length;
+  const openCount = allIncidents.filter((i) => i.status === "open").length;
+  const investigatingCount = allIncidents.filter((i) => i.status === "investigating").length;
+  const resolvedCount = allIncidents.filter((i) => i.status === "resolved").length;
 
   return (
     <DashboardLayout>
@@ -356,22 +306,22 @@ export default function Incidents() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Incidents & Monitoring</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Track and manage system incidents
+            Auto-detected from logs + manually tracked incidents
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-2">
-            <RefreshCw className="w-4 h-4" />
+          <Button variant="outline" size="sm" className="gap-2" onClick={fetchAutoIncidents} disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             Refresh
           </Button>
-          <Button className="gap-2" onClick={() => setIsCreateModalOpen(true)}>
+          <Button className="gap-2" onClick={() => { resetForm(); setIsCreateModalOpen(true); }}>
             <Plus className="w-4 h-4" />
             Report Incident
           </Button>
         </div>
       </div>
 
-      {/* Status Summary */}
+      {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="metric-card">
           <div className="flex items-center gap-3">
@@ -380,7 +330,7 @@ export default function Incidents() {
             </div>
             <div>
               <p className="text-2xl font-bold text-foreground">{openCount}</p>
-              <p className="text-sm text-muted-foreground">Open Incidents</p>
+              <p className="text-sm text-muted-foreground">Open</p>
             </div>
           </div>
         </div>
@@ -402,7 +352,7 @@ export default function Incidents() {
             </div>
             <div>
               <p className="text-2xl font-bold text-foreground">{resolvedCount}</p>
-              <p className="text-sm text-muted-foreground">Resolved (7 days)</p>
+              <p className="text-sm text-muted-foreground">Resolved</p>
             </div>
           </div>
         </div>
@@ -413,15 +363,10 @@ export default function Incidents() {
         <div className="flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search incidents..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-background"
-            />
+            <Input placeholder="Search incidents..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10 bg-background" />
           </div>
           <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-            <SelectTrigger className="w-full md:w-40 bg-background">
+            <SelectTrigger className="w-full md:w-44 bg-background">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -434,196 +379,150 @@ export default function Incidents() {
         </div>
       </div>
 
-      {/* Incidents List */}
-      <div className="space-y-4">
-        {filteredIncidents.map((incident) => {
-          const StatusIcon = statusConfig[incident.status].icon;
-          const isExpanded = expandedIncident === incident.id;
-
-          return (
-            <div key={incident.id} className="glass-card rounded-lg overflow-hidden">
-              <div className="p-4">
-                <div className="flex items-start gap-4">
-                  <div className={cn(
-                    "w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0",
-                    incident.status === "open" && "bg-status-critical/15",
-                    incident.status === "investigating" && "bg-status-warning/15",
-                    incident.status === "resolved" && "bg-status-healthy/15"
-                  )}>
-                    <StatusIcon className={cn(
-                      "w-5 h-5",
-                      incident.status === "open" && "text-status-critical",
-                      incident.status === "investigating" && "text-status-warning",
-                      incident.status === "resolved" && "text-status-healthy"
-                    )} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="font-mono text-xs text-muted-foreground">{incident.id}</span>
-                      <span className={cn("badge-status capitalize", statusConfig[incident.status].className)}>
-                        {incident.status}
-                      </span>
-                      <span className={cn("badge-status capitalize", severityColors[incident.severity])}>
-                        {incident.severity}
-                      </span>
-                      <span className="badge-status bg-accent text-accent-foreground capitalize">
-                        {incident.type}
-                      </span>
+      {/* List */}
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="glass-card rounded-lg p-12 text-center text-muted-foreground">
+          No incidents found
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {filtered.map((incident) => {
+            const StatusIcon = statusConfig[incident.status].icon;
+            const isExpanded = expandedId === incident.id;
+            return (
+              <div key={incident.id} className="glass-card rounded-lg overflow-hidden">
+                <div className="p-4">
+                  <div className="flex items-start gap-4">
+                    <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0",
+                      incident.status === "open" && "bg-status-critical/15",
+                      incident.status === "investigating" && "bg-status-warning/15",
+                      incident.status === "resolved" && "bg-status-healthy/15"
+                    )}>
+                      <StatusIcon className={cn("w-5 h-5",
+                        incident.status === "open" && "text-status-critical",
+                        incident.status === "investigating" && "text-status-warning",
+                        incident.status === "resolved" && "text-status-healthy"
+                      )} />
                     </div>
-                    <h3 className="font-semibold text-foreground mb-1">{incident.title}</h3>
-                    <p className="text-sm text-muted-foreground line-clamp-1">{incident.description}</p>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                      {incident.branch && (
-                        <span className="flex items-center gap-1">
-                          <Building2 className="w-3 h-3" />
-                          {incident.branch}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <span className="font-mono text-xs text-muted-foreground">{incident.id}</span>
+                        <span className={cn("badge-status capitalize", statusConfig[incident.status].className)}>
+                          {incident.status}
                         </span>
+                        <span className={cn("badge-status capitalize", severityColors[incident.severity])}>
+                          {incident.severity}
+                        </span>
+                        {incident.source === "auto" && (
+                          <span className="badge-status bg-primary/15 text-primary flex items-center gap-1">
+                            <Zap className="w-3 h-3" /> auto
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="font-semibold text-foreground mb-1 truncate">{incident.title}</h3>
+                      {incident.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-1">{incident.description}</p>
                       )}
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        Created: {incident.createdAt}
-                      </span>
-                      {incident.affectedUsers && (
-                        <span>{incident.affectedUsers} users affected</span>
-                      )}
+                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                        {incident.branch && (
+                          <span className="flex items-center gap-1"><Building2 className="w-3 h-3" />{incident.branch}</span>
+                        )}
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {new Date(incident.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openView(incident)}>
+                          <Eye className="w-4 h-4 mr-2" />View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openEdit(incident)}>
+                          <Edit className="w-4 h-4 mr-2" />Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openNote(incident)}>
+                          <MessageSquare className="w-4 h-4 mr-2" />Add Note
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {incident.status !== "investigating" && (
+                          <DropdownMenuItem onClick={() => handleUpdateStatus(incident, "investigating")}>
+                            <Search className="w-4 h-4 mr-2" />Mark Investigating
+                          </DropdownMenuItem>
+                        )}
+                        {incident.status !== "resolved" && (
+                          <DropdownMenuItem onClick={() => handleUpdateStatus(incident, "resolved")}>
+                            <CheckCircle2 className="w-4 h-4 mr-2" />Mark Resolved
+                          </DropdownMenuItem>
+                        )}
+                        {incident.status === "resolved" && (
+                          <DropdownMenuItem onClick={() => handleUpdateStatus(incident, "open")}>
+                            <AlertCircle className="w-4 h-4 mr-2" />Reopen
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-status-critical" onClick={() => openDelete(incident)}>
+                          <Trash2 className="w-4 h-4 mr-2" />Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="mt-3">
+                    <Button variant="ghost" size="sm" onClick={() => setExpandedId(isExpanded ? null : incident.id)}>
+                      {isExpanded ? "Hide" : "Show"} Timeline ({incident.timeline.length})
+                    </Button>
+                  </div>
+                </div>
+                {isExpanded && (
+                  <div className="px-4 pb-4 pt-2 border-t border-border">
+                    <h4 className="text-sm font-medium text-foreground mb-3">Timeline</h4>
+                    <div className="space-y-3">
+                      {incident.timeline.map((event, idx) => (
+                        <div key={idx} className="flex items-start gap-3">
+                          <div className="w-12 text-xs text-muted-foreground font-mono">{event.time}</div>
+                          <div className="w-2 h-2 rounded-full bg-primary mt-1.5" />
+                          <p className="text-sm text-foreground flex-1">{event.action}</p>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => openViewModal(incident)}>
-                        <Eye className="w-4 h-4 mr-2" />
-                        View Details
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => openEditModal(incident)}>
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit Incident
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => openAddNoteModal(incident)}>
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        Add Note
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      {incident.status !== "investigating" && (
-                        <DropdownMenuItem onClick={() => handleUpdateStatus(incident, "investigating")}>
-                          <Search className="w-4 h-4 mr-2" />
-                          Mark as Investigating
-                        </DropdownMenuItem>
-                      )}
-                      {incident.status !== "resolved" && (
-                        <DropdownMenuItem onClick={() => handleUpdateStatus(incident, "resolved")}>
-                          <CheckCircle2 className="w-4 h-4 mr-2" />
-                          Mark as Resolved
-                        </DropdownMenuItem>
-                      )}
-                      {incident.status === "resolved" && (
-                        <DropdownMenuItem onClick={() => handleUpdateStatus(incident, "open")}>
-                          <AlertCircle className="w-4 h-4 mr-2" />
-                          Reopen Incident
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        className="text-status-critical"
-                        onClick={() => openDeleteDialog(incident)}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete Incident
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                
-                <div className="mt-3 flex items-center gap-2">
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => setExpandedIncident(isExpanded ? null : incident.id)}
-                  >
-                    {isExpanded ? "Hide Timeline" : "Show Timeline"} ({incident.timeline.length})
-                  </Button>
-                </div>
+                )}
               </div>
+            );
+          })}
+        </div>
+      )}
 
-              {isExpanded && (
-                <div className="px-4 pb-4 pt-2 border-t border-border">
-                  <h4 className="text-sm font-medium text-foreground mb-3">Timeline</h4>
-                  <div className="space-y-3">
-                    {incident.timeline.map((event, idx) => (
-                      <div key={idx} className="flex items-start gap-3">
-                        <div className="w-12 text-xs text-muted-foreground font-mono">{event.time}</div>
-                        <div className="w-2 h-2 rounded-full bg-primary mt-1.5" />
-                        <p className="text-sm text-foreground flex-1">{event.action}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Create Incident Modal */}
+      {/* Create Modal */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Report New Incident</DialogTitle>
-            <DialogDescription>
-              Create a new incident report for tracking.
-            </DialogDescription>
+            <DialogDescription>Create a new incident for tracking.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="title">Incident Title</Label>
-              <Input
-                id="title"
-                placeholder="Brief description of the issue"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              />
+              <Label>Title</Label>
+              <Input placeholder="Brief description" value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                placeholder="Detailed description of what happened..."
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
+              <Label>Description</Label>
+              <Textarea placeholder="What happened..." value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="type">Type</Label>
-                <Select 
-                  value={formData.type} 
-                  onValueChange={(val) => setFormData({ ...formData, type: val as IncidentType })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="api">API</SelectItem>
-                    <SelectItem value="payment">Payment</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="database">Database</SelectItem>
-                    <SelectItem value="redis">Redis</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="severity">Severity</Label>
-                <Select 
-                  value={formData.severity} 
-                  onValueChange={(val) => setFormData({ ...formData, severity: val as IncidentSeverity })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select severity" />
-                  </SelectTrigger>
+                <Label>Severity</Label>
+                <Select value={formData.severity} onValueChange={(v) => setFormData({ ...formData, severity: v as IncidentSeverity })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="medium">Medium</SelectItem>
@@ -632,82 +531,40 @@ export default function Incidents() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="branch">Affected Branch (optional)</Label>
-              <Input
-                id="branch"
-                placeholder="e.g., Moscow Central or All Branches"
-                value={formData.branch}
-                onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-              />
+              <div className="space-y-2">
+                <Label>Branch (optional)</Label>
+                <Input placeholder="Branch name" value={formData.branch} onChange={(e) => setFormData({ ...formData, branch: e.target.value })} />
+              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setIsCreateModalOpen(false); resetForm(); }}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateIncident} disabled={!formData.title || !formData.description}>
-              Create Incident
-            </Button>
+            <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={!formData.title}>Create Incident</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Edit Incident Modal */}
+      {/* Edit Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Incident</DialogTitle>
-            <DialogDescription>
-              Update incident details.
-            </DialogDescription>
+            <DialogDescription>Update incident details.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="edit-title">Incident Title</Label>
-              <Input
-                id="edit-title"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              />
+              <Label>Title</Label>
+              <Input value={formData.title} onChange={(e) => setFormData({ ...formData, title: e.target.value })} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-description">Description</Label>
-              <Textarea
-                id="edit-description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              />
+              <Label>Description</Label>
+              <Textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-type">Type</Label>
-                <Select 
-                  value={formData.type} 
-                  onValueChange={(val) => setFormData({ ...formData, type: val as IncidentType })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="api">API</SelectItem>
-                    <SelectItem value="payment">Payment</SelectItem>
-                    <SelectItem value="email">Email</SelectItem>
-                    <SelectItem value="database">Database</SelectItem>
-                    <SelectItem value="redis">Redis</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-severity">Severity</Label>
-                <Select 
-                  value={formData.severity} 
-                  onValueChange={(val) => setFormData({ ...formData, severity: val as IncidentSeverity })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                <Label>Severity</Label>
+                <Select value={formData.severity} onValueChange={(v) => setFormData({ ...formData, severity: v as IncidentSeverity })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="low">Low</SelectItem>
                     <SelectItem value="medium">Medium</SelectItem>
@@ -716,80 +573,41 @@ export default function Incidents() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-branch">Affected Branch</Label>
-              <Input
-                id="edit-branch"
-                value={formData.branch}
-                onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
-              />
+              <div className="space-y-2">
+                <Label>Branch</Label>
+                <Input value={formData.branch} onChange={(e) => setFormData({ ...formData, branch: e.target.value })} />
+              </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleEditIncident}>
-              Save Changes
-            </Button>
+            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleEdit}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* View Incident Modal */}
+      {/* View Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Incident Details</DialogTitle>
-            <DialogDescription>
-              Full information about this incident.
-            </DialogDescription>
           </DialogHeader>
           {selectedIncident && (
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-mono text-sm text-muted-foreground">{selectedIncident.id}</span>
-                <span className={cn("badge-status capitalize", statusConfig[selectedIncident.status].className)}>
-                  {selectedIncident.status}
-                </span>
-                <span className={cn("badge-status capitalize", severityColors[selectedIncident.severity])}>
-                  {selectedIncident.severity}
-                </span>
+                <span className={cn("badge-status capitalize", statusConfig[selectedIncident.status].className)}>{selectedIncident.status}</span>
+                <span className={cn("badge-status capitalize", severityColors[selectedIncident.severity])}>{selectedIncident.severity}</span>
               </div>
-              
               <div>
                 <h3 className="text-lg font-semibold text-foreground">{selectedIncident.title}</h3>
-                <p className="text-sm text-muted-foreground mt-1">{selectedIncident.description}</p>
+                {selectedIncident.description && <p className="text-sm text-muted-foreground mt-1">{selectedIncident.description}</p>}
               </div>
-
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Type</p>
-                  <p className="font-medium text-foreground capitalize">{selectedIncident.type}</p>
-                </div>
-                {selectedIncident.branch && (
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">Affected Branch</p>
-                    <p className="font-medium text-foreground">{selectedIncident.branch}</p>
-                  </div>
-                )}
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Created</p>
-                  <p className="font-medium text-foreground">{selectedIncident.createdAt}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Last Updated</p>
-                  <p className="font-medium text-foreground">{selectedIncident.updatedAt}</p>
-                </div>
-                {selectedIncident.affectedUsers && (
-                  <div className="space-y-1">
-                    <p className="text-xs text-muted-foreground">Affected Users</p>
-                    <p className="font-medium text-foreground">{selectedIncident.affectedUsers}</p>
-                  </div>
-                )}
+                <div><p className="text-xs text-muted-foreground">Created</p><p className="font-medium text-foreground text-sm">{new Date(selectedIncident.createdAt).toLocaleString()}</p></div>
+                <div><p className="text-xs text-muted-foreground">Updated</p><p className="font-medium text-foreground text-sm">{new Date(selectedIncident.updatedAt).toLocaleString()}</p></div>
+                {selectedIncident.branch && <div><p className="text-xs text-muted-foreground">Branch</p><p className="font-medium text-foreground text-sm">{selectedIncident.branch}</p></div>}
               </div>
-
               <div className="pt-4 border-t border-border">
                 <h4 className="text-sm font-medium text-foreground mb-3">Timeline</h4>
                 <div className="space-y-2 max-h-40 overflow-y-auto">
@@ -805,15 +623,7 @@ export default function Incidents() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
-              Close
-            </Button>
-            <Button onClick={() => {
-              setIsViewModalOpen(false);
-              if (selectedIncident) openEditModal(selectedIncident);
-            }}>
-              Edit Incident
-            </Button>
+            <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -823,46 +633,30 @@ export default function Incidents() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add Note</DialogTitle>
-            <DialogDescription>
-              Add a note to the incident timeline.
-            </DialogDescription>
+            <DialogDescription>Add an update to the incident timeline.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="note">Note</Label>
-              <Textarea
-                id="note"
-                placeholder="Enter your update or finding..."
-                value={noteText}
-                onChange={(e) => setNoteText(e.target.value)}
-              />
-            </div>
+            <Textarea placeholder="Your update or finding..." value={noteText} onChange={(e) => setNoteText(e.target.value)} />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setIsAddNoteModalOpen(false); setNoteText(""); }}>
-              Cancel
-            </Button>
-            <Button onClick={handleAddNote} disabled={!noteText.trim()}>
-              Add Note
-            </Button>
+            <Button variant="outline" onClick={() => { setIsAddNoteModalOpen(false); setNoteText(""); }}>Cancel</Button>
+            <Button onClick={handleAddNote} disabled={!noteText.trim()}>Add Note</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Dialog */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Incident</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete incident "{selectedIncident?.id}"? This will remove all timeline data. This action cannot be undone.
+              Delete "{selectedIncident?.title}"? This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteIncident} className="bg-status-critical hover:bg-status-critical/90">
-              Delete Incident
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-status-critical hover:bg-status-critical/90">Delete</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
