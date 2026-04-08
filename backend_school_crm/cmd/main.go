@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -16,6 +18,8 @@ import (
 	"github.com/school-crm/backend/internal/service"
 	"github.com/school-crm/backend/internal/utils"
 )
+
+var startTime = time.Now()
 
 func main() {
 	if err := godotenv.Load(); err != nil {
@@ -131,9 +135,34 @@ func main() {
 	router.Use(middleware.ErrorHandling())
 	router.Use(handlers.SafeRequestLogger(database)) // auto-log 4xx/5xx responses
 
-	// Health check
+	// Health check — returns real system stats
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "healthy"})
+		dbStats := database.GetConn().Stats()
+
+		redisStatus := "inactive"
+		redisConnected := false
+		if redisClient != nil {
+			redisStatus = "active"
+			redisConnected = true
+		}
+
+		uptimeSeconds := int64(math.Round(time.Since(startTime).Seconds()))
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":          "healthy",
+			"environment":     cfg.Environment,
+			"uptime_seconds":  uptimeSeconds,
+			"database": gin.H{
+				"status":              "connected",
+				"open_connections":    dbStats.OpenConnections,
+				"idle_connections":    dbStats.Idle,
+				"max_open_connections": dbStats.MaxOpenConnections,
+			},
+			"redis": gin.H{
+				"status":    redisStatus,
+				"connected": redisConnected,
+			},
+		})
 	})
 
 	// Public routes

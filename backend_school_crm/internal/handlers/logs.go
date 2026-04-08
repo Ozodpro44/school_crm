@@ -261,12 +261,18 @@ func SafeRequestLogger(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
+		path := c.Request.URL.Path
+
+		// Skip dev dashboard's own requests to avoid self-pollution in logs
+		if strings.HasPrefix(path, "/api/dev/") || strings.HasPrefix(path, "/health") {
+			return
+		}
+
 		level := "WARN"
 		if status >= 500 {
 			level = "ERROR"
 		}
 
-		path := c.Request.URL.Path
 		method := c.Request.Method
 		message := strings.Join(c.Errors.Errors(), "; ")
 		if message == "" {

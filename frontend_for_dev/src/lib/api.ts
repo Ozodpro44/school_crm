@@ -1,5 +1,5 @@
 // API Client Configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8080/api";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "http://localhost:8080/api";
 const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || "30000");
 
 interface RequestOptions extends RequestInit {
