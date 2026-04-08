@@ -432,6 +432,12 @@ export class ApiClient {
     });
   }
 
+  async getManagersByBranch(branchId: string): Promise<any[]> {
+    return this.request(`/users?branchId=${branchId}`, {
+      method: 'GET',
+    });
+  }
+
   async getUser(id: string): Promise<any> {
     return this.request(`/users/${id}`, {
       method: 'GET',
@@ -492,19 +498,19 @@ export class ApiClient {
   // ==================== LOGS ====================
 
   async getLogs(limit: number = 100): Promise<any[]> {
-    return this.request(`/logs?limit=${limit}`, {
+    return this.request(`/dev/logs?limit=${limit}`, {
       method: 'GET',
     });
   }
 
   async getLogsByModule(module: string, limit: number = 100): Promise<any[]> {
-    return this.request(`/logs?module=${module}&limit=${limit}`, {
+    return this.request(`/dev/logs?module=${module}&limit=${limit}`, {
       method: 'GET',
     });
   }
 
   async getLogsByLevel(level: string, limit: number = 100): Promise<any[]> {
-    return this.request(`/logs?level=${level}&limit=${limit}`, {
+    return this.request(`/dev/logs?level=${level}&limit=${limit}`, {
       method: 'GET',
     });
   }

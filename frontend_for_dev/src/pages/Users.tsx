@@ -12,6 +12,9 @@ import {
   Eye,
   Key,
   Loader2,
+  ChevronDown,
+  ChevronRight,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,12 +63,18 @@ interface SystemUser {
   branchId: string;
 }
 
+interface AdminWithManagers {
+  admin: SystemUser;
+  branchId: string | null;
+  managers: SystemUser[];
+}
+
 const roleConfig: Record<string, { label: string; color: string }> = {
-  super_admin: { label: "Super Admin", color: "bg-primary/15 text-primary" },
-  admin: { label: "Admin", color: "bg-primary/15 text-primary" },
-  developer: { label: "Developer", color: "bg-status-info/15 text-status-info" },
+  admin: { label: "School Owner", color: "bg-primary/15 text-primary" },
+  manager: { label: "Manager", color: "bg-status-info/15 text-status-info" },
   teacher: { label: "Teacher", color: "bg-status-healthy/15 text-status-healthy" },
-  support: { label: "Support", color: "bg-status-healthy/15 text-status-healthy" },
+  accountant: { label: "Accountant", color: "bg-accent text-accent-foreground" },
+  branch_admin: { label: "Branch Admin", color: "bg-primary/10 text-primary" },
 };
 
 function getRoleDisplay(role: string) {
@@ -85,6 +94,8 @@ const emptyForm = { fullName: "", email: "", role: "teacher", branchId: "", pass
 
 export default function Users() {
   const [users, setUsers] = useState<SystemUser[]>([]);
+  const [adminGroups, setAdminGroups] = useState<AdminWithManagers[]>([]);
+  const [expandedAdmins, setExpandedAdmins] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -100,14 +111,47 @@ export default function Users() {
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await apiClient.getUsers();
-      setUsers(Array.isArray(data) ? data : []);
+      const [allUsers, branches] = await Promise.all([
+        apiClient.getUsers(),
+        apiClient.getBranches(),
+      ]);
+      const usersArr: SystemUser[] = Array.isArray(allUsers) ? allUsers : [];
+      const branchesArr: any[] = Array.isArray(branches) ? branches : [];
+
+      setUsers(usersArr);
+
+      // Build admin → branch → managers grouping
+      const admins = usersArr.filter((u) => u.role === "admin");
+      const groups: AdminWithManagers[] = await Promise.all(
+        admins.map(async (admin) => {
+          const branch = branchesArr.find((b: any) => b.adminId === admin.id || b.admin_id === admin.id);
+          if (!branch) return { admin, branchId: null, managers: [] };
+          try {
+            const managers = await apiClient.getManagersByBranch(branch.id);
+            return { admin, branchId: branch.id, managers: Array.isArray(managers) ? managers : [] };
+          } catch {
+            return { admin, branchId: branch.id, managers: [] };
+          }
+        })
+      );
+      setAdminGroups(groups);
+      // Expand all by default
+      setExpandedAdmins(new Set(admins.map((a) => a.id)));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load users");
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const toggleExpand = (adminId: string) => {
+    setExpandedAdmins((prev) => {
+      const next = new Set(prev);
+      if (next.has(adminId)) next.delete(adminId);
+      else next.add(adminId);
+      return next;
+    });
+  };
 
   useEffect(() => {
     fetchUsers();
@@ -200,6 +244,19 @@ export default function Users() {
   };
 
   const roleCount = (role: string) => users.filter((u) => u.role === role).length;
+  const managerCount = adminGroups.reduce((sum, g) => sum + g.managers.length, 0);
+
+  const filteredGroups = adminGroups.filter((g) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      g.admin.fullName?.toLowerCase().includes(q) ||
+      g.admin.email?.toLowerCase().includes(q) ||
+      g.managers.some(
+        (m) => m.fullName?.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q)
+      )
+    );
+  });
 
   return (
     <DashboardLayout>
@@ -225,8 +282,8 @@ export default function Users() {
               <Shield className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{roleCount("super_admin") + roleCount("admin")}</p>
-              <p className="text-sm text-muted-foreground">Admins</p>
+              <p className="text-2xl font-bold text-foreground">{roleCount("admin")}</p>
+              <p className="text-sm text-muted-foreground">School Owners</p>
             </div>
           </div>
         </div>
@@ -236,15 +293,15 @@ export default function Users() {
               <Key className="w-5 h-5 text-status-info" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{roleCount("teacher")}</p>
-              <p className="text-sm text-muted-foreground">Teachers</p>
+              <p className="text-2xl font-bold text-foreground">{managerCount}</p>
+              <p className="text-sm text-muted-foreground">Managers</p>
             </div>
           </div>
         </div>
         <div className="metric-card">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-status-healthy/15 flex items-center justify-center">
-              <User className="w-5 h-5 text-status-healthy" />
+              <Users className="w-5 h-5 text-status-healthy" />
             </div>
             <div>
               <p className="text-2xl font-bold text-foreground">{users.length}</p>
@@ -285,69 +342,146 @@ export default function Users() {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.length === 0 ? (
+                {filteredGroups.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="py-12 text-center text-muted-foreground text-sm">
-                      {searchQuery ? "No users match your search." : "No users found."}
+                      {searchQuery ? "No users match your search." : "No school owners found."}
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((user) => {
-                    const { label, color } = getRoleDisplay(user.role);
+                  filteredGroups.map((group) => {
+                    const isExpanded = expandedAdmins.has(group.admin.id);
                     return (
-                      <tr key={user.id} className="data-table-row border-b border-border last:border-0">
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="w-9 h-9">
-                              <AvatarFallback className="bg-accent text-foreground text-xs">
-                                {getInitials(user.fullName || user.email || "?")}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="font-medium text-foreground">{user.fullName || "—"}</p>
-                              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Mail className="w-3 h-3" />
-                                {user.email}
-                              </p>
+                      <>
+                        {/* Admin row */}
+                        <tr
+                          key={group.admin.id}
+                          className="data-table-row border-b border-border bg-accent/20 cursor-pointer"
+                          onClick={() => toggleExpand(group.admin.id)}
+                        >
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <button className="text-muted-foreground">
+                                {isExpanded
+                                  ? <ChevronDown className="w-4 h-4" />
+                                  : <ChevronRight className="w-4 h-4" />}
+                              </button>
+                              <Avatar className="w-9 h-9">
+                                <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">
+                                  {getInitials(group.admin.fullName || group.admin.email || "?")}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-semibold text-foreground">{group.admin.fullName || "—"}</p>
+                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Mail className="w-3 h-3" />
+                                  {group.admin.email}
+                                </p>
+                              </div>
+                              {group.managers.length > 0 && (
+                                <span className="ml-2 text-xs text-muted-foreground bg-accent px-2 py-0.5 rounded-full">
+                                  {group.managers.length} manager{group.managers.length !== 1 ? "s" : ""}
+                                </span>
+                              )}
                             </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={`badge-status ${color}`}>{label}</span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className="text-sm text-muted-foreground font-mono">
-                            {user.branchId || "—"}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => openViewModal(user)}>
-                                <Eye className="w-4 h-4 mr-2" />
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openEditModal(user)}>
-                                <Edit className="w-4 h-4 mr-2" />
-                                Edit User
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                className="text-status-critical"
-                                onClick={() => openDeleteDialog(user)}
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete User
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </td>
-                      </tr>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="badge-status bg-primary/15 text-primary">School Owner</span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="text-sm text-muted-foreground font-mono">
+                              {group.branchId || "—"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreVertical className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openViewModal(group.admin)}>
+                                  <Eye className="w-4 h-4 mr-2" />
+                                  View Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => openEditModal(group.admin)}>
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  Edit User
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="text-status-critical"
+                                  onClick={() => openDeleteDialog(group.admin)}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete User
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </td>
+                        </tr>
+                        {/* Manager rows (nested) */}
+                        {isExpanded && group.managers.map((manager) => {
+                          const { label, color } = getRoleDisplay(manager.role);
+                          return (
+                            <tr key={manager.id} className="data-table-row border-b border-border last:border-0">
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-3 pl-10">
+                                  <div className="w-px h-6 bg-border" />
+                                  <Avatar className="w-8 h-8">
+                                    <AvatarFallback className="bg-accent text-foreground text-xs">
+                                      {getInitials(manager.fullName || manager.email || "?")}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <p className="font-medium text-foreground text-sm">{manager.fullName || "—"}</p>
+                                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                      <Mail className="w-3 h-3" />
+                                      {manager.email}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`badge-status ${color}`}>{label}</span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="text-sm text-muted-foreground font-mono">
+                                  {group.branchId || "—"}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                                      <MoreVertical className="w-4 h-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => openViewModal(manager)}>
+                                      <Eye className="w-4 h-4 mr-2" />
+                                      View Details
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => openEditModal(manager)}>
+                                      <Edit className="w-4 h-4 mr-2" />
+                                      Edit User
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      className="text-status-critical"
+                                      onClick={() => openDeleteDialog(manager)}
+                                    >
+                                      <Trash2 className="w-4 h-4 mr-2" />
+                                      Delete User
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </>
                     );
                   })
                 )}
@@ -398,15 +532,15 @@ export default function Users() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="super_admin">Super Admin</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="admin">School Owner (Admin)</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="teacher">Teacher</SelectItem>
-                  <SelectItem value="support">Support</SelectItem>
+                  <SelectItem value="accountant">Accountant</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Branch ID (optional)</Label>
+              <Label>Branch ID (optional — auto-assigned for managers)</Label>
               <Input
                 placeholder="branch-uuid"
                 value={formData.branchId}
@@ -459,10 +593,10 @@ export default function Users() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="super_admin">Super Admin</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="admin">School Owner (Admin)</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="teacher">Teacher</SelectItem>
-                  <SelectItem value="support">Support</SelectItem>
+                  <SelectItem value="accountant">Accountant</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -22,37 +22,25 @@ export function QuickStats() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const branches = await apiClient.getBranches();
-        const branchList = Array.isArray(branches) ? branches : [];
+        const [branches, users] = await Promise.allSettled([
+          apiClient.getBranches(),
+          apiClient.getUsers(),
+        ]);
+
+        const branchList = branches.status === "fulfilled" && Array.isArray(branches.value)
+          ? branches.value : [];
+        const userList = users.status === "fulfilled" && Array.isArray(users.value)
+          ? users.value : [];
 
         const totalMonthlyRevenue = branchList.reduce(
           (sum: number, b: any) => sum + (b.monthlyPayment || 0),
           0
         );
 
-        const [studentsResults, teachersResults] = await Promise.all([
-          Promise.allSettled(branchList.map((b: any) => apiClient.getStudents(b.id))),
-          Promise.allSettled(branchList.map((b: any) => apiClient.getTeachers(b.id))),
-        ]);
-
-        const totalStudents = studentsResults.reduce((sum, result) => {
-          if (result.status === "fulfilled" && Array.isArray(result.value)) {
-            return sum + result.value.length;
-          }
-          return sum;
-        }, 0);
-
-        const totalTeachers = teachersResults.reduce((sum, result) => {
-          if (result.status === "fulfilled" && Array.isArray(result.value)) {
-            return sum + result.value.length;
-          }
-          return sum;
-        }, 0);
-
         setStats({
           totalBranches: branchList.length,
-          totalStudents,
-          totalTeachers,
+          totalStudents: userList.filter((u: any) => u.role === "admin").length,
+          totalTeachers: userList.filter((u: any) => u.role === "manager").length,
           totalMonthlyRevenue,
         });
       } catch {
@@ -88,12 +76,12 @@ export function QuickStats() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       <MetricCard
-        title="Total Students"
+        title="School Owners"
         value={String(stats.totalStudents)}
         icon={GraduationCap}
       />
       <MetricCard
-        title="Active Teachers"
+        title="Managers"
         value={String(stats.totalTeachers)}
         icon={Users}
       />

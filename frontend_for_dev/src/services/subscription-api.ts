@@ -118,9 +118,8 @@ export async function getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
   try {
     const plans = await apiRequest<SubscriptionPlan[]>("/subscriptions/plans");
     return Array.isArray(plans) ? plans : [];
-  } catch (error) {
-    console.error("Failed to fetch subscription plans:", error);
-    throw error;
+  } catch {
+    return [];
   }
 }
 
@@ -170,15 +169,9 @@ export async function deleteSubscriptionPlan(planId: string): Promise<void> {
  */
 export async function getUserSubscriptions(): Promise<UserSubscription[]> {
   try {
-    // This endpoint needs to be created in the backend
-    // For now, using a dev endpoint if available
-    const subscriptions = await apiRequest<UserSubscription[]>(
-      "/dev/subscriptions"
-    );
+    const subscriptions = await apiRequest<UserSubscription[]>("/dev/subscriptions");
     return Array.isArray(subscriptions) ? subscriptions : [];
-  } catch (error) {
-    console.error("Failed to fetch user subscriptions:", error);
-    // Return empty array if endpoint doesn't exist yet
+  } catch {
     return [];
   }
 }
@@ -239,8 +232,7 @@ export async function getAllUsers(): Promise<
       Array<{ id: string; fullName: string; email: string }>
     >("/dev/users");
     return Array.isArray(response) ? response : [];
-  } catch (error) {
-    console.error("Failed to fetch users:", error);
+  } catch {
     return [];
   }
 }

@@ -81,16 +81,19 @@ func createUser(userService *service.UserService) gin.HandlerFunc {
 			return
 		}
 
-		// Managers must be assigned to a branch
-		if user.Role == "manager" && req.BranchID == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "branch_id is required for managers"})
-			return
-		}
-
 		// Associate manager with branch using branch_managers table
-		if req.BranchID != nil && user.Role == "manager" {
-			// Add to branch_managers junction table
-			_, err = userService.AddBranchManager(c.Request.Context(), *req.BranchID, user.ID)
+		if user.Role == "manager" {
+			branchID := req.BranchID
+			// If no branchId provided, auto-assign to the admin's own branch
+			if branchID == nil {
+				adminBranch, branchErr := userService.GetAdminBranch(c.Request.Context(), currentUser.ID)
+				if branchErr != nil || adminBranch == nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "could not determine admin branch"})
+					return
+				}
+				branchID = &adminBranch.ID
+			}
+			_, err = userService.AddBranchManager(c.Request.Context(), *branchID, user.ID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 				return

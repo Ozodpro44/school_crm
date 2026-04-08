@@ -429,6 +429,25 @@ func (s *UserService) GetUserBranches(ctx context.Context, userID string) ([]mod
 	return branches, nil
 }
 
+// GetAdminBranch returns the first branch owned by the given admin
+func (s *UserService) GetAdminBranch(ctx context.Context, adminID string) (*models.Branch, error) {
+	branch := &models.Branch{}
+	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at
+	          FROM branches WHERE admin_id = $1 ORDER BY created_at ASC LIMIT 1`
+	err := s.db.GetConn().QueryRowContext(ctx, query, adminID).Scan(
+		&branch.ID, &branch.Name, &branch.Address, &branch.Phone,
+		&branch.MonthlyPayment, &branch.Currency, &branch.AdminID,
+		&branch.CreatedAt, &branch.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return branch, nil
+}
+
 // AddBranchManager associates a manager with a branch
 func (s *UserService) AddBranchManager(ctx context.Context, branchID, managerID string) (*models.BranchManager, error) {
 	id := uuid.New().String()
