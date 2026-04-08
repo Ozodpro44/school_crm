@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
   Shield,
@@ -14,7 +14,7 @@ import {
   Loader2,
   ChevronDown,
   ChevronRight,
-  Users,
+  Users as UsersIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -115,28 +115,45 @@ export default function Users() {
         apiClient.getUsers(),
         apiClient.getBranches(),
       ]);
-      const usersArr: SystemUser[] = Array.isArray(allUsers) ? allUsers : [];
+      const usersArr: SystemUser[] = Array.isArray(allUsers)
+        ? allUsers.map((u: any) => ({
+            ...u,
+            branchId: u.branchId ?? u.branch_id ?? "",
+          }))
+        : [];
       const branchesArr: any[] = Array.isArray(branches) ? branches : [];
 
       setUsers(usersArr);
 
-      // Build admin → branch → managers grouping
+      // Build branchId lookup by admin id once to avoid repeated scans
+      const branchByAdminId = new Map<string, string>();
+      for (const branch of branchesArr) {
+        const adminId = branch?.adminId ?? branch?.admin_id;
+        if (adminId && branch?.id) {
+          branchByAdminId.set(String(adminId), String(branch.id));
+        }
+      }
+
+      // Build managers lookup by branch id from already fetched users
+      const managersByBranchId = new Map<string, SystemUser[]>();
+      for (const user of usersArr) {
+        if (user.role !== "manager" || !user.branchId) continue;
+        const existing = managersByBranchId.get(user.branchId) ?? [];
+        existing.push(user);
+        managersByBranchId.set(user.branchId, existing);
+      }
+
+      // Build admin → branch → managers grouping in-memory (no N+1 API calls)
       const admins = usersArr.filter((u) => u.role === "admin");
-      const groups: AdminWithManagers[] = await Promise.all(
-        admins.map(async (admin) => {
-          const branch = branchesArr.find((b: any) => b.adminId === admin.id || b.admin_id === admin.id);
-          if (!branch) return { admin, branchId: null, managers: [] };
-          try {
-            const managers = await apiClient.getManagersByBranch(branch.id);
-            return { admin, branchId: branch.id, managers: Array.isArray(managers) ? managers : [] };
-          } catch {
-            return { admin, branchId: branch.id, managers: [] };
-          }
-        })
-      );
+      const groups: AdminWithManagers[] = admins.map((admin) => {
+        const branchId = branchByAdminId.get(admin.id) ?? null;
+        const managers = branchId ? managersByBranchId.get(branchId) ?? [] : [];
+        return { admin, branchId, managers };
+      });
       setAdminGroups(groups);
-      // Expand all by default
-      setExpandedAdmins(new Set(admins.map((a) => a.id)));
+      // Avoid rendering a huge expanded tree on first paint for large datasets
+      const defaultExpanded = admins.length <= 5 ? admins.map((a) => a.id) : [];
+      setExpandedAdmins(new Set(defaultExpanded));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load users");
     } finally {
@@ -156,12 +173,6 @@ export default function Users() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
-
-  const filteredUsers = users.filter(
-    (u) =>
-      u.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   const handleAddUser = async () => {
     try {
@@ -301,7 +312,7 @@ export default function Users() {
         <div className="metric-card">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-status-healthy/15 flex items-center justify-center">
-              <Users className="w-5 h-5 text-status-healthy" />
+              <UsersIcon className="w-5 h-5 text-status-healthy" />
             </div>
             <div>
               <p className="text-2xl font-bold text-foreground">{users.length}</p>
@@ -352,10 +363,9 @@ export default function Users() {
                   filteredGroups.map((group) => {
                     const isExpanded = expandedAdmins.has(group.admin.id);
                     return (
-                      <>
+                      <Fragment key={group.admin.id}>
                         {/* Admin row */}
                         <tr
-                          key={group.admin.id}
                           className="data-table-row border-b border-border bg-accent/20 cursor-pointer"
                           onClick={() => toggleExpand(group.admin.id)}
                         >
@@ -481,7 +491,7 @@ export default function Users() {
                             </tr>
                           );
                         })}
-                      </>
+                      </Fragment>
                     );
                   })
                 )}
