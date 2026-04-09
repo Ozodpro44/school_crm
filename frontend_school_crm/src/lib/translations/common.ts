@@ -625,6 +625,17 @@ export const commonTranslations: Partial<Translation> = {
     en: "Manage teachers",
   },
 
+  activeTeachers: {
+    "uz-cyrl": "Фаол ўқитувчилар",
+    "uz-latn": "Faol o'qituvchilar",
+    en: "Active teachers",
+  },
+  ushbuOyUchun: {
+    "uz-cyrl": "Ушбу ой учун",
+    "uz-latn": "Ushbu oy uchun",
+    en: "For this month",
+  },
+
   // Class specific
   class: { "uz-cyrl": "Синф", "uz-latn": "Sinf", en: "Class" },
   addClass: {
