@@ -114,3 +114,68 @@ type SubscriptionResponse struct {
 	*Subscription
 	Plan *SubscriptionPlan `json:"plan,omitempty"`
 }
+
+// SubscriptionWithPlan is a Subscription with its Plan fully joined.
+type SubscriptionWithPlan struct {
+	Subscription
+	Plan *SubscriptionPlan `json:"plan"`
+}
+
+// AdminSubscriptionView is a flat, denormalized view used by the developer dashboard.
+type AdminSubscriptionView struct {
+	// Subscription fields
+	ID            string     `json:"id"`
+	UserID        string     `json:"userId"`
+	PlanID        string     `json:"planId"`
+	BranchID      *string    `json:"branchId"`
+	Status        string     `json:"status"`
+	StartDate     time.Time  `json:"startDate"`
+	EndDate       *time.Time `json:"endDate"`
+	RenewalDate   *time.Time `json:"renewalDate"`
+	AutoRenew     bool       `json:"autoRenew"`
+	PaymentMethod *string    `json:"paymentMethod"`
+	Notes         *string    `json:"notes"`
+	CancelledAt   *time.Time `json:"cancelledAt"`
+	CreatedAt     time.Time  `json:"createdAt"`
+	UpdatedAt     time.Time  `json:"updatedAt"`
+	// User fields
+	UserEmail    string `json:"userEmail"`
+	UserFullName string `json:"userFullName"`
+	// Plan fields
+	PlanName      string  `json:"planName"`
+	PlanPrice     float64 `json:"planPrice"`
+	BillingPeriod string  `json:"billingPeriod"`
+}
+
+// AdminCreateSubscriptionRequest is the payload for dev-admin subscription creation.
+type AdminCreateSubscriptionRequest struct {
+	UserID        string  `json:"userId"        binding:"required"`
+	PlanID        string  `json:"planId"        binding:"required"`
+	BranchID      *string `json:"branchId"`
+	Status        string  `json:"status"`
+	AutoRenew     bool    `json:"autoRenew"`
+	PaymentMethod *string `json:"paymentMethod"`
+	Notes         *string `json:"notes"`
+	BillingPeriod string  `json:"billingPeriod"` // used to compute end_date
+}
+
+// AdminUpdateSubscriptionRequest allows partial update of a subscription.
+type AdminUpdateSubscriptionRequest struct {
+	Status      *string    `json:"status"`
+	PlanID      *string    `json:"planId"`
+	AutoRenew   *bool      `json:"autoRenew"`
+	EndDate     *time.Time `json:"endDate"`
+	RenewalDate *time.Time `json:"renewalDate"`
+	Notes       *string    `json:"notes"`
+}
+
+// PlatformStats is an aggregate metrics payload for the developer dashboard.
+type PlatformStats struct {
+	TotalUsers           int     `json:"totalUsers"`
+	TotalSubscriptions   int     `json:"totalSubscriptions"`
+	ActiveSubscriptions  int     `json:"activeSubscriptions"`
+	TrialSubscriptions   int     `json:"trialSubscriptions"`
+	ExpiredSubscriptions int     `json:"expiredSubscriptions"`
+	PendingSubscriptions int     `json:"pendingSubscriptions"`
+	MRR                  float64 `json:"mrr"`
+}

@@ -203,6 +203,9 @@ func GetUserRole(c *gin.Context, userService *service.UserService) (models.UserR
 	return user.Role, nil
 }
 
+// GetDefaultPermissionsForRole is the exported version used for testing.
+var GetDefaultPermissionsForRole = getDefaultPermissionsByRole
+
 // getDefaultPermissionsByRole returns role-based permissions as fallback
 func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 	switch role {

@@ -11,9 +11,7 @@ import {
   SubscriptionResponse,
 } from "@/types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://incredible-love-production-0008.up.railway.app/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
 // Helper function for unauthenticated API requests
 async function makePublicRequest<T>(
@@ -288,7 +286,7 @@ export async function initiateTelegramPayment(subscriptionId: string): Promise<{
  */
 export function isSubscriptionActive(subscription: Subscription | null): boolean {
   if (!subscription) return false;
-  return subscription.status === "active";
+  return subscription.status === "active" || subscription.status === "trial";
 }
 
 /**

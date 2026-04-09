@@ -41,16 +41,7 @@ func GetSubscriptionPlans(subscriptionService *service.SubscriptionService) gin.
 	}
 }
 
-// GetUserSubscription retrieves the current user's subscription
-// @Summary Get user subscription
-// @Description Retrieve the active subscription for the current user
-// @Tags subscriptions
-// @Produce json
-// @Success 200 {object} models.SubscriptionResponse
-// @Failure 403 {object} gin.H
-// @Failure 404 {object} gin.H
-// @Failure 500 {object} gin.H
-// @Router /subscriptions/current [get]
+// GetUserSubscription retrieves the current user's subscription with plan details.
 func GetUserSubscription(subscriptionService *service.SubscriptionService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("user_id")
@@ -59,25 +50,62 @@ func GetUserSubscription(subscriptionService *service.SubscriptionService, userS
 			return
 		}
 
-		// Check permissions (allow if no permissions or if can view subscriptions)
-		permissions, err := userService.GetUserPermissions(c.Request.Context(), userID.(string))
-		if err == nil && permissions != nil && !permissions.CanViewSubscriptions {
-			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
-			return
-		}
-
-		subscription, err := subscriptionService.GetUserSubscription(c.Request.Context(), userID.(string))
+		sub, err := subscriptionService.GetUserSubscriptionWithPlan(c.Request.Context(), userID.(string))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		if subscription == nil {
+		if sub == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "no active subscription found"})
 			return
 		}
+		c.JSON(http.StatusOK, sub)
+	}
+}
 
-		c.JSON(http.StatusOK, subscription)
+// GetSubscriptionPlanByID returns a single plan by ID (public endpoint).
+func GetSubscriptionPlanByID(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		planID := c.Param("id")
+		plan, err := subscriptionService.GetSubscriptionPlanByID(c.Request.Context(), planID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if plan == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "plan not found"})
+			return
+		}
+		c.JSON(http.StatusOK, plan)
+	}
+}
+
+// UpdateSubscriptionStatus allows the owner to pause/activate their own subscription.
+func UpdateSubscriptionStatus(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		subscriptionID := c.Param("id")
+
+		var req struct {
+			Status string `json:"status" binding:"required,oneof=active paused"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Verify ownership
+		sub, err := subscriptionService.GetUserSubscriptionWithPlan(c.Request.Context(), userID.(string))
+		if err != nil || sub == nil || sub.ID != subscriptionID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "subscription not found or access denied"})
+			return
+		}
+
+		if err := subscriptionService.UpdateSubscriptionStatus(c.Request.Context(), subscriptionID, req.Status); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "subscription status updated"})
 	}
 }
 
@@ -265,12 +293,6 @@ func GetSubscriptionPayments(subscriptionService *service.SubscriptionService) g
 	}
 }
 
-// RegisterSubscriptionRoutes registers public subscription routes
-// Note: This should be called on the PUBLIC router, not protected
-func RegisterSubscriptionRoutes(router *gin.RouterGroup, subscriptionService *service.SubscriptionService) {
-	router.GET("/subscriptions/plans", GetSubscriptionPlans(subscriptionService))
-}
-
 // CreateSubscriptionPlan creates a new subscription plan (dev endpoint)
 // @Summary Create subscription plan
 // @Description Create a new subscription plan (dev/admin only)
@@ -364,13 +386,27 @@ func DeleteSubscriptionPlanHandler(subscriptionService *service.SubscriptionServ
 	}
 }
 
-// RegisterSubscriptionProtectedRoutes registers protected subscription routes
-// Note: This should be called on the PROTECTED router with auth middleware
+// RegisterSubscriptionPlanDevRoutes registers developer-only plan management routes (CRUD).
+// Caller must have DevAuthMiddleware applied.
+func RegisterSubscriptionPlanDevRoutes(router *gin.RouterGroup, subscriptionService *service.SubscriptionService) {
+	router.POST("/dev/subscription-plans", CreateSubscriptionPlanHandler(subscriptionService))
+	router.PUT("/dev/subscription-plans/:id", UpdateSubscriptionPlanHandler(subscriptionService))
+	router.DELETE("/dev/subscription-plans/:id", DeleteSubscriptionPlanHandler(subscriptionService))
+}
+
+// RegisterSubscriptionRoutes registers public subscription routes on a PUBLIC router group.
+func RegisterSubscriptionRoutes(router *gin.RouterGroup, subscriptionService *service.SubscriptionService) {
+	router.GET("/subscriptions/plans", GetSubscriptionPlans(subscriptionService))
+	router.GET("/subscriptions/plans/:id", GetSubscriptionPlanByID(subscriptionService))
+}
+
+// RegisterSubscriptionProtectedRoutes registers protected subscription routes.
+// Must be called on a router group that already has AuthMiddleware applied.
 func RegisterSubscriptionProtectedRoutes(router *gin.RouterGroup, subscriptionService *service.SubscriptionService, userService *service.UserService) {
-	// Protected subscription routes
 	router.GET("/subscriptions/current", GetUserSubscription(subscriptionService, userService))
 	router.POST("/subscriptions", CreateSubscription(subscriptionService, userService))
 	router.POST("/subscriptions/:id/cancel", CancelSubscription(subscriptionService, userService))
+	router.PATCH("/subscriptions/:id/status", UpdateSubscriptionStatus(subscriptionService))
 	router.GET("/subscriptions/:id/usage", GetSubscriptionUsage(subscriptionService))
 	router.GET("/subscriptions/:id/payments", GetSubscriptionPayments(subscriptionService))
 }

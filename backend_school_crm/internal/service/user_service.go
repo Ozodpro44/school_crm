@@ -474,6 +474,19 @@ func (s *UserService) RemoveBranchManager(ctx context.Context, branchID, manager
 }
 
 // GetBranchManagers returns all managers for a branch
+// GetBranchAdminID returns the admin_id for the given branch.
+// Used by subscription gating to trace staff → branch admin → subscription.
+func (s *UserService) GetBranchAdminID(ctx context.Context, branchID string) (string, error) {
+	var adminID string
+	err := s.db.GetConn().QueryRowContext(ctx,
+		`SELECT COALESCE(admin_id::text, '') FROM branches WHERE id = $1`, branchID,
+	).Scan(&adminID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return adminID, err
+}
+
 func (s *UserService) GetBranchManagers(ctx context.Context, branchID string) ([]models.User, error) {
 	managers := []models.User{}
 	query := `

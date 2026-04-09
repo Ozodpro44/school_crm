@@ -101,25 +101,19 @@ func main() {
 	subscriptionService := service.NewSubscriptionService(database)
 	developerService := service.NewDeveloperService(database)
 
-	// Initialize Click.uz service (using environment variables or defaults)
+	// Initialize Click.uz service (requires environment variables)
 	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
-	if clickMerchantID == "" {
-		clickMerchantID = "398062629" // Test merchant ID
-	}
 	clickServiceID := os.Getenv("CLICK_SERVICE_ID")
-	if clickServiceID == "" {
-		clickServiceID = "999999999" // Test service ID
-	}
 	clickSecretKey := os.Getenv("CLICK_SECRET_KEY")
-	if clickSecretKey == "" {
-		clickSecretKey = "F91D8F69C042267444B74CC0B3C747757EB0E065" // Test secret key
+	if clickMerchantID == "" || clickServiceID == "" || clickSecretKey == "" {
+		log.Println("Warning: CLICK_MERCHANT_ID, CLICK_SERVICE_ID, or CLICK_SECRET_KEY not set. Click.uz payment webhooks will not work.")
 	}
 	clickUzService := service.NewClickUzService(database, clickMerchantID, clickServiceID, clickSecretKey)
 
-	// Initialize Telegram payment service
+	// Initialize Telegram payment service (requires environment variable)
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if telegramBotToken == "" {
-		telegramBotToken = "5996211575:AAHpj_Lp_UkUJfx2TYPkRcZuF6Y6La-LcCA" // Telegram bot token
+		log.Println("Warning: TELEGRAM_BOT_TOKEN not set. Telegram payment webhooks will not work.")
 	}
 	telegramPaymentService := service.NewTelegramPaymentService(database, telegramBotToken)
 
@@ -135,8 +129,8 @@ func main() {
 	router.Use(middleware.ErrorHandling())
 	router.Use(handlers.SafeRequestLogger(database)) // auto-log 4xx/5xx responses
 
-	// Health check — returns real system stats
-	router.GET("/health", func(c *gin.Context) {
+	// healthHandler returns real system stats
+	healthHandler := func(c *gin.Context) {
 		dbStats := database.GetConn().Stats()
 
 		redisStatus := "inactive"
@@ -163,7 +157,10 @@ func main() {
 				"connected": redisConnected,
 			},
 		})
-	})
+	}
+	// Register health at both /health (canonical) and /api/health (frontend alias)
+	router.GET("/health", healthHandler)
+	router.GET("/api/health", healthHandler)
 
 	// Public routes
 	router.POST("/api/auth/login", handlers.Login(userService, cfg.JWTSecret))
@@ -188,6 +185,10 @@ func main() {
 	devProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret))
 	handlers.RegisterDevSettingsRoutes(devProtected, database)
 	handlers.RegisterDevLogsRoutes(devProtected, database)
+	handlers.RegisterAdminSubscriptionRoutes(devProtected, subscriptionService)
+	handlers.RegisterAdminPlatformStatsRoute(devProtected, subscriptionService)
+	handlers.RegisterAdminPlansRoutes(devProtected, subscriptionService)
+	handlers.RegisterSubscriptionPlanDevRoutes(devProtected, subscriptionService)
 
 	// Log ingestion endpoint (LOGS_TOKEN bearer auth)
 	handlers.RegisterLogsIngestRoute(router, database, cfg.LogsToken)
@@ -198,6 +199,7 @@ func main() {
 	// Protected routes
 	protected := router.Group("/api")
 	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	protected.Use(middleware.SubscriptionGate(userService, subscriptionService))
 
 	// Users
 	handlers.RegisterUserRoutes(protected, userService)
@@ -229,9 +231,8 @@ func main() {
 	// Settings
 	handlers.RegisterSettingsRoutes(protected, branchService, userService)
 
-	// SUBSCRIPTIONS DISABLED
-	// Subscriptions (protected routes only, plans is public)
-	// handlers.RegisterSubscriptionProtectedRoutes(protected, subscriptionService, userService)
+	// Subscriptions (protected routes)
+	handlers.RegisterSubscriptionProtectedRoutes(protected, subscriptionService, userService)
 	// handlers.RegisterClickUzRoutes(protected, clickUzService, subscriptionService)
 	// handlers.RegisterTelegramPaymentRoutes(protected, telegramPaymentService, subscriptionService)
 

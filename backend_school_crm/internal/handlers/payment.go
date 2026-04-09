@@ -344,8 +344,16 @@ func getStudentPaymentStatus(paymentService *service.PaymentService, branchServi
 			totalPaid += float64(payment.Amount)
 		}
 
+		// Derive actual status from paid amount vs student's monthly payment
+		// Note: this endpoint doesn't have access to monthly_payment, return raw amount
+		// and let the caller determine status. For a richer response, use /consolidated/data.
+		paymentStatus := "not_paid"
+		if totalPaid > 0 {
+			paymentStatus = "partial"
+		}
+
 		c.JSON(http.StatusOK, gin.H{
-			"status": "pending",
+			"status": paymentStatus,
 			"amount": totalPaid,
 		})
 	}

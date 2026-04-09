@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -399,16 +400,12 @@ func generateTestStudents(ctx context.Context, conn *sql.DB, branchID string) (i
 
 	count := 0
 	for i, name := range testNames {
-		parts := ""
-		if i < len(testNames) {
-			parts = name
-		}
-
+		phone := fmt.Sprintf("+998901234%03d", i)
 		_, err := conn.ExecContext(ctx, `
-			INSERT INTO students (id, first_name, last_name, email, phone, branch_id, created_at, updated_at)
-			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
+			INSERT INTO students (id, full_name, phone, parent_phone, monthly_payment, status, branch_id, created_at, updated_at)
+			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW())
 			ON CONFLICT DO NOTHING
-		`, "Test", parts, "", "", branchID)
+		`, name, phone, phone, 500000.0, "active", branchID)
 
 		if err == nil {
 			count++
@@ -419,18 +416,28 @@ func generateTestStudents(ctx context.Context, conn *sql.DB, branchID string) (i
 }
 
 func generateTestTeachers(ctx context.Context, conn *sql.DB, branchID string) (int, error) {
-	testTeachers := []string{
-		"Mr. Johnson", "Ms. Williams", "Dr. Brown", "Prof. Davis",
-		"Mr. Miller", "Ms. Wilson", "Mr. Moore", "Ms. Taylor",
+	testTeachers := []struct {
+		name  string
+		phone string
+		email string
+	}{
+		{"Mr. Johnson", "+998901110001", "johnson@test.com"},
+		{"Ms. Williams", "+998901110002", "williams@test.com"},
+		{"Dr. Brown", "+998901110003", "brown@test.com"},
+		{"Prof. Davis", "+998901110004", "davis@test.com"},
+		{"Mr. Miller", "+998901110005", "miller@test.com"},
+		{"Ms. Wilson", "+998901110006", "wilson@test.com"},
+		{"Mr. Moore", "+998901110007", "moore@test.com"},
+		{"Ms. Taylor", "+998901110008", "taylor@test.com"},
 	}
 
 	count := 0
-	for _, name := range testTeachers {
+	for _, t := range testTeachers {
 		_, err := conn.ExecContext(ctx, `
-			INSERT INTO teachers (id, first_name, last_name, email, phone, branch_id, created_at, updated_at)
+			INSERT INTO teachers (id, full_name, phone, email, monthly_salary, branch_id, created_at, updated_at)
 			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
 			ON CONFLICT DO NOTHING
-		`, "Teacher", name, "", "", branchID)
+		`, t.name, t.phone, t.email, 3000000.0, branchID)
 
 		if err == nil {
 			count++
@@ -464,35 +471,46 @@ func generateTestClasses(ctx context.Context, conn *sql.DB, branchID string) (in
 func generateTestPayments(ctx context.Context, conn *sql.DB, branchID string) (int, error) {
 	// Get some students first
 	studentRows, err := conn.QueryContext(ctx, `
-		SELECT id FROM students WHERE branch_id = $1 LIMIT 10
+		SELECT id, monthly_payment FROM students WHERE branch_id = $1 LIMIT 10
 	`, branchID)
 	if err != nil {
 		return 0, err
 	}
 	defer studentRows.Close()
 
-	var studentIDs []string
+	type studentRow struct {
+		id             string
+		monthlyPayment float64
+	}
+	var students []studentRow
 	for studentRows.Next() {
-		var id string
-		if err := studentRows.Scan(&id); err != nil {
+		var s studentRow
+		if err := studentRows.Scan(&s.id, &s.monthlyPayment); err != nil {
 			continue
 		}
-		studentIDs = append(studentIDs, id)
+		students = append(students, s)
 	}
 
-	count := 0
-	amounts := []float64{50000, 100000, 150000, 200000, 250000}
-	statuses := []string{"paid", "pending", "overdue"}
+	now := time.Now()
+	month := now.Format("January")
+	year := now.Year()
+	statuses := []string{"paid", "partial"}
+	methods := []string{"cash", "card", "bank"}
 
-	for i, studentID := range studentIDs {
-		amount := amounts[i%len(amounts)]
+	count := 0
+	for i, s := range students {
+		amount := s.monthlyPayment
+		if i%3 == 1 {
+			amount = s.monthlyPayment / 2 // partial payment
+		}
 		status := statuses[i%len(statuses)]
+		method := methods[i%len(methods)]
 
 		_, err := conn.ExecContext(ctx, `
-			INSERT INTO payments (id, student_id, amount, status, date, created_at, updated_at)
-			VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW(), NOW())
+			INSERT INTO payments (id, student_id, amount, month, year, payment_method, status, branch_id, created_at)
+			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW())
 			ON CONFLICT DO NOTHING
-		`, studentID, amount, status)
+		`, s.id, amount, month, year, method, status, branchID)
 
 		if err == nil {
 			count++

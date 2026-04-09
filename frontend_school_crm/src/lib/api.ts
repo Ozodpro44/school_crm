@@ -33,7 +33,8 @@ export async function getStudentsConsolidatedData(
 
 import { Branch } from "@/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://incredible-love-production-0008.up.railway.app/api";
+// NEXT_PUBLIC_API_URL must be set in production. Fallback to localhost for local dev only.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -385,7 +386,14 @@ export async function apiRequest<T>(
           window.location.href = "/login";
         }
       }
-      
+
+      // Subscription required — redirect to billing page
+      if (response.status === 402 && errorData.error === "subscription_required") {
+        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/billing")) {
+          window.location.href = "/billing";
+        }
+      }
+
       throw new Error(errorMessage);
     }
 

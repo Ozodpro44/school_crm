@@ -307,6 +307,271 @@ func (s *SubscriptionService) DeleteSubscriptionPlan(ctx context.Context, planID
 	return nil
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Admin / Developer endpoints
+// ──────────────────────────────────────────────────────────────────────────────
+
+// AdminListSubscriptions returns all subscriptions joined with plan and user details.
+// Used by the developer dashboard.
+func (s *SubscriptionService) AdminListSubscriptions(ctx context.Context) ([]models.AdminSubscriptionView, error) {
+	query := `
+		SELECT
+			sub.id, sub.user_id, sub.plan_id, sub.branch_id, sub.status,
+			sub.start_date, sub.end_date, sub.renewal_date, sub.auto_renew,
+			sub.payment_method, sub.notes, sub.cancelled_at, sub.created_at, sub.updated_at,
+			u.email, u.full_name,
+			sp.name AS plan_name, sp.price AS plan_price, sp.billing_period
+		FROM subscriptions sub
+		JOIN users u ON sub.user_id = u.id
+		JOIN subscription_plans sp ON sub.plan_id = sp.id
+		ORDER BY sub.created_at DESC
+	`
+	rows, err := s.database.GetConn().QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("admin list subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	var result []models.AdminSubscriptionView
+	for rows.Next() {
+		var v models.AdminSubscriptionView
+		if err := rows.Scan(
+			&v.ID, &v.UserID, &v.PlanID, &v.BranchID, &v.Status,
+			&v.StartDate, &v.EndDate, &v.RenewalDate, &v.AutoRenew,
+			&v.PaymentMethod, &v.Notes, &v.CancelledAt, &v.CreatedAt, &v.UpdatedAt,
+			&v.UserEmail, &v.UserFullName,
+			&v.PlanName, &v.PlanPrice, &v.BillingPeriod,
+		); err != nil {
+			return nil, fmt.Errorf("admin list subscriptions scan: %w", err)
+		}
+		result = append(result, v)
+	}
+	return result, rows.Err()
+}
+
+// AdminGetSubscription returns a single subscription joined with plan and user details.
+func (s *SubscriptionService) AdminGetSubscription(ctx context.Context, id string) (*models.AdminSubscriptionView, error) {
+	query := `
+		SELECT
+			sub.id, sub.user_id, sub.plan_id, sub.branch_id, sub.status,
+			sub.start_date, sub.end_date, sub.renewal_date, sub.auto_renew,
+			sub.payment_method, sub.notes, sub.cancelled_at, sub.created_at, sub.updated_at,
+			u.email, u.full_name,
+			sp.name AS plan_name, sp.price AS plan_price, sp.billing_period
+		FROM subscriptions sub
+		JOIN users u ON sub.user_id = u.id
+		JOIN subscription_plans sp ON sub.plan_id = sp.id
+		WHERE sub.id = $1
+	`
+	var v models.AdminSubscriptionView
+	err := s.database.GetConn().QueryRowContext(ctx, query, id).Scan(
+		&v.ID, &v.UserID, &v.PlanID, &v.BranchID, &v.Status,
+		&v.StartDate, &v.EndDate, &v.RenewalDate, &v.AutoRenew,
+		&v.PaymentMethod, &v.Notes, &v.CancelledAt, &v.CreatedAt, &v.UpdatedAt,
+		&v.UserEmail, &v.UserFullName,
+		&v.PlanName, &v.PlanPrice, &v.BillingPeriod,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("admin get subscription: %w", err)
+	}
+	return &v, nil
+}
+
+// AdminCreateSubscription creates a subscription on behalf of a user (developer action).
+func (s *SubscriptionService) AdminCreateSubscription(ctx context.Context, req *models.AdminCreateSubscriptionRequest) (*models.AdminSubscriptionView, error) {
+	now := time.Now().UTC()
+	endDate := now.AddDate(0, 1, 0)
+	if req.BillingPeriod == "yearly" {
+		endDate = now.AddDate(1, 0, 0)
+	}
+	if req.Status == "" {
+		req.Status = "active"
+	}
+
+	var id string
+	err := s.database.GetConn().QueryRowContext(ctx, `
+		INSERT INTO subscriptions (user_id, plan_id, branch_id, status, start_date, end_date, renewal_date, auto_renew, payment_method, notes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id
+	`, req.UserID, req.PlanID, req.BranchID, req.Status, now, endDate, endDate, req.AutoRenew, req.PaymentMethod, req.Notes,
+	).Scan(&id)
+	if err != nil {
+		return nil, fmt.Errorf("admin create subscription: %w", err)
+	}
+	return s.AdminGetSubscription(ctx, id)
+}
+
+// AdminUpdateSubscription updates mutable fields of any subscription.
+func (s *SubscriptionService) AdminUpdateSubscription(ctx context.Context, id string, req *models.AdminUpdateSubscriptionRequest) (*models.AdminSubscriptionView, error) {
+	_, err := s.database.GetConn().ExecContext(ctx, `
+		UPDATE subscriptions
+		SET
+			status        = COALESCE($1, status),
+			plan_id       = COALESCE($2, plan_id),
+			auto_renew    = COALESCE($3, auto_renew),
+			end_date      = COALESCE($4, end_date),
+			renewal_date  = COALESCE($5, renewal_date),
+			notes         = COALESCE($6, notes),
+			updated_at    = NOW()
+		WHERE id = $7
+	`, req.Status, req.PlanID, req.AutoRenew, req.EndDate, req.RenewalDate, req.Notes, id)
+	if err != nil {
+		return nil, fmt.Errorf("admin update subscription: %w", err)
+	}
+	return s.AdminGetSubscription(ctx, id)
+}
+
+// AdminDeleteSubscription hard-cancels and removes a subscription.
+func (s *SubscriptionService) AdminDeleteSubscription(ctx context.Context, id string) error {
+	_, err := s.database.GetConn().ExecContext(ctx,
+		`DELETE FROM subscriptions WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("admin delete subscription: %w", err)
+	}
+	return nil
+}
+
+// GetUserSubscriptionWithPlan returns the current user subscription joined with its plan.
+func (s *SubscriptionService) GetUserSubscriptionWithPlan(ctx context.Context, userID string) (*models.SubscriptionWithPlan, error) {
+	query := `
+		SELECT
+			sub.id, sub.user_id, sub.plan_id, sub.branch_id, sub.status,
+			sub.start_date, sub.end_date, sub.renewal_date, sub.auto_renew,
+			sub.payment_method, sub.notes, sub.cancelled_at, sub.created_at, sub.updated_at,
+			sp.id, sp.name, sp.description, sp.price, sp.billing_period,
+			sp.max_branches, sp.max_students, sp.max_classes, sp.features, sp.status
+		FROM subscriptions sub
+		JOIN subscription_plans sp ON sub.plan_id = sp.id
+		WHERE sub.user_id = $1
+		  AND sub.status IN ('active','trial','paused','pending_payment','past_due')
+		ORDER BY sub.created_at DESC
+		LIMIT 1
+	`
+	var v models.SubscriptionWithPlan
+	v.Plan = &models.SubscriptionPlan{}
+	err := s.database.GetConn().QueryRowContext(ctx, query, userID).Scan(
+		&v.ID, &v.UserID, &v.PlanID, &v.BranchID, &v.Status,
+		&v.StartDate, &v.EndDate, &v.RenewalDate, &v.AutoRenew,
+		&v.PaymentMethod, &v.Notes, &v.CancelledAt, &v.CreatedAt, &v.UpdatedAt,
+		&v.Plan.ID, &v.Plan.Name, &v.Plan.Description, &v.Plan.Price, &v.Plan.BillingPeriod,
+		&v.Plan.MaxBranches, &v.Plan.MaxStudents, &v.Plan.MaxClasses, &v.Plan.Features, &v.Plan.Status,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get user subscription with plan: %w", err)
+	}
+	return &v, nil
+}
+
+// GetPlatformStats returns aggregate subscription/revenue statistics.
+func (s *SubscriptionService) GetPlatformStats(ctx context.Context) (*models.PlatformStats, error) {
+	stats := &models.PlatformStats{}
+
+	err := s.database.GetConn().QueryRowContext(ctx, `
+		SELECT
+			COUNT(*) FILTER (WHERE status = 'active')                      AS active,
+			COUNT(*) FILTER (WHERE status = 'trial')                       AS trial,
+			COUNT(*) FILTER (WHERE status IN ('expired','cancelled'))       AS expired,
+			COUNT(*) FILTER (WHERE status = 'pending_payment')             AS pending,
+			COUNT(*)                                                        AS total
+		FROM subscriptions
+	`).Scan(&stats.ActiveSubscriptions, &stats.TrialSubscriptions, &stats.ExpiredSubscriptions,
+		&stats.PendingSubscriptions, &stats.TotalSubscriptions)
+	if err != nil {
+		return nil, fmt.Errorf("platform stats: %w", err)
+	}
+
+	// MRR: sum of active monthly price; yearly plans divided by 12
+	err = s.database.GetConn().QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(
+			CASE sp.billing_period
+				WHEN 'yearly'  THEN sp.price / 12.0
+				ELSE                sp.price
+			END
+		), 0)
+		FROM subscriptions sub
+		JOIN subscription_plans sp ON sub.plan_id = sp.id
+		WHERE sub.status = 'active'
+	`).Scan(&stats.MRR)
+	if err != nil {
+		return nil, fmt.Errorf("platform stats MRR: %w", err)
+	}
+
+	err = s.database.GetConn().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM users`).Scan(&stats.TotalUsers)
+	if err != nil {
+		return nil, fmt.Errorf("platform stats users: %w", err)
+	}
+
+	return stats, nil
+}
+
+// IsUserSubscriptionActive is a lightweight check used by the gating middleware.
+// Returns true if the user has an active or trial subscription.
+func (s *SubscriptionService) IsUserSubscriptionActive(ctx context.Context, userID string) (bool, error) {
+	var count int
+	err := s.database.GetConn().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM subscriptions
+		WHERE user_id = $1 AND status IN ('active','trial')
+	`, userID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check subscription active: %w", err)
+	}
+	return count > 0, nil
+}
+
+// GetSubscriptionPlanByID retrieves a single plan by ID.
+func (s *SubscriptionService) GetSubscriptionPlanByID(ctx context.Context, planID string) (*models.SubscriptionPlan, error) {
+	query := `
+		SELECT id, name, description, price, billing_period, max_branches, max_students, max_classes, features, status, created_at, updated_at
+		FROM subscription_plans WHERE id = $1
+	`
+	var p models.SubscriptionPlan
+	err := s.database.GetConn().QueryRowContext(ctx, query, planID).Scan(
+		&p.ID, &p.Name, &p.Description, &p.Price, &p.BillingPeriod,
+		&p.MaxBranches, &p.MaxStudents, &p.MaxClasses, &p.Features, &p.Status,
+		&p.CreatedAt, &p.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get plan by id: %w", err)
+	}
+	return &p, nil
+}
+
+// GetAllSubscriptionPlans returns all plans (active and inactive) for admin use.
+func (s *SubscriptionService) GetAllSubscriptionPlans(ctx context.Context) ([]models.SubscriptionPlan, error) {
+	query := `
+		SELECT id, name, description, price, billing_period, max_branches, max_students, max_classes, features, status, created_at, updated_at
+		FROM subscription_plans ORDER BY price ASC
+	`
+	rows, err := s.database.GetConn().QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("get all plans: %w", err)
+	}
+	defer rows.Close()
+
+	var plans []models.SubscriptionPlan
+	for rows.Next() {
+		var p models.SubscriptionPlan
+		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.BillingPeriod,
+			&p.MaxBranches, &p.MaxStudents, &p.MaxClasses, &p.Features, &p.Status,
+			&p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("plan scan: %w", err)
+		}
+		plans = append(plans, p)
+	}
+	return plans, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────
 // GetOrCreateFreeTrial gets or creates a free trial subscription plan
 func (s *SubscriptionService) GetOrCreateFreeTrial(ctx context.Context) (*models.SubscriptionPlan, error) {
 	// Try to find existing free trial plan

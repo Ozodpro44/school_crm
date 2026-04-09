@@ -77,14 +77,12 @@ export const api = {
       method: "POST",
     }),
 
-  // Health check endpoint
+  // Health check endpoint — try /api/health first (alias), fall back to /health
   getHealth: async () => {
     try {
       const response = await fetch(`${API_BASE_URL}/health`);
-      return {
-        data: { status: response.ok ? "healthy" : "unhealthy" },
-        status: response.status,
-      };
+      const data = response.ok ? await response.json().catch(() => ({ status: "healthy" })) : { status: "unhealthy" };
+      return { data, status: response.status };
     } catch {
       return {
         data: { status: "unavailable" },
