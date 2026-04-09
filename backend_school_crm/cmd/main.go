@@ -149,13 +149,13 @@ func main() {
 		uptimeSeconds := int64(math.Round(time.Since(startTime).Seconds()))
 
 		c.JSON(http.StatusOK, gin.H{
-			"status":          "healthy",
-			"environment":     cfg.Environment,
-			"uptime_seconds":  uptimeSeconds,
+			"status":         "healthy",
+			"environment":    cfg.Environment,
+			"uptime_seconds": uptimeSeconds,
 			"database": gin.H{
-				"status":              "connected",
-				"open_connections":    dbStats.OpenConnections,
-				"idle_connections":    dbStats.Idle,
+				"status":               "connected",
+				"open_connections":     dbStats.OpenConnections,
+				"idle_connections":     dbStats.Idle,
 				"max_open_connections": dbStats.MaxOpenConnections,
 			},
 			"redis": gin.H{
@@ -174,8 +174,7 @@ func main() {
 	router.POST("/api/auth/reset-password", handlers.ResetPassword(userService))
 
 	// Public subscription plans
-	// SUBSCRIPTIONS DISABLED
-	// router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
+	router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
 
 	// Public developer auth routes
 	handlers.RegisterDeveloperAuthRoutes(router, developerService, cfg.JWTSecret)
