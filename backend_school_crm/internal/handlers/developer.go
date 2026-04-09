@@ -679,13 +679,8 @@ func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database, sub
 	// Subscription plans seeding
 	router.POST("/dev/seed-subscription-plans", SeedSubscriptionPlans(database))
 	
-	// Subscription plans CRUD (dev endpoints)
-	router.POST("/dev/subscription-plans", CreateSubscriptionPlanHandler(subscriptionService))
-	router.PUT("/dev/subscription-plans/:id", UpdateSubscriptionPlanHandler(subscriptionService))
-	router.DELETE("/dev/subscription-plans/:id", DeleteSubscriptionPlanHandler(subscriptionService))
-	
-	// Subscriptions and users data (dev endpoints)
-	router.GET("/dev/subscriptions", GetDevSubscriptions(database))
+	// Subscriptions and users data (dev endpoints — unauthenticated read-only)
+	// Full CRUD is on the authenticated devProtected group via RegisterAdminSubscriptionRoutes.
 	router.GET("/dev/users", GetDevUsers(database))
 }
 
