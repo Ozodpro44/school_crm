@@ -33,12 +33,6 @@ func New(ctx context.Context, dsn string) (*Database, error) {
 
 	db := &Database{conn: conn}
 
-	// Automatically run migrations on startup
-	if err := db.RunMigrations(ctx); err != nil {
-		log.Printf("Warning: Failed to run migrations: %v", err)
-		// Don't fail on migration errors - database might already be initialized
-	}
-
 	return db, nil
 }
 
@@ -96,13 +90,11 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 	}
 	defer m.Close()
 
-	// Check for dirty state and fix it
+	// Dirty state means a previous migration failed part-way.
+	// Do not force-forward automatically, because it can skip required tables.
 	version, dirty, err := m.Version()
 	if err == nil && dirty {
-		log.Printf("[Database.RunMigrations] Detected dirty migration state (version: %d). Forcing version...", version)
-		if err := m.Force(int(version)); err != nil {
-			log.Printf("[Database.RunMigrations] Warning: Failed to force migration version: %v", err)
-		}
+		return fmt.Errorf("database is in dirty migration state at version %d; fix migration and run force manually", version)
 	}
 
 	// Run migrations up
