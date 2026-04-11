@@ -278,7 +278,9 @@ func (s *SubscriptionService) CreateSubscriptionPlan(ctx context.Context, plan *
 func (s *SubscriptionService) UpdateSubscriptionPlan(ctx context.Context, plan *models.SubscriptionPlan) error {
 	query := `
 		UPDATE subscription_plans
-		SET name = $1, description = $2, price = $3, billing_period = $4, max_branches = $5, max_students = $6, max_classes = $7, features = $8, status = $9, updated_at = CURRENT_TIMESTAMP
+		SET name = $1, description = $2, price = $3, billing_period = $4, max_branches = $5, max_students = $6, max_classes = $7, features = $8,
+		    status = CASE WHEN $9 = '' THEN status ELSE $9 END,
+		    updated_at = CURRENT_TIMESTAMP
 		WHERE id = $10
 	`
 

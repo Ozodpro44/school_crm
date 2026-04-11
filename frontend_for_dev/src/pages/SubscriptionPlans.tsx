@@ -14,7 +14,7 @@ import {
   Loader2,
 } from "lucide-react";
 import {
-  getSubscriptionPlans,
+  getAllSubscriptionPlans,
   createSubscriptionPlan,
   updateSubscriptionPlan,
   deleteSubscriptionPlan,
@@ -100,6 +100,7 @@ export default function SubscriptionPlans() {
     maxBranches: 1,
     maxStudents: 100,
     maxClasses: 5,
+    status: "active" as "active" | "inactive",
   });
 
   const [subForm, setSubForm] = useState({
@@ -119,7 +120,7 @@ export default function SubscriptionPlans() {
       setLoading(true);
       setError(null);
       const [plansData, subscriptionsData, usersData] = await Promise.all([
-        getSubscriptionPlans(),
+        getAllSubscriptionPlans(),
         getUserSubscriptions(),
         getAllUsers(),
       ]);
@@ -156,6 +157,7 @@ export default function SubscriptionPlans() {
       maxBranches: 1,
       maxStudents: 100,
       maxClasses: 5,
+      status: "active",
     });
     setIsPlanModalOpen(true);
   };
@@ -164,12 +166,13 @@ export default function SubscriptionPlans() {
     setEditingPlan(plan);
     setPlanForm({
       name: plan.name,
-      description: plan.description,
+      description: plan.description ?? "",
       price: plan.price,
       billingPeriod: plan.billingPeriod,
-      maxBranches: plan.maxBranches,
-      maxStudents: plan.maxStudents,
-      maxClasses: plan.maxClasses,
+      maxBranches: plan.maxBranches ?? 1,
+      maxStudents: plan.maxStudents ?? 100,
+      maxClasses: plan.maxClasses ?? 5,
+      status: plan.status,
     });
     setIsPlanModalOpen(true);
   };
@@ -714,6 +717,27 @@ export default function SubscriptionPlans() {
                   }
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={planForm.status}
+                onValueChange={(val) =>
+                  setPlanForm({
+                    ...planForm,
+                    status: val as "active" | "inactive",
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
