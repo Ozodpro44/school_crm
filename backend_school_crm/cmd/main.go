@@ -197,7 +197,13 @@ func main() {
 	// Log startup status
 	handlers.CheckLogsTable(database)
 
-	// Protected routes
+	// Auth-only routes — require login but NOT an active subscription.
+	// Subscription self-service must be here so expired users can check and renew.
+	authOnly := router.Group("/api")
+	authOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	handlers.RegisterSubscriptionProtectedRoutes(authOnly, subscriptionService, userService)
+
+	// Protected routes — require login AND an active subscription.
 	protected := router.Group("/api")
 	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
 	protected.Use(middleware.SubscriptionGate(userService, subscriptionService))
@@ -231,9 +237,6 @@ func main() {
 
 	// Settings
 	handlers.RegisterSettingsRoutes(protected, branchService, userService)
-
-	// Subscriptions (protected routes)
-	handlers.RegisterSubscriptionProtectedRoutes(protected, subscriptionService, userService)
 	// handlers.RegisterClickUzRoutes(protected, clickUzService, subscriptionService)
 	// handlers.RegisterTelegramPaymentRoutes(protected, telegramPaymentService, subscriptionService)
 

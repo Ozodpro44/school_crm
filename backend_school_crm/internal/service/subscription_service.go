@@ -320,10 +320,12 @@ func (s *SubscriptionService) AdminListSubscriptions(ctx context.Context) ([]mod
 			sub.start_date, sub.end_date, sub.renewal_date, sub.auto_renew,
 			sub.payment_method, sub.notes, sub.cancelled_at, sub.created_at, sub.updated_at,
 			u.email, u.full_name,
-			sp.name AS plan_name, sp.price AS plan_price, sp.billing_period
+			COALESCE(sp.name, '[deleted plan]') AS plan_name,
+			COALESCE(sp.price, 0)               AS plan_price,
+			COALESCE(sp.billing_period, '')      AS billing_period
 		FROM subscriptions sub
 		JOIN users u ON sub.user_id = u.id
-		JOIN subscription_plans sp ON sub.plan_id = sp.id
+		LEFT JOIN subscription_plans sp ON sub.plan_id = sp.id
 		ORDER BY sub.created_at DESC
 	`
 	rows, err := s.database.GetConn().QueryContext(ctx, query)
