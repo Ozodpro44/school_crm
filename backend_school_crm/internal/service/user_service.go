@@ -275,7 +275,13 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*models.User, err
 }
 
 func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
-	query := `SELECT id, email, password, role, full_name, created_at, updated_at FROM users`
+	query := `
+		SELECT u.id, u.email, u.password, u.role, u.full_name, u.created_at, u.updated_at,
+		       bm.branch_id
+		FROM users u
+		LEFT JOIN branch_managers bm ON bm.manager_id = u.id
+		ORDER BY u.created_at
+	`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query)
 	if err != nil {
@@ -283,26 +289,49 @@ func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
 	}
 	defer rows.Close()
 
-	var users []models.User
+	// Deduplicate by user ID (a manager can appear in multiple branches)
+	seen := map[string]*models.User{}
+	var order []string
 	permissionService := NewPermissionService(s.db)
 
 	for rows.Next() {
-		var user models.User
-		if err := rows.Scan(&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.CreatedAt, &user.UpdatedAt); err != nil {
+		var u models.User
+		var branchID *string
+		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.Role, &u.FullName, &u.CreatedAt, &u.UpdatedAt, &branchID); err != nil {
 			return nil, err
 		}
-		user.Password = ""
+		u.Password = ""
 
-		// Fetch permissions for the user
-		permissions, err := permissionService.GetByUserID(ctx, user.ID)
-		if err == nil {
-			user.Permissions = permissions
+		if existing, ok := seen[u.ID]; ok {
+			// Additional branch for a manager — append to BranchIDs
+			if branchID != nil {
+				existing.BranchIDs = append(existing.BranchIDs, *branchID)
+			}
+			continue
 		}
 
-		users = append(users, user)
+		if branchID != nil {
+			u.BranchID = branchID
+			u.BranchIDs = []string{*branchID}
+		}
+
+		permissions, err := permissionService.GetByUserID(ctx, u.ID)
+		if err == nil {
+			u.Permissions = permissions
+		}
+
+		seen[u.ID] = &u
+		order = append(order, u.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
-	return users, rows.Err()
+	users := make([]models.User, 0, len(order))
+	for _, id := range order {
+		users = append(users, *seen[id])
+	}
+	return users, nil
 }
 
 func (s *UserService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.User, error) {

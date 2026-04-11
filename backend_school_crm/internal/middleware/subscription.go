@@ -41,16 +41,11 @@ func SubscriptionGate(userSvc *service.UserService, subSvc *service.Subscription
 			return
 		}
 
-		// Global admin is always allowed (platform operator).
-		if user.Role == models.RoleAdmin {
-			c.Next()
-			return
-		}
-
 		// Determine which user_id to check the subscription against.
-		// For branch staff: use the branch admin's user_id.
+		// Admins (school owners) and branch_admins check their own subscription.
+		// Other roles (manager, accountant, teacher) inherit the branch admin's subscription.
 		ownerID := userID
-		if user.Role != models.RoleBranchAdmin {
+		if user.Role != models.RoleAdmin && user.Role != models.RoleBranchAdmin {
 			adminID, err := resolveBranchAdminID(c.Request.Context(), userSvc, user)
 			if err == nil && adminID != "" {
 				ownerID = adminID
