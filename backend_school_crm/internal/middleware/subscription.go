@@ -2,9 +2,10 @@
 // SubscriptionGate blocks CRM API access for users whose subscription is
 // inactive (expired, cancelled, pending_payment, etc.).
 //
-// Admins and branch_admins are checked against their own subscription.
-// Other roles (manager, accountant, teacher) inherit the admin's subscription
-// for the branch they belong to.
+// Only the school owner (admin role) holds a subscription.
+// Every other role — branch_admin, manager, accountant, teacher — inherits
+// the school owner's subscription via the branch they belong to
+// (branches.admin_id → school owner).
 //
 // The check is intentionally lightweight: a single COUNT query per request.
 // Heavy plans-limit enforcement (max students, max classes, etc.) is done
@@ -41,12 +42,11 @@ func SubscriptionGate(userSvc *service.UserService, subSvc *service.Subscription
 			return
 		}
 
-		// Determine which user_id to check the subscription against.
-		// Admins (school owners) and branch_admins check their own subscription.
-		// Other roles (manager, accountant, teacher) inherit the branch admin's subscription.
+		// Only the school owner (admin) holds a subscription.
+		// All other roles must resolve to their school owner via the branch chain.
 		ownerID := userID
-		if user.Role != models.RoleAdmin && user.Role != models.RoleBranchAdmin {
-			adminID, err := resolveBranchAdminID(c.Request.Context(), userSvc, user)
+		if user.Role != models.RoleAdmin {
+			adminID, err := resolveSchoolOwnerID(c.Request.Context(), userSvc, user)
 			if err == nil && adminID != "" {
 				ownerID = adminID
 			}
@@ -73,8 +73,10 @@ func SubscriptionGate(userSvc *service.UserService, subSvc *service.Subscription
 	}
 }
 
-// resolveBranchAdminID walks from the user's branch to the branch admin user_id.
-func resolveBranchAdminID(ctx context.Context, userSvc *service.UserService, user *models.User) (string, error) {
+// resolveSchoolOwnerID returns the admin (school owner) user_id for the given
+// user by walking: user.BranchID → branches.admin_id.
+// branch_admin, manager, accountant, teacher all go through this path.
+func resolveSchoolOwnerID(ctx context.Context, userSvc *service.UserService, user *models.User) (string, error) {
 	if user.BranchID == nil {
 		return "", nil
 	}
