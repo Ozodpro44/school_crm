@@ -185,6 +185,7 @@ func main() {
 	devProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret))
 	handlers.RegisterDevSettingsRoutes(devProtected, database)
 	handlers.RegisterDevLogsRoutes(devProtected, database)
+	handlers.RegisterDevCRMRoutes(devProtected, userService, branchService)
 	handlers.RegisterAdminSubscriptionRoutes(devProtected, subscriptionService)
 	handlers.RegisterAdminPlatformStatsRoute(devProtected, subscriptionService)
 	handlers.RegisterAdminPlansRoutes(devProtected, subscriptionService)

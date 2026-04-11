@@ -686,6 +686,53 @@ func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database, sub
 
 // ==================== DEV SETTINGS ====================
 
+// RegisterDevCRMRoutes registers developer-accessible user and branch management routes.
+// Must be called with a router group that uses DevAuthMiddleware.
+func RegisterDevCRMRoutes(router *gin.RouterGroup, userService *service.UserService, branchService *service.BranchService) {
+	// Users (full CRUD without user-context permission checks)
+	users := router.Group("/dev/crm/users")
+	users.GET("", listUsers(userService))
+	users.GET("/:id", getUser(userService))
+	users.PUT("/:id", devUpdateUser(userService))
+	users.DELETE("/:id", devDeleteUser(userService))
+
+	// Branches (reuse existing handlers — none require user context)
+	branches := router.Group("/dev/crm/branches")
+	branches.GET("", listBranches(branchService))
+	branches.GET("/:id", getBranch(branchService))
+	branches.POST("", createBranch(branchService))
+	branches.PUT("/:id", updateBranch(branchService))
+	branches.DELETE("/:id", deleteBranch(branchService))
+}
+
+func devUpdateUser(userService *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		var updates map[string]interface{}
+		if err := c.ShouldBindJSON(&updates); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		user, err := userService.Update(c.Request.Context(), id, updates)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, user)
+	}
+}
+
+func devDeleteUser(userService *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		if err := userService.Delete(c.Request.Context(), id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "user deleted"})
+	}
+}
+
 // RegisterDevSettingsRoutes registers authenticated developer settings routes.
 // Must be called with a router group that uses DevAuthMiddleware.
 func RegisterDevSettingsRoutes(router *gin.RouterGroup, database *db.Database) {

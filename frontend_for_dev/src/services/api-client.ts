@@ -227,13 +227,13 @@ export class ApiClient {
   // ==================== BRANCHES ====================
 
   async getBranches(): Promise<any[]> {
-    return this.request('/branches', {
+    return this.request('/dev/crm/branches', {
       method: 'GET',
     });
   }
 
   async getBranch(id: string): Promise<any> {
-    return this.request(`/branches/${id}`, {
+    return this.request(`/dev/crm/branches/${id}`, {
       method: 'GET',
     });
   }
@@ -245,21 +245,21 @@ export class ApiClient {
     monthlyPayment?: number;
     adminId?: string;
   }): Promise<any> {
-    return this.request('/branches', {
+    return this.request('/dev/crm/branches', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
   async updateBranch(id: string, data: Partial<any>): Promise<any> {
-    return this.request(`/branches/${id}`, {
+    return this.request(`/dev/crm/branches/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
   async deleteBranch(id: string): Promise<any> {
-    return this.request(`/branches/${id}`, {
+    return this.request(`/dev/crm/branches/${id}`, {
       method: 'DELETE',
     });
   }
@@ -427,32 +427,32 @@ export class ApiClient {
   // ==================== USERS ====================
 
   async getUsers(): Promise<any[]> {
-    return this.request('/users', {
+    return this.request('/dev/crm/users', {
       method: 'GET',
     });
   }
 
   async getManagersByBranch(branchId: string): Promise<any[]> {
-    return this.request(`/users?branchId=${branchId}`, {
+    return this.request(`/dev/crm/users?branchId=${branchId}`, {
       method: 'GET',
     });
   }
 
   async getUser(id: string): Promise<any> {
-    return this.request(`/users/${id}`, {
+    return this.request(`/dev/crm/users/${id}`, {
       method: 'GET',
     });
   }
 
   async updateUser(id: string, data: Partial<any>): Promise<any> {
-    return this.request(`/users/${id}`, {
+    return this.request(`/dev/crm/users/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
   async deleteUser(id: string): Promise<any> {
-    return this.request(`/users/${id}`, {
+    return this.request(`/dev/crm/users/${id}`, {
       method: 'DELETE',
     });
   }
