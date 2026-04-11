@@ -106,8 +106,9 @@ export default function SubscriptionPlans() {
   const [subForm, setSubForm] = useState({
     userId: "",
     planId: "",
+    status: "active",
     autoRenew: true,
-    paymentMethod: "credit_card",
+    paymentMethod: "click",
   });
 
   // Load data on mount
@@ -226,8 +227,9 @@ export default function SubscriptionPlans() {
     setSubForm({
       userId: "",
       planId: "",
+      status: "active",
       autoRenew: true,
-      paymentMethod: "credit_card",
+      paymentMethod: "click",
     });
     setIsSubscriptionModalOpen(true);
   };
@@ -237,8 +239,9 @@ export default function SubscriptionPlans() {
     setSubForm({
       userId: sub.userId,
       planId: sub.planId,
+      status: sub.status || "active",
       autoRenew: sub.autoRenew,
-      paymentMethod: sub.paymentMethod || "credit_card",
+      paymentMethod: sub.paymentMethod || "click",
     });
     setIsSubscriptionModalOpen(true);
   };
@@ -254,6 +257,7 @@ export default function SubscriptionPlans() {
       if (editingSub) {
         await updateUserSubscription(editingSub.id, {
           planId: subForm.planId,
+          status: subForm.status,
           autoRenew: subForm.autoRenew,
           paymentMethod: subForm.paymentMethod,
         });
@@ -301,6 +305,13 @@ export default function SubscriptionPlans() {
       currency: "UZS",
       maximumFractionDigits: 0,
     }).format(amount);
+  };
+
+  const formatDate = (iso?: string) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (isNaN(d.getTime()) || d.getFullYear() < 2000) return "—";
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   };
 
   if (loading) {
@@ -524,19 +535,26 @@ export default function SubscriptionPlans() {
                 <tbody>
                   {filteredSubscriptions.map((sub) => (
                     <tr key={sub.id} className="border-b hover:bg-muted/30">
-                       <td className="px-4 py-3">
-                         <div>
-                           <p className="font-medium text-foreground font-mono text-xs">
-                             {sub.userId.slice(0, 8)}...
-                           </p>
-                           <p className="text-sm text-muted-foreground">
-                             User ID
-                           </p>
-                         </div>
-                       </td>
-                       <td className="px-4 py-3 text-foreground font-mono text-xs">
-                         {sub.planId.slice(0, 8)}...
-                       </td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="font-medium text-foreground text-sm">
+                            {sub.userFullName || "—"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {sub.userEmail}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="text-sm text-foreground font-medium">
+                            {sub.planName || "—"}
+                          </p>
+                          <p className="text-xs text-muted-foreground capitalize">
+                            {sub.billingPeriod}
+                          </p>
+                        </div>
+                      </td>
                       <td className="px-4 py-3">
                         <span
                           className={cn(
@@ -552,10 +570,10 @@ export default function SubscriptionPlans() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-foreground text-sm">
-                        {sub.startDate}
+                        {formatDate(sub.startDate)}
                       </td>
                       <td className="px-4 py-3 text-foreground text-sm">
-                        {sub.renewalDate || "—"}
+                        {formatDate(sub.renewalDate)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <DropdownMenu>
@@ -860,6 +878,29 @@ export default function SubscriptionPlans() {
             </div>
 
             <div className="space-y-2">
+              <Label>Status</Label>
+              <Select
+                value={subForm.status}
+                onValueChange={(val) =>
+                  setSubForm({ ...subForm, status: val })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="trial">Trial</SelectItem>
+                  <SelectItem value="paused">Paused</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="expired">Expired</SelectItem>
+                  <SelectItem value="pending_payment">Pending Payment</SelectItem>
+                  <SelectItem value="past_due">Past Due</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="payment">Payment Method</Label>
               <Select
                 value={subForm.paymentMethod}
@@ -871,9 +912,9 @@ export default function SubscriptionPlans() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="credit_card">Credit Card</SelectItem>
-                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
-                  <SelectItem value="paypal">PayPal</SelectItem>
+                  <SelectItem value="click">Click.uz</SelectItem>
+                  <SelectItem value="telegram">Telegram</SelectItem>
+                  <SelectItem value="manual">Bank Transfer</SelectItem>
                 </SelectContent>
               </Select>
             </div>

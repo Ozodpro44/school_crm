@@ -413,15 +413,16 @@ func (s *SubscriptionService) AdminUpdateSubscription(ctx context.Context, id st
 	_, err := s.database.GetConn().ExecContext(ctx, `
 		UPDATE subscriptions
 		SET
-			status        = COALESCE($1, status),
-			plan_id       = COALESCE($2, plan_id),
-			auto_renew    = COALESCE($3, auto_renew),
-			end_date      = COALESCE($4, end_date),
-			renewal_date  = COALESCE($5, renewal_date),
-			notes         = COALESCE($6, notes),
-			updated_at    = NOW()
-		WHERE id = $7
-	`, req.Status, req.PlanID, req.AutoRenew, req.EndDate, req.RenewalDate, req.Notes, id)
+			status         = COALESCE($1, status),
+			plan_id        = COALESCE($2, plan_id),
+			auto_renew     = COALESCE($3, auto_renew),
+			end_date       = COALESCE($4, end_date),
+			renewal_date   = COALESCE($5, renewal_date),
+			notes          = COALESCE($6, notes),
+			payment_method = COALESCE($7, payment_method),
+			updated_at     = NOW()
+		WHERE id = $8
+	`, req.Status, req.PlanID, req.AutoRenew, req.EndDate, req.RenewalDate, req.Notes, req.PaymentMethod, id)
 	if err != nil {
 		return nil, fmt.Errorf("admin update subscription: %w", err)
 	}

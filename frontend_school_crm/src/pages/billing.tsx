@@ -73,13 +73,18 @@ export default function BillingPage() {
     setError(null);
 
     try {
-      // Always create the subscription first
-      const sub = await createSubscription({
-        planId: selectedPlan.id,
-        paymentMethod,
-      });
-
-      const subId = (sub as any).id ?? (sub as any).subscription?.id;
+      // Reuse existing subscription ID if already created — prevents duplicate
+      // subscriptions when the user retries with a different payment method.
+      let subId = paymentState?.subscriptionId;
+      if (!subId) {
+        const sub = await createSubscription({
+          planId: selectedPlan.id,
+          paymentMethod,
+        });
+        subId = (sub as any).id ?? (sub as any).subscription?.id;
+        // Persist the ID so any subsequent retry skips re-creation.
+        setPaymentState((prev) => prev ? { ...prev, subscriptionId: subId! } : prev);
+      }
 
       if (paymentMethod === "click") {
         const data = await initiateClickUzPayment(subId);

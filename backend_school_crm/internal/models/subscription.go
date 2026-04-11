@@ -161,12 +161,13 @@ type AdminCreateSubscriptionRequest struct {
 
 // AdminUpdateSubscriptionRequest allows partial update of a subscription.
 type AdminUpdateSubscriptionRequest struct {
-	Status      *string    `json:"status"`
-	PlanID      *string    `json:"planId"`
-	AutoRenew   *bool      `json:"autoRenew"`
-	EndDate     *time.Time `json:"endDate"`
-	RenewalDate *time.Time `json:"renewalDate"`
-	Notes       *string    `json:"notes"`
+	Status        *string    `json:"status"`
+	PlanID        *string    `json:"planId"`
+	AutoRenew     *bool      `json:"autoRenew"`
+	PaymentMethod *string    `json:"paymentMethod"`
+	EndDate       *time.Time `json:"endDate"`
+	RenewalDate   *time.Time `json:"renewalDate"`
+	Notes         *string    `json:"notes"`
 }
 
 // PlatformStats is an aggregate metrics payload for the developer dashboard.

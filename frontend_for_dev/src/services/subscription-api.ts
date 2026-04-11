@@ -88,10 +88,14 @@ export interface UpdateAdminSubscriptionRequest {
   status?: string;
   planId?: string;
   autoRenew?: boolean;
+  paymentMethod?: string;
   endDate?: string;
   renewalDate?: string;
   notes?: string;
 }
+
+// Alias so existing imports of UserSubscription keep working
+export type UserSubscription = AdminSubscriptionView;
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
