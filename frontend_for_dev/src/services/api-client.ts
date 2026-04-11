@@ -495,6 +495,38 @@ export class ApiClient {
     });
   }
 
+  // ==================== NOTIFICATIONS ====================
+
+  async getNotificationPreferences(): Promise<Record<string, unknown>> {
+    return this.request('/dev/notifications/preferences', { method: 'GET' });
+  }
+
+  async updateNotificationPreferences(prefs: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request('/dev/notifications/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(prefs),
+    });
+  }
+
+  async getNotificationChannels(): Promise<Record<string, unknown>> {
+    return this.request('/dev/notifications/channels', { method: 'GET' });
+  }
+
+  async updateNotificationChannels(channels: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request('/dev/notifications/channels', {
+      method: 'PUT',
+      body: JSON.stringify(channels),
+    });
+  }
+
+  async getRecentAlerts(): Promise<Record<string, unknown>[]> {
+    try {
+      return await this.request('/dev/notifications/recent', { method: 'GET' });
+    } catch {
+      return [];
+    }
+  }
+
   // ==================== LOGS ====================
 
   async getLogs(limit: number = 100): Promise<Record<string, unknown>[]> {

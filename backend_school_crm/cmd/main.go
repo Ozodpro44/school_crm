@@ -99,6 +99,7 @@ func main() {
 	expenseService := service.NewExpenseService(database)
 	reportService := service.NewReportService(database)
 	subscriptionService := service.NewSubscriptionService(database)
+	paymentTypeService := service.NewPaymentTypeService(database)
 	developerService := service.NewDeveloperService(database)
 
 	// Initialize Click.uz service (requires environment variables)
@@ -173,6 +174,10 @@ func main() {
 	// Public subscription plans
 	router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
 
+	// Public: active payment types (used by billing UI)
+	publicApi := router.Group("/api")
+	handlers.RegisterPaymentTypePublicRoutes(publicApi, paymentTypeService)
+
 	// Public developer auth routes
 	handlers.RegisterDeveloperAuthRoutes(router, developerService, cfg.JWTSecret)
 
@@ -190,6 +195,7 @@ func main() {
 	handlers.RegisterAdminPlatformStatsRoute(devProtected, subscriptionService)
 	handlers.RegisterAdminPlansRoutes(devProtected, subscriptionService)
 	handlers.RegisterSubscriptionPlanDevRoutes(devProtected, subscriptionService)
+	handlers.RegisterPaymentTypeDevRoutes(devProtected, paymentTypeService)
 
 	// Log ingestion endpoint (LOGS_TOKEN bearer auth)
 	handlers.RegisterLogsIngestRoute(router, database, cfg.LogsToken)

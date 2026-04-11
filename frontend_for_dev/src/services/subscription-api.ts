@@ -227,3 +227,82 @@ export async function getAllUsers(): Promise<
     return [];
   }
 }
+
+// ─── Payment Types ────────────────────────────────────────────────────────────
+
+export interface PaymentType {
+  id: string;
+  code: string;
+  displayName: string;
+  description?: string;
+  isActive: boolean;
+  isSystem: boolean;
+  sortOrder: number;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getAllPaymentTypes(): Promise<PaymentType[]> {
+  try {
+    const res = await apiRequest<PaymentType[]>("/dev/payment-types");
+    return Array.isArray(res) ? res : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createPaymentType(req: {
+  code: string;
+  displayName: string;
+  description?: string;
+  isActive: boolean;
+  sortOrder?: number;
+  config?: Record<string, unknown>;
+}): Promise<PaymentType> {
+  return apiRequest<PaymentType>("/dev/payment-types", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function updatePaymentType(
+  id: string,
+  req: {
+    displayName?: string;
+    description?: string;
+    isActive?: boolean;
+    sortOrder?: number;
+  }
+): Promise<PaymentType> {
+  return apiRequest<PaymentType>(`/dev/payment-types/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(req),
+  });
+}
+
+export async function togglePaymentType(id: string): Promise<PaymentType> {
+  return apiRequest<PaymentType>(`/dev/payment-types/${id}/toggle`, {
+    method: "POST",
+  });
+}
+
+export async function deletePaymentType(id: string): Promise<void> {
+  await apiRequest(`/dev/payment-types/${id}`, { method: "DELETE" });
+}
+
+// ─── Developer Trial Override ─────────────────────────────────────────────────
+
+export async function adminGrantTrial(
+  userId: string,
+  days: number,
+  notes: string
+): Promise<AdminSubscriptionView> {
+  return apiRequest<AdminSubscriptionView>(
+    `/dev/subscriptions/${userId}/grant-trial`,
+    {
+      method: "POST",
+      body: JSON.stringify({ days, notes }),
+    }
+  );
+}

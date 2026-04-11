@@ -6,12 +6,15 @@ import {
   createSubscription,
   initiateClickUzPayment,
   initiateTelegramPayment,
+  getActivePaymentTypes,
+  type ActivePaymentType,
 } from "@/lib/subscription-api";
 import { formatPrice } from "@/lib/subscription-api";
 import type { SubscriptionPlan, SubscriptionResponse } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
 
-type PaymentMethod = "click" | "telegram" | "manual";
+// PaymentMethod is now a dynamic string (the code from payment_types table)
+type PaymentMethod = string;
 
 interface PaymentState {
   step: "method" | "click_pending" | "telegram_pending" | "manual_pending";
@@ -85,41 +88,27 @@ function CheckCircleIcon({ className }: { className?: string }) {
   );
 }
 
-// ─── Payment method definitions ───────────────────────────────────────────────
+// ─── Payment method icon helpers ──────────────────────────────────────────────
 
-const PAYMENT_METHODS: { id: PaymentMethod; label: string; desc: string; icon: React.ReactNode }[] = [
-  {
-    id: "click",
-    label: "Click.uz",
-    desc: "Pay securely via Click.uz online",
-    icon: (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-        <rect x="2" y="5" width="20" height="14" rx="2" />
-        <path strokeLinecap="round" d="M2 10h20" />
-      </svg>
-    ),
-  },
-  {
-    id: "telegram",
-    label: "Telegram",
-    desc: "Pay via Telegram bot",
-    icon: (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.88 13.47l-2.967-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.836.95l-.531-.861z" />
-      </svg>
-    ),
-  },
-  {
-    id: "manual",
-    label: "Bank Transfer",
-    desc: "Manual transfer, contact admin",
-    icon: (
-      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l9-3 9 3M3 6v14m18-14v14M3 20h18M9 10v10M15 10v10" />
-      </svg>
-    ),
-  },
-];
+function iconForCode(code: string): React.ReactNode {
+  if (code === "click") return (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path strokeLinecap="round" d="M2 10h20" />
+    </svg>
+  );
+  if (code === "telegram") return (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.88 13.47l-2.967-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.836.95l-.531-.861z" />
+    </svg>
+  );
+  // default: bank/generic
+  return (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l9-3 9 3M3 6v14m18-14v14M3 20h18M9 10v10M15 10v10" />
+    </svg>
+  );
+}
 
 // ─── Main component ────────────────────────────────────────────────────────────
 
@@ -129,6 +118,7 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [paymentTypes, setPaymentTypes] = useState<ActivePaymentType[]>([]);
 
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("click");
@@ -139,20 +129,24 @@ export default function BillingPage() {
     const user = getCurrentUser();
     setUserRole(user?.role ?? null);
 
-    getCurrentSubscription()
-      .then((sub) => {
-        setCurrentSub(sub);
-        if (sub && sub.status === "active") {
-          router.replace("/");
-          return;
-        }
-        if (sub && sub.status === "trial" && !isTrialEndingSoon(sub)) {
-          router.replace("/");
-          return;
-        }
-      })
-      .catch(() => setCurrentSub(null))
-      .finally(() => setLoading(false));
+    Promise.all([
+      getCurrentSubscription().catch(() => null),
+      getActivePaymentTypes(),
+    ]).then(([sub, types]) => {
+      setPaymentTypes(types);
+      setCurrentSub(sub);
+      if (types.length > 0) {
+        setPaymentMethod(types[0].code);
+      }
+      if (sub && sub.status === "active") {
+        router.replace("/");
+        return;
+      }
+      if (sub && sub.status === "trial" && !isTrialEndingSoon(sub)) {
+        router.replace("/");
+        return;
+      }
+    }).finally(() => setLoading(false));
   }, [router]);
 
   const handleSelectPlan = (plan: SubscriptionPlan) => {
@@ -207,6 +201,7 @@ export default function BillingPage() {
         return;
       }
 
+      // All other payment methods (manual / bank transfer / custom) → show pending
       setPaymentState({ step: "manual_pending", subscriptionId: subId });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Payment failed. Please try again.");
@@ -419,30 +414,32 @@ export default function BillingPage() {
                     Choose payment method
                   </p>
                   <div className="space-y-2">
-                    {PAYMENT_METHODS.map((m) => (
+                    {paymentTypes.map((m) => (
                       <button
-                        key={m.id}
+                        key={m.code}
                         type="button"
-                        onClick={() => setPaymentMethod(m.id)}
+                        onClick={() => setPaymentMethod(m.code)}
                         className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left
-                          ${paymentMethod === m.id
+                          ${paymentMethod === m.code
                             ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
                             : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800/50"
                           }`}
                       >
-                        <div className={`p-2 rounded-lg ${paymentMethod === m.id ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400" : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"}`}>
-                          {m.icon}
+                        <div className={`p-2 rounded-lg ${paymentMethod === m.code ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400" : "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"}`}>
+                          {iconForCode(m.code)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-semibold ${paymentMethod === m.id ? "text-blue-900 dark:text-blue-100" : "text-gray-900 dark:text-white"}`}>
-                            {m.label}
+                          <p className={`text-sm font-semibold ${paymentMethod === m.code ? "text-blue-900 dark:text-blue-100" : "text-gray-900 dark:text-white"}`}>
+                            {m.displayName}
                           </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                            {m.desc}
-                          </p>
+                          {m.description && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                              {m.description}
+                            </p>
+                          )}
                         </div>
-                        <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${paymentMethod === m.id ? "border-blue-500" : "border-gray-300 dark:border-gray-600"}`}>
-                          {paymentMethod === m.id && (
+                        <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${paymentMethod === m.code ? "border-blue-500" : "border-gray-300 dark:border-gray-600"}`}>
+                          {paymentMethod === m.code && (
                             <div className="w-2 h-2 rounded-full bg-blue-500" />
                           )}
                         </div>

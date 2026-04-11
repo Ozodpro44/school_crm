@@ -79,22 +79,30 @@ func (s *SubscriptionService) GetUserSubscription(ctx context.Context, userID st
 	return &sub, nil
 }
 
-// CreateSubscription creates a new subscription for a user
+// CreateSubscription creates a new subscription for a user.
+// Callers should populate EndDate for trial subscriptions; for paid subscriptions
+// end_date is updated when payment completes.
 func (s *SubscriptionService) CreateSubscription(ctx context.Context, sub *models.Subscription) error {
-	query := `
-		INSERT INTO subscriptions (user_id, plan_id, branch_id, status, start_date, renewal_date, auto_renew, payment_method, notes)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING id, renewal_date, created_at, updated_at
-	`
-
-	renewalDate := sub.StartDate.AddDate(0, 1, 0) // Default to 1 month from start
+	renewalDate := sub.StartDate.AddDate(0, 1, 0) // default 1 month
 	if sub.RenewalDate != nil {
 		renewalDate = *sub.RenewalDate
 	}
+	sub.RenewalDate = &renewalDate
 
-	err := s.database.GetConn().QueryRowContext(ctx, query,
-		sub.UserID, sub.PlanID, sub.BranchID, sub.Status, sub.StartDate, renewalDate, sub.AutoRenew, sub.PaymentMethod, sub.Notes,
-	).Scan(&sub.ID, &sub.RenewalDate, &sub.CreatedAt, &sub.UpdatedAt)
+	// end_date: use explicit value if set, otherwise mirror renewal_date for trials
+	endDate := sub.EndDate
+	if endDate == nil {
+		endDate = &renewalDate
+	}
+
+	err := s.database.GetConn().QueryRowContext(ctx, `
+		INSERT INTO subscriptions (user_id, plan_id, branch_id, status, start_date, end_date, renewal_date, auto_renew, payment_method, notes)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		RETURNING id, end_date, renewal_date, created_at, updated_at
+	`,
+		sub.UserID, sub.PlanID, sub.BranchID, sub.Status, sub.StartDate,
+		endDate, renewalDate, sub.AutoRenew, sub.PaymentMethod, sub.Notes,
+	).Scan(&sub.ID, &sub.EndDate, &sub.RenewalDate, &sub.CreatedAt, &sub.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("failed to create subscription: %w", err)
@@ -609,6 +617,62 @@ func (s *SubscriptionService) GetAllSubscriptionPlans(ctx context.Context) ([]mo
 		plans = append(plans, p)
 	}
 	return plans, rows.Err()
+}
+
+// HasUsedTrial returns true if the user already has or had a free trial.
+func (s *SubscriptionService) HasUsedTrial(ctx context.Context, userID string) (bool, error) {
+	var count int
+	err := s.database.GetConn().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM subscriptions
+		WHERE user_id = $1 AND payment_method = 'free_trial'
+	`, userID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check trial used: %w", err)
+	}
+	return count > 0, nil
+}
+
+// AdminGrantTrial creates a new trial subscription for the given user regardless
+// of whether they have used a trial before (developer override).
+// It expires any existing active/trial subscription first to avoid conflicts.
+func (s *SubscriptionService) AdminGrantTrial(ctx context.Context, userID string, days int, notes string) (*models.AdminSubscriptionView, error) {
+	trialPlan, err := s.GetOrCreateFreeTrial(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("admin grant trial: get plan: %w", err)
+	}
+
+	// Expire any existing active/trial subscriptions for this user
+	_, err = s.database.GetConn().ExecContext(ctx, `
+		UPDATE subscriptions
+		SET status = 'expired', updated_at = NOW()
+		WHERE user_id = $1 AND status IN ('active', 'trial', 'paused', 'pending_payment')
+	`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("admin grant trial: expire old: %w", err)
+	}
+
+	now := time.Now().UTC()
+	if days <= 0 {
+		days = 14
+	}
+	endDate := now.AddDate(0, 0, days)
+	pm := "free_trial"
+
+	var id string
+	err = s.database.GetConn().QueryRowContext(ctx, `
+		INSERT INTO subscriptions (user_id, plan_id, status, start_date, end_date, renewal_date, auto_renew, payment_method, notes)
+		VALUES ($1, $2, 'trial', $3, $4, $4, false, $5, $6)
+		RETURNING id
+	`, userID, trialPlan.ID, now, endDate, pm, notes).Scan(&id)
+	if err != nil {
+		return nil, fmt.Errorf("admin grant trial: insert: %w", err)
+	}
+
+	// Update trial_used_at so one-time check reflects developer override
+	_, _ = s.database.GetConn().ExecContext(ctx,
+		`UPDATE users SET trial_used_at = NOW() WHERE id = $1`, userID)
+
+	return s.AdminGetSubscription(ctx, id)
 }
 
 // ─────────────────────────────────────────────────────────────

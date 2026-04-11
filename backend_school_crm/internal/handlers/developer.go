@@ -738,6 +738,12 @@ func devDeleteUser(userService *service.UserService) gin.HandlerFunc {
 func RegisterDevSettingsRoutes(router *gin.RouterGroup, database *db.Database) {
 	router.GET("/dev/settings", GetDevSettings(database))
 	router.PUT("/dev/settings", UpdateDevSettings(database))
+	// Notification-specific sub-routes (convenience wrappers around /dev/settings JSONB)
+	router.GET("/dev/notifications/preferences", GetNotificationPreferences(database))
+	router.PUT("/dev/notifications/preferences", UpdateNotificationPreferences(database))
+	router.GET("/dev/notifications/channels", GetNotificationChannels(database))
+	router.PUT("/dev/notifications/channels", UpdateNotificationChannels(database))
+	router.GET("/dev/notifications/recent", GetRecentAlerts(database))
 }
 
 // GetDevSettings returns the authenticated developer's stored settings.
@@ -830,5 +836,160 @@ func UpdateDevSettings(database *db.Database) gin.HandlerFunc {
 
 		log.Printf("[DEV SETTINGS] Saved settings for developer %s", devID)
 		c.JSON(http.StatusOK, current)
+	}
+}
+
+// ==================== DEV NOTIFICATIONS ====================
+
+// readDevSettings reads the full JSONB settings blob for the authenticated developer.
+func readDevSettings(c *gin.Context, database *db.Database) (string, map[string]interface{}, bool) {
+	developerID, _ := c.Get("developer_id")
+	devID, ok := developerID.(string)
+	if !ok || devID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "developer not authenticated"})
+		return "", nil, false
+	}
+	var raw []byte
+	err := database.GetConn().QueryRowContext(
+		c.Request.Context(),
+		"SELECT COALESCE(settings, '{}') FROM developers WHERE id = $1",
+		devID,
+	).Scan(&raw)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read settings"})
+		return "", nil, false
+	}
+	settings := map[string]interface{}{}
+	_ = json.Unmarshal(raw, &settings)
+	return devID, settings, true
+}
+
+// saveDevSettings persists the full settings blob for a developer.
+func saveDevSettings(c *gin.Context, database *db.Database, devID string, settings map[string]interface{}) bool {
+	merged, _ := json.Marshal(settings)
+	_, err := database.GetConn().ExecContext(
+		c.Request.Context(),
+		"UPDATE developers SET settings = $1, updated_at = $2 WHERE id = $3",
+		string(merged), time.Now(), devID,
+	)
+	if err != nil {
+		log.Printf("[DEV NOTIFICATIONS] DB error saving settings: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save settings"})
+		return false
+	}
+	return true
+}
+
+// GetNotificationPreferences returns the per-event notification toggles.
+func GetNotificationPreferences(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		_, settings, ok := readDevSettings(c, database)
+		if !ok {
+			return
+		}
+		prefs, _ := settings["notification_preferences"].(map[string]interface{})
+		if prefs == nil {
+			prefs = map[string]interface{}{}
+		}
+		c.JSON(http.StatusOK, prefs)
+	}
+}
+
+// UpdateNotificationPreferences replaces the per-event notification toggles.
+func UpdateNotificationPreferences(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		devID, settings, ok := readDevSettings(c, database)
+		if !ok {
+			return
+		}
+		var incoming map[string]interface{}
+		if err := c.ShouldBindJSON(&incoming); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+			return
+		}
+		settings["notification_preferences"] = incoming
+		if !saveDevSettings(c, database, devID, settings) {
+			return
+		}
+		c.JSON(http.StatusOK, incoming)
+	}
+}
+
+// GetNotificationChannels returns the channel integration config (email, telegram, slack).
+func GetNotificationChannels(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		_, settings, ok := readDevSettings(c, database)
+		if !ok {
+			return
+		}
+		channels, _ := settings["notification_channels"].(map[string]interface{})
+		if channels == nil {
+			channels = map[string]interface{}{}
+		}
+		c.JSON(http.StatusOK, channels)
+	}
+}
+
+// UpdateNotificationChannels replaces the channel integration config.
+func UpdateNotificationChannels(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		devID, settings, ok := readDevSettings(c, database)
+		if !ok {
+			return
+		}
+		var incoming map[string]interface{}
+		if err := c.ShouldBindJSON(&incoming); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+			return
+		}
+		settings["notification_channels"] = incoming
+		if !saveDevSettings(c, database, devID, settings) {
+			return
+		}
+		c.JSON(http.StatusOK, incoming)
+	}
+}
+
+// GetRecentAlerts returns the 20 most recent error/warning log entries from the
+// logs table to populate the "Recent Alerts" panel.
+func GetRecentAlerts(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rows, err := database.GetConn().QueryContext(c.Request.Context(), `
+			SELECT id, level, module, message, metadata, created_at
+			FROM logs
+			WHERE level IN ('error', 'warn', 'warning', 'critical', 'info')
+			ORDER BY created_at DESC
+			LIMIT 20
+		`)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		type Alert struct {
+			ID        string      `json:"id"`
+			Level     string      `json:"level"`
+			Module    string      `json:"module"`
+			Message   string      `json:"message"`
+			Metadata  interface{} `json:"metadata"`
+			CreatedAt time.Time   `json:"createdAt"`
+		}
+
+		alerts := make([]Alert, 0)
+		for rows.Next() {
+			var a Alert
+			var meta []byte
+			if err := rows.Scan(&a.ID, &a.Level, &a.Module, &a.Message, &meta, &a.CreatedAt); err != nil {
+				continue
+			}
+			if meta != nil {
+				var m interface{}
+				_ = json.Unmarshal(meta, &m)
+				a.Metadata = m
+			}
+			alerts = append(alerts, a)
+		}
+		c.JSON(http.StatusOK, alerts)
 	}
 }

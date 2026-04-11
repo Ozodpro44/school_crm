@@ -75,6 +75,34 @@ export async function getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
   return makeRequest<SubscriptionPlan[]>("/subscriptions/plans");
 }
 
+// ─── Payment types ──────────────────────────────────────────────────────────
+
+export interface ActivePaymentType {
+  id: string;
+  code: string;
+  displayName: string;
+  description?: string;
+  sortOrder: number;
+}
+
+/**
+ * Get active payment types from the backend (excludes free_trial).
+ * Falls back to the three built-in types if the endpoint is unavailable.
+ */
+export async function getActivePaymentTypes(): Promise<ActivePaymentType[]> {
+  try {
+    const res = await makePublicRequest<ActivePaymentType[]>("/payment-types");
+    if (Array.isArray(res) && res.length > 0) return res;
+  } catch {
+    // fallthrough to defaults
+  }
+  return [
+    { id: "click",    code: "click",    displayName: "Click.uz",      description: "Pay via Click.uz",          sortOrder: 1 },
+    { id: "telegram", code: "telegram", displayName: "Telegram",      description: "Pay via Telegram bot",      sortOrder: 2 },
+    { id: "manual",   code: "manual",   displayName: "Bank Transfer",  description: "Manual bank transfer",      sortOrder: 3 },
+  ];
+}
+
 /**
  * Get a specific subscription plan
  */

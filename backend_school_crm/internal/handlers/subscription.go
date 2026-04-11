@@ -394,6 +394,36 @@ func RegisterSubscriptionPlanDevRoutes(router *gin.RouterGroup, subscriptionServ
 	router.DELETE("/dev/subscription-plans/:id", DeleteSubscriptionPlanHandler(subscriptionService))
 }
 
+// AdminGrantTrialHandler grants a new free trial to any user (developer override).
+// POST /dev/subscriptions/:userId/grant-trial
+// Body: { "days": 14, "notes": "reason" }
+func AdminGrantTrialHandler(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.Param("userId")
+		if userID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "userId required"})
+			return
+		}
+		var req struct {
+			Days  int    `json:"days"`
+			Notes string `json:"notes"`
+		}
+		_ = c.ShouldBindJSON(&req)
+		if req.Days <= 0 {
+			req.Days = 14
+		}
+		if req.Notes == "" {
+			req.Notes = "Developer-granted trial override"
+		}
+		sub, err := subscriptionService.AdminGrantTrial(c.Request.Context(), userID, req.Days, req.Notes)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, sub)
+	}
+}
+
 // RegisterSubscriptionRoutes registers public subscription routes on a PUBLIC router group.
 func RegisterSubscriptionRoutes(router *gin.RouterGroup, subscriptionService *service.SubscriptionService) {
 	router.GET("/subscriptions/plans", GetSubscriptionPlans(subscriptionService))

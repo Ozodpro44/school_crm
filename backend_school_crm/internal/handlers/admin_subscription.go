@@ -19,6 +19,10 @@ func RegisterAdminSubscriptionRoutes(router *gin.RouterGroup, subSvc *service.Su
 	grp.GET("/:id", adminGetSubscription(subSvc))
 	grp.PUT("/:id", adminUpdateSubscription(subSvc))
 	grp.DELETE("/:id", adminDeleteSubscription(subSvc))
+
+	// Developer override: grant a free trial to any user (bypasses one-time rule)
+	// POST /dev/subscriptions/:userId/grant-trial
+	router.POST("/dev/subscriptions/:userId/grant-trial", AdminGrantTrialHandler(subSvc))
 }
 
 // RegisterAdminPlatformStatsRoute mounts GET /dev/stats.

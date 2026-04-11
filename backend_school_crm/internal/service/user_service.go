@@ -200,34 +200,40 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 		branchID = &branch.ID
 	}
 
-	// Create free trial subscription for new user
-	log.Printf("[UserService.Register] Creating free trial subscription for user: %s", req.Email)
-	trialPlan, err := s.subscriptionService.GetOrCreateFreeTrial(ctx)
-	if err != nil {
-		log.Printf("[UserService.Register] Warning: Failed to create free trial subscription: %v", err)
-		// Don't fail the registration if subscription creation fails
-	} else {
-		now := utils.GetLocalTime()
-		endDate := now.AddDate(0, 0, 14) // 14 days from now
-		paymentMethod := "free_trial"
-		notes := "Automatic free trial subscription"
-		subscription := &models.Subscription{
-			UserID:        user.ID,
-			PlanID:        trialPlan.ID,
-			BranchID:      branchID,
-			Status:        "active",
-			StartDate:     now,
-			RenewalDate:   &endDate,
-			AutoRenew:     false,
-			PaymentMethod: &paymentMethod,
-			Notes:         &notes,
-		}
-
-		err = s.subscriptionService.CreateSubscription(ctx, subscription)
-		if err != nil {
-			log.Printf("[UserService.Register] Warning: Failed to create subscription for user %s: %v", user.ID, err)
+	// Only grant the free trial to admin (school-owner) accounts, and only
+	// once per account.  The trial_used_at column tracks whether a trial has
+	// already been granted to this user.
+	if user.Role == models.RoleAdmin {
+		log.Printf("[UserService.Register] Creating free trial subscription for admin user: %s", req.Email)
+		trialPlan, trialErr := s.subscriptionService.GetOrCreateFreeTrial(ctx)
+		if trialErr != nil {
+			log.Printf("[UserService.Register] Warning: Failed to get free trial plan: %v", trialErr)
 		} else {
-			log.Printf("[UserService.Register] Free trial subscription created for user: %s (Plan: %s)", user.ID, trialPlan.Name)
+			now := utils.GetLocalTime()
+			endDate := now.AddDate(0, 0, 14) // 14-day trial
+			paymentMethod := "free_trial"
+			notes := "Automatic 14-day free trial"
+			subscription := &models.Subscription{
+				UserID:        user.ID,
+				PlanID:        trialPlan.ID,
+				BranchID:      branchID,
+				Status:        "trial", // explicit trial status (not "active")
+				StartDate:     now,
+				EndDate:       &endDate, // end_date drives expiry checks
+				RenewalDate:   &endDate,
+				AutoRenew:     false,
+				PaymentMethod: &paymentMethod,
+				Notes:         &notes,
+			}
+
+			if subErr := s.subscriptionService.CreateSubscription(ctx, subscription); subErr != nil {
+				log.Printf("[UserService.Register] Warning: Failed to create trial subscription for user %s: %v", user.ID, subErr)
+			} else {
+				// Mark that the trial has been used for this account
+				_, _ = s.db.GetConn().ExecContext(ctx,
+					`UPDATE users SET trial_used_at = NOW() WHERE id = $1`, user.ID)
+				log.Printf("[UserService.Register] Free trial (14 days) created for user: %s", user.ID)
+			}
 		}
 	}
 
