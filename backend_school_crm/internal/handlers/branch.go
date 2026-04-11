@@ -13,7 +13,7 @@ func RegisterBranchRoutes(router *gin.RouterGroup, branchService *service.Branch
 	branches := router.Group("/branches")
 	branches.POST("", createBranch(branchService))
 	branches.GET("/:id", getBranch(branchService))
-	branches.GET("", listBranches(branchService))
+	branches.GET("", listBranches(branchService, userService))
 	branches.PUT("/:id", updateBranch(branchService))
 	branches.DELETE("/:id", deleteBranch(branchService))
 	// Switch month - Admin only
@@ -50,12 +50,42 @@ func getBranch(branchService *service.BranchService) gin.HandlerFunc {
 	}
 }
 
-func listBranches(branchService *service.BranchService) gin.HandlerFunc {
+func listBranches(branchService *service.BranchService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		branches, err := branchService.GetAll(c.Request.Context())
+		userIDRaw, exists := c.Get("user_id")
+		if !exists {
+			// Developer/admin context — return all branches unfiltered
+			branches, err := branchService.GetAll(c.Request.Context())
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			if branches == nil {
+				branches = []models.Branch{}
+			}
+			c.JSON(http.StatusOK, branches)
+			return
+		}
+
+		uid := userIDRaw.(string)
+		user, err := userService.GetByID(c.Request.Context(), uid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve user"})
+			return
+		}
+
+		var branches []models.Branch
+		if user.Role == models.RoleAdmin {
+			branches, err = branchService.GetByAdminID(c.Request.Context(), uid)
+		} else {
+			branches, err = userService.GetUserBranches(c.Request.Context(), uid)
+		}
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
+		}
+		if branches == nil {
+			branches = []models.Branch{}
 		}
 		c.JSON(http.StatusOK, branches)
 	}
@@ -64,6 +94,20 @@ func listBranches(branchService *service.BranchService) gin.HandlerFunc {
 func updateBranch(branchService *service.BranchService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
+
+		// Enforce ownership only for school users (not developer routes)
+		if userIDRaw, exists := c.Get("user_id"); exists {
+			uid := userIDRaw.(string)
+			branch, err := branchService.GetByID(c.Request.Context(), id)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+				return
+			}
+			if branch.AdminID == nil || *branch.AdminID != uid {
+				c.JSON(http.StatusForbidden, gin.H{"error": "you do not have permission to update this branch"})
+				return
+			}
+		}
 
 		var updates map[string]interface{}
 		if err := c.ShouldBindJSON(&updates); err != nil {
@@ -84,6 +128,20 @@ func updateBranch(branchService *service.BranchService) gin.HandlerFunc {
 func deleteBranch(branchService *service.BranchService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
+
+		// Enforce ownership only for school users (not developer routes)
+		if userIDRaw, exists := c.Get("user_id"); exists {
+			uid := userIDRaw.(string)
+			branch, err := branchService.GetByID(c.Request.Context(), id)
+			if err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+				return
+			}
+			if branch.AdminID == nil || *branch.AdminID != uid {
+				c.JSON(http.StatusForbidden, gin.H{"error": "you do not have permission to delete this branch"})
+				return
+			}
+		}
 
 		if err := branchService.Delete(c.Request.Context(), id); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

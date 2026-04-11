@@ -696,9 +696,9 @@ func RegisterDevCRMRoutes(router *gin.RouterGroup, userService *service.UserServ
 	users.PUT("/:id", devUpdateUser(userService))
 	users.DELETE("/:id", devDeleteUser(userService))
 
-	// Branches (reuse existing handlers — none require user context)
+	// Branches (reuse existing handlers — ownership checks skipped for dev context)
 	branches := router.Group("/dev/crm/branches")
-	branches.GET("", listBranches(branchService))
+	branches.GET("", listBranches(branchService, userService))
 	branches.GET("/:id", getBranch(branchService))
 	branches.POST("", createBranch(branchService))
 	branches.PUT("/:id", updateBranch(branchService))

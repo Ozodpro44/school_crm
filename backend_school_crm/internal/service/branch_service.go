@@ -130,6 +130,36 @@ func (s *BranchService) GetAll(ctx context.Context) ([]models.Branch, error) {
 	return branches, rows.Err()
 }
 
+func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]models.Branch, error) {
+	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE admin_id = $1 ORDER BY name`
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, adminID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var branches []models.Branch
+	for rows.Next() {
+		var branch models.Branch
+		if err := rows.Scan(&branch.ID, &branch.Name, &branch.Address, &branch.Phone, &branch.MonthlyPayment, &branch.Currency, &branch.AdminID, &branch.CurrentFinancialMonthID, &branch.CreatedAt, &branch.UpdatedAt); err != nil {
+			return nil, err
+		}
+
+		if branch.CurrentFinancialMonthID != nil {
+			financialMonthService := NewFinancialMonthService(s.db)
+			fm, err := financialMonthService.GetByID(ctx, *branch.CurrentFinancialMonthID)
+			if err == nil {
+				branch.CurrentFinancialMonth = fm
+			}
+		}
+
+		branches = append(branches, branch)
+	}
+
+	return branches, rows.Err()
+}
+
 func (s *BranchService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Branch, error) {
 	updates = utils.ConvertKeysToSnakeCase(updates)
 	

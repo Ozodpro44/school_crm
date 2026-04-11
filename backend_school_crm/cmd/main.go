@@ -243,12 +243,17 @@ func main() {
 
 	// Settings
 	handlers.RegisterSettingsRoutes(protected, branchService, userService)
-	// handlers.RegisterClickUzRoutes(protected, clickUzService, subscriptionService)
-	// handlers.RegisterTelegramPaymentRoutes(protected, telegramPaymentService, subscriptionService)
 
-	// Payment webhooks (public, no auth required)
+	// Payment initiation routes — placed on authOnly so expired/trial users can still pay
+	handlers.RegisterClickUzRoutes(authOnly, clickUzService, subscriptionService)
+	handlers.RegisterTelegramPaymentRoutes(authOnly, telegramPaymentService, subscriptionService)
+
+	// Payment webhooks (public, no auth required — called by external payment providers)
 	handlers.RegisterClickUzWebhooks(router.Group("/api"), clickUzService)
 	handlers.RegisterTelegramPaymentWebhooks(router.Group("/api"), telegramPaymentService)
+
+	// Developer-only test payment endpoint (behind DevAuth)
+	handlers.RegisterClickUzDevRoutes(devProtected, clickUzService)
 
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
