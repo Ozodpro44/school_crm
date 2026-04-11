@@ -362,16 +362,13 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 		students = append(students, sItem)
 	}
 
-	// Fetch distinct classes for the filter (only id and name)
+	// Fetch all classes for this branch (not just ones with students).
+	// This ensures empty/new classes appear in the add-student modal and filter.
 	classQuery := `
-		SELECT DISTINCT c.id, c.name
-		FROM classes c
-		WHERE c.id IS NOT NULL
-		AND EXISTS (
-			SELECT 1 FROM students s
-			WHERE s.class_id = c.id AND s.branch_id = $1
-		)
-		ORDER BY c.name ASC
+		SELECT id, name
+		FROM classes
+		WHERE branch_id = $1
+		ORDER BY name ASC
 	`
 	classRows, err := s.db.GetConn().QueryContext(ctx, classQuery, branchID)
 	if err != nil {

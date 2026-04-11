@@ -18,22 +18,19 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    const savedToken = localStorage.getItem("auth_token");
-    const savedUser = localStorage.getItem("user");
-    if (savedToken && savedUser) {
-      try {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-      } catch {
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("user");
-      }
+  // Lazy initialisers read localStorage synchronously on the first render so
+  // ProtectedRoute never sees a false `isAuthenticated` and redirects away.
+  const [token, setToken] = useState<string | null>(
+    () => localStorage.getItem("auth_token")
+  );
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    try {
+      const saved = localStorage.getItem("user");
+      return saved ? (JSON.parse(saved) as AuthUser) : null;
+    } catch {
+      return null;
     }
-  }, []);
+  });
 
   const login = (token: string, user: AuthUser) => {
     setToken(token);
