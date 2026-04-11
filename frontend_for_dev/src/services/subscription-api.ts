@@ -69,7 +69,7 @@ export interface CreateSubscriptionPlanRequest {
   status?: "active" | "inactive";
 }
 
-export interface UpdateSubscriptionPlanRequest extends CreateSubscriptionPlanRequest {}
+export type UpdateSubscriptionPlanRequest = CreateSubscriptionPlanRequest;
 
 /** Matches backend AdminCreateSubscriptionRequest */
 export interface CreateAdminSubscriptionRequest {

@@ -44,7 +44,7 @@ async function apiRequest<T>(
       );
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as T;
     return {
       data,
       status: response.status,
@@ -53,7 +53,7 @@ async function apiRequest<T>(
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error(`API request failed: ${url}`, errorMessage);
     return {
-      data: null as any,
+      data: null as unknown as T,
       status: 0,
       error: errorMessage,
     };

@@ -9,7 +9,7 @@ export interface RailwayLog {
   level: 'info' | 'error' | 'warn' | 'debug';
   message: string;
   service?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface RailwayDeployment {
@@ -65,28 +65,23 @@ export class RailwayLogsService {
   }
 
   /**
-   * Stream logs from Railway (websocket)
+   * Stream logs from Railway (polling-based)
+   * Returns a cleanup function to stop the interval.
    */
-  async streamLogs(callback: (log: RailwayLog) => void): Promise<void> {
+  streamLogs(callback: (log: RailwayLog) => void): () => void {
     if (!this.apiKey || !this.projectId) {
       console.warn('Cannot stream logs without Railway credentials');
-      return;
+      return () => {};
     }
 
-    try {
-      // Poll for logs every 2 seconds
-      const interval = setInterval(async () => {
-        const logs = await this.getLogs(10);
-        if (logs.length > 0) {
-          logs.forEach(callback);
-        }
-      }, 2000);
+    // Poll for logs every 2 seconds
+    const interval = setInterval(() => {
+      this.getLogs(10)
+        .then((logs) => { if (logs.length > 0) logs.forEach(callback); })
+        .catch((error) => { console.error('Stream logs error:', error); });
+    }, 2000);
 
-      // Return cleanup function
-      return () => clearInterval(interval);
-    } catch (error) {
-      console.error('Stream logs error:', error);
-    }
+    return () => clearInterval(interval);
   }
 
   /**
@@ -189,12 +184,12 @@ export class RailwayLogsService {
   /**
    * Private: Parse Railway API response
    */
-  private parseLogs(logsData: any): RailwayLog[] {
+  private parseLogs(logsData: { edges: Array<{ node: { timestamp: string; level: string | number; message: string } }> } | null | undefined): RailwayLog[] {
     if (!logsData?.edges) {
       return [];
     }
 
-    return logsData.edges.map((edge: any) => {
+    return logsData.edges.map((edge) => {
       const node = edge.node;
       return {
         timestamp: node.timestamp,
@@ -242,7 +237,7 @@ export class RailwayLogsService {
       const timestamp = new Date(now.getTime() - i * 10000);
       logs.push({
         timestamp: timestamp.toISOString(),
-        level: ['error', 'warn', 'info', 'debug'][Math.floor(Math.random() * 4)] as any,
+        level: (['error', 'warn', 'info', 'debug'] as const)[Math.floor(Math.random() * 4)],
         message: messages[i],
         service: 'backend',
       });
