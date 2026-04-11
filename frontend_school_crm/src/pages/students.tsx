@@ -48,6 +48,7 @@ import {
   deleteStudent as apiDeleteStudent,
   createClass as apiCreateClass,
   getBranch,
+  listClasses,
 } from "@/lib/api";
 import { Branch } from "@/types";
 import type { Student as ApiStudent } from "@/lib/api";
@@ -217,19 +218,21 @@ export default function StudentsPage() {
         filters.month = currentMonth;
         filters.year = currentYear.toString();
 
-        const consolidated = await apiGetStudentsConsolidatedData(selectedBranchId, page, limit, filters);
+        const [consolidated, fetchedClasses] = await Promise.all([
+          apiGetStudentsConsolidatedData(selectedBranchId, page, limit, filters),
+          listClasses(selectedBranchId),
+        ]);
         if (loadId !== currentLoadIdRef.current) {
           return;
         }
         const studentsList = consolidated?.items || consolidated?.data || [];
-        const classesList = consolidated?.classes || [];
         const totalVal = consolidated?.total || 0;
-        const totalPagesVal = consolidated?.totalPages || consolidated?.total_pages || 0;
 
         setStudents(studentsList);
         setTotal(totalVal);
         setTotalPages(Math.ceil(totalVal / limit));
-        setClasses(classesList);
+        // Use the dedicated classes fetch — always returns all classes for the branch.
+        setClasses(fetchedClasses.length > 0 ? fetchedClasses : (consolidated?.classes || []));
         setBranchData(branch);
       }
     } catch (error) {
