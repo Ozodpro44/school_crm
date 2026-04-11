@@ -57,7 +57,7 @@ func (s *SubscriptionService) GetUserSubscription(ctx context.Context, userID st
 		       s.auto_renew, s.payment_method, s.stripe_subscription_id, s.notes, s.cancelled_at, s.cancelled_by,
 		       s.created_at, s.updated_at
 		FROM subscriptions s
-		WHERE s.user_id = $1 AND s.status IN ('active', 'paused', 'pending_payment')
+		WHERE s.user_id = $1 AND s.status IN ('active', 'trial', 'paused', 'pending_payment')
 		ORDER BY s.created_at DESC
 		LIMIT 1
 	`
@@ -409,7 +409,42 @@ func (s *SubscriptionService) AdminCreateSubscription(ctx context.Context, req *
 }
 
 // AdminUpdateSubscription updates mutable fields of any subscription.
+// When status is being set to "active" and the caller did not provide a new
+// end_date, we auto-recalculate end_date from NOW + plan billing period if
+// the current end_date is in the past or NULL (i.e., the subscription was
+// previously expired/cancelled and is now being renewed by a developer).
 func (s *SubscriptionService) AdminUpdateSubscription(ctx context.Context, id string, req *models.AdminUpdateSubscriptionRequest) (*models.AdminSubscriptionView, error) {
+	// If activating without an explicit end_date, check if we need to fix dates.
+	if req.Status != nil && *req.Status == "active" && req.EndDate == nil {
+		// Fetch current end_date and plan billing_period to compute a new end_date.
+		var currentEndDate *time.Time
+		var billingPeriod string
+		err := s.database.GetConn().QueryRowContext(ctx, `
+			SELECT sub.end_date, COALESCE(sp.billing_period, 'monthly')
+			FROM subscriptions sub
+			LEFT JOIN subscription_plans sp ON sub.plan_id = sp.id
+			WHERE sub.id = $1
+		`, id).Scan(&currentEndDate, &billingPeriod)
+		if err != nil && err != sql.ErrNoRows {
+			return nil, fmt.Errorf("admin update subscription: fetch dates: %w", err)
+		}
+
+		// Recalculate if end_date is missing or already in the past.
+		if currentEndDate == nil || currentEndDate.Before(time.Now()) {
+			now := time.Now().UTC()
+			var newEnd time.Time
+			if billingPeriod == "yearly" {
+				newEnd = now.AddDate(1, 0, 0)
+			} else {
+				newEnd = now.AddDate(0, 1, 0)
+			}
+			req.EndDate = &newEnd
+			if req.RenewalDate == nil {
+				req.RenewalDate = &newEnd
+			}
+		}
+	}
+
 	_, err := s.database.GetConn().ExecContext(ctx, `
 		UPDATE subscriptions
 		SET

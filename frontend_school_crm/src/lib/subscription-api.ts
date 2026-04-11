@@ -305,6 +305,25 @@ export function isExpiringsoon(subscription: Subscription | null): boolean {
 }
 
 /**
+ * Get days until subscription endDate (negative if already past, Infinity if no end date)
+ */
+export function getDaysUntilExpiry(subscription: Subscription | null): number {
+  if (!subscription || !subscription.endDate) return Infinity;
+  const end = new Date(subscription.endDate).getTime();
+  const now = Date.now();
+  return Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Returns true if the subscription is a trial ending within 7 days (or already ended)
+ */
+export function isTrialEndingSoon(subscription: Subscription | null): boolean {
+  if (!subscription || subscription.status !== "trial") return false;
+  if (!subscription.endDate) return false;
+  return getDaysUntilExpiry(subscription) <= 7;
+}
+
+/**
  * Get days until subscription renewal
  */
 export function getDaysUntilRenewal(subscription: Subscription | null): number {

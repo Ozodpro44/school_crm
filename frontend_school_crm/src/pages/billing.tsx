@@ -9,6 +9,7 @@ import {
 } from "@/lib/subscription-api";
 import { formatPrice } from "@/lib/subscription-api";
 import type { SubscriptionPlan, SubscriptionResponse } from "@/types";
+import { getCurrentUser } from "@/lib/auth";
 
 type PaymentMethod = "click" | "telegram" | "manual";
 
@@ -28,11 +29,27 @@ interface PaymentState {
   };
 }
 
+// Returns the number of days until subscription endDate (negative if already past)
+function getDaysUntilExpiry(sub: SubscriptionResponse): number {
+  if (!sub.endDate) return Infinity;
+  const end = new Date(sub.endDate).getTime();
+  const now = Date.now();
+  return Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+}
+
+// Returns true if the subscription is a trial that ends within 7 days (or already ended)
+function isTrialEndingSoon(sub: SubscriptionResponse): boolean {
+  if (sub.status !== "trial") return false;
+  if (!sub.endDate) return false;
+  return getDaysUntilExpiry(sub) <= 7;
+}
+
 export default function BillingPage() {
   const router = useRouter();
   const [currentSub, setCurrentSub] = useState<SubscriptionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   // Payment modal state
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
@@ -41,11 +58,20 @@ export default function BillingPage() {
   const [paying, setPaying] = useState(false);
 
   useEffect(() => {
+    const user = getCurrentUser();
+    setUserRole(user?.role ?? null);
+
     getCurrentSubscription()
       .then((sub) => {
         setCurrentSub(sub);
-        if (sub && (sub.status === "active" || sub.status === "trial")) {
+        // Redirect active users (or trial not ending soon) to dashboard
+        if (sub && sub.status === "active") {
           router.replace("/");
+          return;
+        }
+        if (sub && sub.status === "trial" && !isTrialEndingSoon(sub)) {
+          router.replace("/");
+          return;
         }
       })
       .catch(() => setCurrentSub(null))
@@ -130,36 +156,109 @@ export default function BillingPage() {
     );
   }
 
-  const isBlocked =
-    currentSub && !["active", "trial"].includes(currentSub.status ?? "");
-  const statusMessage: Record<string, string> = {
-    expired: "Your subscription has expired.",
-    cancelled: "Your subscription has been cancelled.",
-    paused: "Your subscription is currently paused.",
-    pending_payment: "Your subscription is pending payment.",
-    past_due: "Your subscription payment is past due.",
+  const isOwner = userRole === "admin";
+
+  // Determine the status banner message for admin users
+  const getAdminBanner = (): { text: string; subtext: string; color: "red" | "yellow" | "blue" } | null => {
+    if (!currentSub) {
+      return { text: "Welcome! Choose a plan to get started.", subtext: "", color: "blue" };
+    }
+    const status = currentSub.status;
+    if (status === "trial" && isTrialEndingSoon(currentSub)) {
+      const days = getDaysUntilExpiry(currentSub);
+      if (days <= 0) {
+        return {
+          text: "Your trial period has ended.",
+          subtext: "Choose a plan below to restore access.",
+          color: "red",
+        };
+      }
+      return {
+        text: `Your trial period ends in ${days} day${days === 1 ? "" : "s"}.`,
+        subtext: "Choose a plan below to continue without interruption.",
+        color: "yellow",
+      };
+    }
+    if (status === "expired" || status === "cancelled" || status === "past_due") {
+      const msgs: Record<string, string> = {
+        expired: "Your subscription has expired.",
+        cancelled: "Your subscription has been cancelled.",
+        past_due: "Your subscription payment is past due.",
+      };
+      return {
+        text: msgs[status] ?? "Your subscription is inactive.",
+        subtext: "Choose a plan below to renew.",
+        color: "red",
+      };
+    }
+    if (status === "pending_payment") {
+      return {
+        text: "Payment pending.",
+        subtext: "Complete payment or choose a different plan.",
+        color: "yellow",
+      };
+    }
+    if (status === "paused") {
+      return {
+        text: "Your subscription is currently paused.",
+        subtext: "Choose a plan below to restore access.",
+        color: "yellow",
+      };
+    }
+    return null;
   };
+
+  const adminBanner = getAdminBanner();
+  const bannerColors = {
+    red:    "bg-red-50 border-red-200 text-red-800",
+    yellow: "bg-yellow-50 border-yellow-200 text-yellow-800",
+    blue:   "bg-blue-50 border-blue-200 text-blue-800",
+  };
+
+  // Non-owner users (manager, teacher, accountant, branch_admin) should NOT
+  // see the pricing table — just a blocked notice.
+  if (!isOwner) {
+    const isInactive =
+      !currentSub ||
+      !["active", "trial"].includes(currentSub.status ?? "") ||
+      (currentSub.status === "trial" && getDaysUntilExpiry(currentSub) <= 0);
+
+    if (isInactive) {
+      return (
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4">
+          <div className="max-w-md w-full bg-white dark:bg-gray-800 rounded-xl shadow-md p-8 text-center">
+            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+              Subscription Required
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 text-sm">
+              Access to this CRM requires an active subscription. Please contact
+              your school administrator to renew or activate the subscription.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Trial user within valid period — redirect should have happened; show nothing
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4">
       <div className="max-w-5xl mx-auto">
-        {/* Status banner */}
-        {isBlocked && currentSub?.status && (
-          <div className="mb-8 p-4 bg-red-50 border border-red-200 rounded-lg text-center">
-            <p className="text-red-800 font-medium">
-              {statusMessage[currentSub.status] ?? "Your subscription is inactive."}
-            </p>
-            <p className="text-red-600 text-sm mt-1">
-              Choose a plan below to restore access to your CRM.
-            </p>
-          </div>
-        )}
-
-        {!currentSub && (
-          <div className="mb-8 p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
-            <p className="text-blue-800 font-medium">
-              Welcome! Choose a plan to get started.
-            </p>
+        {/* Status banner for admin */}
+        {adminBanner && (
+          <div className={`mb-8 p-4 border rounded-lg text-center ${bannerColors[adminBanner.color]}`}>
+            <p className="font-medium">{adminBanner.text}</p>
+            {adminBanner.subtext && (
+              <p className="text-sm mt-1 opacity-80">{adminBanner.subtext}</p>
+            )}
           </div>
         )}
 
