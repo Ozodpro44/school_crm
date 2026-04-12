@@ -7,11 +7,13 @@ import {
   initiateClickUzPayment,
   initiateTelegramPayment,
   getActivePaymentTypes,
+  getSubscriptionUsage,
+  formatPrice,
   type ActivePaymentType,
 } from "@/lib/subscription-api";
-import { formatPrice } from "@/lib/subscription-api";
-import type { SubscriptionPlan, SubscriptionResponse } from "@/types";
+import type { SubscriptionPlan, SubscriptionResponse, SubscriptionUsage } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
+import { useBranch } from "@/context/BranchContext";
 
 // PaymentMethod is now a dynamic string (the code from payment_types table)
 type PaymentMethod = string;
@@ -110,11 +112,180 @@ function iconForCode(code: string): React.ReactNode {
   );
 }
 
+// ─── Subscription Overview card ───────────────────────────────────────────────
+
+function SubscriptionOverview({
+  sub,
+  usage,
+  branchCount,
+}: {
+  sub: SubscriptionResponse;
+  usage: SubscriptionUsage[];
+  branchCount: number;
+}) {
+  const days = getDaysUntilExpiry(sub);
+  const status = sub.status as string;
+
+  // Usage: prefer live metrics, fall back to plan limits + context counts
+  const branchUsage = usage.find((u) => u.metricName === "branches");
+  const studentUsage = usage.find((u) => u.metricName === "students");
+  const classUsage = usage.find((u) => u.metricName === "classes");
+
+  const branchCurrent = branchUsage?.currentUsage ?? branchCount;
+  const branchLimit = branchUsage?.limitValue ?? sub.plan?.maxBranches ?? 0;
+  const studentCurrent = studentUsage?.currentUsage ?? 0;
+  const studentLimit = studentUsage?.limitValue ?? sub.plan?.maxStudents ?? 0;
+  const classCurrent = classUsage?.currentUsage ?? 0;
+  const classLimit = classUsage?.limitValue ?? sub.plan?.maxClasses ?? 0;
+
+  const statusConfig: Record<string, { label: string; cls: string }> = {
+    trial:           { label: "Free Trial",      cls: "bg-amber-100/90 text-amber-900" },
+    active:          { label: "Active",           cls: "bg-emerald-100/90 text-emerald-900" },
+    expired:         { label: "Expired",          cls: "bg-red-100/90 text-red-900" },
+    cancelled:       { label: "Cancelled",        cls: "bg-gray-100/90 text-gray-900" },
+    paused:          { label: "Paused",           cls: "bg-sky-100/90 text-sky-900" },
+    pending_payment: { label: "Pending Payment",  cls: "bg-yellow-100/90 text-yellow-900" },
+  };
+  const badge = statusConfig[status] ?? { label: status, cls: "bg-white/30 text-white" };
+
+  const expiryLabel =
+    days === Infinity ? null
+    : days <= 0       ? "Expired"
+    : status === "trial"
+      ? `${days} day${days === 1 ? "" : "s"} left in trial`
+      : `Renews in ${days} day${days === 1 ? "" : "s"}`;
+
+  const expiryDate = sub.endDate
+    ? new Date(sub.endDate).toLocaleDateString(undefined, {
+        year: "numeric", month: "long", day: "numeric",
+      })
+    : null;
+
+  const hasResources = branchLimit > 0 || studentLimit > 0 || classLimit > 0;
+
+  function ResourceBar({
+    label,
+    current,
+    limit,
+    barClass = "bg-white/70",
+  }: {
+    label: string;
+    current: number;
+    limit: number;
+    barClass?: string;
+  }) {
+    if (limit === 0) return null;
+    const pct = Math.min((current / limit) * 100, 100);
+    const nearLimit = pct >= 80;
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-white/75">{label}</span>
+          <span className={`text-xs font-bold tabular-nums ${nearLimit ? "text-amber-300" : "text-white"}`}>
+            {current.toLocaleString()} / {limit.toLocaleString()}
+          </span>
+        </div>
+        <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-700 ${nearLimit ? "bg-amber-400" : barClass}`}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative rounded-2xl overflow-hidden mb-8 shadow-xl shadow-indigo-900/20">
+      {/* Gradient fill */}
+      <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700" />
+      {/* Subtle texture overlay */}
+      <div
+        className="absolute inset-0 opacity-20 mix-blend-overlay"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 20% 30%, rgba(255,255,255,0.3) 0%, transparent 60%)," +
+            "radial-gradient(circle at 80% 70%, rgba(255,255,255,0.15) 0%, transparent 50%)",
+        }}
+      />
+
+      <div className="relative p-6 sm:p-8">
+        {/* Top row: status + plan name + optional CTA */}
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
+          <div className="space-y-2">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${badge.cls}`}>
+              {badge.label}
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-none">
+              {sub.plan?.name ?? "Free Trial"}
+            </h2>
+            {(expiryLabel || expiryDate) && (
+              <p className="flex items-center gap-1.5 text-sm text-white/70">
+                <ClockIcon className="w-4 h-4 flex-shrink-0" />
+                <span>{expiryLabel}</span>
+                {expiryDate && (
+                  <span className="text-white/45 text-xs">— {expiryDate}</span>
+                )}
+              </p>
+            )}
+          </div>
+
+          {/* Show upgrade/renew CTA when expiring or expired */}
+          {(days <= 7 || status === "expired") && (
+            <div className="flex-shrink-0 self-start sm:self-center">
+              <a
+                href="#plans"
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-white text-indigo-700 font-semibold text-sm hover:bg-indigo-50 active:bg-indigo-100 transition-colors shadow-lg shadow-black/10"
+              >
+                {status === "expired" ? "Renew Now" : "Upgrade Plan"}
+                <span className="text-indigo-400">→</span>
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* Resource usage bars */}
+        {hasResources && (
+          <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-xl p-4 sm:p-5 space-y-3.5">
+            <p className="text-xs font-semibold text-white/50 uppercase tracking-widest">
+              Resource Usage
+            </p>
+            <ResourceBar
+              label="Branches"
+              current={branchCurrent}
+              limit={branchLimit}
+              barClass="bg-white/75"
+            />
+            {studentLimit > 0 && (
+              <ResourceBar
+                label="Students"
+                current={studentCurrent}
+                limit={studentLimit}
+                barClass="bg-violet-200"
+              />
+            )}
+            {classLimit > 0 && (
+              <ResourceBar
+                label="Classes"
+                current={classCurrent}
+                limit={classLimit}
+                barClass="bg-purple-200"
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function BillingPage() {
   const router = useRouter();
+  const { branches } = useBranch();
   const [currentSub, setCurrentSub] = useState<SubscriptionResponse | null>(null);
+  const [usageStats, setUsageStats] = useState<SubscriptionUsage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -138,16 +309,14 @@ export default function BillingPage() {
       if (types.length > 0) {
         setPaymentMethod(types[0].code);
       }
-      if (sub && sub.status === "active") {
-        router.replace("/");
-        return;
-      }
-      if (sub && sub.status === "trial" && !isTrialEndingSoon(sub)) {
-        router.replace("/");
-        return;
+      // Fetch live resource usage for the overview card
+      if (sub?.id) {
+        getSubscriptionUsage(sub.id)
+          .then(setUsageStats)
+          .catch(() => {});
       }
     }).finally(() => setLoading(false));
-  }, [router]);
+  }, []);
 
   const handleSelectPlan = (plan: SubscriptionPlan) => {
     setSelectedPlan(plan);
@@ -341,15 +510,14 @@ export default function BillingPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 py-14 px-4">
       <div className="max-w-5xl mx-auto">
 
-        {/* Header */}
-        <div className="text-center mb-10">
-          <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
-            Subscription Plans
-          </h1>
-          <p className="mt-3 text-base text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
-            Select a plan to activate your school CRM access. All plans include full platform features.
-          </p>
-        </div>
+        {/* Current Plan Overview — always shown when there is an active subscription */}
+        {currentSub && (
+          <SubscriptionOverview
+            sub={currentSub}
+            usage={usageStats}
+            branchCount={branches.length}
+          />
+        )}
 
         {/* Status banner */}
         {adminBanner && (
@@ -369,10 +537,22 @@ export default function BillingPage() {
         )}
 
         {/* Pricing table */}
-        <PricingTable
-          onSelectPlan={handleSelectPlan}
-          highlightPlanId={currentSub?.plan?.id}
-        />
+        <div id="plans">
+          <div className="text-center mb-10">
+            <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+              {currentSub ? "Change or Upgrade Plan" : "Subscription Plans"}
+            </h1>
+            <p className="mt-3 text-base text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
+              {currentSub
+                ? "All plans include full platform features. Upgrade any time."
+                : "Select a plan to activate your school CRM access. All plans include full platform features."}
+            </p>
+          </div>
+          <PricingTable
+            onSelectPlan={handleSelectPlan}
+            highlightPlanId={currentSub?.plan?.id}
+          />
+        </div>
       </div>
 
       {/* ── Payment Modal ──────────────────────────────────────────────────── */}
