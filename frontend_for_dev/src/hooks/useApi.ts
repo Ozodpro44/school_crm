@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import api from "@/lib/api";
+import { toast } from "@/components/ui/sonner";
 
 interface UseApiState<T> {
   data: T | null;
@@ -37,6 +38,7 @@ export function useApi<T>(
       if (response.error) {
         setState({ data: null, loading: false, error: response.error });
         onError?.(response.error);
+        toast.error(response.error);
       } else {
         setState({
           data: response.data,
@@ -49,6 +51,7 @@ export function useApi<T>(
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setState({ data: null, loading: false, error: errorMessage });
       onError?.(errorMessage);
+      toast.error(errorMessage);
     }
   }, [fetcher, onSuccess, onError]);
 

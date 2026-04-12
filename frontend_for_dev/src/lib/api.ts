@@ -1,5 +1,7 @@
 // API Client Configuration
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "http://localhost:8080/api";
+// Health/metrics live at the server root, not under /api.
+const SERVER_ROOT_URL = API_BASE_URL.replace(/\/api\/?$/, '');
 const API_TIMEOUT = parseInt(import.meta.env.VITE_API_TIMEOUT || "30000");
 
 interface RequestOptions extends RequestInit {
@@ -77,10 +79,10 @@ export const api = {
       method: "POST",
     }),
 
-  // Health check endpoint — try /api/health first (alias), fall back to /health
+  // Health check endpoint — /health lives at the server root, not under /api.
   getHealth: async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/health`);
+      const response = await fetch(`${SERVER_ROOT_URL}/health`);
       const data = response.ok ? await response.json().catch(() => ({ status: "healthy" })) : { status: "unhealthy" };
       return { data, status: response.status };
     } catch {
@@ -92,10 +94,10 @@ export const api = {
     }
   },
 
-  // Get system metrics (if available)
+  // Get system metrics — also at server root level, not under /api.
   getMetrics: async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/metrics`);
+      const response = await fetch(`${SERVER_ROOT_URL}/metrics`);
       if (!response.ok) {
         return {
           data: {

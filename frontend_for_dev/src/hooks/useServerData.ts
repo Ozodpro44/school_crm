@@ -5,6 +5,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { apiClient } from '@/services/api-client';
+import { toast } from '@/components/ui/sonner';
 
 export interface UseServerDataOptions<T = unknown> {
   skip?: boolean;
@@ -42,6 +43,7 @@ export function useServerData<T = unknown>(
         }
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const result = await response.json() as T;
       setData(result);
       setError(null);
       options.onSuccess?.(result);
@@ -49,6 +51,7 @@ export function useServerData<T = unknown>(
       const error = err instanceof Error ? err : new Error(String(err));
       setError(error);
       options.onError?.(error);
+      toast.error(`Fetch failed: ${error.message}`, { description: endpoint });
     } finally {
       setLoading(false);
     }
