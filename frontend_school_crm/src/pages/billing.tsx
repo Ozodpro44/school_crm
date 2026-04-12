@@ -3,16 +3,26 @@ import { useRouter } from "next/router";
 import PricingTable from "@/components/PricingTable";
 import {
   getCurrentSubscription,
+  getSubscriptionUsage,
   createSubscription,
   initiateClickUzPayment,
   initiateTelegramPayment,
   getActivePaymentTypes,
-  getSubscriptionUsage,
-  formatPrice,
   type ActivePaymentType,
 } from "@/lib/subscription-api";
+import { formatPrice, getDaysUntilExpiry } from "@/lib/subscription-api";
 import type { SubscriptionPlan, SubscriptionResponse, SubscriptionUsage } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
+import { 
+  CheckCircle2, 
+  AlertCircle, 
+  Layers, 
+  Users, 
+  Calendar, 
+  ArrowUpCircle,
+  Clock
+} from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { useBranch } from "@/context/BranchContext";
 
 // PaymentMethod is now a dynamic string (the code from payment_types table)
@@ -32,13 +42,6 @@ interface PaymentState {
     instruction: string;
     amount: number;
   };
-}
-
-function getDaysUntilExpiry(sub: SubscriptionResponse): number {
-  if (!sub.endDate) return Infinity;
-  const end = new Date(sub.endDate).getTime();
-  const now = Date.now();
-  return Math.ceil((end - now) / (1000 * 60 * 60 * 24));
 }
 
 function isTrialEndingSoon(sub: SubscriptionResponse): boolean {
@@ -112,180 +115,12 @@ function iconForCode(code: string): React.ReactNode {
   );
 }
 
-// ─── Subscription Overview card ───────────────────────────────────────────────
-
-function SubscriptionOverview({
-  sub,
-  usage,
-  branchCount,
-}: {
-  sub: SubscriptionResponse;
-  usage: SubscriptionUsage[];
-  branchCount: number;
-}) {
-  const days = getDaysUntilExpiry(sub);
-  const status = sub.status as string;
-
-  // Usage: prefer live metrics, fall back to plan limits + context counts
-  const branchUsage = usage.find((u) => u.metricName === "branches");
-  const studentUsage = usage.find((u) => u.metricName === "students");
-  const classUsage = usage.find((u) => u.metricName === "classes");
-
-  const branchCurrent = branchUsage?.currentUsage ?? branchCount;
-  const branchLimit = branchUsage?.limitValue ?? sub.plan?.maxBranches ?? 0;
-  const studentCurrent = studentUsage?.currentUsage ?? 0;
-  const studentLimit = studentUsage?.limitValue ?? sub.plan?.maxStudents ?? 0;
-  const classCurrent = classUsage?.currentUsage ?? 0;
-  const classLimit = classUsage?.limitValue ?? sub.plan?.maxClasses ?? 0;
-
-  const statusConfig: Record<string, { label: string; cls: string }> = {
-    trial:           { label: "Free Trial",      cls: "bg-amber-100/90 text-amber-900" },
-    active:          { label: "Active",           cls: "bg-emerald-100/90 text-emerald-900" },
-    expired:         { label: "Expired",          cls: "bg-red-100/90 text-red-900" },
-    cancelled:       { label: "Cancelled",        cls: "bg-gray-100/90 text-gray-900" },
-    paused:          { label: "Paused",           cls: "bg-sky-100/90 text-sky-900" },
-    pending_payment: { label: "Pending Payment",  cls: "bg-yellow-100/90 text-yellow-900" },
-  };
-  const badge = statusConfig[status] ?? { label: status, cls: "bg-white/30 text-white" };
-
-  const expiryLabel =
-    days === Infinity ? null
-    : days <= 0       ? "Expired"
-    : status === "trial"
-      ? `${days} day${days === 1 ? "" : "s"} left in trial`
-      : `Renews in ${days} day${days === 1 ? "" : "s"}`;
-
-  const expiryDate = sub.endDate
-    ? new Date(sub.endDate).toLocaleDateString(undefined, {
-        year: "numeric", month: "long", day: "numeric",
-      })
-    : null;
-
-  const hasResources = branchLimit > 0 || studentLimit > 0 || classLimit > 0;
-
-  function ResourceBar({
-    label,
-    current,
-    limit,
-    barClass = "bg-white/70",
-  }: {
-    label: string;
-    current: number;
-    limit: number;
-    barClass?: string;
-  }) {
-    if (limit === 0) return null;
-    const pct = Math.min((current / limit) * 100, 100);
-    const nearLimit = pct >= 80;
-    return (
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-white/75">{label}</span>
-          <span className={`text-xs font-bold tabular-nums ${nearLimit ? "text-amber-300" : "text-white"}`}>
-            {current.toLocaleString()} / {limit.toLocaleString()}
-          </span>
-        </div>
-        <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-700 ${nearLimit ? "bg-amber-400" : barClass}`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative rounded-2xl overflow-hidden mb-8 shadow-xl shadow-indigo-900/20">
-      {/* Gradient fill */}
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-violet-600 to-purple-700" />
-      {/* Subtle texture overlay */}
-      <div
-        className="absolute inset-0 opacity-20 mix-blend-overlay"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 20% 30%, rgba(255,255,255,0.3) 0%, transparent 60%)," +
-            "radial-gradient(circle at 80% 70%, rgba(255,255,255,0.15) 0%, transparent 50%)",
-        }}
-      />
-
-      <div className="relative p-6 sm:p-8">
-        {/* Top row: status + plan name + optional CTA */}
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-5">
-          <div className="space-y-2">
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${badge.cls}`}>
-              {badge.label}
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-none">
-              {sub.plan?.name ?? "Free Trial"}
-            </h2>
-            {(expiryLabel || expiryDate) && (
-              <p className="flex items-center gap-1.5 text-sm text-white/70">
-                <ClockIcon className="w-4 h-4 flex-shrink-0" />
-                <span>{expiryLabel}</span>
-                {expiryDate && (
-                  <span className="text-white/45 text-xs">— {expiryDate}</span>
-                )}
-              </p>
-            )}
-          </div>
-
-          {/* Show upgrade/renew CTA when expiring or expired */}
-          {(days <= 7 || status === "expired") && (
-            <div className="flex-shrink-0 self-start sm:self-center">
-              <a
-                href="#plans"
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-white text-indigo-700 font-semibold text-sm hover:bg-indigo-50 active:bg-indigo-100 transition-colors shadow-lg shadow-black/10"
-              >
-                {status === "expired" ? "Renew Now" : "Upgrade Plan"}
-                <span className="text-indigo-400">→</span>
-              </a>
-            </div>
-          )}
-        </div>
-
-        {/* Resource usage bars */}
-        {hasResources && (
-          <div className="bg-white/10 backdrop-blur-sm border border-white/15 rounded-xl p-4 sm:p-5 space-y-3.5">
-            <p className="text-xs font-semibold text-white/50 uppercase tracking-widest">
-              Resource Usage
-            </p>
-            <ResourceBar
-              label="Branches"
-              current={branchCurrent}
-              limit={branchLimit}
-              barClass="bg-white/75"
-            />
-            {studentLimit > 0 && (
-              <ResourceBar
-                label="Students"
-                current={studentCurrent}
-                limit={studentLimit}
-                barClass="bg-violet-200"
-              />
-            )}
-            {classLimit > 0 && (
-              <ResourceBar
-                label="Classes"
-                current={classCurrent}
-                limit={classLimit}
-                barClass="bg-purple-200"
-              />
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function BillingPage() {
   const router = useRouter();
   const { branches } = useBranch();
   const [currentSub, setCurrentSub] = useState<SubscriptionResponse | null>(null);
-  const [usageStats, setUsageStats] = useState<SubscriptionUsage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -294,6 +129,8 @@ export default function BillingPage() {
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("click");
   const [paymentState, setPaymentState] = useState<PaymentState | null>(null);
+  const [usage, setUsage] = useState<SubscriptionUsage[]>([]);
+  const [fetchingUsage, setFetchingUsage] = useState(false);
   const [paying, setPaying] = useState(false);
 
   useEffect(() => {
@@ -306,14 +143,18 @@ export default function BillingPage() {
     ]).then(([sub, types]) => {
       setPaymentTypes(types);
       setCurrentSub(sub);
-      if (types.length > 0) {
-        setPaymentMethod(types[0].code);
-      }
-      // Fetch live resource usage for the overview card
-      if (sub?.id) {
+      
+      // Fetch usage if subscription exists
+      if (sub) {
+        setFetchingUsage(true);
         getSubscriptionUsage(sub.id)
-          .then(setUsageStats)
-          .catch(() => {});
+          .then(setUsage)
+          .finally(() => setFetchingUsage(false));
+      }
+
+      if (sub && sub.status === "active") {
+        // Only redirect if they aren't on this page to check details
+        // router.replace("/"); 
       }
     }).finally(() => setLoading(false));
   }, []);
@@ -510,13 +351,114 @@ export default function BillingPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 py-14 px-4">
       <div className="max-w-5xl mx-auto">
 
-        {/* Current Plan Overview — always shown when there is an active subscription */}
+        {/* Current Subscription Overview */}
         {currentSub && (
-          <SubscriptionOverview
-            sub={currentSub}
-            usage={usageStats}
-            branchCount={branches.length}
-          />
+          <div className="mb-12 relative overflow-hidden rounded-3xl border border-white/20 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl shadow-2xl p-8 transition-all hover:shadow-indigo-500/10">
+            {/* Background Accents */}
+            <div className="absolute -top-24 -right-24 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="relative flex flex-col md:flex-row gap-8">
+              {/* Left Column: Plan Info */}
+              <div className="flex-1 space-y-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Current Plan</p>
+                    <h2 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
+                      {currentSub.plan?.name}
+                      {currentSub.status === 'trial' && (
+                        <span className="text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold uppercase">trial</span>
+                      )}
+                    </h2>
+                  </div>
+                  <div className={`px-4 py-1.5 rounded-full text-sm font-bold flex items-center gap-2 ${
+                    currentSub.status === 'active' || (currentSub.status === 'trial' && getDaysUntilExpiry(currentSub) > 0)
+                      ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400'
+                      : 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400'
+                  }`}>
+                    {currentSub.status === 'active' || (currentSub.status === 'trial' && getDaysUntilExpiry(currentSub) > 0) ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        Active
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-4 h-4" />
+                        Action Required
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Calendar className="w-4 h-4 text-slate-400" />
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Next Payment</p>
+                    </div>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">
+                      {currentSub.renewalDate ? new Date(currentSub.renewalDate).toLocaleDateString() : 'N/A'}
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Clock className="w-4 h-4 text-slate-400" />
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Time Remaining</p>
+                    </div>
+                    <p className="text-sm font-bold text-slate-900 dark:text-white">
+                      {getDaysUntilExpiry(currentSub)} Days
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10">
+                  <ArrowUpCircle className="w-5 h-5 text-indigo-500" />
+                  <p className="text-xs text-indigo-700 dark:text-indigo-300">
+                    Need more capacity? <span className="font-bold underline cursor-pointer" onClick={() => (window as any).scrollTo({ top: 1000, behavior: 'smooth' })}>Browse higher plans</span> below.
+                  </p>
+                </div>
+              </div>
+
+              {/* Right Column: Resource Usage */}
+              <div className="flex-1 space-y-6 flex flex-col justify-center">
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Resource Usage</p>
+                
+                <div className="space-y-6">
+                  {/* Branch Limit */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-indigo-500" />
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">Branches</span>
+                      </div>
+                      <span className="font-mono text-xs text-slate-500">
+                        {usage.find(u => u.metricName === 'branches')?.currentUsage || 0} / {currentSub.plan?.maxBranches || '∞'}
+                      </span>
+                    </div>
+                    <Progress value={
+                      ((usage.find(u => u.metricName === 'branches')?.currentUsage || 0) / (currentSub.plan?.maxBranches || 1)) * 100
+                    } className="h-2 bg-slate-200 dark:bg-slate-700" />
+                  </div>
+
+                  {/* Student Limit */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-purple-500" />
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">Students</span>
+                      </div>
+                      <span className="font-mono text-xs text-slate-500">
+                        {usage.find(u => u.metricName === 'students')?.currentUsage || 0} / {currentSub.plan?.maxStudents || '∞'}
+                      </span>
+                    </div>
+                    <Progress value={
+                      ((usage.find(u => u.metricName === 'students')?.currentUsage || 0) / (currentSub.plan?.maxStudents || 1)) * 100
+                    } className="h-2 bg-slate-200 dark:bg-slate-700" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Status banner */}

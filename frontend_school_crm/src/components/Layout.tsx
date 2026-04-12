@@ -44,7 +44,13 @@ import { User, Language } from "@/types";
 import { getTranslation } from "@/lib/translations";
 import { useLanguage, useSetLanguage } from "@/hooks/use-language";
 import { useBranch } from "@/context/BranchContext";
-import { getCurrentSubscription } from "@/lib/subscription-api";
+import { 
+  getCurrentSubscription, 
+  getDaysUntilExpiry, 
+  isTrialEndingSoon 
+} from "@/lib/subscription-api";
+import { SubscriptionResponse } from "@/types";
+import { AlertTriangle, Crown, Sparkles } from "lucide-react";
 
 // ── Subscription sidebar badge ────────────────────────────────────────────────
 
@@ -150,6 +156,8 @@ export function Layout({ children }: LayoutProps) {
   const setLanguage = useSetLanguage();
   const { currentBranch, branches, setCurrentBranchById, clearBranches } =
     useBranch();
+  const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
+  const [fetchingSub, setFetchingSub] = useState(false);
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -191,6 +199,16 @@ export function Layout({ children }: LayoutProps) {
       window.removeEventListener("userProfileUpdated", handleUserProfileUpdate);
     };
   }, []);
+
+  // Fetch subscription data for admin users
+  useEffect(() => {
+    if (user?.role === "admin") {
+      setFetchingSub(true);
+      getCurrentSubscription()
+        .then(setSubscription)
+        .finally(() => setFetchingSub(false));
+    }
+  }, [user]);
 
   // ── Global subscription / branch event handlers ──────────────────────────
   // subscription:limitReached — fired by api.ts when the server returns 402
@@ -516,6 +534,52 @@ export function Layout({ children }: LayoutProps) {
               })}
             </div>
           </nav>
+
+          {/* Subscription Status Badge */}
+          {sidebarOpen && user?.role === "admin" && subscription && (
+            <div className="px-4 pb-2">
+              <Link href="/billing">
+                <div className={`p-3 rounded-xl border transition-all hover:shadow-md cursor-pointer flex items-center gap-3 group ${
+                  subscription.status === 'trial' 
+                    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800' 
+                    : subscription.status === 'active'
+                    ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 animate-pulse'
+                }`}>
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    subscription.status === 'trial'
+                      ? 'bg-amber-100 dark:bg-amber-800 text-amber-600 dark:text-amber-400'
+                      : subscription.status === 'active'
+                      ? 'bg-indigo-100 dark:bg-indigo-800 text-indigo-600 dark:text-indigo-400'
+                      : 'bg-red-100 dark:bg-red-800 text-red-600 dark:text-red-400'
+                  }`}>
+                    {subscription.status === 'trial' ? (
+                      <Sparkles className="w-5 h-5" />
+                    ) : subscription.status === 'active' ? (
+                      <Crown className="w-5 h-5" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-bold uppercase tracking-wider ${
+                      subscription.status === 'trial' ? 'text-amber-700 dark:text-amber-300' : 
+                      subscription.status === 'active' ? 'text-indigo-700 dark:text-indigo-300' : 'text-red-700 dark:text-red-300'
+                    }`}>
+                      {subscription.plan?.name || (subscription.status === 'trial' ? 'Trial' : 'Inactive')}
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                      {subscription.status === 'trial' 
+                        ? `${getDaysUntilExpiry(subscription)} days left` 
+                        : subscription.status === 'active'
+                        ? 'Premium Access'
+                        : 'Action Required'}
+                    </p>
+                  </div>
+                </div>
+              </Link>
+            </div>
+          )}
 
           {/* User Profile */}
           <div className="p-4 border-t border-slate-200 dark:border-slate-800">
