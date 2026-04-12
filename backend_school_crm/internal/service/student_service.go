@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/utils"
@@ -17,11 +18,17 @@ import (
 type StudentService struct {
 	db     *db.Database
 	subSvc *SubscriptionService
+	cache  *cache.Client
 }
 
 func NewStudentService(database *db.Database, subSvc *SubscriptionService) *StudentService {
 	return &StudentService{db: database, subSvc: subSvc}
 }
+
+// SetCache wires in the optional Redis cache client.
+func (s *StudentService) SetCache(c *cache.Client) { s.cache = c }
+
+const studentCacheTTL = 60 * time.Second
 
 type CreateStudentRequest struct {
 	FullName       string     `json:"fullName" binding:"required"`
@@ -94,6 +101,9 @@ func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) 
 
 	_, err := s.db.GetConn().ExecContext(ctx, query, student.ID, student.FullName, classID, phone, parentPhone,
 		student.MonthlyPayment, student.Status, student.BranchID, student.EnrollmentDate, student.CreatedAt, student.UpdatedAt)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:students:%s:", req.BranchID))
+	}
 
 	return student, err
 }
@@ -183,16 +193,44 @@ func (s *StudentService) Update(ctx context.Context, id string, updates map[stri
 		return nil, err
 	}
 
-	return s.GetByID(ctx, id)
+	updated, err := s.GetByID(ctx, id)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:students:%s:", updated.BranchID))
+	}
+	return updated, err
 }
 
 func (s *StudentService) Delete(ctx context.Context, id string) error {
+	var branchID string
+	_ = s.db.GetConn().QueryRowContext(ctx, `SELECT branch_id FROM students WHERE id = $1`, id).Scan(&branchID)
+
 	query := `DELETE FROM students WHERE id = $1`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
+	if err == nil && s.cache != nil && branchID != "" {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:students:%s:", branchID))
+	}
 	return err
 }
 
 func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, in StudentFilterInput) (*models.StudentListResponse, error) {
+	// Cache read-through
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("crm:students:%s:%s:%s:%s:%s:%s:%s:%s:%s",
+			in.BranchID, in.Page, in.Limit, in.Search, in.Status, in.ClassID, in.PaymentStatus, in.Month, in.Year)
+		var cached models.StudentListResponse
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			return &cached, nil
+		}
+		result, err := s.getByBranchIDWithFiltersDB(ctx, in)
+		if err == nil && result != nil {
+			_ = s.cache.Set(ctx, cacheKey, result, studentCacheTTL)
+		}
+		return result, err
+	}
+	return s.getByBranchIDWithFiltersDB(ctx, in)
+}
+
+func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in StudentFilterInput) (*models.StudentListResponse, error) {
 	intPage, err := strconv.Atoi(in.Page)
 	if err != nil || intPage < 1 {
 		intPage = 1

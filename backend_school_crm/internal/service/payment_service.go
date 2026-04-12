@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/utils"
@@ -22,11 +23,17 @@ var ErrFinancialMonthLocked = errors.New("financial_month_locked: cannot modify 
 type PaymentService struct {
 	db        *db.Database
 	branchSvc *BranchService
+	cache     *cache.Client
 }
 
 func NewPaymentService(database *db.Database, branchSvc *BranchService) *PaymentService {
 	return &PaymentService{db: database, branchSvc: branchSvc}
 }
+
+// SetCache wires in the optional Redis cache client.
+func (s *PaymentService) SetCache(c *cache.Client) { s.cache = c }
+
+const paymentCacheTTL = 30 * time.Second
 
 // PaymentFilterInput replaces the long parameter list of GetByBranchIDWithFilters.
 type PaymentFilterInput struct {
@@ -100,6 +107,9 @@ func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, 
 
 	_, err = s.db.GetConn().ExecContext(ctx, query, payment.ID, payment.StudentID, payment.Amount, payment.Month, payment.Year,
 		payment.PaymentMethod, payment.Status, payment.InvoiceNumber, payment.Notes, payment.PaidDate, payment.BranchID, payment.CreatedBy, payment.CreatedAt)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:payments:%s:", req.BranchID))
+	}
 
 	return payment, err
 }
@@ -376,18 +386,25 @@ func (s *PaymentService) Update(ctx context.Context, id string, updates map[stri
 		return nil, err
 	}
 
-	return s.GetByID(ctx, id)
+	updated, err := s.GetByID(ctx, id)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:payments:%s:", existing.BranchID))
+	}
+	return updated, err
 }
 
 func (s *PaymentService) Delete(ctx context.Context, id string) error {
 	// Check if payment exists
-	_, err := s.GetByID(ctx, id)
+	existing, err := s.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
 	query := `DELETE FROM payments WHERE id = $1`
 	_, err = s.db.GetConn().ExecContext(ctx, query, id)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:payments:%s:", existing.BranchID))
+	}
 	return err
 }
 
@@ -598,6 +615,23 @@ func (s *PaymentService) ConsolidatePayments(payments []models.Payment) []models
 // GetByBranchIDWithFilters returns payments with pagination and dynamic filtering
 // Similar to StudentService.GetByBranchIDWithFilters
 func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, in PaymentFilterInput) (*models.PaymentListResponse, error) {
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("crm:payments:%s:%s:%s:%s:%s:%s:%s:%s:%s",
+			in.BranchID, in.Page, in.Limit, in.Search, in.Status, in.PaymentMethod, in.Month, in.Year, in.ClassID)
+		var cached models.PaymentListResponse
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			return &cached, nil
+		}
+		result, err := s.getByBranchIDWithFiltersDB(ctx, in)
+		if err == nil && result != nil {
+			_ = s.cache.Set(ctx, cacheKey, result, paymentCacheTTL)
+		}
+		return result, err
+	}
+	return s.getByBranchIDWithFiltersDB(ctx, in)
+}
+
+func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in PaymentFilterInput) (*models.PaymentListResponse, error) {
 	intPage, err := strconv.Atoi(in.Page)
 	if err != nil || intPage < 1 {
 		intPage = 1

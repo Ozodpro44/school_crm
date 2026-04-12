@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/config"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/handlers"
@@ -96,6 +97,17 @@ func main() {
 	paymentService := service.NewPaymentService(database, branchService)
 	classService := service.NewClassService(database)
 	teacherService := service.NewTeacherService(database)
+
+	// Wire Redis cache into hot-path services (no-op when Redis is absent)
+	if redisClient != nil {
+		cacheClient := cache.New(redisClient.GetClient())
+		subscriptionService.SetCache(cacheClient)
+		studentService.SetCache(cacheClient)
+		paymentService.SetCache(cacheClient)
+		classService.SetCache(cacheClient)
+		teacherService.SetCache(cacheClient)
+		log.Println("Redis cache enabled for hot-path services")
+	}
 	salaryService := service.NewSalaryService(database, branchService)
 	expenseService := service.NewExpenseService(database, branchService)
 	reportService := service.NewReportService(database)

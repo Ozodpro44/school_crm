@@ -6,17 +6,24 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
 )
 
 type SubscriptionService struct {
 	database *db.Database
+	cache    *cache.Client
 }
 
 func NewSubscriptionService(database *db.Database) *SubscriptionService {
 	return &SubscriptionService{database: database}
 }
+
+// SetCache wires in the optional Redis cache client.
+func (s *SubscriptionService) SetCache(c *cache.Client) { s.cache = c }
+
+const subActiveCacheTTL = 5 * time.Minute
 
 // GetSubscriptionPlans retrieves all available subscription plans
 func (s *SubscriptionService) GetSubscriptionPlans(ctx context.Context) ([]models.SubscriptionPlan, error) {
@@ -124,6 +131,14 @@ func (s *SubscriptionService) UpdateSubscriptionStatus(ctx context.Context, subs
 		return fmt.Errorf("failed to update subscription status: %w", err)
 	}
 
+	if s.cache != nil {
+		var userID string
+		_ = s.database.GetConn().QueryRowContext(ctx, `SELECT user_id FROM subscriptions WHERE id = $1`, subscriptionID).Scan(&userID)
+		if userID != "" {
+			_ = s.cache.Delete(ctx, fmt.Sprintf("crm:sub_active:%s", userID))
+		}
+	}
+
 	return nil
 }
 
@@ -138,6 +153,10 @@ func (s *SubscriptionService) CancelSubscription(ctx context.Context, subscripti
 	_, err := s.database.GetConn().ExecContext(ctx, query, userID, subscriptionID)
 	if err != nil {
 		return fmt.Errorf("failed to cancel subscription: %w", err)
+	}
+
+	if s.cache != nil && userID != "" {
+		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:sub_active:%s", userID))
 	}
 
 	return nil
@@ -469,6 +488,15 @@ func (s *SubscriptionService) AdminUpdateSubscription(ctx context.Context, id st
 	if err != nil {
 		return nil, fmt.Errorf("admin update subscription: %w", err)
 	}
+
+	if s.cache != nil {
+		var userID string
+		_ = s.database.GetConn().QueryRowContext(ctx, `SELECT user_id FROM subscriptions WHERE id = $1`, id).Scan(&userID)
+		if userID != "" {
+			_ = s.cache.Delete(ctx, fmt.Sprintf("crm:sub_active:%s", userID))
+		}
+	}
+
 	return s.AdminGetSubscription(ctx, id)
 }
 
@@ -564,6 +592,22 @@ func (s *SubscriptionService) GetPlatformStats(ctx context.Context) (*models.Pla
 // not yet passed its end_date. This catches the case where the end_date expired
 // but the status was never updated to 'expired' via the background job.
 func (s *SubscriptionService) IsUserSubscriptionActive(ctx context.Context, userID string) (bool, error) {
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("crm:sub_active:%s", userID)
+		var cached bool
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			return cached, nil
+		}
+		active, err := s.isUserSubscriptionActiveDB(ctx, userID)
+		if err == nil {
+			_ = s.cache.Set(ctx, cacheKey, active, subActiveCacheTTL)
+		}
+		return active, err
+	}
+	return s.isUserSubscriptionActiveDB(ctx, userID)
+}
+
+func (s *SubscriptionService) isUserSubscriptionActiveDB(ctx context.Context, userID string) (bool, error) {
 	var count int
 	err := s.database.GetConn().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM subscriptions

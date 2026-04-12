@@ -4,22 +4,30 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/utils"
 )
 
 type TeacherService struct {
-	db *db.Database
+	db    *db.Database
+	cache *cache.Client
 }
 
 func NewTeacherService(database *db.Database) *TeacherService {
 	return &TeacherService{db: database}
 }
+
+// SetCache wires in the optional Redis cache client.
+func (s *TeacherService) SetCache(c *cache.Client) { s.cache = c }
+
+const teacherCacheTTL = 2 * time.Minute
 
 type CreateTeacherRequest struct {
 	FullName      string     `json:"fullName" binding:"required"`
@@ -61,6 +69,9 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 		return nil, err
 	}
 
+	if s.cache != nil {
+		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:teachers:%s", teacher.BranchID))
+	}
 	return teacher, nil
 }
 
@@ -96,6 +107,22 @@ func (s *TeacherService) GetByID(ctx context.Context, id string) (*models.Teache
 }
 
 func (s *TeacherService) GetByBranchID(ctx context.Context, branchID string) ([]models.Teacher, error) {
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("crm:teachers:%s", branchID)
+		var cached []models.Teacher
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			return cached, nil
+		}
+		result, err := s.getByBranchIDDB(ctx, branchID)
+		if err == nil {
+			_ = s.cache.Set(ctx, cacheKey, result, teacherCacheTTL)
+		}
+		return result, err
+	}
+	return s.getByBranchIDDB(ctx, branchID)
+}
+
+func (s *TeacherService) getByBranchIDDB(ctx context.Context, branchID string) ([]models.Teacher, error) {
 	query := `SELECT id, full_name, monthly_salary, phone, email, branch_id, joined_date, created_at, updated_at
 	          FROM teachers WHERE branch_id = $1 ORDER BY full_name`
 
@@ -179,13 +206,23 @@ func (s *TeacherService) Update(ctx context.Context, id string, updates map[stri
 		}
 	}
 
-	return s.GetByID(ctx, id)
+	updated, err := s.GetByID(ctx, id)
+	if err == nil && s.cache != nil {
+		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:teachers:%s", updated.BranchID))
+	}
+	return updated, err
 }
 
 func (s *TeacherService) Delete(ctx context.Context, id string) error {
+	var branchID string
+	_ = s.db.GetConn().QueryRowContext(ctx, `SELECT branch_id FROM teachers WHERE id = $1`, id).Scan(&branchID)
+
 	// teacher_subjects rows cascade-delete via FK
 	query := `DELETE FROM teachers WHERE id = $1`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
+	if err == nil && s.cache != nil && branchID != "" {
+		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:teachers:%s", branchID))
+	}
 	return err
 }
 
