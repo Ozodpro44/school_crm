@@ -191,6 +191,21 @@ function SubscriptionBadge({ status, daysLeft, planName, collapsed }: SubInfo) {
   );
 }
 
+// ── Subscription badge wrapper (needs sidebar context) ───────────────────────
+
+function SidebarSubscriptionBadgeSection({ subInfo }: { subInfo: SubInfo }) {
+  const { state } = useSidebar();
+  const isCollapsed = state === "collapsed";
+  return (
+    <div className={cn(
+      "mt-auto transition-all duration-200",
+      isCollapsed ? "px-1.5 py-3 flex justify-center" : "px-4 py-6"
+    )}>
+      <SubscriptionBadge {...subInfo} collapsed={isCollapsed} />
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface LayoutProps {
@@ -498,13 +513,9 @@ export function Layout({ children }: LayoutProps) {
               </Collapsible>
             ))}
             
-            <div className="mt-auto px-4 py-6">
-               {user?.role === "admin" && subInfo && (
-                <div className="group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:justify-center">
-                  <SubscriptionBadge {...subInfo} collapsed={false} />
-                </div>
-              )}
-            </div>
+            {user?.role === "admin" && subInfo && (
+              <SidebarSubscriptionBadgeSection subInfo={subInfo} />
+            )}
           </SidebarContent>
 
           <SidebarFooter className="border-t border-slate-200 dark:border-slate-800 p-3">
