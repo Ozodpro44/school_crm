@@ -976,11 +976,25 @@ export async function createBranch(request: CreateBranchRequest): Promise<Branch
   });
 }
 
+// Short-lived in-memory cache for getBranch — avoids re-fetching the same
+// branch on every loadData() call within the same page render cycle.
+const _branchCache = new Map<string, { data: Branch; expiresAt: number }>();
+const BRANCH_CACHE_TTL_MS = 10_000; // 10 seconds
+
 /**
- * Get branch by ID
+ * Get branch by ID (cached for 10 s to deduplicate parallel calls)
  */
 export async function getBranch(id: string): Promise<Branch> {
-  return apiRequest<Branch>(`/branches/${id}`);
+  const cached = _branchCache.get(id);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+  const data = await apiRequest<Branch>(`/branches/${id}`);
+  _branchCache.set(id, { data, expiresAt: Date.now() + BRANCH_CACHE_TTL_MS });
+  return data;
+}
+
+/** Call after updating a branch so the next getBranch reflects new data. */
+export function invalidateBranchCache(id: string) {
+  _branchCache.delete(id);
 }
 
 /**
@@ -998,6 +1012,7 @@ export async function updateBranch(
   id: string,
   updates: Partial<Branch>
 ): Promise<Branch> {
+  invalidateBranchCache(id);
   return apiRequest<Branch>(`/branches/${id}`, {
     method: "PUT",
     body: JSON.stringify(updates),

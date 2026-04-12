@@ -323,8 +323,6 @@ export default function StudentsPage() {
   }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, page, limit]);
   useRefetchOnFocus(refetchData);
 
-
-
   const hasCurrentMonthPayment = (studentId: string): boolean => {
     // Payment data not available with consolidated endpoint
     return false;
