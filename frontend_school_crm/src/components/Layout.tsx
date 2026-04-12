@@ -377,7 +377,7 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <SidebarProvider defaultOpen={true}>
-      <div className="flex min-h-screen w-full bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
+      <div className="flex min-h-screen w-full overflow-x-hidden bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
         <Sidebar collapsible="icon" className="border-r border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl">
           <SidebarHeader className="border-b border-slate-200 dark:border-slate-800 p-0">
             {/* Expanded header: logo + text + collapse button */}
@@ -558,8 +558,8 @@ export function Layout({ children }: LayoutProps) {
             <SidebarTrigger />
           </header>
 
-          <main className="flex-1 overflow-x-hidden">
-            <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+          <main className="flex-1 overflow-x-hidden w-full">
+            <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
               {children}
             </div>
           </main>
