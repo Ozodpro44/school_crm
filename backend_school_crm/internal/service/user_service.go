@@ -70,10 +70,10 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*model
 	log.Printf("[UserService.Login] Authenticating user: %s", email)
 
 	user := &models.User{}
-	query := `SELECT id, email, password, role, full_name, created_at, updated_at FROM users WHERE email = $1`
+	query := `SELECT id, email, password, role, full_name, branch_id, created_at, updated_at FROM users WHERE email = $1`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, email).Scan(
-		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.CreatedAt, &user.UpdatedAt,
+		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.BranchID, &user.CreatedAt, &user.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
