@@ -52,6 +52,93 @@ import {
 import { SubscriptionResponse } from "@/types";
 import { AlertTriangle, Crown, Sparkles } from "lucide-react";
 
+// ── Subscription sidebar badge ────────────────────────────────────────────────
+
+interface SubInfo {
+  status: string;
+  daysLeft: number;
+  planName: string;
+}
+
+function SubscriptionBadge({ status, daysLeft, planName }: SubInfo) {
+  const isExpired = ["expired", "cancelled"].includes(status) || daysLeft <= 0;
+  const isTrial = status === "trial";
+  const isCritical = isExpired || (isTrial && daysLeft <= 3);
+  const isWarning = isTrial && daysLeft > 3 && daysLeft <= 7;
+
+  let containerClass: string;
+  let dotClass: string;
+  let titleText: string;
+  let subtitleText: string;
+
+  if (isExpired) {
+    containerClass =
+      "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800";
+    dotClass = "bg-red-500 animate-pulse";
+    titleText = "Subscription Expired";
+    subtitleText = "Renew to restore access";
+  } else if (isTrial && daysLeft <= 3) {
+    containerClass =
+      "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800";
+    dotClass = "bg-red-500 animate-pulse";
+    titleText = `${daysLeft} day${daysLeft === 1 ? "" : "s"} remaining`;
+    subtitleText = "Trial ending soon!";
+  } else if (isWarning) {
+    containerClass =
+      "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800";
+    dotClass = "bg-amber-500";
+    titleText = `${daysLeft} days remaining`;
+    subtitleText = "Free Trial";
+  } else if (isTrial) {
+    containerClass =
+      "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800";
+    dotClass = "bg-amber-400";
+    titleText = `${daysLeft} days remaining`;
+    subtitleText = "Free Trial";
+  } else {
+    // Active subscription
+    containerClass =
+      "bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800";
+    dotClass = "bg-indigo-500";
+    titleText = planName;
+    subtitleText = "Active";
+  }
+
+  const textClass = isCritical
+    ? "text-red-700 dark:text-red-400"
+    : isWarning || isTrial
+    ? "text-amber-700 dark:text-amber-400"
+    : "text-indigo-700 dark:text-indigo-400";
+
+  const subTextClass = isCritical
+    ? "text-red-500 dark:text-red-500"
+    : isWarning || isTrial
+    ? "text-amber-500 dark:text-amber-500"
+    : "text-indigo-500 dark:text-indigo-500";
+
+  return (
+    <Link href="/billing">
+      <div
+        className={`rounded-lg px-3 py-2.5 border cursor-pointer transition-opacity hover:opacity-80 ${containerClass}`}
+      >
+        <div className="flex items-center gap-2.5">
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotClass}`} />
+          <div className="min-w-0 flex-1">
+            <p className={`text-xs font-semibold truncate ${textClass}`}>
+              {titleText}
+            </p>
+            <p className={`text-xs truncate ${subTextClass}`}>{subtitleText}</p>
+          </div>
+          {(isExpired || isCritical) && (
+            <span className={`text-[10px] font-bold flex-shrink-0 ${textClass}`}>
+              ↗
+            </span>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -130,6 +217,7 @@ export function Layout({ children }: LayoutProps) {
   //   for the X-Branch-ID header (BOLA guard). Clears stale selection.
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [upgradeMessage, setUpgradeMessage] = useState("");
+  const [subInfo, setSubInfo] = useState<SubInfo | null>(null);
 
   useEffect(() => {
     const onLimitReached = (e: Event) => {
@@ -152,6 +240,27 @@ export function Layout({ children }: LayoutProps) {
     };
   }, [router]);
 
+  // Fetch subscription info for the sidebar badge (admin only, re-fetches on login)
+  useEffect(() => {
+    if (!user || user.role !== "admin") {
+      setSubInfo(null);
+      return;
+    }
+    getCurrentSubscription()
+      .then((sub) => {
+        if (!sub) { setSubInfo(null); return; }
+        const msLeft = sub.endDate
+          ? new Date(sub.endDate).getTime() - Date.now()
+          : Infinity;
+        const daysLeft = msLeft === Infinity ? 9999 : Math.ceil(msLeft / 86_400_000);
+        setSubInfo({
+          status: sub.status,
+          daysLeft,
+          planName: (sub as any).plan?.name ?? sub.status,
+        });
+      })
+      .catch(() => setSubInfo(null));
+  }, [user?.id]); // re-fetch when the logged-in user changes
 
   // Update current date and time every second
   useEffect(() => {
@@ -476,6 +585,10 @@ export function Layout({ children }: LayoutProps) {
           <div className="p-4 border-t border-slate-200 dark:border-slate-800">
             {sidebarOpen ? (
               <div className="space-y-3">
+                {/* Subscription badge — shown above profile for admins */}
+                {user?.role === "admin" && subInfo && (
+                  <SubscriptionBadge {...subInfo} />
+                )}
                 <button
                   onClick={() =>
                     user?.role === "admin" && router.push("/admin-profile")
