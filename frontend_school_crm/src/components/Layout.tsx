@@ -494,32 +494,6 @@ export function Layout({ children }: LayoutProps) {
             </div>
           )}
 
-          {/* Subscription badge — admin only */}
-          {user?.role === "admin" && subInfo && (
-            sidebarOpen ? (
-              <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-800">
-                <SubscriptionBadge {...subInfo} />
-              </div>
-            ) : (
-              // Collapsed: show a single status dot centred in the icon column
-              <div className="flex justify-center py-2 border-b border-slate-200 dark:border-slate-800">
-                <Link href="/billing" title="Subscription">
-                  <span
-                    className={`w-2.5 h-2.5 rounded-full block ${
-                      ["expired", "cancelled"].includes(subInfo.status) || subInfo.daysLeft <= 0
-                        ? "bg-red-500 animate-pulse"
-                        : subInfo.status === "trial" && subInfo.daysLeft <= 7
-                        ? "bg-amber-500"
-                        : subInfo.status === "trial"
-                        ? "bg-amber-400"
-                        : "bg-indigo-500"
-                    }`}
-                  />
-                </Link>
-              </div>
-            )
-          )}
-
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto p-2">
             <div className="space-y-1">
@@ -547,6 +521,10 @@ export function Layout({ children }: LayoutProps) {
           <div className="p-4 border-t border-slate-200 dark:border-slate-800">
             {sidebarOpen ? (
               <div className="space-y-3">
+                {/* Subscription badge — shown above profile for admins */}
+                {user?.role === "admin" && subInfo && (
+                  <SubscriptionBadge {...subInfo} />
+                )}
                 <button
                   onClick={() =>
                     user?.role === "admin" && router.push("/admin-profile")
