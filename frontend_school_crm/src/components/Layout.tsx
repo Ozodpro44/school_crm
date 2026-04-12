@@ -60,6 +60,12 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -438,45 +444,57 @@ export function Layout({ children }: LayoutProps) {
 
             {/* Navigation Groups */}
             {navigationGroups.map((group) => (
-              <SidebarGroup key={group.title}>
-                <SidebarGroupLabel className="px-6 group-data-[collapsible=icon]:hidden text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 py-3 mt-2">{group.title}</SidebarGroupLabel>
-                <SidebarGroupContent>
-                  <SidebarMenu className="px-3 gap-1">
-                    {group.items.filter(i => i.show).map((item) => {
-                      const isActive = router.pathname === item.href;
-                      const Icon = item.icon;
-                      return (
-                        <SidebarMenuItem key={item.name}>
-                          <SidebarMenuButton
-                            asChild
-                            isActive={isActive}
-                            tooltip={item.name}
-                            className={cn(
-                              "h-10 px-3 rounded-lg flex items-center gap-3 transition-all duration-200 group/nav",
-                              isActive 
-                                ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 shadow-sm" 
-                                : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                            )}
-                          >
-                            <Link href={item.href}>
-                              <div className={cn(
-                                "flex items-center justify-center w-5 h-5 transition-transform group-hover/nav:scale-110",
-                                isActive ? "text-indigo-600" : "text-slate-500"
-                              )}>
-                                <Icon className="w-5 h-5" />
-                              </div>
-                              <span className="font-semibold text-sm group-data-[collapsible=icon]:hidden">{item.name}</span>
-                              {isActive && (
-                                <div className="absolute left-0 w-1 h-6 bg-indigo-600 rounded-r-full shadow-[0_0_10px_rgba(79,70,229,0.5)]" />
-                              )}
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
+              <Collapsible key={group.title} defaultOpen={true} className="group/collapsible">
+                <SidebarGroup>
+                  <SidebarGroupLabel asChild className="px-6 group-data-[collapsible=icon]:hidden">
+                    <CollapsibleTrigger className="flex w-full items-center justify-between text-[10px] font-black uppercase tracking-[0.25em] text-slate-400 py-3 mt-2 hover:text-indigo-500 transition-colors">
+                      {group.title}
+                      <ChevronDown className="w-3 h-3 transition-transform group-data-[state=open]/collapsible:rotate-180" />
+                    </CollapsibleTrigger>
+                  </SidebarGroupLabel>
+                  <CollapsibleContent>
+                    <SidebarGroupContent>
+                      <SidebarMenu className="px-3 gap-1.5 pt-1">
+                        {group.items.filter(i => i.show).map((item) => {
+                          const isActive = router.pathname === item.href;
+                          const Icon = item.icon;
+                          return (
+                            <SidebarMenuItem key={item.name}>
+                              <SidebarMenuButton
+                                asChild
+                                isActive={isActive}
+                                tooltip={item.name}
+                                className={cn(
+                                  "h-10 px-3 rounded-xl flex items-center gap-3 transition-all duration-300 group/nav relative overflow-hidden",
+                                  isActive 
+                                    ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shadow-[inset_0_0_0_1px_rgba(79,70,229,0.1),0_0_20px_rgba(79,70,229,0.1)] backdrop-blur-sm" 
+                                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/50"
+                                )}
+                              >
+                                <Link href={item.href}>
+                                  <div className={cn(
+                                    "flex items-center justify-center w-5 h-5 transition-all duration-300 group-hover/nav:scale-110 group-hover/nav:translate-x-0.5",
+                                    isActive ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400 group-hover/nav:text-indigo-500"
+                                  )}>
+                                    <Icon className="w-[18px] h-[18px]" />
+                                  </div>
+                                  <span className="font-bold text-sm tracking-tight group-data-[collapsible=icon]:hidden">{item.name}</span>
+                                  {isActive && (
+                                    <>
+                                      <div className="absolute left-0 w-[3px] h-6 bg-indigo-600 dark:bg-indigo-500 rounded-r-full shadow-[0_0_10px_rgba(79,70,229,1)] animate-in slide-in-from-left-full duration-500" />
+                                      <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/5 to-transparent pointer-events-none" />
+                                    </>
+                                  )}
+                                </Link>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          );
+                        })}
+                      </SidebarMenu>
+                    </SidebarGroupContent>
+                  </CollapsibleContent>
+                </SidebarGroup>
+              </Collapsible>
             ))}
             
             <div className="mt-auto px-4 py-6">
@@ -488,48 +506,52 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </SidebarContent>
 
-          <SidebarFooter className="border-t border-slate-200 dark:border-slate-800 p-4">
+          <SidebarFooter className="border-t border-slate-200 dark:border-slate-800 p-3 bg-slate-50/50 dark:bg-slate-900/50">
              <SidebarMenu>
                <SidebarMenuItem>
+                 <div className="flex items-center gap-2 px-1 mb-2 group-data-[collapsible=icon]:hidden">
+                    <ThemeSwitch />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 opacity-70">Appearance</span>
+                 </div>
                  <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <SidebarMenuButton 
                         size="lg" 
-                        className="w-full hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl p-2 h-auto"
+                        className="w-full hover:bg-white dark:hover:bg-slate-800 rounded-xl p-2 h-auto shadow-sm active:scale-95 transition-all border border-transparent hover:border-slate-200 dark:hover:border-slate-700"
                       >
-                        <Avatar className="h-10 w-10 border border-indigo-100 dark:border-indigo-900 shadow-sm">
-                          <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white font-black">
+                        <Avatar className="h-10 w-10 border-2 border-white dark:border-slate-800 shadow-sm ring-1 ring-indigo-500/20">
+                          <AvatarFallback className="bg-gradient-to-br from-indigo-500 via-purple-600 to-indigo-600 text-white font-black text-xs">
                             {user?.fullName.charAt(0)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 text-left min-w-0 ml-3 group-data-[collapsible=icon]:hidden">
-                          <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate flex items-center gap-1">
+                          <p className="text-sm font-black text-slate-900 dark:text-slate-100 truncate flex items-center gap-1.5">
                             {user?.fullName}
                           </p>
-                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 truncate opacity-70">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-indigo-500/70 truncate">
                             {user?.role?.replace("_", " ")}
                           </p>
                         </div>
-                        <ChevronDown className="w-4 h-4 text-slate-400 group-data-[collapsible=icon]:hidden" />
+                        <ChevronDown className="w-4 h-4 text-slate-400 group-data-[collapsible=icon]:hidden transition-transform group-hover:translate-y-0.5" />
                       </SidebarMenuButton>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-56" side="right" align="end">
-                      <DropdownMenuLabel className="font-black text-[10px] uppercase tracking-widest opacity-50 px-2 py-1.5">Account Management</DropdownMenuLabel>
+                    <DropdownMenuContent className="w-56" side="right" align="end" sideOffset={8}>
+                      <DropdownMenuLabel className="font-black text-[10px] uppercase tracking-widest opacity-50 px-2 py-2">Account Management</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => router.push("/admin-profile")}>
-                        <UserCog className="mr-2 h-4 w-4" />
+                      <DropdownMenuItem onClick={() => router.push("/admin-profile")} className="cursor-pointer gap-2 font-semibold">
+                        <UserCog className="h-4 w-4 text-indigo-500" />
                         <span>Profile Settings</span>
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
-                         <Globe className="mr-2 h-4 w-4" />
+                      <DropdownMenuItem className="cursor-pointer gap-2 font-semibold">
+                         <Globe className="h-4 w-4 text-indigo-500" />
                          <div className="flex-1 flex items-center justify-between">
                             <span>Language</span>
-                            <span className="text-[10px] font-bold text-indigo-500 uppercase">{language}</span>
+                            <span className="text-[10px] font-black text-indigo-500 bg-indigo-500/10 px-1.5 py-0.5 rounded uppercase">{language}</span>
                          </div>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={handleLogout} className="text-red-500 focus:text-red-500">
-                        <LogOut className="mr-2 h-4 w-4" />
+                      <DropdownMenuItem onClick={handleLogout} className="text-red-500 focus:text-red-500 cursor-pointer gap-2 font-semibold">
+                        <LogOut className="h-4 w-4" />
                         <span>Log out</span>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
