@@ -1194,7 +1194,7 @@ export default function ExpensesPage() {
                       />
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      {new Date(expense.date).toLocaleDateString()}
+                      {new Date(expense.date).toLocaleDateString("en-GB").replace(/\//g, ".")}
                     </td>
                     <td className="py-3 px-4">
                       <Badge variant="outline">

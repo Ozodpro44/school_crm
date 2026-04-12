@@ -2703,7 +2703,7 @@ export default function PaymentsPage() {
                     })()}
                   </p>
                   <p className="text-xs text-slate-600 dark:text-slate-400 print:text-black print:text-opacity-70">
-                    {new Date().toLocaleDateString("en-GB")}
+                    {new Date().toLocaleDateString("en-GB").replace(/\//g, ".")}
                   </p>
                   <p className="text-xs text-slate-600 dark:text-slate-400 print:text-black print:text-opacity-70">
                     {new Date().toLocaleTimeString()}
