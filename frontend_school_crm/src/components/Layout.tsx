@@ -58,9 +58,10 @@ interface SubInfo {
   status: string;
   daysLeft: number;
   planName: string;
+  collapsed?: boolean;
 }
 
-function SubscriptionBadge({ status, daysLeft, planName }: SubInfo) {
+function SubscriptionBadge({ status, daysLeft, planName, collapsed }: SubInfo) {
   const isExpired = ["expired", "cancelled"].includes(status) || daysLeft <= 0;
   const isTrial = status === "trial";
   const isCritical = isExpired || (isTrial && daysLeft <= 3);
@@ -116,22 +117,35 @@ function SubscriptionBadge({ status, daysLeft, planName }: SubInfo) {
     ? "text-amber-500 dark:text-amber-500"
     : "text-indigo-500 dark:text-indigo-500";
 
+  if (collapsed) {
+    return (
+      <Link href="/billing">
+        <div 
+          className={`flex items-center justify-center p-2 rounded-xl border transition-all hover:bg-white/10 ${containerClass}`}
+          title={`${titleText} - ${subtitleText}`}
+        >
+          <span className={`w-3 h-3 rounded-full flex-shrink-0 shadow-sm ${dotClass}`} />
+        </div>
+      </Link>
+    );
+  }
+
   return (
     <Link href="/billing">
       <div
-        className={`rounded-lg px-3 py-2.5 border cursor-pointer transition-opacity hover:opacity-80 ${containerClass}`}
+        className={`rounded-xl px-3 py-2.5 border cursor-pointer shadow-sm transition-all hover:shadow-md hover:scale-[1.02] active:scale-[0.98] ${containerClass}`}
       >
         <div className="flex items-center gap-2.5">
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotClass}`} />
+          <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotClass}`} />
           <div className="min-w-0 flex-1">
-            <p className={`text-xs font-semibold truncate ${textClass}`}>
+            <p className={`text-[10px] font-black uppercase tracking-widest truncate ${textClass}`}>
               {titleText}
             </p>
-            <p className={`text-xs truncate ${subTextClass}`}>{subtitleText}</p>
+            <p className={`text-[10px] font-medium leading-none mt-0.5 truncate ${subTextClass}`}>{subtitleText}</p>
           </div>
           {(isExpired || isCritical) && (
-            <span className={`text-[10px] font-bold flex-shrink-0 ${textClass}`}>
-              ↗
+            <span className={`text-xs font-bold flex-shrink-0 ${textClass}`}>
+              !
             </span>
           )}
         </div>
@@ -156,8 +170,10 @@ export function Layout({ children }: LayoutProps) {
   const setLanguage = useSetLanguage();
   const { currentBranch, branches, setCurrentBranchById, clearBranches } =
     useBranch();
+  // Unified Subscription State
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
   const [fetchingSub, setFetchingSub] = useState(false);
+  const [subInfo, setSubInfo] = useState<SubInfo | null>(null);
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -169,8 +185,6 @@ export function Layout({ children }: LayoutProps) {
     }
 
     // Auto-set manager's branch when they login
-    // Guard: only set if not already set to the correct branch, to avoid
-    // dispatching spurious branchChange events on every shallow URL update.
     if (
       currentUser &&
       (currentUser.role === "manager" || currentUser.role === "branch_admin") &&
@@ -200,15 +214,34 @@ export function Layout({ children }: LayoutProps) {
     };
   }, []);
 
-  // Fetch subscription data for admin users
+  // Unified Subscription Effect - Fetches plan and sets display info once
   useEffect(() => {
     if (user?.role === "admin") {
       setFetchingSub(true);
       getCurrentSubscription()
-        .then(setSubscription)
+        .then((sub) => {
+          setSubscription(sub);
+          if (sub) {
+            const msLeft = sub.endDate
+              ? new Date(sub.endDate).getTime() - Date.now()
+              : Infinity;
+            const daysLeft = msLeft === Infinity ? 9999 : Math.ceil(msLeft / 86_400_000);
+            setSubInfo({
+              status: sub.status,
+              daysLeft,
+              planName: (sub as any).plan?.name ?? (sub.status === 'trial' ? 'Trial' : 'Basic'),
+            });
+          } else {
+            setSubInfo(null);
+          }
+        })
+        .catch(() => setSubInfo(null))
         .finally(() => setFetchingSub(false));
+    } else {
+      setSubscription(null);
+      setSubInfo(null);
     }
-  }, [user]);
+  }, [user?.id]);
 
   // ── Global subscription / branch event handlers ──────────────────────────
   // subscription:limitReached — fired by api.ts when the server returns 402
@@ -217,7 +250,6 @@ export function Layout({ children }: LayoutProps) {
   //   for the X-Branch-ID header (BOLA guard). Clears stale selection.
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [upgradeMessage, setUpgradeMessage] = useState("");
-  const [subInfo, setSubInfo] = useState<SubInfo | null>(null);
 
   useEffect(() => {
     const onLimitReached = (e: Event) => {
@@ -239,28 +271,6 @@ export function Layout({ children }: LayoutProps) {
       window.removeEventListener("branch:accessDenied", onBranchAccessDenied);
     };
   }, [router]);
-
-  // Fetch subscription info for the sidebar badge (admin only, re-fetches on login)
-  useEffect(() => {
-    if (!user || user.role !== "admin") {
-      setSubInfo(null);
-      return;
-    }
-    getCurrentSubscription()
-      .then((sub) => {
-        if (!sub) { setSubInfo(null); return; }
-        const msLeft = sub.endDate
-          ? new Date(sub.endDate).getTime() - Date.now()
-          : Infinity;
-        const daysLeft = msLeft === Infinity ? 9999 : Math.ceil(msLeft / 86_400_000);
-        setSubInfo({
-          status: sub.status,
-          daysLeft,
-          planName: (sub as any).plan?.name ?? sub.status,
-        });
-      })
-      .catch(() => setSubInfo(null));
-  }, [user?.id]); // re-fetch when the logged-in user changes
 
   // Update current date and time every second
   useEffect(() => {
@@ -535,49 +545,10 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </nav>
 
-          {/* Subscription Status Badge */}
-          {sidebarOpen && user?.role === "admin" && subscription && (
-            <div className="px-4 pb-2">
-              <Link href="/billing">
-                <div className={`p-3 rounded-xl border transition-all hover:shadow-md cursor-pointer flex items-center gap-3 group ${
-                  subscription.status === 'trial' 
-                    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800' 
-                    : subscription.status === 'active'
-                    ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800'
-                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 animate-pulse'
-                }`}>
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                    subscription.status === 'trial'
-                      ? 'bg-amber-100 dark:bg-amber-800 text-amber-600 dark:text-amber-400'
-                      : subscription.status === 'active'
-                      ? 'bg-indigo-100 dark:bg-indigo-800 text-indigo-600 dark:text-indigo-400'
-                      : 'bg-red-100 dark:bg-red-800 text-red-600 dark:text-red-400'
-                  }`}>
-                    {subscription.status === 'trial' ? (
-                      <Sparkles className="w-5 h-5" />
-                    ) : subscription.status === 'active' ? (
-                      <Crown className="w-5 h-5" />
-                    ) : (
-                      <AlertTriangle className="w-5 h-5" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-bold uppercase tracking-wider ${
-                      subscription.status === 'trial' ? 'text-amber-700 dark:text-amber-300' : 
-                      subscription.status === 'active' ? 'text-indigo-700 dark:text-indigo-300' : 'text-red-700 dark:text-red-300'
-                    }`}>
-                      {subscription.plan?.name || (subscription.status === 'trial' ? 'Trial' : 'Inactive')}
-                    </p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                      {subscription.status === 'trial' 
-                        ? `${getDaysUntilExpiry(subscription)} days left` 
-                        : subscription.status === 'active'
-                        ? 'Premium Access'
-                        : 'Action Required'}
-                    </p>
-                  </div>
-                </div>
-              </Link>
+          {/* Subscription Status Indicator */}
+          {user?.role === "admin" && subInfo && (
+            <div className={sidebarOpen ? "px-4 pb-4" : "px-4 pb-4 flex justify-center"}>
+              <SubscriptionBadge {...subInfo} collapsed={!sidebarOpen} />
             </div>
           )}
 
@@ -585,10 +556,6 @@ export function Layout({ children }: LayoutProps) {
           <div className="p-4 border-t border-slate-200 dark:border-slate-800">
             {sidebarOpen ? (
               <div className="space-y-3">
-                {/* Subscription badge — shown above profile for admins */}
-                {user?.role === "admin" && subInfo && (
-                  <SubscriptionBadge {...subInfo} />
-                )}
                 <button
                   onClick={() =>
                     user?.role === "admin" && router.push("/admin-profile")
