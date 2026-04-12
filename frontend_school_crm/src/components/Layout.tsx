@@ -54,7 +54,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,
@@ -418,20 +417,31 @@ export function Layout({ children }: LayoutProps) {
     <SidebarProvider defaultOpen={true}>
       <div className="flex min-h-screen w-full bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-800">
         <Sidebar collapsible="icon" className="border-r border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl">
-          <SidebarHeader className="border-b border-slate-200 dark:border-slate-800 p-4">
-            <Link href="/" className="flex items-center gap-3 px-2 group">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
-                <span className="font-black text-lg bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent truncate leading-tight">
-                  {currentBranch?.name || t("schoolName") || "School"}
-                </span>
-                <span className="text-[10px] text-slate-500 font-bold tracking-widest uppercase truncate opacity-70">
-                  School Management
-                </span>
-              </div>
-            </Link>
+          <SidebarHeader className="border-b border-slate-200 dark:border-slate-800 p-0">
+            {/* Expanded header: logo + text + collapse button */}
+            <div className="group-data-[collapsible=icon]:hidden flex items-center justify-between gap-2 px-4 py-3">
+              <Link href="/" className="flex items-center gap-3 group flex-1 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform flex-shrink-0">
+                  <Building2 className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="font-black text-base bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent truncate leading-tight">
+                    {currentBranch?.name || t("schoolName") || "School"}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-bold tracking-widest uppercase truncate opacity-70">
+                    School Management
+                  </span>
+                </div>
+              </Link>
+              <SidebarTrigger className="h-7 w-7 flex-shrink-0 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" />
+            </div>
+            {/* Collapsed header: logo icon + expand button stacked */}
+            <div className="hidden group-data-[collapsible=icon]:flex flex-col items-center gap-2 py-3">
+              <Link href="/" className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center shadow-lg hover:scale-105 transition-transform">
+                <Building2 className="w-5 h-5 text-white" />
+              </Link>
+              <SidebarTrigger className="h-7 w-7 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" />
+            </div>
           </SidebarHeader>
 
           <SidebarContent className="py-4">
@@ -570,11 +580,11 @@ export function Layout({ children }: LayoutProps) {
                </SidebarMenuItem>
              </SidebarMenu>
           </SidebarFooter>
-          <SidebarRail />
         </Sidebar>
 
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="lg:hidden sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 shadow-sm p-4 flex items-center justify-between">
+          {/* Mobile-only header (desktop toggle is inside the sidebar header) */}
+          <header className="md:hidden sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 shadow-sm px-4 h-14 flex items-center justify-between">
             <Link href="/" className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
                 <Building2 className="w-5 h-5 text-white" />
@@ -583,7 +593,7 @@ export function Layout({ children }: LayoutProps) {
                 {currentBranch?.name || t("schoolName") || "School"}
               </span>
             </Link>
-            <SidebarTrigger className="lg:hidden" />
+            <SidebarTrigger />
           </header>
 
           <main className="flex-1 overflow-x-hidden">
