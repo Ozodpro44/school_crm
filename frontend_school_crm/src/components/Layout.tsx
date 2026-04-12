@@ -28,17 +28,11 @@ import {
   FileText,
   HelpCircle,
   LogOut,
-  Menu,
-  X,
   TrendingDown,
   Building2,
   Settings,
   Globe,
-  ChevronLeft,
-  ChevronRight,
   UserCog,
-  Calendar,
-  Clock,
   ChevronDown,
 } from "lucide-react";
 
@@ -54,7 +48,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarSeparator,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -65,28 +58,21 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { getCurrentUser, logout, hasPermission } from "@/lib/auth";
-import { User, Language } from "@/types";
+import { User } from "@/types";
 import { getTranslation } from "@/lib/translations";
-import { useLanguage, useSetLanguage } from "@/hooks/use-language";
+import { useLanguage } from "@/hooks/use-language";
 import { useBranch } from "@/context/BranchContext";
-import { 
-  getCurrentSubscription, 
-  getDaysUntilExpiry, 
-  isTrialEndingSoon 
-} from "@/lib/subscription-api";
-import { SubscriptionResponse } from "@/types";
-import { AlertTriangle, Crown, Sparkles } from "lucide-react";
+import { getCurrentSubscription } from "@/lib/subscription-api";
 
 // ── Subscription sidebar badge ────────────────────────────────────────────────
 
@@ -214,16 +200,9 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const language = useLanguage();
-  const setLanguage = useSetLanguage();
   const { currentBranch, branches, setCurrentBranchById, clearBranches } =
     useBranch();
-  // Unified Subscription State
-  const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
-  const [fetchingSub, setFetchingSub] = useState(false);
   const [subInfo, setSubInfo] = useState<SubInfo | null>(null);
 
   useEffect(() => {
@@ -265,13 +244,11 @@ export function Layout({ children }: LayoutProps) {
     };
   }, []);
 
-  // Unified Subscription Effect - Fetches plan and sets display info once
+  // Fetch subscription info for admin users
   useEffect(() => {
     if (user?.role === "admin") {
-      setFetchingSub(true);
       getCurrentSubscription()
         .then((sub) => {
-          setSubscription(sub);
           if (sub) {
             const msLeft = sub.endDate
               ? new Date(sub.endDate).getTime() - Date.now()
@@ -286,10 +263,8 @@ export function Layout({ children }: LayoutProps) {
             setSubInfo(null);
           }
         })
-        .catch(() => setSubInfo(null))
-        .finally(() => setFetchingSub(false));
+        .catch(() => setSubInfo(null));
     } else {
-      setSubscription(null);
       setSubInfo(null);
     }
   }, [user?.id]);
@@ -323,23 +298,10 @@ export function Layout({ children }: LayoutProps) {
     };
   }, [router]);
 
-  // Update current date and time every second
-  useEffect(() => {
-    setCurrentDate(new Date());
-    const timer = setInterval(() => {
-      setCurrentDate(new Date());
-    }, 1000); // Update every second
-    return () => clearInterval(timer);
-  }, []);
-
   const handleLogout = () => {
     clearBranches();
     logout();
     router.push("/login");
-  };
-
-  const handleLanguageChange = (newLang: Language) => {
-    setLanguage(newLang);
   };
 
   const handleBranchChange = (branchId: string) => {
