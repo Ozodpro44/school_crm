@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -11,10 +12,10 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterStudentRoutes(router *gin.RouterGroup, studentService *service.StudentService, classService *service.ClassService, userService *service.UserService, paymentService *service.PaymentService) {
+func RegisterStudentRoutes(router *gin.RouterGroup, studentService *service.StudentService, classService *service.ClassService, userService *service.UserService, paymentService *service.PaymentService, subService *service.SubscriptionService) {
 	students := router.Group("/students")
 	// Authenticated users can view and edit
-	students.POST("", middleware.PermissionChecker(userService, "canCreateStudents"), createStudent(studentService))
+	students.POST("", middleware.PermissionChecker(userService, "canCreateStudents"), createStudent(studentService, subService))
 	students.GET("/:id", middleware.PermissionChecker(userService, "canViewStudents"), getStudent(studentService))
 	students.GET("", middleware.PermissionChecker(userService, "canViewStudents"), listStudents(studentService))
 	students.PUT("/:id", middleware.PermissionChecker(userService, "canEditStudents"), updateStudent(studentService))
@@ -25,12 +26,28 @@ func RegisterStudentRoutes(router *gin.RouterGroup, studentService *service.Stud
 	students.GET("/search/with-payments", middleware.PermissionChecker(userService, "canViewStudents"), searchStudentsWithPayments(studentService, classService, paymentService))
 }
 
-func createStudent(studentService *service.StudentService) gin.HandlerFunc {
+func createStudent(studentService *service.StudentService, subService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.CreateStudentRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+
+		// Enforce subscription student limit before inserting.
+		if req.BranchID != "" {
+			ownerID, err := subService.GetOwnerIDFromBranch(c.Request.Context(), req.BranchID)
+			if err == nil && ownerID != "" {
+				if limitErr := subService.CheckResourceLimit(c.Request.Context(), ownerID, "students"); limitErr != nil {
+					if errors.Is(limitErr, service.ErrSubscriptionLimitReached) {
+						c.JSON(http.StatusPaymentRequired, gin.H{
+							"error":  "subscription_limit_reached",
+							"detail": limitErr.Error(),
+						})
+						return
+					}
+				}
+			}
 		}
 
 		student, err := studentService.Create(c.Request.Context(), &req)

@@ -213,21 +213,23 @@ func main() {
 	protected := router.Group("/api")
 	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
 	protected.Use(middleware.SubscriptionGate(userService, subscriptionService))
+	// BOLA/IDOR guard: verify the X-Branch-ID header belongs to the JWT user.
+	protected.Use(middleware.TenantBranchMiddleware(userService))
 
 	// Users
 	handlers.RegisterUserRoutes(protected, userService)
 
 	// Students
-	handlers.RegisterStudentRoutes(protected, studentService, classService, userService, paymentService)
+	handlers.RegisterStudentRoutes(protected, studentService, classService, userService, paymentService, subscriptionService)
 
 	// Payments
 	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService, studentService, classService)
 
 	// Classes
-	handlers.RegisterClassRoutes(protected, classService, userService)
+	handlers.RegisterClassRoutes(protected, classService, userService, subscriptionService)
 
 	// Branches
-	handlers.RegisterBranchRoutes(protected, branchService, userService)
+	handlers.RegisterBranchRoutes(protected, branchService, userService, subscriptionService)
 
 	// Teachers
 	handlers.RegisterTeacherRoutes(protected, teacherService, userService)

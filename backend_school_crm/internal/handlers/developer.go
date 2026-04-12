@@ -700,7 +700,7 @@ func RegisterDevCRMRoutes(router *gin.RouterGroup, userService *service.UserServ
 	branches := router.Group("/dev/crm/branches")
 	branches.GET("", listBranches(branchService, userService))
 	branches.GET("/:id", getBranch(branchService))
-	branches.POST("", createBranch(branchService))
+	branches.POST("", createBranch(branchService, nil)) // dev path — no subscription limit enforcement
 	branches.PUT("/:id", updateBranch(branchService))
 	branches.DELETE("/:id", deleteBranch(branchService))
 }

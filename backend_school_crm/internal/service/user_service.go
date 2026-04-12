@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"strconv"
 
@@ -520,6 +521,30 @@ func (s *UserService) GetBranchAdminID(ctx context.Context, branchID string) (st
 		return "", nil
 	}
 	return adminID, err
+}
+
+// BelongsToBranch returns true when userID is legitimately associated with branchID.
+// Covers three cases:
+//   - admin:         they own the branch (branches.admin_id = userID)
+//   - manager/ba:    they are in branch_managers for this branch
+//   - teacher/staff: their users.branch_id points to this branch
+//
+// A single UNION query keeps it to one round-trip.
+func (s *UserService) BelongsToBranch(ctx context.Context, userID, branchID string) (bool, error) {
+	var count int
+	err := s.db.GetConn().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM (
+			SELECT 1 FROM branches        WHERE id = $2 AND admin_id = $1
+			UNION ALL
+			SELECT 1 FROM branch_managers WHERE branch_id = $2 AND manager_id = $1
+			UNION ALL
+			SELECT 1 FROM users           WHERE id = $1 AND branch_id = $2
+		) AS access
+	`, userID, branchID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("BelongsToBranch: %w", err)
+	}
+	return count > 0, nil
 }
 
 func (s *UserService) GetBranchManagers(ctx context.Context, branchID string) ([]models.User, error) {

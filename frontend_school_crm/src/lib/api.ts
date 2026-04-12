@@ -387,10 +387,33 @@ export async function apiRequest<T>(
         }
       }
 
-      // Subscription required — redirect to billing page
+      // Subscription expired / paused → redirect to billing page.
       if (response.status === 402 && errorData.error === "subscription_required") {
         if (typeof window !== "undefined" && !window.location.pathname.startsWith("/billing")) {
           window.location.href = "/billing";
+        }
+      }
+
+      // Subscription plan limit reached (students / classes / branches) →
+      // fire a custom event so any mounted upgrade modal can open without a
+      // full-page redirect.
+      if (response.status === 402 && errorData.error === "subscription_limit_reached") {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("subscription:limitReached", {
+              detail: { message: errorData.detail || errorMessage },
+            })
+          );
+        }
+      }
+
+      // Branch access denied — the X-Branch-ID header was rejected by the
+      // server's TenantBranchMiddleware. Clear the stale branch selection and
+      // redirect the user to the dashboard so they can pick a valid branch.
+      if (response.status === 403 && errorData.error?.includes("branch")) {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("selectedBranchId");
+          window.dispatchEvent(new CustomEvent("branch:accessDenied"));
         }
       }
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,9 +10,9 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterBranchRoutes(router *gin.RouterGroup, branchService *service.BranchService, userService *service.UserService) {
+func RegisterBranchRoutes(router *gin.RouterGroup, branchService *service.BranchService, userService *service.UserService, subService *service.SubscriptionService) {
 	branches := router.Group("/branches")
-	branches.POST("", createBranch(branchService))
+	branches.POST("", createBranch(branchService, subService))
 	branches.GET("/:id", getBranch(branchService))
 	branches.GET("", listBranches(branchService, userService))
 	branches.PUT("/:id", updateBranch(branchService))
@@ -20,12 +21,29 @@ func RegisterBranchRoutes(router *gin.RouterGroup, branchService *service.Branch
 	branches.POST("/:id/switch-month", middleware.RoleChecker(userService, models.RoleAdmin), switchMonth(branchService))
 }
 
-func createBranch(branchService *service.BranchService) gin.HandlerFunc {
+func createBranch(branchService *service.BranchService, subService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.CreateBranchRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+
+		// Enforce subscription branch limit (skipped when subService is nil, e.g. dev path).
+		if subService != nil {
+			if userIDRaw, exists := c.Get("user_id"); exists {
+				if ownerID, ok := userIDRaw.(string); ok && ownerID != "" {
+					if limitErr := subService.CheckResourceLimit(c.Request.Context(), ownerID, "branches"); limitErr != nil {
+						if errors.Is(limitErr, service.ErrSubscriptionLimitReached) {
+							c.JSON(http.StatusPaymentRequired, gin.H{
+								"error":  "subscription_limit_reached",
+								"detail": limitErr.Error(),
+							})
+							return
+						}
+					}
+				}
+			}
 		}
 
 		branch, err := branchService.Create(c.Request.Context(), &req)

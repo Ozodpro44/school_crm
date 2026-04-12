@@ -2,6 +2,14 @@ import { ReactNode, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ThemeSwitch } from "@/components/ThemeSwitch";
 import {
   Select,
@@ -92,6 +100,35 @@ export function Layout({ children }: LayoutProps) {
       window.removeEventListener("userProfileUpdated", handleUserProfileUpdate);
     };
   }, []);
+
+  // ── Global subscription / branch event handlers ──────────────────────────
+  // subscription:limitReached — fired by api.ts when the server returns 402
+  //   with error="subscription_limit_reached". Opens the upgrade modal.
+  // branch:accessDenied      — fired by api.ts when the server returns 403
+  //   for the X-Branch-ID header (BOLA guard). Clears stale selection.
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
+
+  useEffect(() => {
+    const onLimitReached = (e: Event) => {
+      const detail = (e as CustomEvent<{ message: string }>).detail;
+      setUpgradeMessage(detail?.message || "");
+      setUpgradeModalOpen(true);
+    };
+
+    const onBranchAccessDenied = () => {
+      // The stale branch id was already removed from localStorage by api.ts.
+      // Push to home so the branch selector resets cleanly.
+      router.push("/");
+    };
+
+    window.addEventListener("subscription:limitReached", onLimitReached);
+    window.addEventListener("branch:accessDenied", onBranchAccessDenied);
+    return () => {
+      window.removeEventListener("subscription:limitReached", onLimitReached);
+      window.removeEventListener("branch:accessDenied", onBranchAccessDenied);
+    };
+  }, [router]);
 
   // Update current date and time every second
   useEffect(() => {
@@ -635,6 +672,32 @@ export function Layout({ children }: LayoutProps) {
           {children}
         </div>
       </main>
+
+      {/* Subscription limit upgrade modal — shown globally when any create
+          request is blocked by the server's plan-limit check (402). */}
+      <Dialog open={upgradeModalOpen} onOpenChange={setUpgradeModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("subscriptionLimitReached") || "Limit reached"}</DialogTitle>
+            <DialogDescription>
+              {upgradeMessage || t("subscriptionLimitDetail") || "You have reached the limit included in your current plan. Upgrade to add more."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setUpgradeModalOpen(false)}>
+              {t("close") || "Close"}
+            </Button>
+            <Button
+              onClick={() => {
+                setUpgradeModalOpen(false);
+                router.push("/billing");
+              }}
+            >
+              {t("upgradePlan") || "Upgrade Plan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

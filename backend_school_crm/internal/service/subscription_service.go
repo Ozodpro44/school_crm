@@ -560,17 +560,101 @@ func (s *SubscriptionService) GetPlatformStats(ctx context.Context) (*models.Pla
 }
 
 // IsUserSubscriptionActive is a lightweight check used by the gating middleware.
-// Returns true if the user has an active or trial subscription.
+// Returns true only when the user has an active or trial subscription that has
+// not yet passed its end_date. This catches the case where the end_date expired
+// but the status was never updated to 'expired' via the background job.
 func (s *SubscriptionService) IsUserSubscriptionActive(ctx context.Context, userID string) (bool, error) {
 	var count int
 	err := s.database.GetConn().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM subscriptions
-		WHERE user_id = $1 AND status IN ('active','trial')
+		WHERE user_id = $1
+		  AND status IN ('active','trial')
+		  AND (end_date IS NULL OR end_date > NOW())
 	`, userID).Scan(&count)
 	if err != nil {
 		return false, fmt.Errorf("check subscription active: %w", err)
 	}
 	return count > 0, nil
+}
+
+// ErrSubscriptionLimitReached is returned by CheckResourceLimit when the tenant
+// has reached their plan quota for the given resource type.
+var ErrSubscriptionLimitReached = fmt.Errorf("subscription_limit_reached")
+
+// GetOwnerIDFromBranch resolves the admin (school owner) user_id for the branch.
+func (s *SubscriptionService) GetOwnerIDFromBranch(ctx context.Context, branchID string) (string, error) {
+	var adminID string
+	err := s.database.GetConn().QueryRowContext(ctx,
+		`SELECT COALESCE(admin_id::text,'') FROM branches WHERE id = $1`, branchID,
+	).Scan(&adminID)
+	if err == sql.ErrNoRows || adminID == "" {
+		return "", fmt.Errorf("branch %s not found or has no admin", branchID)
+	}
+	return adminID, err
+}
+
+// CheckResourceLimit verifies the tenant has not exceeded the plan quota for the
+// given metric ("students", "classes", or "branches"). It counts live records
+// directly in the DB rather than relying on the subscription_usage cache, so it
+// is always consistent even if the cache is stale.
+//
+// ownerUserID is the school admin's user_id (resolved from the branch before call).
+// Returns ErrSubscriptionLimitReached when the quota is full; nil when OK.
+func (s *SubscriptionService) CheckResourceLimit(ctx context.Context, ownerUserID, metric string) error {
+	sub, err := s.GetUserSubscriptionWithPlan(ctx, ownerUserID)
+	if err != nil {
+		return fmt.Errorf("CheckResourceLimit: fetch subscription: %w", err)
+	}
+	if sub == nil || sub.Plan == nil {
+		// No active subscription — SubscriptionGate will block the request.
+		return nil
+	}
+
+	var limitPtr *int
+	switch metric {
+	case "students":
+		limitPtr = sub.Plan.MaxStudents
+	case "classes":
+		limitPtr = sub.Plan.MaxClasses
+	case "branches":
+		limitPtr = sub.Plan.MaxBranches
+	default:
+		return fmt.Errorf("CheckResourceLimit: unknown metric %q", metric)
+	}
+
+	if limitPtr == nil {
+		// nil limit means unlimited.
+		return nil
+	}
+	limit := *limitPtr
+
+	var currentCount int
+	switch metric {
+	case "students":
+		err = s.database.GetConn().QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM students
+			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
+			  AND status != 'left'
+		`, ownerUserID).Scan(&currentCount)
+	case "classes":
+		err = s.database.GetConn().QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM classes
+			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
+		`, ownerUserID).Scan(&currentCount)
+	case "branches":
+		err = s.database.GetConn().QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM branches WHERE admin_id = $1
+		`, ownerUserID).Scan(&currentCount)
+	}
+	if err != nil {
+		return fmt.Errorf("CheckResourceLimit: count %s: %w", metric, err)
+	}
+
+	if currentCount >= limit {
+		return fmt.Errorf("%w: %s limit is %d (currently %d)",
+			ErrSubscriptionLimitReached, metric, limit, currentCount)
+	}
+	return nil
 }
 
 // GetSubscriptionPlanByID retrieves a single plan by ID.

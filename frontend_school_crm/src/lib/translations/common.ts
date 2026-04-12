@@ -911,6 +911,24 @@ export const commonTranslations: Partial<Translation> = {
   yes: { "uz-cyrl": "Ха", "uz-latn": "Ha", en: "Yes" },
   no: { "uz-cyrl": "Йўқ", "uz-latn": "Yoq", en: "No" },
   close: { "uz-cyrl": "Ёпиш", "uz-latn": "Yopish", en: "Close" },
+
+  subscriptionLimitReached: {
+    "uz-cyrl": "Тариф чекловига етдингиз",
+    "uz-latn": "Tarif chegarasiga yetdingiz",
+    en: "Plan limit reached",
+  },
+
+  subscriptionLimitDetail: {
+    "uz-cyrl": "Joriy tarifingizda ruxsat etilgan maksimal miqdorga yetdingiz. Ko'proq qo'shish uchun tarifni yangilang.",
+    "uz-latn": "Joriy tarifingizda ruxsat etilgan maksimal miqdorga yetdingiz. Ko'proq qo'shish uchun tarifni yangilang.",
+    en: "You have reached the maximum allowed by your current plan. Upgrade to add more.",
+  },
+
+  upgradePlan: {
+    "uz-cyrl": "Тарифни янгилаш",
+    "uz-latn": "Tarifni yangilash",
+    en: "Upgrade Plan",
+  },
   printReceipt: {
     "uz-cyrl": "Квитанциялар матнини чоп қилиш",
     "uz-latn": "Kvitansiyalar matnini chop qilish",
