@@ -90,15 +90,16 @@ func main() {
 	if emailSender != nil {
 		userService.SetEmailSender(emailSender)
 	}
-	studentService := service.NewStudentService(database)
-	paymentService := service.NewPaymentService(database)
-	classService := service.NewClassService(database)
-	branchService := service.NewBranchService(database)
-	teacherService := service.NewTeacherService(database)
-	salaryService := service.NewSalaryService(database)
-	expenseService := service.NewExpenseService(database)
-	reportService := service.NewReportService(database)
 	subscriptionService := service.NewSubscriptionService(database)
+	branchService := service.NewBranchService(database, subscriptionService)
+	studentService := service.NewStudentService(database, subscriptionService)
+	paymentService := service.NewPaymentService(database, branchService)
+	classService := service.NewClassService(database)
+	teacherService := service.NewTeacherService(database)
+	salaryService := service.NewSalaryService(database, branchService)
+	expenseService := service.NewExpenseService(database, branchService)
+	reportService := service.NewReportService(database)
+	financeService := service.NewFinanceService(branchService, paymentService, studentService, classService)
 	paymentTypeService := service.NewPaymentTypeService(database)
 	developerService := service.NewDeveloperService(database)
 
@@ -220,10 +221,10 @@ func main() {
 	handlers.RegisterUserRoutes(protected, userService)
 
 	// Students
-	handlers.RegisterStudentRoutes(protected, studentService, classService, userService, paymentService, subscriptionService)
+	handlers.RegisterStudentRoutes(protected, studentService, userService, financeService)
 
 	// Payments
-	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService, studentService, classService)
+	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService, financeService)
 
 	// Classes
 	handlers.RegisterClassRoutes(protected, classService, userService, subscriptionService)

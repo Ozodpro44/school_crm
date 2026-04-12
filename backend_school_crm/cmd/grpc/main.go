@@ -75,10 +75,11 @@ func main() {
 	}
 
 	// Initialize services (same service layer as REST)
-	studentService := service.NewStudentService(database)
-	paymentService := service.NewPaymentService(database)
+	subscriptionService := service.NewSubscriptionService(database)
+	branchService := service.NewBranchService(database, subscriptionService)
+	studentService := service.NewStudentService(database, subscriptionService)
+	paymentService := service.NewPaymentService(database, branchService)
 	classService := service.NewClassService(database)
-	branchService := service.NewBranchService(database)
 
 	// Build gRPC server
 	grpcSrv := grpc.NewServer()

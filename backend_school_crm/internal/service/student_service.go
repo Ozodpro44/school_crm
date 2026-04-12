@@ -15,11 +15,12 @@ import (
 )
 
 type StudentService struct {
-	db *db.Database
+	db     *db.Database
+	subSvc *SubscriptionService
 }
 
-func NewStudentService(database *db.Database) *StudentService {
-	return &StudentService{db: database}
+func NewStudentService(database *db.Database, subSvc *SubscriptionService) *StudentService {
+	return &StudentService{db: database, subSvc: subSvc}
 }
 
 type CreateStudentRequest struct {
@@ -33,7 +34,30 @@ type CreateStudentRequest struct {
 	EnrollmentDate *time.Time `json:"enrollmentDate"`
 }
 
+// StudentFilterInput replaces the long parameter list of GetByBranchIDWithFilters.
+type StudentFilterInput struct {
+	BranchID      string
+	Page          string
+	Limit         string
+	Search        string
+	Status        string
+	ClassID       string
+	PaymentStatus string
+	Month         string
+	Year          string
+}
+
 func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) (*models.Student, error) {
+	// Guard: subscription student limit.
+	if s.subSvc != nil && req.BranchID != "" {
+		ownerID, err := s.subSvc.GetOwnerIDFromBranch(ctx, req.BranchID)
+		if err == nil && ownerID != "" {
+			if limitErr := s.subSvc.CheckResourceLimit(ctx, ownerID, "students"); limitErr != nil {
+				return nil, limitErr
+			}
+		}
+	}
+
 	var classID *string
 	if req.ClassID != nil && *req.ClassID != "" {
 		classID = req.ClassID
@@ -168,13 +192,13 @@ func (s *StudentService) Delete(ctx context.Context, id string) error {
 	return err
 }
 
-func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, classID, paymentStatus, month, year string) (*models.StudentListResponse, error) {
-	intPage, err := strconv.Atoi(page)
+func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, in StudentFilterInput) (*models.StudentListResponse, error) {
+	intPage, err := strconv.Atoi(in.Page)
 	if err != nil || intPage < 1 {
 		intPage = 1
 	}
 
-	intLimit, err := strconv.Atoi(limit)
+	intLimit, err := strconv.Atoi(in.Limit)
 	if err != nil || intLimit < 1 {
 		intLimit = 10
 	}
@@ -185,14 +209,20 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 	currentMonth := currentTime.Format("01")
 	currentYear := currentTime.Year()
 
-	if month != "" {
-		currentMonth = month
+	if in.Month != "" {
+		currentMonth = in.Month
 	}
-	if year != "" {
-		if parsedYear, parseErr := strconv.Atoi(year); parseErr == nil {
+	if in.Year != "" {
+		if parsedYear, parseErr := strconv.Atoi(in.Year); parseErr == nil {
 			currentYear = parsedYear
 		}
 	}
+
+	branchID := in.BranchID
+	search := in.Search
+	status := in.Status
+	classID := in.ClassID
+	paymentStatus := in.PaymentStatus
 
 	// -------------------------
 	// dynamic filters

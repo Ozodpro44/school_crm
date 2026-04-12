@@ -29,29 +29,26 @@ func createBranch(branchService *service.BranchService, subService *service.Subs
 			return
 		}
 
-		// Enforce subscription branch limit (skipped when subService is nil, e.g. dev path).
-		if subService != nil {
-			if userIDRaw, exists := c.Get("user_id"); exists {
-				if ownerID, ok := userIDRaw.(string); ok && ownerID != "" {
-					if limitErr := subService.CheckResourceLimit(c.Request.Context(), ownerID, "branches"); limitErr != nil {
-						if errors.Is(limitErr, service.ErrSubscriptionLimitReached) {
-							c.JSON(http.StatusPaymentRequired, gin.H{
-								"error":  "subscription_limit_reached",
-								"detail": limitErr.Error(),
-							})
-							return
-						}
-					}
-				}
+		// Populate OwnerID from the authenticated user so the service can enforce
+		// subscription branch limits without depending on gin.Context.
+		if userIDRaw, exists := c.Get("user_id"); exists {
+			if ownerID, ok := userIDRaw.(string); ok {
+				req.OwnerID = ownerID
 			}
 		}
 
 		branch, err := branchService.Create(c.Request.Context(), &req)
 		if err != nil {
+			if errors.Is(err, service.ErrSubscriptionLimitReached) {
+				c.JSON(http.StatusPaymentRequired, gin.H{
+					"error":  "subscription_limit_reached",
+					"detail": err.Error(),
+				})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
 		c.JSON(http.StatusCreated, branch)
 	}
 }

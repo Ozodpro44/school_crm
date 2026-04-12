@@ -15,11 +15,12 @@ import (
 )
 
 type BranchService struct {
-	db *db.Database
+	db     *db.Database
+	subSvc *SubscriptionService
 }
 
-func NewBranchService(database *db.Database) *BranchService {
-	return &BranchService{db: database}
+func NewBranchService(database *db.Database, subSvc *SubscriptionService) *BranchService {
+	return &BranchService{db: database, subSvc: subSvc}
 }
 
 type CreateBranchRequest struct {
@@ -28,9 +29,20 @@ type CreateBranchRequest struct {
 	Phone          string  `json:"phone" binding:"required"`
 	MonthlyPayment float64 `json:"monthlyPayment" binding:"required,gt=0"`
 	AdminID        *string `json:"adminId"`
+	// OwnerID is populated by the handler from the authenticated user's JWT.
+	// It is not read from the request body (json:"-") and is used for subscription
+	// limit checks inside Create.
+	OwnerID string `json:"-"`
 }
 
 func (s *BranchService) Create(ctx context.Context, req *CreateBranchRequest) (*models.Branch, error) {
+	// Guard: subscription branch limit.
+	if s.subSvc != nil && req.OwnerID != "" {
+		if limitErr := s.subSvc.CheckResourceLimit(ctx, req.OwnerID, "branches"); limitErr != nil {
+			return nil, limitErr
+		}
+	}
+
 	now := time.Now().UTC()
 	branchID := uuid.New().String()
 	

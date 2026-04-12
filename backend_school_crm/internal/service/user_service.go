@@ -26,7 +26,7 @@ type UserService struct {
 func NewUserService(database *db.Database) *UserService {
 	return &UserService{
 		db:                  database,
-		branchService:       NewBranchService(database),
+		branchService:       NewBranchService(database, NewSubscriptionService(database)),
 		subscriptionService: NewSubscriptionService(database),
 		redisClient:         nil,
 		emailSender:         nil,
