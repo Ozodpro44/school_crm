@@ -60,10 +60,11 @@ type LoginRequest struct {
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
-	FullName string `json:"fullName" binding:"required"`
-	Role     string `json:"role" binding:"required"`
+	Email      string `json:"email"      binding:"required,email"`
+	Password   string `json:"password"   binding:"required,min=6"`
+	FullName   string `json:"fullName"   binding:"required"`
+	Role       string `json:"role"       binding:"required"`
+	SchoolName string `json:"schoolName"`
 }
 
 func (s *UserService) Login(ctx context.Context, email, password string) (*models.User, error) {
@@ -156,95 +157,170 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*model
 func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*models.User, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("register: hash password: %w", err)
 	}
+
+	isAdmin := models.UserRole(req.Role) == models.RoleAdmin
+
+	// Resolve the free-trial plan before opening the transaction — it is
+	// idempotent and does not need to be part of the atomic block.
+	var trialPlanID string
+	if isAdmin {
+		trialPlan, err := s.subscriptionService.GetOrCreateFreeTrial(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("register: get free trial plan: %w", err)
+		}
+		trialPlanID = trialPlan.ID
+	}
+
+	tx, err := s.db.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("register: begin transaction: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+
+	now := utils.GetLocalTime()
+	userID := uuid.New().String()
+
+	// Step 1: Insert the user row (branch_id is NULL until Step 3).
+	log.Printf("[UserService.Register] Step 1/6: inserting user %s", req.Email)
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO users (id, email, password, role, full_name, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		userID, req.Email, string(hashedPassword), req.Role, req.FullName, now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: insert user: %w", err)
+	}
+
+	// Non-admin users need no branch/subscription setup — commit and return.
+	if !isAdmin {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("register: commit: %w", err)
+		}
+		return &models.User{
+			ID:        userID,
+			Email:     req.Email,
+			Role:      models.UserRole(req.Role),
+			FullName:  req.FullName,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}, nil
+	}
+
+	// ── Admin (school-owner) full onboarding ──────────────────────────────────
+
+	// Step 2: Create the default branch inline, bypassing BranchService.Create
+	// so we avoid the subscription-limit guard that would reject a brand-new user.
+	log.Printf("[UserService.Register] Step 2/6: creating default branch for user %s", userID)
+	branchID := uuid.New().String()
+	branchName := req.SchoolName
+	if branchName == "" {
+		branchName = req.FullName + " Branch"
+	}
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO branches (id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		branchID, branchName, "Default Address", "N/A",
+		0.0, "UZS", userID, now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: create branch: %w", err)
+	}
+
+	// Step 3: Link the user to their new branch and mark the trial as used.
+	log.Printf("[UserService.Register] Step 3/6: linking branch %s to user %s", branchID, userID)
+	_, err = tx.ExecContext(ctx,
+		`UPDATE users SET branch_id = $1, trial_used_at = $2, updated_at = $3 WHERE id = $4`,
+		branchID, now, now, userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: update user branch_id: %w", err)
+	}
+
+	// Step 4: Create the 14-day trial subscription.
+	log.Printf("[UserService.Register] Step 4/6: creating trial subscription for user %s", userID)
+	endDate := now.AddDate(0, 0, 14)
+	paymentMethod := "free_trial"
+	notes := "Automatic 14-day free trial"
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO subscriptions
+		     (user_id, plan_id, branch_id, status, start_date, end_date, renewal_date, auto_renew, payment_method, notes)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		userID, trialPlanID, branchID, "trial",
+		now, endDate, endDate, false, paymentMethod, notes,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: create subscription: %w", err)
+	}
+
+	// Step 5: Initialize full admin permissions.
+	// Column list mirrors PermissionService.CreateForUser to stay in sync with the schema.
+	log.Printf("[UserService.Register] Step 5/6: initializing admin permissions for user %s", userID)
+	permID := uuid.New().String()
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO permissions (
+		     id, user_id,
+		     can_view_students, can_edit_students, can_delete_students,
+		     can_view_teachers, can_edit_teachers, can_delete_teachers,
+		     can_view_classes,  can_edit_classes,  can_delete_classes,
+		     can_view_payments, can_edit_payments,
+		     can_view_salaries, can_edit_salaries,
+		     can_view_expenses, can_edit_expenses, can_delete_expenses,
+		     can_view_reports,  can_view_settings, can_edit_settings
+		 ) VALUES (
+		     $1, $2,
+		     true, true, true,
+		     true, true, true,
+		     true, true, true,
+		     true, true,
+		     true, true,
+		     true, true, true,
+		     true, true, true
+		 )`,
+		permID, userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: create permissions: %w", err)
+	}
+
+	// Step 6: Open the first financial month for the new branch.
+	log.Printf("[UserService.Register] Step 6/6: opening financial month for branch %s", branchID)
+	fmID := uuid.New().String()
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO financial_months
+		     (id, branch_id, year, month, status, payment_amount, opened_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 ON CONFLICT (branch_id, year, month) DO NOTHING`,
+		fmID, branchID, now.Year(), int(now.Month()),
+		models.MonthStatusOpen, 0.0, now, now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: create financial month: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("register: commit: %w", err)
+	}
+	log.Printf("[UserService.Register] Onboarding complete — user=%s branch=%s", userID, branchID)
 
 	user := &models.User{
-		ID:        uuid.New().String(),
+		ID:        userID,
 		Email:     req.Email,
-		Password:  string(hashedPassword),
 		Role:      models.UserRole(req.Role),
 		FullName:  req.FullName,
-		CreatedAt: utils.GetLocalTime(),
-		UpdatedAt: utils.GetLocalTime(),
+		BranchID:  &branchID,
+		BranchIDs: []string{branchID},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
-	// Insert user
-	query := `INSERT INTO users (id, email, password, role, full_name, created_at, updated_at) 
-	         VALUES ($1, $2, $3, $4, $5, $6, $7)`
-
-	_, err = s.db.GetConn().ExecContext(ctx, query, user.ID, user.Email, user.Password, user.Role, user.FullName, user.CreatedAt, user.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-
-	// For admin users, create a default branch after user is inserted
-	var branchID *string
-	if user.Role == models.RoleAdmin {
-		log.Printf("[UserService.Register] Creating default branch for admin user: %s", req.Email)
-
-		branchReq := &CreateBranchRequest{
-			Name:           req.FullName + " Branch",
-			Address:        "Default Address",
-			Phone:          "N/A",
-			MonthlyPayment: 0,
-			AdminID:        &user.ID,
-		}
-
-		branch, err := s.branchService.Create(ctx, branchReq)
-		if err != nil {
-			log.Printf("[UserService.Register] Failed to create default branch for %s: %v", req.Email, err)
-			return nil, err
-		}
-
-		log.Printf("[UserService.Register] Default branch created: %s (ID: %s)", branch.Name, branch.ID)
-		branchID = &branch.ID
-	}
-
-	// Only grant the free trial to admin (school-owner) accounts, and only
-	// once per account.  The trial_used_at column tracks whether a trial has
-	// already been granted to this user.
-	if user.Role == models.RoleAdmin {
-		log.Printf("[UserService.Register] Creating free trial subscription for admin user: %s", req.Email)
-		trialPlan, trialErr := s.subscriptionService.GetOrCreateFreeTrial(ctx)
-		if trialErr != nil {
-			log.Printf("[UserService.Register] Warning: Failed to get free trial plan: %v", trialErr)
-		} else {
-			now := utils.GetLocalTime()
-			endDate := now.AddDate(0, 0, 14) // 14-day trial
-			paymentMethod := "free_trial"
-			notes := "Automatic 14-day free trial"
-			subscription := &models.Subscription{
-				UserID:        user.ID,
-				PlanID:        trialPlan.ID,
-				BranchID:      branchID,
-				Status:        "trial", // explicit trial status (not "active")
-				StartDate:     now,
-				EndDate:       &endDate, // end_date drives expiry checks
-				RenewalDate:   &endDate,
-				AutoRenew:     false,
-				PaymentMethod: &paymentMethod,
-				Notes:         &notes,
-			}
-
-			if subErr := s.subscriptionService.CreateSubscription(ctx, subscription); subErr != nil {
-				log.Printf("[UserService.Register] Warning: Failed to create trial subscription for user %s: %v", user.ID, subErr)
-			} else {
-				// Mark that the trial has been used for this account
-				_, _ = s.db.GetConn().ExecContext(ctx,
-					`UPDATE users SET trial_used_at = NOW() WHERE id = $1`, user.ID)
-				log.Printf("[UserService.Register] Free trial (14 days) created for user: %s", user.ID)
-			}
-		}
-	}
-
-	user.Password = ""
-
-	// Fetch permissions for the user
+	// Fetch the permissions we just inserted so the auth handler can embed
+	// them in the JWT response without a second round-trip login.
 	permissionService := NewPermissionService(s.db)
-	permissions, err := permissionService.GetByUserID(ctx, user.ID)
+	permissions, err := permissionService.GetByUserID(ctx, userID)
 	if err != nil {
-		log.Printf("[UserService.Register] Failed to fetch permissions for user %s: %v", user.ID, err)
+		log.Printf("[UserService.Register] Warning: failed to fetch permissions for user %s: %v", userID, err)
 	} else {
 		user.Permissions = permissions
 	}

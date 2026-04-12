@@ -74,6 +74,7 @@ export interface RegisterRequest {
   password: string;
   fullName: string;
   role: string;
+  schoolName?: string;
 }
 
 // User Types
