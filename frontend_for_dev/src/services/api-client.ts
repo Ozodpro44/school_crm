@@ -13,11 +13,20 @@ export class ApiClient {
   private baseUrl: string;
   private timeout: number;
   private token: string | null = null;
+  private onUnauthorized: (() => void) | null = null;
 
   constructor() {
     this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
     this.timeout = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000');
     this.loadToken();
+  }
+
+  /**
+   * Register a callback invoked when any request receives a 401 response.
+   * AuthContext uses this to trigger logout + redirect to /login.
+   */
+  setOnUnauthorized(cb: () => void): void {
+    this.onUnauthorized = cb;
   }
 
   /**
@@ -77,6 +86,9 @@ export class ApiClient {
         const errorData = await response.json().catch(() => ({})) as { error?: string };
         const error = new Error(errorData.error || `HTTP ${response.status}`);
         (error as Error & { status: number }).status = response.status;
+        if (response.status === 401) {
+          this.onUnauthorized?.();
+        }
         throw error;
       }
 
@@ -304,8 +316,12 @@ export class ApiClient {
 
   // ==================== TEACHERS ====================
 
+  // NOTE: Teachers are managed via school CRM auth. These methods use the school
+  // CRM routes and should only be called with a school-user JWT, not the dev JWT.
+  // The dev dashboard does not have a teachers management page, so these are
+  // available if needed but should not be invoked with dev credentials.
   async getTeachers(branchId: string): Promise<Record<string, unknown>[]> {
-    return this.request(`/teachers?branchId=${branchId}`, {
+    return this.request(`/dev/crm/branches/${branchId}/teachers`, {
       method: 'GET',
     });
   }
@@ -462,9 +478,13 @@ export class ApiClient {
   async healthCheck(): Promise<Record<string, unknown>> {
     // /health is at root level, not under /api
     const rootUrl = this.baseUrl.replace(/\/api\/?$/, '');
+    const start = Date.now();
     const response = await fetch(`${rootUrl}/health`);
+    const responseTime = Date.now() - start;
     if (!response.ok) throw new Error(`Health check failed: HTTP ${response.status}`);
-    return response.json();
+    const data = await response.json();
+    // Inject client-measured latency so Analytics can display a real value
+    return { ...data, responseTime };
   }
 
   // ==================== DEV LOGS ====================

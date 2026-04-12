@@ -141,17 +141,22 @@ export default function Subscriptions() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [mrr, setMrr] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      setLoadError(null);
       try {
         const [subsResult, plansResult, statsResult] = await Promise.allSettled([
           getUserSubscriptions(),
           getAllSubscriptionPlans(),
           getPlatformStats(),
         ]);
-        if (subsResult.status === "fulfilled") {
+        if (subsResult.status === "rejected") {
+          const msg = subsResult.reason instanceof Error ? subsResult.reason.message : "Obunalarni yuklashda xatolik";
+          setLoadError(msg);
+        } else {
           setSubscriptionData(subsResult.value.map(mapView));
         }
         if (plansResult.status === "fulfilled") {
@@ -376,12 +381,20 @@ export default function Subscriptions() {
       {/* Subscriptions Table */}
       <div className="glass-card rounded-lg overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">Loading subscriptions...</div>
+          <div className="p-8 text-center text-muted-foreground text-sm">Obunalar yuklanmoqda...</div>
+        ) : loadError ? (
+          <div className="p-12 text-center">
+            <div className="w-12 h-12 rounded-full bg-status-critical/15 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle className="w-6 h-6 text-status-critical" />
+            </div>
+            <p className="font-medium text-foreground mb-1">Server xatosi</p>
+            <p className="text-sm text-muted-foreground">{loadError}</p>
+          </div>
         ) : filteredSubscriptions.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground text-sm">
             {subscriptionData.length === 0
-              ? "No subscriptions found"
-              : "No subscriptions match the selected filter"}
+              ? "Obunalar topilmadi"
+              : "Tanlangan filtrga mos obunalar yo'q"}
           </div>
         ) : (
           <div className="overflow-x-auto">

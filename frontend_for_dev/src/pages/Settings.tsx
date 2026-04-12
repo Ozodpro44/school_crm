@@ -133,9 +133,13 @@ export default function Settings() {
       const saved = await apiClient.updateDevSettings(settings as Record<string, unknown>);
       setSettings(mergeWithDefaults(saved));
       setDirty(false);
-      toast.success("Settings saved to backend");
+      // Persist maintenanceMode to localStorage so DashboardLayout can show
+      // the banner immediately without an extra API call on every page load.
+      localStorage.setItem("dev:maintenanceMode", String(settings.maintenanceMode));
+      window.dispatchEvent(new Event("dev:maintenanceModeChanged"));
+      toast.success("Sozlamalar saqlandi");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to save settings");
+      toast.error(e instanceof Error ? e.message : "Sozlamalarni saqlashda xatolik");
     } finally {
       setSaving(false);
     }
@@ -161,9 +165,9 @@ export default function Settings() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+          <h1 className="text-2xl font-bold text-foreground">Sozlamalar</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Developer dashboard preferences — saved per account to the backend
+            Dasturchi paneli sozlamalari — backend'da saqlanadi
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -406,8 +410,8 @@ export default function Settings() {
             </div>
             <div className="flex items-center justify-between py-2">
               <div>
-                <p className="font-medium text-foreground">Maintenance Mode</p>
-                <p className="text-sm text-muted-foreground">Show maintenance banner across dashboard</p>
+                <p className="font-medium text-foreground">Texnik ishlar rejimi</p>
+                <p className="text-sm text-muted-foreground">Dashboard bo'ylab texnik ishlar bannerini ko'rsatish</p>
               </div>
               <Switch
                 checked={settings.maintenanceMode}

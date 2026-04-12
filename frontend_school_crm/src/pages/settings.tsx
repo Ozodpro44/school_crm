@@ -43,6 +43,7 @@ export default function SettingsPage() {
   );
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [monthlyPaymentError, setMonthlyPaymentError] = useState<string>("");
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [showSwitchMonthDialog, setShowSwitchMonthDialog] = useState(false);
   const [isSwitchingMonth, setIsSwitchingMonth] = useState(false);
@@ -172,6 +173,15 @@ export default function SettingsPage() {
       return;
     }
 
+    if (monthlyPaymentError) {
+      toast({
+        title: t("error"),
+        description: monthlyPaymentError,
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       setIsSaving(true);
 
@@ -207,6 +217,14 @@ export default function SettingsPage() {
 
   const handleChange = (field: keyof Settings, value: string | number) => {
     if (!settings) return;
+    if (field === "monthlyPayment") {
+      const raw = typeof value === "string" ? removeNumberFormatting(value) : String(value);
+      if (raw !== "" && (!/^\d+$/.test(raw) || isNaN(Number(raw)))) {
+        setMonthlyPaymentError(t("onlyNumericAllowed") || "Faqat raqam kiritish mumkin");
+      } else {
+        setMonthlyPaymentError("");
+      }
+    }
     setSettings({ ...settings, [field]: value });
   };
 
@@ -239,7 +257,7 @@ export default function SettingsPage() {
         <Button
           onClick={handleSave}
           disabled={
-            !hasPermission("canEditSettings") || !hasChanges() || isSaving
+            !hasPermission("canEditSettings") || !hasChanges() || isSaving || !!monthlyPaymentError
           }
         >
           <Save className="mr-2 h-4 w-4" />
@@ -282,7 +300,7 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="monthlyPayment">
+              <Label htmlFor="monthlyPayment" className={monthlyPaymentError ? "text-destructive" : ""}>
                 {t("monthlyPayment")}
               </Label>
               <Input
@@ -291,16 +309,23 @@ export default function SettingsPage() {
                 value={formatNumberWithSpaces(
                   settings.monthlyPayment.toString()
                 )}
-                onChange={(e) =>
-                  handleChange(
-                    "monthlyPayment",
-                    parseInt(removeNumberFormatting(e.target.value)) || 0
-                  )
-                }
+                onChange={(e) => {
+                  const raw = removeNumberFormatting(e.target.value);
+                  if (raw !== "" && !/^\d*$/.test(raw)) {
+                    setMonthlyPaymentError(t("onlyNumericAllowed") || "Faqat raqam kiritish mumkin");
+                    return; // reject non-numeric input entirely
+                  }
+                  setMonthlyPaymentError("");
+                  handleChange("monthlyPayment", parseInt(raw) || 0);
+                }}
                 disabled={!hasPermission("canEditSettings")}
                 placeholder="500 000"
-                step="500"
+                className={monthlyPaymentError ? "border-destructive focus-visible:ring-destructive" : ""}
+                inputMode="numeric"
               />
+              {monthlyPaymentError && (
+                <p className="text-sm text-destructive">{monthlyPaymentError}</p>
+              )}
             </div>
 
             <div className="space-y-2">

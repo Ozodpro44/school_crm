@@ -41,7 +41,7 @@ import {
   listClasses,
 } from "@/lib/api";
 import { Payment, Salary, Branch } from "@/types";
-import { Download, FileText, AlertCircle, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, FileText, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -72,6 +72,7 @@ export default function ReportsPage() {
   const [summary, setSummary] = useState({ total: 0, count: 0, avg: 0 });
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [paymentMethodsData, setPaymentMethodsData] = useState<any[]>([]);
+  const [isDownloading, setIsDownloading] = useState(false);
   const language = useLanguage();
   const t = (key: string) => getTranslation(key, language);
   const canViewReports = hasPermission("canViewReports");
@@ -248,7 +249,7 @@ export default function ReportsPage() {
       if (!branchId) {
         toast({
           title: t("error"),
-          description: "No branch selected",
+          description: t("noBranchSelected") || t("error"),
           variant: "destructive",
         });
         return;
@@ -318,7 +319,7 @@ export default function ReportsPage() {
       if (!branchId) {
         toast({
           title: t("error"),
-          description: "No branch selected",
+          description: t("noBranchSelected") || t("error"),
           variant: "destructive",
         });
         return;
@@ -389,7 +390,7 @@ export default function ReportsPage() {
       if (!branchId) {
         toast({
           title: t("error"),
-          description: "No branch selected",
+          description: t("noBranchSelected") || t("error"),
           variant: "destructive",
         });
         return;
@@ -457,7 +458,7 @@ export default function ReportsPage() {
       if (!branchId) {
         toast({
           title: t("error"),
-          description: "No branch selected",
+          description: t("noBranchSelected") || t("error"),
           variant: "destructive",
         });
         setReportData([]);
@@ -523,7 +524,7 @@ export default function ReportsPage() {
       if (!branchId) {
         toast({
           title: t("error"),
-          description: "No branch selected",
+          description: t("noBranchSelected") || t("error"),
           variant: "destructive",
         });
         return;
@@ -602,88 +603,114 @@ export default function ReportsPage() {
     }
   };
 
-  const downloadReport = () => {
-    let csv = "";
-    const periodLabel = `${paymentMonth}/${paymentYear}`;
-
-    if (reportType === "income") {
-      csv = "Financial Summary Report\n";
-      csv += `Period: ${periodLabel}\n\n`;
-      csv += "Label,Amount\n";
-      reportData.forEach((item) => {
-        csv += `${item.label},${item.amount}\n`;
+  const downloadReport = async () => {
+    if (reportData.length === 0) {
+      toast({
+        title: t("noDataFound"),
+        description: t("generateReportFirst") || t("noDataFound"),
+        variant: "destructive",
       });
-    } else {
-      let columns: string[] = [];
-      if (reportType === "debtors") {
-        columns = [
-          "Student Name",
-          "Class",
-          "Month",
-          "Year",
-          "Monthly Payment",
-          "Paid Amount",
-          "Due Amount",
-          "Status",
-        ];
-      } else if (reportType === "expenses") {
-        columns = [
-          "Title",
-          "Category",
-          "Amount",
-          "Payment Method",
-          "Date",
-          "Notes",
-        ];
-      } else if (reportType === "salary") {
-        columns = [
-          "Teacher Name",
-          "Amount",
-          "Month",
-          "Year",
-          "Status",
-          "Paid Date",
-          "Added By",
-        ];
-      } else {
-        columns = [
-          "Student Name",
-          "Class",
-          "Amount",
-          "Month",
-          "Year",
-          "Status",
-          "Paid Date",
-          "Added By",
-        ];
-      }
-
-      csv = `${reportType.toUpperCase()} REPORT\n`;
-      csv += `Period: ${periodLabel}\n\n`;
-      csv += columns.join(",") + "\n";
-
-      reportData.forEach((item) => {
-        if (reportType === "debtors") {
-          csv += `${item.studentName},${item.className},${item.month},${item.year},${item.monthlyPayment},${item.paidAmount},${item.dueAmount},${item.status}\n`;
-        } else if (reportType === "expenses") {
-          csv += `${item.title},${item.category},${item.amount},${item.paymentMethod},${item.date},${item.description}\n`;
-        } else if (reportType === "salary") {
-          csv += `${item.teacherName},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
-        } else {
-          csv += `${item.studentName},${item.className},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
-        }
-      });
+      return;
     }
 
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${reportType}-report-${periodLabel}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setIsDownloading(true);
+    try {
+      let csv = "";
+      const periodLabel = `${paymentMonth}/${paymentYear}`;
+
+      if (reportType === "income") {
+        csv = `${t("financialSummary")}\n`;
+        csv += `${t("dateRange")}: ${periodLabel}\n\n`;
+        csv += `${t("label") || "Label"},${t("amount") || "Amount"}\n`;
+        reportData.forEach((item) => {
+          csv += `${item.label},${item.amount}\n`;
+        });
+      } else {
+        let columns: string[] = [];
+        if (reportType === "debtors") {
+          columns = [
+            t("fullName") || "Student Name",
+            t("class") || "Class",
+            t("month") || "Month",
+            t("year") || "Year",
+            t("monthlyPayment") || "Monthly Payment",
+            t("paidAmount") || "Paid Amount",
+            t("dueAmount") || "Due Amount",
+            t("status") || "Status",
+          ];
+        } else if (reportType === "expenses") {
+          columns = [
+            t("title") || "Title",
+            t("category") || "Category",
+            t("amount") || "Amount",
+            t("paymentMethod") || "Payment Method",
+            t("date") || "Date",
+            t("notes") || "Notes",
+          ];
+        } else if (reportType === "salary") {
+          columns = [
+            t("teacherName") || "Teacher Name",
+            t("amount") || "Amount",
+            t("month") || "Month",
+            t("year") || "Year",
+            t("status") || "Status",
+            t("paidDate") || "Paid Date",
+            t("addedBy") || "Added By",
+          ];
+        } else {
+          columns = [
+            t("fullName") || "Student Name",
+            t("class") || "Class",
+            t("amount") || "Amount",
+            t("month") || "Month",
+            t("year") || "Year",
+            t("status") || "Status",
+            t("paidDate") || "Paid Date",
+            t("addedBy") || "Added By",
+          ];
+        }
+
+        csv = `${t(reportType + "Report") || reportType.toUpperCase()}\n`;
+        csv += `${t("dateRange") || "Period"}: ${periodLabel}\n\n`;
+        csv += columns.join(",") + "\n";
+
+        reportData.forEach((item) => {
+          if (reportType === "debtors") {
+            csv += `${item.studentName},${item.className},${item.month},${item.year},${item.monthlyPayment},${item.paidAmount},${item.dueAmount},${item.status}\n`;
+          } else if (reportType === "expenses") {
+            csv += `${item.title},${item.category},${item.amount},${item.paymentMethod},${item.date},${item.description}\n`;
+          } else if (reportType === "salary") {
+            csv += `${item.teacherName},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
+          } else {
+            csv += `${item.studentName},${item.className},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
+          }
+        });
+      }
+
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${reportType}-report-${periodLabel}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: t("success"),
+        description: t("reportDownloaded") || t("downloadReport"),
+        variant: "success",
+      });
+    } catch {
+      toast({
+        title: t("error"),
+        description: t("failedToDownloadReport") || t("error"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   if (isLoading) {
@@ -874,9 +901,13 @@ export default function ReportsPage() {
           </div>
 
           <div className="flex justify-end">
-            <Button onClick={downloadReport} disabled={reportData.length === 0}>
-              <Download className="w-4 h-4 mr-2" />
-              {t("downloadReport")}
+            <Button onClick={downloadReport} disabled={reportData.length === 0 || isDownloading}>
+              {isDownloading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4 mr-2" />
+              )}
+              {isDownloading ? (t("downloading") || t("loading")) : t("downloadReport")}
             </Button>
           </div>
         </CardContent>

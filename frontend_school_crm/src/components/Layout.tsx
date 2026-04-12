@@ -175,12 +175,12 @@ export function Layout({ children }: LayoutProps) {
           {/* Logo & Toggle */}
           <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
             {sidebarOpen && (
-              <Link href="/" className="flex items-center gap-2 group">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center">
-                  <GraduationCap className="w-6 h-6 text-white" />
+              <Link href="/" className="flex items-center gap-2 group min-w-0">
+                <div className="w-10 h-10 flex-shrink-0 rounded-xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center">
+                  <Building2 className="w-6 h-6 text-white" />
                 </div>
-                <span className="font-bold text-lg bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  School
+                <span className="font-bold text-lg bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent truncate">
+                  {currentBranch?.name || t("schoolName") || "School"}
                 </span>
               </Link>
             )}
@@ -441,12 +441,12 @@ export function Layout({ children }: LayoutProps) {
       {/* Mobile Header */}
       <header className="lg:hidden sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 shadow-sm">
         <div className="flex items-center justify-between p-4">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center">
-              <GraduationCap className="w-5 h-5 text-white" />
+          <Link href="/" className="flex items-center gap-2 min-w-0">
+            <div className="w-9 h-9 flex-shrink-0 rounded-lg bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-white" />
             </div>
-            <span className="font-bold text-base bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-              School
+            <span className="font-bold text-base bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent truncate">
+              {currentBranch?.name || t("schoolName") || "School"}
             </span>
           </Link>
 
