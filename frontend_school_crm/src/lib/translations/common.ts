@@ -1079,6 +1079,18 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Jami xarajatlar",
     en: "Total Expenses",
   },
+  // KPI translations (2.1)
+  collectionRate: { "uz-cyrl": "Йиғиш даражаси", "uz-latn": "Yig'ish darajasi", en: "Collection Rate" },
+  collectionRateDesc: { "uz-cyrl": "Тўланган / Кутилган", "uz-latn": "To'langan / Kutilgan", en: "Paid / Expected" },
+  studentChurn: { "uz-cyrl": "Чиққан ўқувчилар", "uz-latn": "Chiqqan o'quvchilar", en: "Students Left" },
+  churnThisMonth: { "uz-cyrl": "Бу ой", "uz-latn": "Bu oy", en: "This month" },
+  churnLastMonth: { "uz-cyrl": "Ўтган ой", "uz-latn": "O'tgan oy", en: "Last month" },
+  salaryPayoutPct: { "uz-cyrl": "Иш ҳақи тўлови", "uz-latn": "Ish haqqi to'lovi", en: "Salary Payout" },
+  salaryPayoutDesc: { "uz-cyrl": "Тўланган / Жами иш ҳақи", "uz-latn": "To'langan / Jami ish haqqi", en: "Paid / Total salaries" },
+  unpaidByClass: { "uz-cyrl": "Синф бўйича қарздорлар", "uz-latn": "Sinf bo'yicha qarzdorlar", en: "Debtors by Class" },
+  topDebtors: { "uz-cyrl": "Асосий қарздорлар", "uz-latn": "Asosiy qarzdorlar", en: "Top Debtors" },
+  outstanding: { "uz-cyrl": "Қолган қарз", "uz-latn": "Qolgan qarz", en: "Outstanding" },
+  debtors: { "uz-cyrl": "Қарздорлар", "uz-latn": "Qarzdorlar", en: "Debtors" },
   daily: { "uz-cyrl": "Кунлик", "uz-latn": "Kunlik", en: "Daily" },
   monthly: { "uz-cyrl": "Ойлик", "uz-latn": "Oylik", en: "Monthly" },
   dailyFourteenDays: {

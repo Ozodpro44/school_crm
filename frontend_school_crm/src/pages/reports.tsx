@@ -32,11 +32,7 @@ import {
 } from "@/lib/storage";
 import * as api from "@/lib/api";
 import {
-  getPaymentReport,
-  getSalaryReport,
-  getDebtorsReport,
-  getExpensesReport,
-  getFinancialSummary,
+  runReportJob,
   getBranch,
   listClasses,
 } from "@/lib/api";
@@ -255,16 +251,23 @@ export default function ReportsPage() {
         return;
       }
 
-      const response = await getPaymentReport(
-        branchId,
-        paymentMonth,
-        paymentYear,
-        classId,
-        page,
-        limit
-      );
+      const startYear = parseInt(paymentYear) || new Date().getFullYear();
+      const startDate = new Date(startYear, parseInt(paymentMonth) - 1, 1).toISOString();
+      const endDate   = new Date(startYear, parseInt(paymentMonth), 0, 23, 59, 59).toISOString();
 
-      if (!response || !response.data) {
+      const result = await runReportJob("payment_report", {
+        branchId,
+        startDate,
+        endDate,
+        classId: classId !== "all" ? classId : "",
+        page,
+        limit,
+      });
+
+      const items = result?.items ?? result ?? [];
+      const response = { data: Array.isArray(items) ? items : [], total: result?.total ?? 0, totalPages: Math.ceil((result?.total ?? 0) / limit) };
+
+      if (!response.data.length) {
         setReportData([]);
         setSummary({ total: 0, count: 0, avg: 0 });
         setTotal(0);
@@ -272,7 +275,7 @@ export default function ReportsPage() {
         return;
       }
 
-      const data = response.data.map((item) => ({
+      const data = response.data.map((item: any) => ({
         id: item.id,
         studentName: item.studentName,
         className: item.className,
@@ -333,14 +336,16 @@ export default function ReportsPage() {
       const newStartDate = startDateObj.toISOString().split("T")[0];
       const newEndDate = endDateObj.toISOString().split("T")[0];
 
-      const items = await getSalaryReport(
+      const result = await runReportJob("salary_report", {
         branchId,
-        newStartDate,
-        newEndDate,
-        ""
-      );
+        startDate: new Date(newStartDate).toISOString(),
+        endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
+        status: "",
+      });
 
-      if (!items || !Array.isArray(items)) {
+      const items = Array.isArray(result) ? result : [];
+
+      if (!items.length) {
         setReportData([]);
         setSummary({ total: 0, count: 0, avg: 0 });
         return;
@@ -410,12 +415,14 @@ export default function ReportsPage() {
         yearNum,
       });
 
-      const items = await getDebtorsReport(
+      const result = await runReportJob("debtors_report", {
         branchId,
-        debtorMonth,
-        yearNum,
-        classId === "all" ? undefined : classId
-      );
+        month: debtorMonth,
+        year: yearNum,
+        classId: classId !== "all" ? classId : "",
+      });
+
+      const items = Array.isArray(result) ? result : [];
 
       console.log("Debtors Report Response:", items);
 
@@ -473,11 +480,13 @@ export default function ReportsPage() {
       const newStartDate = startDateObj.toISOString().split("T")[0];
       const newEndDate = endDateObj.toISOString().split("T")[0];
 
-      const expenses = await getExpensesReport(
+      const result = await runReportJob("expenses_report", {
         branchId,
-        newStartDate,
-        newEndDate
-      );
+        startDate: new Date(newStartDate).toISOString(),
+        endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
+      });
+
+      const expenses = Array.isArray(result) ? result : [];
 
       const data = expenses.map((e: any) => {
         return {
@@ -538,11 +547,11 @@ export default function ReportsPage() {
       const newStartDate = startDateObj.toISOString().split("T")[0];
       const newEndDate = endDateObj.toISOString().split("T")[0];
 
-      const financialSummary = await getFinancialSummary(
+      const financialSummary = await runReportJob("financial_summary", {
         branchId,
-        newStartDate,
-        newEndDate
-      );
+        startDate: new Date(newStartDate).toISOString(),
+        endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
+      });
 
       const totalExpense =
         financialSummary.totalSalaries + financialSummary.totalExpenses;

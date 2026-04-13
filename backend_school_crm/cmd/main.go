@@ -9,12 +9,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/config"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/handlers"
+	"github.com/school-crm/backend/internal/jobs"
 	"github.com/school-crm/backend/internal/middleware"
 	"github.com/school-crm/backend/internal/service"
 	"github.com/school-crm/backend/internal/utils"
@@ -99,6 +101,7 @@ func main() {
 	teacherService := service.NewTeacherService(database)
 
 	// Wire Redis cache into hot-path services (no-op when Redis is absent)
+	var rateLimiter *middleware.RateLimiter
 	if redisClient != nil {
 		cacheClient := cache.New(redisClient.GetClient())
 		subscriptionService.SetCache(cacheClient)
@@ -107,6 +110,9 @@ func main() {
 		classService.SetCache(cacheClient)
 		teacherService.SetCache(cacheClient)
 		log.Println("Redis cache enabled for hot-path services")
+
+		rateLimiter = middleware.NewRateLimiter(redisClient.GetClient())
+		log.Println("Rate limiting enabled")
 	}
 	salaryService := service.NewSalaryService(database, branchService)
 	expenseService := service.NewExpenseService(database, branchService)
@@ -136,12 +142,21 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	router := gin.Default()
+	logger := middleware.NewLogger(cfg.Environment)
+
+	// Background job queue (4 workers, report generation)
+	jobQueue := jobs.New(reportService, logger)
+
+	router := gin.New() // use gin.New() so we control all middleware ourselves
+	router.Use(gin.Recovery())
 
 	// Middleware
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
+	router.Use(middleware.RequestID())
+	router.Use(middleware.StructuredLogger(logger))
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandling())
-	router.Use(handlers.SafeRequestLogger(database)) // auto-log 4xx/5xx responses
+	router.Use(handlers.SafeRequestLogger(database)) // persist 4xx/5xx to DB logs table
 
 	// healthHandler returns real system stats
 	healthHandler := func(c *gin.Context) {
@@ -176,30 +191,36 @@ func main() {
 	router.GET("/health", healthHandler)
 	router.GET("/api/health", healthHandler)
 
+	// Auth rate limiter: 10 req/min per IP (applied when Redis is available)
+	var authRateLimit gin.HandlerFunc = func(c *gin.Context) { c.Next() }
+	if rateLimiter != nil {
+		authRateLimit = rateLimiter.ByIP(10, time.Minute)
+	}
+
 	// Public routes
-	router.POST("/api/auth/login", handlers.Login(userService, cfg.JWTSecret))
-	router.POST("/api/auth/register", handlers.Register(userService, cfg.JWTSecret))
-	router.POST("/api/auth/forgot-password", handlers.ForgotPassword(userService))
-	router.POST("/api/auth/verify-otp", handlers.VerifyOTP(userService))
-	router.POST("/api/auth/resend-otp", handlers.ResendOTP(userService))
-	router.POST("/api/auth/reset-password", handlers.ResetPassword(userService))
+	router.POST("/api/v1/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret))
+	router.POST("/api/v1/auth/register", authRateLimit, handlers.Register(userService, cfg.JWTSecret))
+	router.POST("/api/v1/auth/forgot-password", authRateLimit, handlers.ForgotPassword(userService))
+	router.POST("/api/v1/auth/verify-otp", authRateLimit, handlers.VerifyOTP(userService))
+	router.POST("/api/v1/auth/resend-otp", authRateLimit, handlers.ResendOTP(userService))
+	router.POST("/api/v1/auth/reset-password", authRateLimit, handlers.ResetPassword(userService))
 
 	// Public subscription plans
-	router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
+	router.GET("/api/v1/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
 
 	// Public: active payment types (used by billing UI)
-	publicApi := router.Group("/api")
+	publicApi := router.Group("/api/v1")
 	handlers.RegisterPaymentTypePublicRoutes(publicApi, paymentTypeService)
 
 	// Public developer auth routes
 	handlers.RegisterDeveloperAuthRoutes(router, developerService, cfg.JWTSecret)
 
 	// Public developer routes (dev endpoints)
-	publicDev := router.Group("/api")
+	publicDev := router.Group("/api/v1")
 	handlers.RegisterDeveloperRoutes(publicDev, database, subscriptionService)
 
 	// Authenticated developer routes (require developer JWT)
-	devProtected := router.Group("/api")
+	devProtected := router.Group("/api/v1")
 	devProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret))
 	handlers.RegisterDevSettingsRoutes(devProtected, database)
 	handlers.RegisterDevLogsRoutes(devProtected, database)
@@ -218,16 +239,23 @@ func main() {
 
 	// Auth-only routes — require login but NOT an active subscription.
 	// Subscription self-service must be here so expired users can check and renew.
-	authOnly := router.Group("/api")
+	authOnly := router.Group("/api/v1")
 	authOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	authOnly.Use(middleware.RequestTimeout(30 * time.Second))
 	handlers.RegisterSubscriptionProtectedRoutes(authOnly, subscriptionService, userService)
 
 	// Protected routes — require login AND an active subscription.
-	protected := router.Group("/api")
+	protected := router.Group("/api/v1")
 	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
 	protected.Use(middleware.SubscriptionGate(userService, subscriptionService))
 	// BOLA/IDOR guard: verify the X-Branch-ID header belongs to the JWT user.
 	protected.Use(middleware.TenantBranchMiddleware(userService))
+	// Query timeout: cancel context after 30 s to prevent runaway DB queries.
+	protected.Use(middleware.RequestTimeout(30 * time.Second))
+	// API rate limit: 300 req/min per authenticated user
+	if rateLimiter != nil {
+		protected.Use(rateLimiter.ByUser(300, time.Minute))
+	}
 
 	// Users
 	handlers.RegisterUserRoutes(protected, userService)
@@ -256,6 +284,9 @@ func main() {
 	// Reports
 	handlers.RegisterReportRoutes(protected, reportService, userService)
 
+	// Background jobs (async report generation)
+	handlers.RegisterJobRoutes(protected, jobQueue)
+
 	// Settings
 	handlers.RegisterSettingsRoutes(protected, branchService, userService)
 
@@ -264,8 +295,13 @@ func main() {
 	handlers.RegisterTelegramPaymentRoutes(authOnly, telegramPaymentService, subscriptionService)
 
 	// Payment webhooks (public, no auth required — called by external payment providers)
-	handlers.RegisterClickUzWebhooks(router.Group("/api"), clickUzService)
-	handlers.RegisterTelegramPaymentWebhooks(router.Group("/api"), telegramPaymentService)
+	// Webhook rate limit: 100 req/min per IP
+	webhookGroup := router.Group("/api/v1")
+	if rateLimiter != nil {
+		webhookGroup.Use(rateLimiter.ByIP(100, time.Minute))
+	}
+	handlers.RegisterClickUzWebhooks(webhookGroup, clickUzService)
+	handlers.RegisterTelegramPaymentWebhooks(webhookGroup, telegramPaymentService)
 
 	// Developer-only test payment endpoint (behind DevAuth)
 	handlers.RegisterClickUzDevRoutes(devProtected, clickUzService)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
@@ -123,16 +124,17 @@ func (s *TeacherService) GetByBranchID(ctx context.Context, branchID string) ([]
 }
 
 func (s *TeacherService) getByBranchIDDB(ctx context.Context, branchID string) ([]models.Teacher, error) {
-	query := `SELECT id, full_name, monthly_salary, phone, email, branch_id, joined_date, created_at, updated_at
-	          FROM teachers WHERE branch_id = $1 ORDER BY full_name`
-
-	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
+	// Fetch all teachers in one query
+	rows, err := s.db.GetConn().QueryContext(ctx,
+		`SELECT id, full_name, monthly_salary, phone, email, branch_id, joined_date, created_at, updated_at
+		 FROM teachers WHERE branch_id = $1 ORDER BY full_name`, branchID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	var teachers []models.Teacher
+	var teacherIDs []string
 	for rows.Next() {
 		var t models.Teacher
 		if err := rows.Scan(&t.ID, &t.FullName, &t.MonthlySalary, &t.Phone, &t.Email,
@@ -140,20 +142,51 @@ func (s *TeacherService) getByBranchIDDB(ctx context.Context, branchID string) (
 			return nil, err
 		}
 		teachers = append(teachers, t)
+		teacherIDs = append(teacherIDs, t.ID)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
-	// Load subjects and classes for each teacher
-	for i := range teachers {
-		teachers[i].Subjects, err = s.getSubjects(ctx, teachers[i].ID)
-		if err != nil {
-			return nil, err
+	if len(teacherIDs) == 0 {
+		return teachers, nil
+	}
+
+	// Batch-load all subjects for every teacher in one query (eliminates N+1)
+	subjectRows, err := s.db.GetConn().QueryContext(ctx,
+		`SELECT teacher_id, subject FROM teacher_subjects
+		 WHERE teacher_id = ANY($1) ORDER BY subject`, pq.Array(teacherIDs))
+	if err == nil {
+		defer subjectRows.Close()
+		subjectMap := make(map[string][]string, len(teacherIDs))
+		for subjectRows.Next() {
+			var teacherID, subject string
+			if err := subjectRows.Scan(&teacherID, &subject); err != nil {
+				continue
+			}
+			subjectMap[teacherID] = append(subjectMap[teacherID], subject)
 		}
-		teachers[i].AssignedClasses, err = s.getTeacherClasses(ctx, teachers[i].ID)
-		if err != nil {
-			return nil, err
+		for i := range teachers {
+			teachers[i].Subjects = subjectMap[teachers[i].ID]
+		}
+	}
+
+	// Batch-load all assigned class IDs for every teacher in one query (eliminates N+1)
+	classRows, err := s.db.GetConn().QueryContext(ctx,
+		`SELECT teacher_id, id FROM classes
+		 WHERE teacher_id = ANY($1) ORDER BY name`, pq.Array(teacherIDs))
+	if err == nil {
+		defer classRows.Close()
+		classMap := make(map[string][]string, len(teacherIDs))
+		for classRows.Next() {
+			var teacherID, classID string
+			if err := classRows.Scan(&teacherID, &classID); err != nil {
+				continue
+			}
+			classMap[teacherID] = append(classMap[teacherID], classID)
+		}
+		for i := range teachers {
+			teachers[i].AssignedClasses = classMap[teachers[i].ID]
 		}
 	}
 

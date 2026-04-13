@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
@@ -105,26 +106,58 @@ func (s *ClassService) GetByBranchID(ctx context.Context, branchID string) ([]mo
 }
 
 func (s *ClassService) getByBranchIDDB(ctx context.Context, branchID string) ([]models.Class, error) {
-	query := `SELECT id, name, teacher_id, branch_id, created_at, updated_at FROM classes WHERE branch_id = $1 ORDER BY name`
-
-	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
+	// Fetch all classes in one query
+	rows, err := s.db.GetConn().QueryContext(ctx,
+		`SELECT id, name, teacher_id, branch_id, created_at, updated_at
+		 FROM classes WHERE branch_id = $1 ORDER BY name`, branchID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	var classes []models.Class
+	var classIDs []string
 	for rows.Next() {
 		var class models.Class
 		if err := rows.Scan(&class.ID, &class.Name, &class.TeacherID, &class.BranchID, &class.CreatedAt, &class.UpdatedAt); err != nil {
 			return nil, err
 		}
-		// Load student IDs for each class
-		s.loadStudentIDs(ctx, &class)
 		classes = append(classes, class)
+		classIDs = append(classIDs, class.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
-	return classes, rows.Err()
+	if len(classIDs) == 0 {
+		return classes, nil
+	}
+
+	// Batch-load all active student IDs for every class in one query (eliminates N+1)
+	studentRows, err := s.db.GetConn().QueryContext(ctx,
+		`SELECT class_id, id FROM students
+		 WHERE class_id = ANY($1) AND status = 'active'`, pq.Array(classIDs))
+	if err != nil {
+		return classes, nil // non-fatal: return classes without student IDs
+	}
+	defer studentRows.Close()
+
+	// Build a map class_id → []student_id
+	studentMap := make(map[string][]string, len(classIDs))
+	for studentRows.Next() {
+		var classID, studentID string
+		if err := studentRows.Scan(&classID, &studentID); err != nil {
+			continue
+		}
+		studentMap[classID] = append(studentMap[classID], studentID)
+	}
+
+	// Attach student IDs to each class
+	for i := range classes {
+		classes[i].StudentID = studentMap[classes[i].ID]
+	}
+
+	return classes, nil
 }
 
 func (s *ClassService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Class, error) {

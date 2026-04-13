@@ -3,6 +3,7 @@ import { useRouter } from "next/router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import * as api from "@/lib/api";
 import { Payment, Salary } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
@@ -15,6 +16,9 @@ import {
   CreditCard,
   Building2,
   DollarSign,
+  TrendingDown,
+  Award,
+  UserMinus,
 } from "lucide-react";
 import { FinancialChart } from "@/components/FinancialChart";
 import { useLanguage } from "@/hooks/use-language";
@@ -47,6 +51,12 @@ export default function HomePage() {
     bankIncome: 0,
     bankExpenses: 0,
     bankProfit: 0,
+    collectionRate: 0,
+    churnedStudents: 0,
+    prevChurnedStudents: 0,
+    salaryPayoutPct: 0,
+    unpaidByClass: [] as { classId: string; className: string; count: number }[],
+    topDebtors: [] as { studentId: string; studentName: string; className: string; outstanding: number }[],
   });
 
   const [chartData, setChartData] = useState<
@@ -114,6 +124,12 @@ export default function HomePage() {
       bankIncome: 0,
       bankExpenses: 0,
       bankProfit: 0,
+      collectionRate: 0,
+      churnedStudents: 0,
+      prevChurnedStudents: 0,
+      salaryPayoutPct: 0,
+      unpaidByClass: [],
+      topDebtors: [],
     });
     setChartData([]);
 
@@ -335,6 +351,12 @@ export default function HomePage() {
         bankIncome: dashboardData.bankIncome,
         bankExpenses: dashboardData.bankExpenses,
         bankProfit: dashboardData.bankProfit,
+        collectionRate: dashboardData.collectionRate ?? 0,
+        churnedStudents: dashboardData.churnedStudents ?? 0,
+        prevChurnedStudents: dashboardData.prevChurnedStudents ?? 0,
+        salaryPayoutPct: dashboardData.salaryPayoutPct ?? 0,
+        unpaidByClass: dashboardData.unpaidByClass ?? [],
+        topDebtors: dashboardData.topDebtors ?? [],
       });
     } catch (error) {
       console.error("[Dashboard.calculateStats] Error:", error);
@@ -680,6 +702,155 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── KPI Row ─────────────────────────────────────────────────────────── */}
+      <div
+        className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 animate-fade-in"
+        style={{ animationDelay: "0.65s" }}
+      >
+        {/* Collection Rate */}
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
+              <TrendingUp className="w-4 h-4 text-emerald-500" />
+              {t("collectionRate") || "Collection Rate"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+              {stats.collectionRate.toFixed(1)}%
+            </div>
+            <Progress
+              value={stats.collectionRate}
+              className="mt-2 h-2"
+            />
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              {t("collectionRateDesc") || "Paid / Expected"}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Student Churn */}
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
+              <UserMinus className="w-4 h-4 text-red-500" />
+              {t("studentChurn") || "Students Left"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-red-600 dark:text-red-400">
+              {stats.churnedStudents}
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              {t("churnThisMonth") || "This month"}
+              {" · "}
+              <span className="text-slate-400">
+                {stats.prevChurnedStudents} {t("churnLastMonth") || "last month"}
+              </span>
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Salary Payout % */}
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
+              <Award className="w-4 h-4 text-purple-500" />
+              {t("salaryPayoutPct") || "Salary Payout"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
+              {stats.salaryPayoutPct.toFixed(1)}%
+            </div>
+            <Progress
+              value={stats.salaryPayoutPct}
+              className="mt-2 h-2"
+            />
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              {t("salaryPayoutDesc") || "Paid / Total salaries"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Debtors Detail Row ───────────────────────────────────────────────── */}
+      <div
+        className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 animate-fade-in"
+        style={{ animationDelay: "0.68s" }}
+      >
+        {/* Top Debtors */}
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <TrendingDown className="w-5 h-5 text-red-500" />
+              {t("topDebtors") || "Top Debtors"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {stats.topDebtors.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">
+                —
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {stats.topDebtors.map((d) => (
+                  <div
+                    key={d.studentId}
+                    className="flex items-center justify-between py-1.5 border-b last:border-0 border-slate-100 dark:border-slate-800"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                        {d.studentName}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {d.className}
+                      </p>
+                    </div>
+                    <span className="text-sm font-bold text-red-600 dark:text-red-400">
+                      {formatCurrency(d.outstanding)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Unpaid by Class */}
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+              <Users className="w-5 h-5 text-orange-500" />
+              {t("unpaidByClass") || "Debtors by Class"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {stats.unpaidByClass.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">
+                —
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {stats.unpaidByClass.map((c) => (
+                  <div
+                    key={c.classId}
+                    className="flex items-center justify-between py-1.5 border-b last:border-0 border-slate-100 dark:border-slate-800"
+                  >
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                      {c.className}
+                    </p>
+                    <span className="text-sm font-bold text-orange-600 dark:text-orange-400">
+                      {c.count} {t("debtors") || "debtors"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

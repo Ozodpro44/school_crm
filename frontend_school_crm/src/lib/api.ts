@@ -34,7 +34,7 @@ export async function getStudentsConsolidatedData(
 import { Branch } from "@/types";
 
 // NEXT_PUBLIC_API_URL must be set in production. Fallback to localhost for local dev only.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -1482,6 +1482,54 @@ export async function getFinancialSummary(
 ): Promise<FinancialSummary> {
   const query = `?branchId=${branchId}&startDate=${startDate}&endDate=${endDate}`;
   return apiRequest<FinancialSummary>(`/reports/financial-summary${query}`);
+}
+
+// ── Background Job Queue ───────────────────────────────────────────────────
+
+export type JobStatus = "pending" | "running" | "done" | "failed";
+
+export interface JobResponse {
+  job_id: string;
+  status: JobStatus;
+  result?: any;
+  error?: string;
+  created_at?: string;
+  started_at?: string;
+  done_at?: string;
+}
+
+/** Submit a background job. Returns immediately with job_id. */
+export async function submitJob(
+  type: string,
+  payload: Record<string, unknown>
+): Promise<JobResponse> {
+  return apiRequest<JobResponse>("/jobs", {
+    method: "POST",
+    body: JSON.stringify({ type, ...payload }),
+  });
+}
+
+/** Poll a single job by ID. */
+export async function pollJob(jobId: string): Promise<JobResponse> {
+  return apiRequest<JobResponse>(`/jobs/${jobId}`);
+}
+
+/**
+ * Submit a job and poll every 1.5 s until it finishes.
+ * Resolves with the parsed result, or rejects with the server error message.
+ */
+export async function runReportJob(
+  type: string,
+  payload: Record<string, unknown>
+): Promise<any> {
+  const { job_id } = await submitJob(type, payload);
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const job = await pollJob(job_id);
+    if (job.status === "done") return job.result ?? null;
+    if (job.status === "failed")
+      throw new Error(job.error ?? "Report generation failed");
+  }
 }
 
 /**

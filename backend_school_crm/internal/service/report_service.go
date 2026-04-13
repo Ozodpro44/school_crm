@@ -89,6 +89,21 @@ type FinancialSummary struct {
 	SalariesByStatus map[string]float64 `json:"salariesByStatus"`
 }
 
+// UnpaidClassItem represents a class with its debtor count
+type UnpaidClassItem struct {
+	ClassID   string `json:"classId"`
+	ClassName string `json:"className"`
+	Count     int    `json:"count"`
+}
+
+// TopDebtorItem represents a student with outstanding balance
+type TopDebtorItem struct {
+	StudentID   string  `json:"studentId"`
+	StudentName string  `json:"studentName"`
+	ClassName   string  `json:"className"`
+	Outstanding float64 `json:"outstanding"`
+}
+
 // DashboardData represents consolidated dashboard data
 type DashboardData struct {
 	Students            int                 `json:"totalStudents"`
@@ -111,6 +126,13 @@ type DashboardData struct {
 	Payments            []PaymentReportItem `json:"payments"`
 	Salaries            []SalaryReportItem  `json:"salaries"`
 	Expenses            []ExpenseReportItem `json:"expenses"`
+	// KPI fields (2.1)
+	CollectionRate      float64           `json:"collectionRate"`      // paid / expected * 100
+	ChurnedStudents     int               `json:"churnedStudents"`     // left this month
+	PrevChurnedStudents int               `json:"prevChurnedStudents"` // left last month
+	SalaryPayoutPct     float64           `json:"salaryPayoutPct"`     // paid salary / total salary * 100
+	UnpaidByClass       []UnpaidClassItem `json:"unpaidByClass"`       // top classes by debtor count
+	TopDebtors          []TopDebtorItem   `json:"topDebtors"`          // top students by outstanding
 }
 
 // GetPaymentReport returns a paginated list of payments with student and class info
@@ -769,6 +791,141 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 		return nil, err
 	}
 
+	// ── KPI 1: Collection rate ─────────────────────────────────────────────────
+	// (sum of payments received this month) / (sum of monthly_payment of active students) * 100
+	var collectionPaid, collectionExpected sql.NullFloat64
+	err = s.db.GetConn().QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(p.amount), 0)        AS paid,
+			COALESCE(SUM(s.monthly_payment), 0) AS expected
+		FROM students s
+		LEFT JOIN payments p ON p.student_id = s.id
+			AND p.month = $2 AND p.year = $3
+			AND p.status IN ('paid', 'partial')
+		WHERE s.branch_id = $1 AND s.status = 'active'
+	`, branchID, monthStr, year).Scan(&collectionPaid, &collectionExpected)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	collectionRate := 0.0
+	if collectionExpected.Float64 > 0 {
+		collectionRate = (collectionPaid.Float64 / collectionExpected.Float64) * 100
+		if collectionRate > 100 {
+			collectionRate = 100
+		}
+	}
+
+	// ── KPI 2: Churn (students who left this month and last month) ────────────
+	prevMonth := month - 1
+	prevYear := year
+	if prevMonth == 0 {
+		prevMonth = 12
+		prevYear = year - 1
+	}
+	prevMonthStr := fmt.Sprintf("%02d", prevMonth)
+
+	var churnedStudents, prevChurnedStudents int
+	err = s.db.GetConn().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM students
+		WHERE branch_id = $1
+			AND left_date IS NOT NULL
+			AND LPAD(EXTRACT(MONTH FROM left_date)::text, 2, '0') = $2
+			AND EXTRACT(YEAR FROM left_date)::int = $3
+	`, branchID, monthStr, year).Scan(&churnedStudents)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	err = s.db.GetConn().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM students
+		WHERE branch_id = $1
+			AND left_date IS NOT NULL
+			AND LPAD(EXTRACT(MONTH FROM left_date)::text, 2, '0') = $2
+			AND EXTRACT(YEAR FROM left_date)::int = $3
+	`, branchID, prevMonthStr, prevYear).Scan(&prevChurnedStudents)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	// ── KPI 3: Salary payout % ────────────────────────────────────────────────
+	var salaryPaid, salaryTotal sql.NullFloat64
+	err = s.db.GetConn().QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0) AS paid,
+			COALESCE(SUM(amount), 0)                                            AS total
+		FROM salaries
+		WHERE branch_id = $1 AND month = $2 AND year = $3
+	`, branchID, monthStr, year).Scan(&salaryPaid, &salaryTotal)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	salaryPayoutPct := 0.0
+	if salaryTotal.Float64 > 0 {
+		salaryPayoutPct = (salaryPaid.Float64 / salaryTotal.Float64) * 100
+	}
+
+	// ── KPI 4: Unpaid by class (top 5 classes with most debtors) ─────────────
+	unpaidByClassRows, err := s.db.GetConn().QueryContext(ctx, `
+		SELECT COALESCE(c.id::text, ''), COALESCE(c.name, 'No Class'), COUNT(*) AS cnt
+		FROM (
+			SELECT s.id, s.class_id, s.monthly_payment,
+				COALESCE(SUM(p.amount), 0) AS total_paid
+			FROM students s
+			LEFT JOIN payments p ON p.student_id = s.id
+				AND p.month = $2 AND p.year = $3
+				AND p.status IN ('paid', 'partial')
+			WHERE s.branch_id = $1 AND s.status = 'active'
+			GROUP BY s.id, s.class_id, s.monthly_payment
+			HAVING COALESCE(SUM(p.amount), 0) < s.monthly_payment
+		) debtors
+		LEFT JOIN classes c ON c.id = debtors.class_id
+		GROUP BY c.id, c.name
+		ORDER BY cnt DESC
+		LIMIT 5
+	`, branchID, monthStr, year)
+	if err != nil {
+		return nil, err
+	}
+	defer unpaidByClassRows.Close()
+
+	unpaidByClass := []UnpaidClassItem{}
+	for unpaidByClassRows.Next() {
+		var item UnpaidClassItem
+		if err := unpaidByClassRows.Scan(&item.ClassID, &item.ClassName, &item.Count); err != nil {
+			return nil, err
+		}
+		unpaidByClass = append(unpaidByClass, item)
+	}
+
+	// ── KPI 5: Top debtors (top 5 students by outstanding amount) ────────────
+	topDebtorsRows, err := s.db.GetConn().QueryContext(ctx, `
+		SELECT s.id::text, s.full_name, COALESCE(c.name, ''),
+			(s.monthly_payment - COALESCE(SUM(p.amount), 0)) AS outstanding
+		FROM students s
+		LEFT JOIN classes c ON s.class_id = c.id
+		LEFT JOIN payments p ON p.student_id = s.id
+			AND p.month = $2 AND p.year = $3
+			AND p.status IN ('paid', 'partial')
+		WHERE s.branch_id = $1 AND s.status = 'active'
+		GROUP BY s.id, s.full_name, c.name, s.monthly_payment
+		HAVING COALESCE(SUM(p.amount), 0) < s.monthly_payment
+		ORDER BY outstanding DESC
+		LIMIT 5
+	`, branchID, monthStr, year)
+	if err != nil {
+		return nil, err
+	}
+	defer topDebtorsRows.Close()
+
+	topDebtors := []TopDebtorItem{}
+	for topDebtorsRows.Next() {
+		var item TopDebtorItem
+		if err := topDebtorsRows.Scan(&item.StudentID, &item.StudentName, &item.ClassName, &item.Outstanding); err != nil {
+			return nil, err
+		}
+		topDebtors = append(topDebtors, item)
+	}
+
 	return &DashboardData{
 		Students:            totalStudents,
 		ActiveStudents:      activeStudents,
@@ -790,5 +947,11 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 		Payments:            paymentsData,
 		Salaries:            salariesData,
 		Expenses:            expensesData,
+		CollectionRate:      collectionRate,
+		ChurnedStudents:     churnedStudents,
+		PrevChurnedStudents: prevChurnedStudents,
+		SalaryPayoutPct:     salaryPayoutPct,
+		UnpaidByClass:       unpaidByClass,
+		TopDebtors:          topDebtors,
 	}, nil
 }
