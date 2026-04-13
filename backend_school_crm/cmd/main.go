@@ -325,11 +325,28 @@ func main() {
 	router.POST("/api/auth/resend-otp", authRateLimit, handlers.ResendOTP(userService))
 	router.POST("/api/auth/reset-password", authRateLimit, handlers.ResetPassword(userService))
 
+	// Public dev routes under /api (old prefix) — no auth required
+	legacyPublicDev := router.Group("/api")
+	handlers.RegisterDeveloperRoutes(legacyPublicDev, database, subscriptionService)
+
 	// Dev protected (old prefix)
 	legacyDevProtected := router.Group("/api")
 	legacyDevProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret))
 	handlers.RegisterDevLogsRoutes(legacyDevProtected, database)
+	handlers.RegisterDevSettingsRoutes(legacyDevProtected, database)
 	handlers.RegisterDevCRMRoutes(legacyDevProtected, userService, branchService)
+	handlers.RegisterAdminSubscriptionRoutes(legacyDevProtected, subscriptionService)
+	handlers.RegisterAdminPlatformStatsRoute(legacyDevProtected, subscriptionService)
+	handlers.RegisterAdminPlansRoutes(legacyDevProtected, subscriptionService)
+	handlers.RegisterSubscriptionPlanDevRoutes(legacyDevProtected, subscriptionService)
+	handlers.RegisterPaymentTypeDevRoutes(legacyDevProtected, paymentTypeService)
+
+	// Auth-only legacy routes — require login but NOT subscription (e.g. notifications)
+	legacyAuthOnly := router.Group("/api")
+	legacyAuthOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	legacyAuthOnly.Use(middleware.RequestTimeout(30 * time.Second))
+	handlers.RegisterNotificationRoutes(legacyAuthOnly, notificationService)
+	handlers.RegisterSubscriptionProtectedRoutes(legacyAuthOnly, subscriptionService, userService)
 
 	// All other protected routes under /api (old prefix)
 	legacyProtected := router.Group("/api")
@@ -349,7 +366,6 @@ func main() {
 	handlers.RegisterExpenseRoutes(legacyProtected, expenseService, branchService, userService)
 	handlers.RegisterBudgetRoutes(legacyProtected, budgetService, userService)
 	handlers.RegisterReportRoutes(legacyProtected, reportService, userService, branchService)
-	handlers.RegisterNotificationRoutes(legacyProtected, notificationService)
 	handlers.RegisterAuditRoutes(legacyProtected, database)
 	handlers.RegisterJobRoutes(legacyProtected, jobQueue)
 	handlers.RegisterBranchRoutes(legacyProtected, branchService, userService, subscriptionService)
