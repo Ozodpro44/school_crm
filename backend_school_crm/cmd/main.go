@@ -317,6 +317,10 @@ func main() {
 	handlers.RegisterClickUzDevRoutes(devProtected, clickUzService)
 
 	// ── Backward-compatible /api/ aliases (clients not yet on /api/v1/) ──────────
+	// Developer auth (public — no middleware needed)
+	router.POST("/api/dev/auth/login", authRateLimit, handlers.DeveloperLogin(developerService, cfg.JWTSecret))
+	router.POST("/api/dev/auth/register", authRateLimit, handlers.DeveloperRegister(developerService, cfg.JWTSecret))
+
 	// Auth
 	router.POST("/api/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret))
 	router.POST("/api/auth/register", authRateLimit, handlers.Register(userService, cfg.JWTSecret))
