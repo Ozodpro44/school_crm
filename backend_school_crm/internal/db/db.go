@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/golang-migrate/migrate/v4"
@@ -28,16 +30,12 @@ func New(ctx context.Context, dsn string) (*Database, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	conn.SetMaxOpenConns(25)
-	conn.SetMaxIdleConns(5)
+	conn.SetMaxOpenConns(50)
+	conn.SetMaxIdleConns(10)
+	conn.SetConnMaxLifetime(5 * time.Minute)
+	conn.SetConnMaxIdleTime(2 * time.Minute)
 
 	db := &Database{conn: conn}
-
-	// Automatically run migrations on startup
-	if err := db.RunMigrations(ctx); err != nil {
-		log.Printf("Warning: Failed to run migrations: %v", err)
-		// Don't fail on migration errors - database might already be initialized
-	}
 
 	return db, nil
 }
@@ -59,25 +57,37 @@ func (db *Database) BeginTx(ctx context.Context) (*sql.Tx, error) {
 func (db *Database) RunMigrations(ctx context.Context) error {
 	// Find migrations directory
 	migrationPath := os.Getenv("MIGRATION_PATH")
-	if migrationPath == "" {
+	if strings.HasPrefix(migrationPath, "file:/") && !strings.HasPrefix(migrationPath, "file://") {
+		normalized := strings.TrimPrefix(migrationPath, "file:")
+		if !strings.HasPrefix(normalized, "/") {
+			normalized = "/" + normalized
+		}
+		migrationPath = "file://" + filepath.ToSlash(normalized)
+	}
+	if migrationPath == "" || strings.HasPrefix(migrationPath, "file://") == false {
 		// Try common locations
 		wd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
-		
-		// Check if migrations directory exists in current directory
-		if _, err := os.Stat(filepath.Join(wd, "migrations")); err == nil {
-			migrationPath = filepath.Join("file://", wd, "migrations")
-		} else if _, err := os.Stat(filepath.Join(wd, "backend_school_crm", "migrations")); err == nil {
-			migrationPath = filepath.Join("file://", wd, "backend_school_crm", "migrations")
+
+		if migrationPath != "" && !strings.HasPrefix(migrationPath, "file://") {
+			if filepath.IsAbs(migrationPath) {
+				migrationPath = "file://" + filepath.ToSlash(migrationPath)
+			} else {
+				migrationPath = "file://" + filepath.ToSlash(filepath.Join(wd, migrationPath))
+			}
 		} else {
-			// Default to file://migrations (relative to working directory)
-			migrationPath = "file://migrations"
+			// Check if migrations directory exists in current directory
+			if _, err := os.Stat(filepath.Join(wd, "migrations")); err == nil {
+				migrationPath = "file://" + filepath.ToSlash(filepath.Join(wd, "migrations"))
+			} else if _, err := os.Stat(filepath.Join(wd, "backend_school_crm", "migrations")); err == nil {
+				migrationPath = "file://" + filepath.ToSlash(filepath.Join(wd, "backend_school_crm", "migrations"))
+			} else {
+				// Default to file://migrations (relative to working directory)
+				migrationPath = "file://" + filepath.ToSlash(filepath.Join(wd, "migrations"))
+			}
 		}
-	} else if !filepath.IsAbs(migrationPath) {
-		// Make path absolute if it's relative
-		migrationPath = filepath.Join("file://", migrationPath)
 	}
 
 	log.Printf("[Database.RunMigrations] Using migration path: %s", migrationPath)
@@ -96,13 +106,11 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 	}
 	defer m.Close()
 
-	// Check for dirty state and fix it
+	// Dirty state means a previous migration failed part-way.
+	// Do not force-forward automatically, because it can skip required tables.
 	version, dirty, err := m.Version()
 	if err == nil && dirty {
-		log.Printf("[Database.RunMigrations] Detected dirty migration state (version: %d). Forcing version...", version)
-		if err := m.Force(int(version)); err != nil {
-			log.Printf("[Database.RunMigrations] Warning: Failed to force migration version: %v", err)
-		}
+		return fmt.Errorf("database is in dirty migration state at version %d; fix migration and run force manually", version)
 	}
 
 	// Run migrations up
@@ -121,5 +129,75 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		log.Printf("[Database.RunMigrations] Migrations applied successfully. Current version: %d (dirty: %v)", version, dirty)
 	}
 
+	// Safety check: migration metadata can be out of sync with real schema.
+	// If required tables are missing even though version is up-to-date, repair automatically.
+	requiredTables := []string{
+		"users",
+		"branches",
+		"classes",
+		"students",
+		"teachers",
+		"payments",
+		"salaries",
+		"expenses",
+		"incomes",
+		"permissions",
+		"subscription_plans",
+		"subscriptions",
+		"subscription_usage",
+		"subscription_payments",
+		"developers",
+		"logs",
+		"branch_managers",
+		"notifications",
+		"audit_logs",
+		"expense_budgets",
+	}
+
+	missingTables, err := db.getMissingTables(ctx, requiredTables)
+	if err != nil {
+		return fmt.Errorf("failed to validate migrated schema: %w", err)
+	}
+	if len(missingTables) > 0 {
+		log.Printf("[Database.RunMigrations] Detected missing tables despite migration state: %s", strings.Join(missingTables, ", "))
+		log.Printf("[Database.RunMigrations] Attempting auto-repair: force version to 0 and re-run all migrations")
+
+		if err := m.Force(0); err != nil {
+			return fmt.Errorf("failed to force migration version to 0 for repair: %w", err)
+		}
+		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+			return fmt.Errorf("auto-repair migration failed: %w", err)
+		}
+
+		missingTables, err = db.getMissingTables(ctx, requiredTables)
+		if err != nil {
+			return fmt.Errorf("failed to validate schema after auto-repair: %w", err)
+		}
+		if len(missingTables) > 0 {
+			return fmt.Errorf("auto-repair incomplete, missing tables: %s", strings.Join(missingTables, ", "))
+		}
+
+		version, dirty, err := m.Version()
+		if err == nil {
+			log.Printf("[Database.RunMigrations] Auto-repair completed successfully. Current version: %d (dirty: %v)", version, dirty)
+		} else {
+			log.Printf("[Database.RunMigrations] Auto-repair completed successfully")
+		}
+	}
+
 	return nil
+}
+
+func (db *Database) getMissingTables(ctx context.Context, tableNames []string) ([]string, error) {
+	missing := make([]string, 0)
+	for _, tableName := range tableNames {
+		var regName sql.NullString
+		if err := db.conn.QueryRowContext(ctx, "SELECT to_regclass($1)", "public."+tableName).Scan(&regName); err != nil {
+			return nil, err
+		}
+		if !regName.Valid {
+			missing = append(missing, tableName)
+		}
+	}
+	return missing, nil
 }

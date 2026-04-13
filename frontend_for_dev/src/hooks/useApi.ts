@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import api from "@/lib/api";
+import { toast } from "@/components/ui/sonner";
 
 interface UseApiState<T> {
   data: T | null;
@@ -7,9 +8,9 @@ interface UseApiState<T> {
   error: string | null;
 }
 
-interface UseApiOptions {
+interface UseApiOptions<T = unknown> {
   immediate?: boolean;
-  onSuccess?: (data: any) => void;
+  onSuccess?: (data: T) => void;
   onError?: (error: string) => void;
 }
 
@@ -19,8 +20,8 @@ interface UseApiOptions {
  * const { data, loading, error } = useApi(() => api.getHealth());
  */
 export function useApi<T>(
-  fetcher: () => Promise<any>,
-  options: UseApiOptions = {}
+  fetcher: () => Promise<{ data: T; error?: string }>,
+  options: UseApiOptions<T> = {}
 ) {
   const [state, setState] = useState<UseApiState<T>>({
     data: null,
@@ -37,6 +38,7 @@ export function useApi<T>(
       if (response.error) {
         setState({ data: null, loading: false, error: response.error });
         onError?.(response.error);
+        toast.error(response.error);
       } else {
         setState({
           data: response.data,
@@ -49,6 +51,7 @@ export function useApi<T>(
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setState({ data: null, loading: false, error: errorMessage });
       onError?.(errorMessage);
+      toast.error(errorMessage);
     }
   }, [fetcher, onSuccess, onError]);
 
@@ -56,7 +59,8 @@ export function useApi<T>(
     if (immediate) {
       execute();
     }
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [immediate]);
 
   return {
     ...state,
@@ -69,9 +73,9 @@ export function useApi<T>(
  * Hook for polling API endpoints
  */
 export function useApiPolling<T>(
-  fetcher: () => Promise<any>,
+  fetcher: () => Promise<{ data: T; error?: string }>,
   interval: number = 5000,
-  options: UseApiOptions = {}
+  options: UseApiOptions<T> = {}
 ) {
   const api = useApi<T>(fetcher, { immediate: true, ...options });
 

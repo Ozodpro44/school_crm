@@ -748,7 +748,7 @@ export default function SalariesPage() {
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
                       {salary.paidDate
-                        ? new Date(salary.paidDate).toLocaleDateString('en-GB')
+                        ? new Date(salary.paidDate).toLocaleDateString('en-GB').replace(/\//g, ".")
                         : "-"}
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">

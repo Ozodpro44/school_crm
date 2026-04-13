@@ -1,0 +1,14 @@
+# Railway configuration for the REST API service.
+# For the gRPC service, create a second Railway service pointing to the
+# same repo/root directory and override the Dockerfile to "Dockerfile.grpc"
+# in the Railway dashboard (Settings → Build → Dockerfile path).
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

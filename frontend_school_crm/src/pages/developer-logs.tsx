@@ -44,7 +44,7 @@ const LEVEL_COLORS: Record<string, { bg: string; text: string; badge: string }> 
   error: { bg: 'bg-red-100', text: 'text-red-700', badge: 'bg-red-200 text-red-700' },
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
 export default function DeveloperLogsPage() {
   const [logs, setLogs] = useState<Log[]>([]);
@@ -172,7 +172,7 @@ export default function DeveloperLogsPage() {
 
     setIsClearingLogs(true);
     try {
-      const response = await fetch(`${API_BASE}/api/logs`, {
+      const response = await fetch(`${API_BASE}/dev/logs`, {
         method: 'DELETE',
       });
 

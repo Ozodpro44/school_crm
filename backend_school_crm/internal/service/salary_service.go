@@ -14,11 +14,12 @@ import (
 )
 
 type SalaryService struct {
-	db *db.Database
+	db        *db.Database
+	branchSvc *BranchService
 }
 
-func NewSalaryService(database *db.Database) *SalaryService {
-	return &SalaryService{db: database}
+func NewSalaryService(database *db.Database, branchSvc *BranchService) *SalaryService {
+	return &SalaryService{db: database, branchSvc: branchSvc}
 }
 
 type CreateSalaryRequest struct {
@@ -34,6 +35,17 @@ type CreateSalaryRequest struct {
 }
 
 func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, createdBy string) (*models.Salary, error) {
+	// Guard: financial month lock — only allow salaries for the branch's current month.
+	if s.branchSvc != nil && req.BranchID != "" {
+		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, req.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify financial month: %w", err)
+		}
+		if req.Month != currentMonth || req.Year != currentYear {
+			return nil, fmt.Errorf("%w: can only create salaries for current month (%s/%d)", ErrFinancialMonthLocked, currentMonth, currentYear)
+		}
+	}
+
 	salary := &models.Salary{
 		ID:            uuid.New().String(),
 		TeacherID:     req.TeacherID,
@@ -97,7 +109,23 @@ func (s *SalaryService) GetByBranchID(ctx context.Context, branchID string) ([]m
 	return salaries, rows.Err()
 }
 
-func (s *SalaryService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Salary, error) {
+func (s *SalaryService) Update(ctx context.Context, id string, updates map[string]interface{}, isAdmin bool) (*models.Salary, error) {
+	// Guard: financial month lock — non-admin users cannot edit past-month salaries.
+	if s.branchSvc != nil {
+		existing, err := s.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, existing.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify financial month: %w", err)
+		}
+		isPast := existing.Month != currentMonth || existing.Year != currentYear
+		if isPast && !isAdmin {
+			return nil, fmt.Errorf("%w: cannot modify salaries from past months", ErrFinancialMonthLocked)
+		}
+	}
+
 	updates = utils.ConvertKeysToSnakeCase(updates)
 
 	query := `UPDATE salaries SET `

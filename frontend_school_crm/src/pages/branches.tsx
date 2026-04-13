@@ -16,6 +16,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneNumber } from "@/lib/utils";
+import { formatCurrency } from "@/lib/exportUtils";
 import { useBranch } from "@/context/BranchContext";
 
 export default function BranchesPage() {
@@ -474,7 +475,7 @@ export default function BranchesPage() {
                         </div>
                         <div className="flex items-center gap-2 text-sm">
                           <DollarSign className="h-4 w-4" />
-                          UZS {branch.monthlyPayment.toLocaleString()}/oy
+                          {formatCurrency(branch.monthlyPayment)}/oy
                         </div>
                       </div>
                     </CardDescription>

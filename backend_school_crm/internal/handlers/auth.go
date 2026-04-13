@@ -73,6 +73,15 @@ func Register(userService *service.UserService, jwtSecret string) gin.HandlerFun
 			return
 		}
 
+		// Public registration is restricted to school-owner (admin) accounts only.
+		// All other roles (branch_admin, manager, teacher, etc.) must be created
+		// by an authenticated admin through the user-management endpoints.
+		if req.Role != "admin" {
+			log.Printf("[REGISTER DENIED] Non-admin role attempted via public endpoint: %s (%s)", req.Email, req.Role)
+			c.JSON(http.StatusForbidden, gin.H{"error": "only admin accounts may register through this endpoint"})
+			return
+		}
+
 		log.Printf("[REGISTER] Attempting to register user: %s (Role: %s)", req.Email, req.Role)
 
 		user, err := userService.Register(c.Request.Context(), &req)

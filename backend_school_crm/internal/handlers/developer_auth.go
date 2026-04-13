@@ -192,6 +192,6 @@ func DeveloperMiddleware(jwtSecret string) gin.HandlerFunc {
 // RegisterDeveloperAuthRoutes registers developer authentication routes
 func RegisterDeveloperAuthRoutes(router gin.IRouter, developerService *service.DeveloperService, jwtSecret string) {
 	log.Println("[ROUTES] Registering developer auth routes")
-	router.POST("/api/dev/auth/login", DeveloperLogin(developerService, jwtSecret))
-	router.POST("/api/dev/auth/register", DeveloperRegister(developerService, jwtSecret))
+	router.POST("/api/v1/dev/auth/login", DeveloperLogin(developerService, jwtSecret))
+	router.POST("/api/v1/dev/auth/register", DeveloperRegister(developerService, jwtSecret))
 }

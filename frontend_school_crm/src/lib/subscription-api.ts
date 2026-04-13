@@ -11,9 +11,7 @@ import {
   SubscriptionResponse,
 } from "@/types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://incredible-love-production-0008.up.railway.app/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
 // Helper function for unauthenticated API requests
 async function makePublicRequest<T>(
@@ -75,6 +73,34 @@ async function makeRequest<T>(
  */
 export async function getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
   return makeRequest<SubscriptionPlan[]>("/subscriptions/plans");
+}
+
+// ─── Payment types ──────────────────────────────────────────────────────────
+
+export interface ActivePaymentType {
+  id: string;
+  code: string;
+  displayName: string;
+  description?: string;
+  sortOrder: number;
+}
+
+/**
+ * Get active payment types from the backend (excludes free_trial).
+ * Falls back to the three built-in types if the endpoint is unavailable.
+ */
+export async function getActivePaymentTypes(): Promise<ActivePaymentType[]> {
+  try {
+    const res = await makePublicRequest<ActivePaymentType[]>("/payment-types");
+    if (Array.isArray(res) && res.length > 0) return res;
+  } catch {
+    // fallthrough to defaults
+  }
+  return [
+    { id: "click",    code: "click",    displayName: "Click.uz",      description: "Pay via Click.uz",          sortOrder: 1 },
+    { id: "telegram", code: "telegram", displayName: "Telegram",      description: "Pay via Telegram bot",      sortOrder: 2 },
+    { id: "manual",   code: "manual",   displayName: "Bank Transfer",  description: "Manual bank transfer",      sortOrder: 3 },
+  ];
 }
 
 /**
@@ -288,7 +314,7 @@ export async function initiateTelegramPayment(subscriptionId: string): Promise<{
  */
 export function isSubscriptionActive(subscription: Subscription | null): boolean {
   if (!subscription) return false;
-  return subscription.status === "active";
+  return subscription.status === "active" || subscription.status === "trial";
 }
 
 /**
@@ -304,6 +330,25 @@ export function isExpiringsoon(subscription: Subscription | null): boolean {
   );
 
   return daysUntilExpiry <= 7 && daysUntilExpiry > 0;
+}
+
+/**
+ * Get days until subscription endDate (negative if already past, Infinity if no end date)
+ */
+export function getDaysUntilExpiry(subscription: Subscription | null): number {
+  if (!subscription || !subscription.endDate) return Infinity;
+  const end = new Date(subscription.endDate).getTime();
+  const now = Date.now();
+  return Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Returns true if the subscription is a trial ending within 7 days (or already ended)
+ */
+export function isTrialEndingSoon(subscription: Subscription | null): boolean {
+  if (!subscription || subscription.status !== "trial") return false;
+  if (!subscription.endDate) return false;
+  return getDaysUntilExpiry(subscription) <= 7;
 }
 
 /**

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -12,16 +13,15 @@ import (
 
 func RegisterExpenseRoutes(router *gin.RouterGroup, expenseService *service.ExpenseService, branchService *service.BranchService, userService *service.UserService) {
 	expenses := router.Group("/expenses")
-	// Authenticated users can view and edit expenses
-	expenses.POST("", middleware.PermissionChecker(userService, "canCreateExpenses"), createExpense(expenseService, branchService))
+	expenses.POST("", middleware.PermissionChecker(userService, "canCreateExpenses"), createExpense(expenseService))
 	expenses.GET("/consolidated/data", middleware.PermissionChecker(userService, "canViewExpenses"), getExpensesConsolidatedData(expenseService, branchService, userService))
 	expenses.GET("/:id", middleware.PermissionChecker(userService, "canViewExpenses"), getExpense(expenseService))
 	expenses.GET("", middleware.PermissionChecker(userService, "canViewExpenses"), listExpenses(expenseService, branchService, userService))
-	expenses.PUT("/:id", middleware.PermissionChecker(userService, "canEditExpenses"), updateExpense(expenseService, branchService, userService))
+	expenses.PUT("/:id", middleware.PermissionChecker(userService, "canEditExpenses"), updateExpense(expenseService, userService))
 	expenses.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteExpenses"), deleteExpense(expenseService, branchService, userService))
 }
 
-func createExpense(expenseService *service.ExpenseService, branchService *service.BranchService) gin.HandlerFunc {
+func createExpense(expenseService *service.ExpenseService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := middleware.GetUserID(c)
 		if err != nil {
@@ -35,30 +35,15 @@ func createExpense(expenseService *service.ExpenseService, branchService *servic
 			return
 		}
 
-		// Validate that expense date is in the branch's current month
-		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), req.BranchID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
-			return
-		}
-
-		// Extract month and year from the expense date
-		expenseMonth := int(req.Date.Month())
-		expenseYear := req.Date.Year()
-		currentMonthInt, _ := strconv.Atoi(currentMonth)
-
-		// Only allow creating expenses for the current month of the branch
-		if expenseMonth != currentMonthInt || expenseYear != currentYear {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "can only create expenses for the branch's current month"})
-			return
-		}
-
 		expense, err := expenseService.Create(c.Request.Context(), &req, userID)
 		if err != nil {
+			if errors.Is(err, service.ErrFinancialMonthLocked) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
 		c.JSON(http.StatusCreated, expense)
 	}
 }
@@ -132,37 +117,12 @@ func listExpenses(expenseService *service.ExpenseService, branchService *service
 	}
 }
 
-func updateExpense(expenseService *service.ExpenseService, branchService *service.BranchService, userService *service.UserService) gin.HandlerFunc {
+func updateExpense(expenseService *service.ExpenseService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
 
-		// Get existing expense
-		existingExpense, err := expenseService.GetByID(c.Request.Context(), id)
-		if err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-			return
-		}
-
-		// Get branch's current month
-		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), existingExpense.BranchID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
-			return
-		}
-
-		// Check if expense is from a past month - only Admin can edit past months
 		userRole, _ := middleware.GetUserRole(c, userService)
 		isAdmin := userRole == models.RoleAdmin
-
-		expenseMonth := int(existingExpense.Date.Month())
-		expenseYear := existingExpense.Date.Year()
-		currentMonthInt, _ := strconv.Atoi(currentMonth)
-
-		isPastMonth := expenseMonth != currentMonthInt || expenseYear != currentYear
-		if isPastMonth && !isAdmin {
-			c.JSON(http.StatusForbidden, gin.H{"error": "cannot modify expenses from past months"})
-			return
-		}
 
 		var req service.UpdateExpenseRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -170,12 +130,15 @@ func updateExpense(expenseService *service.ExpenseService, branchService *servic
 			return
 		}
 
-		expense, err := expenseService.Update(c.Request.Context(), id, &req)
+		expense, err := expenseService.Update(c.Request.Context(), id, &req, isAdmin)
 		if err != nil {
+			if errors.Is(err, service.ErrFinancialMonthLocked) {
+				c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
 		c.JSON(http.StatusOK, expense)
 	}
 }
@@ -267,7 +230,16 @@ func getExpensesConsolidatedData(expenseService *service.ExpenseService, branchS
 		}
 
 		// Get expenses with filters using service function
-		result, err := expenseService.GetByBranchIDWithFilters(c.Request.Context(), branchID, page, limit, search, category, paymentMethod, month, year)
+		result, err := expenseService.GetByBranchIDWithFilters(c.Request.Context(), service.ExpenseFilterInput{
+			BranchID:      branchID,
+			Page:          page,
+			Limit:         limit,
+			Search:        search,
+			Category:      category,
+			PaymentMethod: paymentMethod,
+			Month:         month,
+			Year:          year,
+		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

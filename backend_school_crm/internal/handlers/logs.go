@@ -40,7 +40,7 @@ func RegisterDevLogsRoutes(router *gin.RouterGroup, database *db.Database) {
 // RegisterLogsIngestRoute registers the public log ingestion endpoint.
 // It uses a separate LOGS_TOKEN bearer (not the user/dev JWT).
 func RegisterLogsIngestRoute(router gin.IRouter, database *db.Database, logsToken string) {
-	router.POST("/api/logs/ingest", IngestLog(database, logsToken))
+	router.POST("/api/v1/logs/ingest", IngestLog(database, logsToken))
 }
 
 // GetDevLogs handles GET /api/dev/logs

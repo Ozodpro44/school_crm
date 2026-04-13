@@ -13,11 +13,20 @@ export class ApiClient {
   private baseUrl: string;
   private timeout: number;
   private token: string | null = null;
+  private onUnauthorized: (() => void) | null = null;
 
   constructor() {
     this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
     this.timeout = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000');
     this.loadToken();
+  }
+
+  /**
+   * Register a callback invoked when any request receives a 401 response.
+   * AuthContext uses this to trigger logout + redirect to /login.
+   */
+  setOnUnauthorized(cb: () => void): void {
+    this.onUnauthorized = cb;
   }
 
   /**
@@ -74,9 +83,12 @@ export class ApiClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = await response.json().catch(() => ({})) as { error?: string };
         const error = new Error(errorData.error || `HTTP ${response.status}`);
-        (error as any).status = response.status;
+        (error as Error & { status: number }).status = response.status;
+        if (response.status === 401) {
+          this.onUnauthorized?.();
+        }
         throw error;
       }
 
@@ -92,7 +104,7 @@ export class ApiClient {
 
   // ==================== AUTH ====================
 
-  async login(email: string, password: string): Promise<{ token: string; user: any }> {
+  async login(email: string, password: string): Promise<{ token: string; user: { id: string; email: string; fullName: string; role: string } }> {
     // Use developer login endpoint for dev dashboard
     const response = await this.request<{ id: string; email: string; fullName: string; token: string; role: string }>('/dev/auth/login', {
       method: 'POST',
@@ -117,7 +129,7 @@ export class ApiClient {
     fullName: string;
     role: string;
     branchId: string;
-  }): Promise<any> {
+  }): Promise<Record<string, unknown>> {
     return this.request('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -126,13 +138,13 @@ export class ApiClient {
 
   // ==================== STUDENTS ====================
 
-  async getStudents(branchId: string): Promise<any[]> {
+  async getStudents(branchId: string): Promise<Record<string, unknown>[]> {
     return this.request(`/students?branchId=${branchId}`, {
       method: 'GET',
     });
   }
 
-  async getStudent(id: string): Promise<any> {
+  async getStudent(id: string): Promise<Record<string, unknown>> {
     return this.request(`/students/${id}`, {
       method: 'GET',
     });
@@ -147,21 +159,21 @@ export class ApiClient {
     status: string;
     branchId: string;
     enrollmentDate?: string;
-  }): Promise<any> {
+  }): Promise<Record<string, unknown>> {
     return this.request('/students', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async updateStudent(id: string, data: Partial<any>): Promise<any> {
+  async updateStudent(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
     return this.request(`/students/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteStudent(id: string): Promise<any> {
+  async deleteStudent(id: string): Promise<Record<string, unknown>> {
     return this.request(`/students/${id}`, {
       method: 'DELETE',
     });
@@ -169,7 +181,7 @@ export class ApiClient {
 
   // ==================== PAYMENTS ====================
 
-  async getPayments(branchId?: string, studentId?: string, month?: string, year?: number): Promise<any[]> {
+  async getPayments(branchId?: string, studentId?: string, month?: string, year?: number): Promise<Record<string, unknown>[]> {
     const params = new URLSearchParams();
     if (branchId) params.append('branchId', branchId);
     if (studentId) params.append('studentId', studentId);
@@ -181,13 +193,13 @@ export class ApiClient {
     });
   }
 
-  async getPayment(id: string): Promise<any> {
+  async getPayment(id: string): Promise<Record<string, unknown>> {
     return this.request(`/payments/${id}`, {
       method: 'GET',
     });
   }
 
-  async getPaymentSummary(branchId: string): Promise<any> {
+  async getPaymentSummary(branchId: string): Promise<Record<string, unknown>> {
     return this.request(`/payments/branch/${branchId}/summary`, {
       method: 'GET',
     });
@@ -204,21 +216,21 @@ export class ApiClient {
     notes?: string;
     paidDate?: string;
     branchId: string;
-  }): Promise<any> {
+  }): Promise<Record<string, unknown>> {
     return this.request('/payments', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async updatePayment(id: string, data: Partial<any>): Promise<any> {
+  async updatePayment(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
     return this.request(`/payments/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deletePayment(id: string): Promise<any> {
+  async deletePayment(id: string): Promise<Record<string, unknown>> {
     return this.request(`/payments/${id}`, {
       method: 'DELETE',
     });
@@ -226,14 +238,14 @@ export class ApiClient {
 
   // ==================== BRANCHES ====================
 
-  async getBranches(): Promise<any[]> {
-    return this.request('/branches', {
+  async getBranches(): Promise<Record<string, unknown>[]> {
+    return this.request('/dev/crm/branches', {
       method: 'GET',
     });
   }
 
-  async getBranch(id: string): Promise<any> {
-    return this.request(`/branches/${id}`, {
+  async getBranch(id: string): Promise<Record<string, unknown>> {
+    return this.request(`/dev/crm/branches/${id}`, {
       method: 'GET',
     });
   }
@@ -244,35 +256,35 @@ export class ApiClient {
     phone: string;
     monthlyPayment?: number;
     adminId?: string;
-  }): Promise<any> {
-    return this.request('/branches', {
+  }): Promise<Record<string, unknown>> {
+    return this.request('/dev/crm/branches', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async updateBranch(id: string, data: Partial<any>): Promise<any> {
-    return this.request(`/branches/${id}`, {
+  async updateBranch(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
+    return this.request(`/dev/crm/branches/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteBranch(id: string): Promise<any> {
-    return this.request(`/branches/${id}`, {
+  async deleteBranch(id: string): Promise<Record<string, unknown>> {
+    return this.request(`/dev/crm/branches/${id}`, {
       method: 'DELETE',
     });
   }
 
   // ==================== CLASSES ====================
 
-  async getClasses(branchId: string): Promise<any[]> {
+  async getClasses(branchId: string): Promise<Record<string, unknown>[]> {
     return this.request(`/classes?branchId=${branchId}`, {
       method: 'GET',
     });
   }
 
-  async getClass(id: string): Promise<any> {
+  async getClass(id: string): Promise<Record<string, unknown>> {
     return this.request(`/classes/${id}`, {
       method: 'GET',
     });
@@ -282,21 +294,21 @@ export class ApiClient {
     name: string;
     teacherId?: string;
     branchId: string;
-  }): Promise<any> {
+  }): Promise<Record<string, unknown>> {
     return this.request('/classes', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async updateClass(id: string, data: Partial<any>): Promise<any> {
+  async updateClass(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
     return this.request(`/classes/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteClass(id: string): Promise<any> {
+  async deleteClass(id: string): Promise<Record<string, unknown>> {
     return this.request(`/classes/${id}`, {
       method: 'DELETE',
     });
@@ -304,13 +316,17 @@ export class ApiClient {
 
   // ==================== TEACHERS ====================
 
-  async getTeachers(branchId: string): Promise<any[]> {
-    return this.request(`/teachers?branchId=${branchId}`, {
+  // NOTE: Teachers are managed via school CRM auth. These methods use the school
+  // CRM routes and should only be called with a school-user JWT, not the dev JWT.
+  // The dev dashboard does not have a teachers management page, so these are
+  // available if needed but should not be invoked with dev credentials.
+  async getTeachers(branchId: string): Promise<Record<string, unknown>[]> {
+    return this.request(`/dev/crm/branches/${branchId}/teachers`, {
       method: 'GET',
     });
   }
 
-  async getTeacher(id: string): Promise<any> {
+  async getTeacher(id: string): Promise<Record<string, unknown>> {
     return this.request(`/teachers/${id}`, {
       method: 'GET',
     });
@@ -324,21 +340,21 @@ export class ApiClient {
     email: string;
     branchId: string;
     joinedDate?: string;
-  }): Promise<any> {
+  }): Promise<Record<string, unknown>> {
     return this.request('/teachers', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async updateTeacher(id: string, data: Partial<any>): Promise<any> {
+  async updateTeacher(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
     return this.request(`/teachers/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteTeacher(id: string): Promise<any> {
+  async deleteTeacher(id: string): Promise<Record<string, unknown>> {
     return this.request(`/teachers/${id}`, {
       method: 'DELETE',
     });
@@ -346,13 +362,13 @@ export class ApiClient {
 
   // ==================== SALARIES ====================
 
-  async getSalaries(branchId: string): Promise<any[]> {
+  async getSalaries(branchId: string): Promise<Record<string, unknown>[]> {
     return this.request(`/salaries?branchId=${branchId}`, {
       method: 'GET',
     });
   }
 
-  async getSalary(id: string): Promise<any> {
+  async getSalary(id: string): Promise<Record<string, unknown>> {
     return this.request(`/salaries/${id}`, {
       method: 'GET',
     });
@@ -368,21 +384,21 @@ export class ApiClient {
     notes?: string;
     paidDate?: string;
     branchId: string;
-  }): Promise<any> {
+  }): Promise<Record<string, unknown>> {
     return this.request('/salaries', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async updateSalary(id: string, data: Partial<any>): Promise<any> {
+  async updateSalary(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
     return this.request(`/salaries/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteSalary(id: string): Promise<any> {
+  async deleteSalary(id: string): Promise<Record<string, unknown>> {
     return this.request(`/salaries/${id}`, {
       method: 'DELETE',
     });
@@ -390,13 +406,13 @@ export class ApiClient {
 
   // ==================== EXPENSES ====================
 
-  async getExpenses(branchId: string): Promise<any[]> {
+  async getExpenses(branchId: string): Promise<Record<string, unknown>[]> {
     return this.request(`/expenses?branchId=${branchId}`, {
       method: 'GET',
     });
   }
 
-  async getExpense(id: string): Promise<any> {
+  async getExpense(id: string): Promise<Record<string, unknown>> {
     return this.request(`/expenses/${id}`, {
       method: 'GET',
     });
@@ -411,14 +427,14 @@ export class ApiClient {
     date: string;
     branchId: string;
     notes?: string;
-  }): Promise<any> {
+  }): Promise<Record<string, unknown>> {
     return this.request('/expenses', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteExpense(id: string): Promise<any> {
+  async deleteExpense(id: string): Promise<Record<string, unknown>> {
     return this.request(`/expenses/${id}`, {
       method: 'DELETE',
     });
@@ -426,50 +442,54 @@ export class ApiClient {
 
   // ==================== USERS ====================
 
-  async getUsers(): Promise<any[]> {
-    return this.request('/users', {
+  async getUsers(): Promise<Record<string, unknown>[]> {
+    return this.request('/dev/crm/users', {
       method: 'GET',
     });
   }
 
-  async getManagersByBranch(branchId: string): Promise<any[]> {
-    return this.request(`/users?branchId=${branchId}`, {
+  async getManagersByBranch(branchId: string): Promise<Record<string, unknown>[]> {
+    return this.request(`/dev/crm/users?branchId=${branchId}`, {
       method: 'GET',
     });
   }
 
-  async getUser(id: string): Promise<any> {
-    return this.request(`/users/${id}`, {
+  async getUser(id: string): Promise<Record<string, unknown>> {
+    return this.request(`/dev/crm/users/${id}`, {
       method: 'GET',
     });
   }
 
-  async updateUser(id: string, data: Partial<any>): Promise<any> {
-    return this.request(`/users/${id}`, {
+  async updateUser(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
+    return this.request(`/dev/crm/users/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteUser(id: string): Promise<any> {
-    return this.request(`/users/${id}`, {
+  async deleteUser(id: string): Promise<Record<string, unknown>> {
+    return this.request(`/dev/crm/users/${id}`, {
       method: 'DELETE',
     });
   }
 
   // ==================== HEALTH ====================
 
-  async healthCheck(): Promise<any> {
+  async healthCheck(): Promise<Record<string, unknown>> {
     // /health is at root level, not under /api
     const rootUrl = this.baseUrl.replace(/\/api\/?$/, '');
+    const start = Date.now();
     const response = await fetch(`${rootUrl}/health`);
+    const responseTime = Date.now() - start;
     if (!response.ok) throw new Error(`Health check failed: HTTP ${response.status}`);
-    return response.json();
+    const data = await response.json();
+    // Inject client-measured latency so Analytics can display a real value
+    return { ...data, responseTime };
   }
 
   // ==================== DEV LOGS ====================
 
-  async getDevLogs(params?: { limit?: number; level?: string; module?: string }): Promise<any[]> {
+  async getDevLogs(params?: { limit?: number; level?: string; module?: string }): Promise<Record<string, unknown>[]> {
     const q = new URLSearchParams();
     if (params?.limit) q.set('limit', String(params.limit));
     if (params?.level) q.set('level', params.level);
@@ -484,32 +504,64 @@ export class ApiClient {
 
   // ==================== DEV SETTINGS ====================
 
-  async getDevSettings(): Promise<Record<string, any>> {
+  async getDevSettings(): Promise<Record<string, unknown>> {
     return this.request('/dev/settings', { method: 'GET' });
   }
 
-  async updateDevSettings(settings: Record<string, any>): Promise<Record<string, any>> {
+  async updateDevSettings(settings: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.request('/dev/settings', {
       method: 'PUT',
       body: JSON.stringify(settings),
     });
   }
 
+  // ==================== NOTIFICATIONS ====================
+
+  async getNotificationPreferences(): Promise<Record<string, unknown>> {
+    return this.request('/dev/notifications/preferences', { method: 'GET' });
+  }
+
+  async updateNotificationPreferences(prefs: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request('/dev/notifications/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(prefs),
+    });
+  }
+
+  async getNotificationChannels(): Promise<Record<string, unknown>> {
+    return this.request('/dev/notifications/channels', { method: 'GET' });
+  }
+
+  async updateNotificationChannels(channels: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return this.request('/dev/notifications/channels', {
+      method: 'PUT',
+      body: JSON.stringify(channels),
+    });
+  }
+
+  async getRecentAlerts(): Promise<Record<string, unknown>[]> {
+    try {
+      return await this.request('/dev/notifications/recent', { method: 'GET' });
+    } catch {
+      return [];
+    }
+  }
+
   // ==================== LOGS ====================
 
-  async getLogs(limit: number = 100): Promise<any[]> {
+  async getLogs(limit: number = 100): Promise<Record<string, unknown>[]> {
     return this.request(`/dev/logs?limit=${limit}`, {
       method: 'GET',
     });
   }
 
-  async getLogsByModule(module: string, limit: number = 100): Promise<any[]> {
+  async getLogsByModule(module: string, limit: number = 100): Promise<Record<string, unknown>[]> {
     return this.request(`/dev/logs?module=${module}&limit=${limit}`, {
       method: 'GET',
     });
   }
 
-  async getLogsByLevel(level: string, limit: number = 100): Promise<any[]> {
+  async getLogsByLevel(level: string, limit: number = 100): Promise<Record<string, unknown>[]> {
     return this.request(`/dev/logs?level=${level}&limit=${limit}`, {
       method: 'GET',
     });
@@ -527,7 +579,7 @@ export class ApiClient {
       message: string;
       metadata?: Record<string, string>;
     }
-  ): Promise<any> {
+  ): Promise<Record<string, unknown>> {
     const url = `${this.baseUrl}/logs/ingest`;
 
     const controller = new AbortController();

@@ -11,7 +11,7 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterReportRoutes(router *gin.RouterGroup, reportService *service.ReportService, userService *service.UserService) {
+func RegisterReportRoutes(router *gin.RouterGroup, reportService *service.ReportService, userService *service.UserService, branchService *service.BranchService) {
 	reports := router.Group("/reports")
 	{
 		// Dashboard accessible to all users
@@ -26,6 +26,8 @@ func RegisterReportRoutes(router *gin.RouterGroup, reportService *service.Report
 			protected.GET("/debtors", getDebtorsReport(reportService))
 			protected.GET("/expenses", getExpensesReport(reportService))
 			protected.GET("/financial-summary", getFinancialSummary(reportService))
+			protected.GET("/forecast", getForecastReport(reportService))
+			protected.GET("/branches-overview", getBranchesOverview(reportService, userService, branchService))
 		}
 	}
 }
@@ -234,6 +236,98 @@ func getFinancialSummary(reportService *service.ReportService) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, summary)
+	}
+}
+
+func getBranchesOverview(reportService *service.ReportService, userService *service.UserService, branchService *service.BranchService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		monthStr := c.DefaultQuery("month", fmt.Sprintf("%d", time.Now().Month()))
+		yearStr := c.DefaultQuery("year", fmt.Sprintf("%d", time.Now().Year()))
+
+		var month, year int
+		if _, err := fmt.Sscanf(monthStr, "%d", &month); err != nil || month < 1 || month > 12 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid month (1-12)"})
+			return
+		}
+		if _, err := fmt.Sscanf(yearStr, "%d", &year); err != nil || year < 1900 || year > 2100 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid year"})
+			return
+		}
+
+		// Collect branch IDs accessible to the current user
+		var branchIDs []string
+		userIDRaw, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		uid := userIDRaw.(string)
+		user, err := userService.GetByID(c.Request.Context(), uid)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve user"})
+			return
+		}
+
+		var branches []interface{ GetID() string }
+		if user.Role == "admin" {
+			bs, err := branchService.GetByAdminID(c.Request.Context(), uid)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			for _, b := range bs {
+				branchIDs = append(branchIDs, b.ID)
+			}
+		} else {
+			bs, err := userService.GetUserBranches(c.Request.Context(), uid)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+			for _, b := range bs {
+				branchIDs = append(branchIDs, b.ID)
+			}
+		}
+		_ = branches
+
+		data, err := reportService.GetBranchesOverview(c.Request.Context(), branchIDs, month, year)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, data)
+	}
+}
+
+func getForecastReport(reportService *service.ReportService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		branchID := c.Query("branchId")
+		monthStr := c.DefaultQuery("month", fmt.Sprintf("%d", time.Now().Month()))
+		yearStr := c.DefaultQuery("year", fmt.Sprintf("%d", time.Now().Year()))
+
+		if branchID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+			return
+		}
+
+		var month, year int
+		if _, err := fmt.Sscanf(monthStr, "%d", &month); err != nil || month < 1 || month > 12 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid month (1-12)"})
+			return
+		}
+		if _, err := fmt.Sscanf(yearStr, "%d", &year); err != nil || year < 1900 || year > 2100 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid year"})
+			return
+		}
+
+		data, err := reportService.GetForecastData(c.Request.Context(), branchID, month, year)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, data)
 	}
 }
 

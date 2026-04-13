@@ -4,18 +4,19 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import { apiClient } from '@/lib/api-client';
+import { apiClient } from '@/services/api-client';
+import { toast } from '@/components/ui/sonner';
 
-export interface UseServerDataOptions {
+export interface UseServerDataOptions<T = unknown> {
   skip?: boolean;
   refetchInterval?: number;
   onError?: (error: Error) => void;
-  onSuccess?: (data: any) => void;
+  onSuccess?: (data: T) => void;
 }
 
-export function useServerData<T = any>(
+export function useServerData<T = unknown>(
   endpoint: string,
-  options: UseServerDataOptions = {}
+  options: UseServerDataOptions<T> = {}
 ) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,14 +30,28 @@ export function useServerData<T = any>(
 
     try {
       setLoading(true);
-      const response = await (apiClient as any).request<T>(endpoint);
-      setData(response);
+      // Use a public method route to avoid accessing private request
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'}${endpoint}`,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(localStorage.getItem('auth_token')
+              ? { Authorization: `Bearer ${localStorage.getItem('auth_token')}` }
+              : {}),
+          },
+        }
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const result = await response.json() as T;
+      setData(result);
       setError(null);
-      options.onSuccess?.(response);
+      options.onSuccess?.(result);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       setError(error);
       options.onError?.(error);
+      toast.error(`Fetch failed: ${error.message}`, { description: endpoint });
     } finally {
       setLoading(false);
     }
@@ -117,21 +132,21 @@ export function useTeachers(branchId: string, options?: UseServerDataOptions) {
 /**
  * Hook for mutation operations (POST, PUT, DELETE)
  */
-export interface UseMutationOptions {
-  onSuccess?: (data: any) => void;
+export interface UseMutationOptions<T = unknown> {
+  onSuccess?: (data: T) => void;
   onError?: (error: Error) => void;
 }
 
-export function useMutation<T = any>(
-  fn: (...args: any[]) => Promise<T>,
-  options: UseMutationOptions = {}
+export function useMutation<T = unknown>(
+  fn: (...args: unknown[]) => Promise<T>,
+  options: UseMutationOptions<T> = {}
 ) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   const mutate = useCallback(
-    async (...args: any[]) => {
+    async (...args: unknown[]) => {
       try {
         setLoading(true);
         setError(null);
@@ -176,7 +191,7 @@ export function useCreateStudent(options?: UseMutationOptions) {
  */
 export function useUpdateStudent(options?: UseMutationOptions) {
   return useMutation(
-    (id: string, data: any) => apiClient.updateStudent(id, data),
+    (id: unknown, data: unknown) => apiClient.updateStudent(id as string, data as Partial<Record<string, unknown>>),
     options
   );
 }
@@ -200,7 +215,7 @@ export function useCreatePayment(options?: UseMutationOptions) {
  */
 export function useUpdatePayment(options?: UseMutationOptions) {
   return useMutation(
-    (id: string, data: any) => apiClient.updatePayment(id, data),
+    (id: unknown, data: unknown) => apiClient.updatePayment(id as string, data as Partial<Record<string, unknown>>),
     options
   );
 }

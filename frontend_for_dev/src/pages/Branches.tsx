@@ -12,6 +12,7 @@ import {
   Phone,
   CreditCard,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +64,7 @@ const emptyForm = {
 export default function Branches() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -77,10 +79,12 @@ export default function Branches() {
   const fetchBranches = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const data = await apiClient.getBranches();
-      setBranches(Array.isArray(data) ? data : []);
+      setBranches(Array.isArray(data) ? data as Branch[] : []);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load branches";
+      const message = err instanceof Error ? err.message : "Filiallarni yuklashda xatolik";
+      setLoadError(message);
       toast.error(message);
     } finally {
       setLoading(false);
@@ -191,9 +195,9 @@ export default function Branches() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Branch Management</h1>
+          <h1 className="text-2xl font-bold text-foreground">Filiallarni boshqarish</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Monitor and manage all school branches
+            Barcha maktab filiallarini kuzatish va boshqarish
           </p>
         </div>
         <Button className="gap-2" onClick={() => { resetForm(); setIsAddModalOpen(true); }}>
@@ -257,9 +261,22 @@ export default function Branches() {
         <div className="flex justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
         </div>
+      ) : loadError ? (
+        <div className="glass-card rounded-lg p-12 text-center">
+          <div className="w-12 h-12 rounded-full bg-status-critical/15 flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-6 h-6 text-status-critical" />
+          </div>
+          <p className="font-medium text-foreground mb-1">Server xatosi</p>
+          <p className="text-sm text-muted-foreground mb-4">{loadError}</p>
+          <Button variant="outline" size="sm" onClick={fetchBranches}>
+            Qayta urinish
+          </Button>
+        </div>
       ) : filteredBranches.length === 0 ? (
         <div className="glass-card rounded-lg p-12 text-center text-muted-foreground">
-          {searchQuery ? "No branches match your search." : "No branches yet. Add your first branch."}
+          {searchQuery
+            ? "Qidiruv natijasi bo'yicha filial topilmadi."
+            : "Hozircha filiallar yo'q. Birinchi filialni qo'shing."}
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

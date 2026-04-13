@@ -220,5 +220,9 @@ func TestPaymentCallback(clickUzService *service.ClickUzService) gin.HandlerFunc
 // RegisterClickUzWebhooks registers Click.uz webhook routes (public, no auth)
 func RegisterClickUzWebhooks(router *gin.RouterGroup, clickUzService *service.ClickUzService) {
 	router.POST("/webhooks/click-callback", ClickUzCallback(clickUzService))
-	router.POST("/api/dev/test-payment", TestPaymentCallback(clickUzService))
+}
+
+// RegisterClickUzDevRoutes registers developer-only Click.uz test endpoints (requires DevAuth)
+func RegisterClickUzDevRoutes(router *gin.RouterGroup, clickUzService *service.ClickUzService) {
+	router.POST("/dev/test-payment", TestPaymentCallback(clickUzService))
 }

@@ -104,7 +104,9 @@ function formatTs(ts: string): string {
   });
 }
 
-function logToIncident(log: any): Incident {
+type RawLog = { id?: string; _id?: string; level?: string; message?: string; timestamp?: string; module?: string; service?: string; metadata?: Record<string, string> };
+
+function logToIncident(log: RawLog): Incident {
   const level = (log.level || "INFO").toUpperCase();
   const severity: IncidentSeverity = level === "ERROR" ? "high" : "medium";
   const ts = log.timestamp
@@ -209,7 +211,7 @@ export default function Incidents() {
     try {
       const logs = await apiClient.getLogs(300);
       const arr = Array.isArray(logs) ? logs : [];
-      const relevant = arr.filter((l: any) => {
+      const relevant = (arr as RawLog[]).filter((l) => {
         const lvl = (l.level || "").toUpperCase();
         return lvl === "ERROR" || lvl === "WARN";
       });

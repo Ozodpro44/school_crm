@@ -17,7 +17,9 @@ const statusConfig = {
   resolved: { icon: CheckCircle2, color: "text-status-healthy", bg: "bg-status-healthy/15" },
 };
 
-function logToIncident(log: any, index: number): DisplayIncident {
+type RawLog = { level?: string; message?: string; module?: string; service?: string; timestamp?: string };
+
+function logToIncident(log: RawLog, index: number): DisplayIncident {
   const level = (log.level || "info").toUpperCase();
   const status: DisplayIncident["status"] =
     level === "ERROR" ? "open" : level === "WARN" ? "investigating" : "resolved";
@@ -46,9 +48,9 @@ export function RecentIncidents() {
     apiClient
       .getLogs(50)
       .then((logs) => {
-        const arr = Array.isArray(logs) ? logs : [];
+        const arr: RawLog[] = Array.isArray(logs) ? (logs as RawLog[]) : [];
         const filtered = arr
-          .filter((log: any) => {
+          .filter((log) => {
             const level = (log.level || "info").toUpperCase();
             return level === "ERROR" || level === "WARN";
           })

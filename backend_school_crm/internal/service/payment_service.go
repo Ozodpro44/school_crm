@@ -9,17 +9,43 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/utils"
 )
 
+// ErrFinancialMonthLocked is returned when a Create or Update is attempted on
+// a record that belongs to a closed (past) financial month and the caller does
+// not have admin override rights.
+var ErrFinancialMonthLocked = errors.New("financial_month_locked: cannot modify records from a past financial month")
+
 type PaymentService struct {
-	db *db.Database
+	db        *db.Database
+	branchSvc *BranchService
+	cache     *cache.Client
 }
 
-func NewPaymentService(database *db.Database) *PaymentService {
-	return &PaymentService{db: database}
+func NewPaymentService(database *db.Database, branchSvc *BranchService) *PaymentService {
+	return &PaymentService{db: database, branchSvc: branchSvc}
+}
+
+// SetCache wires in the optional Redis cache client.
+func (s *PaymentService) SetCache(c *cache.Client) { s.cache = c }
+
+const paymentCacheTTL = 30 * time.Second
+
+// PaymentFilterInput replaces the long parameter list of GetByBranchIDWithFilters.
+type PaymentFilterInput struct {
+	BranchID      string
+	Page          string
+	Limit         string
+	Search        string
+	Status        string
+	PaymentMethod string
+	Month         string
+	Year          string
+	ClassID       string
 }
 
 type CreatePaymentRequest struct {
@@ -36,6 +62,17 @@ type CreatePaymentRequest struct {
 }
 
 func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, createdBy string) (*models.Payment, error) {
+	// Guard: financial month lock — only allow payments for the branch's current month.
+	if s.branchSvc != nil && req.BranchID != "" {
+		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, req.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify financial month: %w", err)
+		}
+		if req.Month != currentMonth || req.Year != currentYear {
+			return nil, fmt.Errorf("%w: can only create payments for current month (%s/%d)", ErrFinancialMonthLocked, currentMonth, currentYear)
+		}
+	}
+
 	// Check if student already has a paid payment for this month/year
 	existingPayments, err := s.GetByStudentIDAndPeriod(ctx, req.StudentID, req.Month, req.Year)
 	if err != nil && err != sql.ErrNoRows {
@@ -70,6 +107,9 @@ func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, 
 
 	_, err = s.db.GetConn().ExecContext(ctx, query, payment.ID, payment.StudentID, payment.Amount, payment.Month, payment.Year,
 		payment.PaymentMethod, payment.Status, payment.InvoiceNumber, payment.Notes, payment.PaidDate, payment.BranchID, payment.CreatedBy, payment.CreatedAt)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:payments:%s:", req.BranchID))
+	}
 
 	return payment, err
 }
@@ -301,11 +341,23 @@ func (s *PaymentService) GetCurrentMonthYear() (string, string) {
 	return month, year
 }
 
-func (s *PaymentService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Payment, error) {
-	// Check if payment exists
-	_, err := s.GetByID(ctx, id)
+func (s *PaymentService) Update(ctx context.Context, id string, updates map[string]interface{}, isAdmin bool) (*models.Payment, error) {
+	// Check if payment exists and fetch for month-lock validation.
+	existing, err := s.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	// Guard: financial month lock — non-admin users cannot edit past-month payments.
+	if s.branchSvc != nil {
+		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, existing.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify financial month: %w", err)
+		}
+		isPast := existing.Month != currentMonth || existing.Year != currentYear
+		if isPast && !isAdmin {
+			return nil, fmt.Errorf("%w: cannot modify payments from past months", ErrFinancialMonthLocked)
+		}
 	}
 
 	updates = utils.ConvertKeysToSnakeCase(updates)
@@ -334,18 +386,25 @@ func (s *PaymentService) Update(ctx context.Context, id string, updates map[stri
 		return nil, err
 	}
 
-	return s.GetByID(ctx, id)
+	updated, err := s.GetByID(ctx, id)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:payments:%s:", existing.BranchID))
+	}
+	return updated, err
 }
 
 func (s *PaymentService) Delete(ctx context.Context, id string) error {
 	// Check if payment exists
-	_, err := s.GetByID(ctx, id)
+	existing, err := s.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
 	query := `DELETE FROM payments WHERE id = $1`
 	_, err = s.db.GetConn().ExecContext(ctx, query, id)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:payments:%s:", existing.BranchID))
+	}
 	return err
 }
 
@@ -555,18 +614,43 @@ func (s *PaymentService) ConsolidatePayments(payments []models.Payment) []models
 
 // GetByBranchIDWithFilters returns payments with pagination and dynamic filtering
 // Similar to StudentService.GetByBranchIDWithFilters
-func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, paymentMethod, month, year, classID string) (*models.PaymentListResponse, error) {
-	intPage, err := strconv.Atoi(page)
+func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, in PaymentFilterInput) (*models.PaymentListResponse, error) {
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("crm:payments:%s:%s:%s:%s:%s:%s:%s:%s:%s",
+			in.BranchID, in.Page, in.Limit, in.Search, in.Status, in.PaymentMethod, in.Month, in.Year, in.ClassID)
+		var cached models.PaymentListResponse
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			return &cached, nil
+		}
+		result, err := s.getByBranchIDWithFiltersDB(ctx, in)
+		if err == nil && result != nil {
+			_ = s.cache.Set(ctx, cacheKey, result, paymentCacheTTL)
+		}
+		return result, err
+	}
+	return s.getByBranchIDWithFiltersDB(ctx, in)
+}
+
+func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in PaymentFilterInput) (*models.PaymentListResponse, error) {
+	intPage, err := strconv.Atoi(in.Page)
 	if err != nil || intPage < 1 {
 		intPage = 1
 	}
 
-	intLimit, err := strconv.Atoi(limit)
+	intLimit, err := strconv.Atoi(in.Limit)
 	if err != nil || intLimit < 1 {
 		intLimit = 10
 	}
 
 	offset := (intPage - 1) * intLimit
+
+	branchID := in.BranchID
+	search := in.Search
+	status := in.Status
+	paymentMethod := in.PaymentMethod
+	month := in.Month
+	year := in.Year
+	classID := in.ClassID
 
 	// -------------------------
 	// dynamic filters

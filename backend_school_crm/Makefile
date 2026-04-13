@@ -1,4 +1,4 @@
-.PHONY: help swagger run build test fmt lint migrate-up migrate-down migrate-create docker-up docker-down db-create db-drop db-reset
+.PHONY: help swagger run run-grpc build build-grpc proto test fmt lint migrate-up migrate-down migrate-create docker-up docker-down db-create db-drop db-reset
 
 # Default environment variables
 POSTGRES_USER ?= school_user
@@ -24,9 +24,12 @@ POSTGRESQL_MASTER_URL='postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGR
 
 help:
 	@echo "Available commands:"
-	@echo "  make run                 - Run application locally"
-	@echo "  make build               - Build executable"
-	@echo "  make test                - Run tests"
+	@echo "  make run                 - Run REST API server locally"
+	@echo "  make run-grpc            - Run gRPC server locally (default port 9090)"
+	@echo "  make build               - Build REST server executable"
+	@echo "  make build-grpc          - Build gRPC server executable"
+	@echo "  make proto               - Regenerate protobuf Go code from .proto files"
+	@echo "  make test                - Run all tests"
 	@echo "  make fmt                 - Format code"
 	@echo "  make lint                - Lint code"
 	@echo "  make swagger             - Generate Swagger documentation"
@@ -42,12 +45,38 @@ help:
 swagger:
 	swag init -g cmd/main.go --output ./docs || echo "Swagger not installed. Install with: go install github.com/swaggo/swag/cmd/swag@latest"
 
+# Protobuf code generation
+# Requires: protoc, protoc-gen-go, protoc-gen-go-grpc
+# Install: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+#          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+PROTO_SRC=proto/schoolcrm/v1/school_crm.proto
+PROTO_OUT=internal/grpc/pb
+PROTOBUF_SRC=$(shell go env GOPATH)/pkg/mod/google.golang.org/protobuf@$(shell go list -m -f '{{.Version}}' google.golang.org/protobuf)/src
+
+proto:
+	@mkdir -p $(PROTO_OUT)
+	protoc \
+		--go_out=$(PROTO_OUT) \
+		--go_opt=paths=source_relative \
+		--go-grpc_out=$(PROTO_OUT) \
+		--go-grpc_opt=paths=source_relative \
+		-I proto \
+		-I $(PROTOBUF_SRC) \
+		$(PROTO_SRC)
+	@echo "✓ Protobuf code generated in $(PROTO_OUT)"
+
 # Development
 run:
 	go run cmd/main.go
 
+run-grpc:
+	go run cmd/grpc/main.go
+
 build:
 	go build -o bin/school-crm cmd/main.go
+
+build-grpc:
+	go build -o bin/school-crm-grpc cmd/grpc/main.go
 
 test:
 	go test -v ./...

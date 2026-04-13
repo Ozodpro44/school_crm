@@ -15,11 +15,12 @@ import (
 )
 
 type BranchService struct {
-	db *db.Database
+	db     *db.Database
+	subSvc *SubscriptionService
 }
 
-func NewBranchService(database *db.Database) *BranchService {
-	return &BranchService{db: database}
+func NewBranchService(database *db.Database, subSvc *SubscriptionService) *BranchService {
+	return &BranchService{db: database, subSvc: subSvc}
 }
 
 type CreateBranchRequest struct {
@@ -28,9 +29,20 @@ type CreateBranchRequest struct {
 	Phone          string  `json:"phone" binding:"required"`
 	MonthlyPayment float64 `json:"monthlyPayment" binding:"required,gt=0"`
 	AdminID        *string `json:"adminId"`
+	// OwnerID is populated by the handler from the authenticated user's JWT.
+	// It is not read from the request body (json:"-") and is used for subscription
+	// limit checks inside Create.
+	OwnerID string `json:"-"`
 }
 
 func (s *BranchService) Create(ctx context.Context, req *CreateBranchRequest) (*models.Branch, error) {
+	// Guard: subscription branch limit.
+	if s.subSvc != nil && req.OwnerID != "" {
+		if limitErr := s.subSvc.CheckResourceLimit(ctx, req.OwnerID, "branches"); limitErr != nil {
+			return nil, limitErr
+		}
+	}
+
 	now := time.Now().UTC()
 	branchID := uuid.New().String()
 	
@@ -116,6 +128,36 @@ func (s *BranchService) GetAll(ctx context.Context) ([]models.Branch, error) {
 		}
 
 		// Load current financial month if ID exists
+		if branch.CurrentFinancialMonthID != nil {
+			financialMonthService := NewFinancialMonthService(s.db)
+			fm, err := financialMonthService.GetByID(ctx, *branch.CurrentFinancialMonthID)
+			if err == nil {
+				branch.CurrentFinancialMonth = fm
+			}
+		}
+
+		branches = append(branches, branch)
+	}
+
+	return branches, rows.Err()
+}
+
+func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]models.Branch, error) {
+	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE admin_id = $1 ORDER BY name`
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, adminID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var branches []models.Branch
+	for rows.Next() {
+		var branch models.Branch
+		if err := rows.Scan(&branch.ID, &branch.Name, &branch.Address, &branch.Phone, &branch.MonthlyPayment, &branch.Currency, &branch.AdminID, &branch.CurrentFinancialMonthID, &branch.CreatedAt, &branch.UpdatedAt); err != nil {
+			return nil, err
+		}
+
 		if branch.CurrentFinancialMonthID != nil {
 			financialMonthService := NewFinancialMonthService(s.db)
 			fm, err := financialMonthService.GetByID(ctx, *branch.CurrentFinancialMonthID)

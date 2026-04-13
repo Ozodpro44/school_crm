@@ -32,15 +32,17 @@ export function QuickStats() {
         const userList = users.status === "fulfilled" && Array.isArray(users.value)
           ? users.value : [];
 
-        const totalMonthlyRevenue = branchList.reduce(
-          (sum: number, b: any) => sum + (b.monthlyPayment || 0),
+        type RawBranch = { monthlyPayment?: number };
+        type RawUser = { role?: string };
+        const totalMonthlyRevenue = (branchList as RawBranch[]).reduce(
+          (sum, b) => sum + (b.monthlyPayment || 0),
           0
         );
 
         setStats({
           totalBranches: branchList.length,
-          totalStudents: userList.filter((u: any) => u.role === "admin").length,
-          totalTeachers: userList.filter((u: any) => u.role === "manager").length,
+          totalStudents: (userList as RawUser[]).filter((u) => u.role === "admin").length,
+          totalTeachers: (userList as RawUser[]).filter((u) => u.role === "manager").length,
           totalMonthlyRevenue,
         });
       } catch {

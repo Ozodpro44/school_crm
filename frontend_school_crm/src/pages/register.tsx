@@ -12,18 +12,10 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { GraduationCap, AlertCircle, Loader2, Eye, EyeOff } from "lucide-react";
+import { GraduationCap, AlertCircle, Loader2, Eye, EyeOff, PartyPopper } from "lucide-react";
 import { register as apiRegister } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { useLanguage } from "@/hooks/use-language";
-import { getTranslation } from "@/lib/translations";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -31,13 +23,14 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState("student");
+  const [schoolName, setSchoolName] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [registered, setRegistered] = useState(false);
   const language = useLanguage();
-  const t = (key: string) => getTranslation(key, language);
+  void language; // reserved for future i18n use
 
   useEffect(() => {
     const user = getCurrentUser();
@@ -50,8 +43,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setError("");
 
-    // Validation
-    if (!email || !password || !confirmPassword || !fullName) {
+    if (!email || !password || !confirmPassword || !fullName || !schoolName) {
       setError("Please fill in all fields");
       return;
     }
@@ -73,12 +65,15 @@ export default function RegisterPage() {
         email,
         password,
         fullName,
-        role,
+        role: "admin",
+        schoolName,
       });
 
-      if (response.user) {
-        // Registration successful, redirect to login
-        router.push("/login");
+      if (response.token && response.user) {
+        // Token and user are stored by apiRegister via setAuthToken/setCurrentUser.
+        setRegistered(true);
+        // Brief pause so the success banner is readable before redirect.
+        setTimeout(() => router.push("/"), 2000);
       } else {
         setError("Registration failed");
       }
@@ -91,6 +86,29 @@ export default function RegisterPage() {
       setLoading(false);
     }
   };
+
+  if (registered) {
+    return (
+      <div className="min-h-screen bg-blue-50 dark:bg-slate-950 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-2xl">
+          <CardContent className="pt-10 pb-10 flex flex-col items-center gap-4 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-lg">
+              <PartyPopper className="w-9 h-9 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              Welcome to {schoolName}!
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400">
+              Your school has been set up and your{" "}
+              <span className="font-semibold text-indigo-600">14-day free trial</span>{" "}
+              has started. Redirecting you to the dashboard…
+            </p>
+            <Loader2 className="w-5 h-5 animate-spin text-indigo-500 mt-2" />
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-blue-50 dark:bg-slate-950 flex items-center justify-center p-4">
@@ -118,7 +136,21 @@ export default function RegisterPage() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name</Label>
+              <Label htmlFor="schoolName">School Name</Label>
+              <Input
+                id="schoolName"
+                type="text"
+                placeholder="Wonderkids Academy"
+                value={schoolName}
+                onChange={(e) => setSchoolName(e.target.value)}
+                required
+                disabled={loading}
+                className="h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="fullName">Your Full Name</Label>
               <Input
                 id="fullName"
                 type="text"
@@ -136,31 +168,13 @@ export default function RegisterPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="user@school.com"
+                placeholder="you@school.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={loading}
                 className="h-11"
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="role">Role</Label>
-              <Select value={role} onValueChange={setRole} disabled={loading}>
-                <SelectTrigger className="h-11">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="branch_admin">Branch Admin</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
-                  <SelectItem value="accountant">Accountant</SelectItem>
-                  <SelectItem value="teacher">Teacher</SelectItem>
-                  <SelectItem value="student">Student</SelectItem>
-                  <SelectItem value="parent">Parent</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             <div className="space-y-2">

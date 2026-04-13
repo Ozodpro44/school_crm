@@ -35,6 +35,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Target,
+  AlertTriangle,
+  CheckCircle2,
+  X,
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
@@ -44,7 +48,11 @@ import {
   getUser,
   getBranch,
   getExpensesConsolidatedData,
+  getExpenseBudgets,
+  upsertExpenseBudget,
+  deleteExpenseBudget,
   ExpenseSummary,
+  type BudgetWithActual,
 } from "@/lib/api";
 import { Branch } from "@/types";
 import MonthYearSelector from "@/components/MonthYearSelector";
@@ -78,6 +86,11 @@ export default function ExpensesPage() {
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<number>(0);
+  const [budgets, setBudgets] = useState<BudgetWithActual[]>([]);
+  const [isBudgetDialogOpen, setIsBudgetDialogOpen] = useState(false);
+  const [budgetEditCategory, setBudgetEditCategory] = useState("");
+  const [budgetEditAmount, setBudgetEditAmount] = useState("");
+  const [isSavingBudget, setIsSavingBudget] = useState(false);
   const initialLoadDoneRef = useRef(false);
   const currentLoadIdRef = useRef(0);
   const filterChangeInProgressRef = useRef(false);
@@ -175,6 +188,7 @@ export default function ExpensesPage() {
       setIsLoading(false);
       initialLoadDoneRef.current = true;
     });
+    loadBudgets(month as string | undefined, year ? parseInt(year as string) : undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
@@ -336,6 +350,54 @@ export default function ExpensesPage() {
     }
   };
 
+  const loadBudgets = async (month?: string, year?: number) => {
+    try {
+      const branchId = localStorage.getItem("selectedBranchId");
+      if (!branchId) return;
+      const m = month || selectedMonth;
+      const y = year || selectedYear;
+      if (!m || !y) return;
+      const data = await getExpenseBudgets(branchId, m, y);
+      setBudgets(data);
+    } catch {
+      setBudgets([]);
+    }
+  };
+
+  const handleSaveBudget = async () => {
+    const branchId = localStorage.getItem("selectedBranchId");
+    if (!branchId || !budgetEditCategory || !budgetEditAmount) return;
+    setIsSavingBudget(true);
+    try {
+      await upsertExpenseBudget({
+        branchId,
+        category: budgetEditCategory,
+        month: selectedMonth,
+        year: selectedYear,
+        amount: parseFloat(budgetEditAmount),
+      });
+      await loadBudgets();
+      setBudgetEditCategory("");
+      setBudgetEditAmount("");
+      toast({ title: t("saved") || "Saved", description: t("budgetSaved") || "Budget saved", variant: "success" });
+    } catch {
+      toast({ title: t("error"), description: t("failedToSaveBudget") || "Failed to save budget", variant: "destructive" });
+    } finally {
+      setIsSavingBudget(false);
+    }
+  };
+
+  const handleDeleteBudget = async (category: string) => {
+    const branchId = localStorage.getItem("selectedBranchId");
+    if (!branchId) return;
+    try {
+      await deleteExpenseBudget(branchId, category, selectedMonth, selectedYear);
+      setBudgets((prev) => prev.filter((b) => b.category !== category));
+    } catch {
+      toast({ title: t("error"), description: t("failedToDeleteBudget") || "Failed to delete budget", variant: "destructive" });
+    }
+  };
+
   const handleMonthChange = (month: string, year: number) => {
     filterChangeInProgressRef.current = currentPage !== 1;
     setSelectedMonth(month);
@@ -343,6 +405,7 @@ export default function ExpensesPage() {
     setCurrentPage(1);
     setIsLoading(true);
     loadData(month, year, searchTerm, filterCategory, filterPaymentMethod, 1).finally(() => setIsLoading(false));
+    loadBudgets(month, year);
     // Update URL
     const params = new URLSearchParams();
     if (searchTerm) params.set("search", searchTerm);
@@ -1017,6 +1080,141 @@ export default function ExpensesPage() {
         </Card>
       </div>
 
+      {/* Budget vs Actual Widget */}
+      {isAdmin && (budgets.length > 0 || selectedMonth) && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="w-4 h-4 text-indigo-500" />
+                {t("budgetVsActual") || "Budget vs Actual"}
+              </CardTitle>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5"
+                onClick={() => setIsBudgetDialogOpen(true)}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {t("setBudget") || "Set Budget"}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {budgets.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">
+                {t("noBudgetsSet") || "No budgets set for this period. Click \"Set Budget\" to add one."}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {budgets.map((b) => (
+                  <div key={b.category} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        {b.isExceeded ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                        ) : b.isNearLimit ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        )}
+                        <span className="font-medium text-slate-700 dark:text-slate-300">
+                          {t(b.category.toLowerCase()) || b.category}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs font-semibold ${b.isExceeded ? "text-red-600 dark:text-red-400" : b.isNearLimit ? "text-amber-600 dark:text-amber-400" : "text-slate-600 dark:text-slate-400"}`}>
+                          {formatCurrency(b.actual)} / {formatCurrency(b.amount)}
+                        </span>
+                        <button
+                          onClick={() => handleDeleteBudget(b.category)}
+                          className="text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${b.isExceeded ? "bg-red-500" : b.isNearLimit ? "bg-amber-400" : "bg-emerald-500"}`}
+                        style={{ width: `${Math.min(b.usedPct, 100)}%` }}
+                      />
+                    </div>
+                    {b.isNearLimit && !b.isExceeded && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                        {t("budgetNearLimit") || "Approaching budget limit"} ({Math.round(b.usedPct)}%)
+                      </p>
+                    )}
+                    {b.isExceeded && (
+                      <p className="text-[11px] text-red-600 dark:text-red-400">
+                        {t("budgetExceeded") || "Budget exceeded"} ({Math.round(b.usedPct)}%)
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Budget Editor Dialog */}
+      <Dialog open={isBudgetDialogOpen} onOpenChange={setIsBudgetDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="w-4 h-4 text-indigo-500" />
+              {t("setBudget") || "Set Monthly Budget"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>{t("category")}</Label>
+              <Select value={budgetEditCategory} onValueChange={setBudgetEditCategory}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("selectCategory")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {t(cat.toLowerCase()) || cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("budgetAmount") || "Budget Amount"}</Label>
+              <Input
+                type="number"
+                min="0"
+                step="1000"
+                placeholder="0"
+                value={budgetEditAmount}
+                onChange={(e) => setBudgetEditAmount(e.target.value)}
+              />
+            </div>
+            {budgetEditCategory && budgets.find((b) => b.category === budgetEditCategory) && (
+              <p className="text-xs text-slate-500">
+                {t("currentBudget") || "Current budget"}: {formatCurrency(budgets.find((b) => b.category === budgetEditCategory)!.amount)}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsBudgetDialogOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={handleSaveBudget}
+              disabled={!budgetEditCategory || !budgetEditAmount || isSavingBudget}
+            >
+              {isSavingBudget && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {t("save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Card
         className={`border-l-4 transition-all ${getSelectedCount() > 0
             ? "border-l-blue-500 bg-blue-50 dark:bg-blue-900/20"
@@ -1194,7 +1392,7 @@ export default function ExpensesPage() {
                       />
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      {new Date(expense.date).toLocaleDateString()}
+                      {new Date(expense.date).toLocaleDateString("en-GB").replace(/\//g, ".")}
                     </td>
                     <td className="py-3 px-4">
                       <Badge variant="outline">

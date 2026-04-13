@@ -33,7 +33,8 @@ export async function getStudentsConsolidatedData(
 
 import { Branch } from "@/types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://incredible-love-production-0008.up.railway.app/api";
+// NEXT_PUBLIC_API_URL must be set in production. Fallback to localhost for local dev only.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -73,6 +74,7 @@ export interface RegisterRequest {
   password: string;
   fullName: string;
   role: string;
+  schoolName?: string;
 }
 
 // User Types
@@ -385,7 +387,37 @@ export async function apiRequest<T>(
           window.location.href = "/login";
         }
       }
-      
+
+      // Subscription expired / paused → redirect to billing page.
+      if (response.status === 402 && errorData.error === "subscription_required") {
+        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/billing")) {
+          window.location.href = "/billing";
+        }
+      }
+
+      // Subscription plan limit reached (students / classes / branches) →
+      // fire a custom event so any mounted upgrade modal can open without a
+      // full-page redirect.
+      if (response.status === 402 && errorData.error === "subscription_limit_reached") {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("subscription:limitReached", {
+              detail: { message: errorData.detail || errorMessage },
+            })
+          );
+        }
+      }
+
+      // Branch access denied — the X-Branch-ID header was rejected by the
+      // server's TenantBranchMiddleware. Clear the stale branch selection and
+      // redirect the user to the dashboard so they can pick a valid branch.
+      if (response.status === 403 && errorData.error?.includes("branch")) {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("selectedBranchId");
+          window.dispatchEvent(new CustomEvent("branch:accessDenied"));
+        }
+      }
+
       throw new Error(errorMessage);
     }
 
@@ -944,11 +976,25 @@ export async function createBranch(request: CreateBranchRequest): Promise<Branch
   });
 }
 
+// Short-lived in-memory cache for getBranch — avoids re-fetching the same
+// branch on every loadData() call within the same page render cycle.
+const _branchCache = new Map<string, { data: Branch; expiresAt: number }>();
+const BRANCH_CACHE_TTL_MS = 10_000; // 10 seconds
+
 /**
- * Get branch by ID
+ * Get branch by ID (cached for 10 s to deduplicate parallel calls)
  */
 export async function getBranch(id: string): Promise<Branch> {
-  return apiRequest<Branch>(`/branches/${id}`);
+  const cached = _branchCache.get(id);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+  const data = await apiRequest<Branch>(`/branches/${id}`);
+  _branchCache.set(id, { data, expiresAt: Date.now() + BRANCH_CACHE_TTL_MS });
+  return data;
+}
+
+/** Call after updating a branch so the next getBranch reflects new data. */
+export function invalidateBranchCache(id: string) {
+  _branchCache.delete(id);
 }
 
 /**
@@ -966,6 +1012,7 @@ export async function updateBranch(
   id: string,
   updates: Partial<Branch>
 ): Promise<Branch> {
+  invalidateBranchCache(id);
   return apiRequest<Branch>(`/branches/${id}`, {
     method: "PUT",
     body: JSON.stringify(updates),
@@ -1437,6 +1484,54 @@ export async function getFinancialSummary(
   return apiRequest<FinancialSummary>(`/reports/financial-summary${query}`);
 }
 
+// ── Background Job Queue ───────────────────────────────────────────────────
+
+export type JobStatus = "pending" | "running" | "done" | "failed";
+
+export interface JobResponse {
+  job_id: string;
+  status: JobStatus;
+  result?: any;
+  error?: string;
+  created_at?: string;
+  started_at?: string;
+  done_at?: string;
+}
+
+/** Submit a background job. Returns immediately with job_id. */
+export async function submitJob(
+  type: string,
+  payload: Record<string, unknown>
+): Promise<JobResponse> {
+  return apiRequest<JobResponse>("/jobs", {
+    method: "POST",
+    body: JSON.stringify({ type, ...payload }),
+  });
+}
+
+/** Poll a single job by ID. */
+export async function pollJob(jobId: string): Promise<JobResponse> {
+  return apiRequest<JobResponse>(`/jobs/${jobId}`);
+}
+
+/**
+ * Submit a job and poll every 1.5 s until it finishes.
+ * Resolves with the parsed result, or rejects with the server error message.
+ */
+export async function runReportJob(
+  type: string,
+  payload: Record<string, unknown>
+): Promise<any> {
+  const { job_id } = await submitJob(type, payload);
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1500));
+    const job = await pollJob(job_id);
+    if (job.status === "done") return job.result ?? null;
+    if (job.status === "failed")
+      throw new Error(job.error ?? "Report generation failed");
+  }
+}
+
 /**
  * Get all dashboard data in a single API call
  */
@@ -1447,6 +1542,173 @@ export async function getDashboardData(
 ): Promise<any> {
   const query = `?branchId=${branchId}&month=${month}&year=${year}`;
   return apiRequest(`/reports/dashboard${query}`);
+}
+
+// ============================================================================
+// NOTIFICATIONS ENDPOINTS
+// ============================================================================
+
+export interface AppNotification {
+  id: string;
+  branchId: string;
+  title: string;
+  message: string;
+  type: "payment" | "student" | "system";
+  resourceType?: string;
+  resourceId?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export async function getNotifications(limit = 20): Promise<AppNotification[]> {
+  return apiRequest<AppNotification[]>(`/notifications?limit=${limit}`);
+}
+
+export async function getUnreadCount(): Promise<number> {
+  const data = await apiRequest<{ count: number }>("/notifications/count");
+  return data.count;
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  return apiRequest(`/notifications/${id}/read`, { method: "PUT" });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  return apiRequest("/notifications/read-all", { method: "PUT" });
+}
+
+// ============================================================================
+// AUDIT LOG ENDPOINTS
+// ============================================================================
+
+export interface AuditLogEntry {
+  id: string;
+  branchId: string | null;
+  userId: string | null;
+  userName: string;
+  action: "create" | "update" | "delete";
+  resource: string;
+  resourceId: string | null;
+  description: string;
+  createdAt: string;
+}
+
+export interface AuditLogResponse {
+  data: AuditLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export async function getAuditLogs(params: {
+  resource?: string;
+  userId?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}): Promise<AuditLogResponse> {
+  const q = new URLSearchParams();
+  if (params.resource) q.set("resource", params.resource);
+  if (params.userId) q.set("userId", params.userId);
+  if (params.from) q.set("from", params.from);
+  if (params.to) q.set("to", params.to);
+  if (params.page) q.set("page", String(params.page));
+  if (params.limit) q.set("limit", String(params.limit));
+  return apiRequest<AuditLogResponse>(`/audit-logs?${q.toString()}`);
+}
+
+// ============================================================================
+// FORECAST ENDPOINTS
+// ============================================================================
+
+export interface MonthlyForecastPoint {
+  label: string;
+  expectedIncome: number;
+  actualIncome: number;
+  actualExpenses: number;
+}
+
+export interface ForecastData {
+  expectedMonthlyIncome: number;
+  activeStudentCount: number;
+  avgMonthlyPayment: number;
+  actualIncomeThisMonth: number;
+  totalExpensesThisMonth: number;
+  projectedSalaryCosts: number;
+  breakEvenRate: number;
+  isBreakingEven: boolean;
+  trend: MonthlyForecastPoint[];
+}
+
+export async function getForecastData(branchId: string, month: number, year: number): Promise<ForecastData> {
+  return apiRequest<ForecastData>(`/reports/forecast?branchId=${branchId}&month=${month}&year=${year}`);
+}
+
+export interface BranchAnalyticsItem {
+  branchId: string;
+  branchName: string;
+  activeStudents: number;
+  revenue: number;
+  collectionRate: number;
+  teacherCount: number;
+}
+
+export interface BranchesOverview {
+  month: number;
+  year: number;
+  branches: BranchAnalyticsItem[];
+  topBranchId: string;
+  topBranchName: string;
+  totalRevenue: number;
+  totalStudents: number;
+}
+
+export async function getBranchesOverview(month: number, year: number): Promise<BranchesOverview> {
+  return apiRequest<BranchesOverview>(`/reports/branches-overview?month=${month}&year=${year}`);
+}
+
+// ============================================================================
+// EXPENSE BUDGETS ENDPOINTS
+// ============================================================================
+
+export interface BudgetWithActual {
+  id: string;
+  branchId: string;
+  category: string;
+  month: string;
+  year: number;
+  amount: number;
+  actual: number;
+  usedPct: number;
+  isExceeded: boolean;
+  isNearLimit: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getExpenseBudgets(branchId: string, month: string, year: number): Promise<BudgetWithActual[]> {
+  return apiRequest<BudgetWithActual[]>(`/expense-budgets?branchId=${branchId}&month=${month}&year=${year}`);
+}
+
+export async function upsertExpenseBudget(data: {
+  branchId: string;
+  category: string;
+  month: string;
+  year: number;
+  amount: number;
+}): Promise<BudgetWithActual> {
+  return apiRequest<BudgetWithActual>("/expense-budgets", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteExpenseBudget(branchId: string, category: string, month: string, year: number): Promise<void> {
+  return apiRequest<void>(`/expense-budgets?branchId=${branchId}&category=${encodeURIComponent(category)}&month=${month}&year=${year}`, {
+    method: "DELETE",
+  });
 }
 
 // ============================================================================
