@@ -36,7 +36,7 @@ export function SystemHealthPanel() {
     async function fetchHealth() {
       const start = performance.now();
       try {
-        const data = await apiClient.healthCheck() as HealthData;
+        const data = await apiClient.healthCheck() as any;
         const elapsed = Math.round(performance.now() - start);
         setResponseTime(elapsed);
         setHealth(data);

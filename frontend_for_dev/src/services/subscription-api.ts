@@ -1,104 +1,75 @@
 /**
  * Subscription API Service
- * Handles all subscription-related API calls for the developer dashboard.
+ * Handles all subscription-related API calls
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "http://localhost:8080/api";
 
-// ─── Types matching backend models ───────────────────────────────────────────
-
 export interface SubscriptionPlan {
   id: string;
   name: string;
-  description?: string;
+  description: string;
   price: number;
   billingPeriod: "monthly" | "yearly";
-  maxBranches?: number;
-  maxStudents?: number;
-  maxClasses?: number;
-  features: Record<string, unknown>;
+  maxBranches: number;
+  maxStudents: number;
+  maxClasses: number;
+  features: Record<string, boolean>;
   status: "active" | "inactive";
   createdAt: string;
   updatedAt: string;
 }
 
-/** Flat denormalized view returned by GET /dev/subscriptions */
-export interface AdminSubscriptionView {
+export interface UserSubscription {
   id: string;
   userId: string;
   planId: string;
   branchId?: string;
-  status: string; // active | trial | paused | cancelled | expired | pending_payment | past_due
+  status: "active" | "paused" | "cancelled" | "expired";
   startDate: string;
   endDate?: string;
   renewalDate?: string;
   autoRenew: boolean;
   paymentMethod?: string;
+  stripeSubscriptionId?: string;
   notes?: string;
   cancelledAt?: string;
+  cancelledBy?: string;
   createdAt: string;
   updatedAt: string;
-  // Joined user fields
-  userEmail: string;
-  userFullName: string;
-  // Joined plan fields
-  planName: string;
-  planPrice: number;
-  billingPeriod: string;
-}
-
-export interface PlatformStats {
-  totalUsers: number;
-  totalSubscriptions: number;
-  activeSubscriptions: number;
-  trialSubscriptions: number;
-  expiredSubscriptions: number;
-  pendingSubscriptions: number;
-  mrr: number;
 }
 
 export interface CreateSubscriptionPlanRequest {
   name: string;
-  description?: string;
+  description: string;
   price: number;
   billingPeriod: "monthly" | "yearly";
-  maxBranches?: number;
-  maxStudents?: number;
-  maxClasses?: number;
-  features?: Record<string, unknown>;
-  status?: "active" | "inactive";
+  maxBranches: number;
+  maxStudents: number;
+  maxClasses: number;
+  features?: Record<string, boolean>;
 }
 
-export type UpdateSubscriptionPlanRequest = CreateSubscriptionPlanRequest;
+export interface UpdateSubscriptionPlanRequest extends CreateSubscriptionPlanRequest {}
 
-/** Matches backend AdminCreateSubscriptionRequest */
-export interface CreateAdminSubscriptionRequest {
+export interface CreateUserSubscriptionRequest {
   userId: string;
   planId: string;
   branchId?: string;
-  status?: string;
-  autoRenew?: boolean;
   paymentMethod?: string;
+  autoRenew?: boolean;
   notes?: string;
-  billingPeriod?: string;
 }
 
-/** Matches backend AdminUpdateSubscriptionRequest (all optional = partial update) */
-export interface UpdateAdminSubscriptionRequest {
-  status?: string;
+export interface UpdateUserSubscriptionRequest {
   planId?: string;
+  status?: string;
   autoRenew?: boolean;
   paymentMethod?: string;
-  endDate?: string;
-  renewalDate?: string;
   notes?: string;
 }
 
-// Alias so existing imports of UserSubscription keep working
-export type UserSubscription = AdminSubscriptionView;
-
-// ─── Auth ─────────────────────────────────────────────────────────────────────
-
+// Get auth token from localStorage
 const getAuthToken = (): string | null => {
   try {
     return localStorage.getItem("auth_token") || null;
@@ -107,32 +78,42 @@ const getAuthToken = (): string | null => {
   }
 };
 
-// ─── Core fetch helper ────────────────────────────────────────────────────────
-
-async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+// Make API request with error handling
+async function apiRequest<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
   const token = getAuthToken();
-  const headers: Record<string, string> = {
+  const headers: HeadersInit = {
     "Content-Type": "application/json",
-    ...(options.headers as Record<string, string>),
+    ...options.headers,
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...options, headers });
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || `API Error: ${response.status}`);
+    const errorMessage = errorData.error || `API Error: ${response.status}`;
+    throw new Error(errorMessage);
   }
+
   return response.json();
 }
 
-// ─── Platform Stats ───────────────────────────────────────────────────────────
+/**
+ * SUBSCRIPTION PLANS API
+ */
 
-export async function getPlatformStats(): Promise<PlatformStats> {
-  return apiRequest<PlatformStats>("/dev/stats");
-}
-
-// ─── Subscription Plans (public) ──────────────────────────────────────────────
-
+/**
+ * Get all subscription plans
+ */
 export async function getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
   try {
     const plans = await apiRequest<SubscriptionPlan[]>("/subscriptions/plans");
@@ -142,16 +123,9 @@ export async function getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
   }
 }
 
-/** All plans including inactive — dev admin only */
-export async function getAllSubscriptionPlans(): Promise<SubscriptionPlan[]> {
-  try {
-    const plans = await apiRequest<SubscriptionPlan[]>("/dev/plans");
-    return Array.isArray(plans) ? plans : [];
-  } catch {
-    return [];
-  }
-}
-
+/**
+ * Create a new subscription plan
+ */
 export async function createSubscriptionPlan(
   request: CreateSubscriptionPlanRequest
 ): Promise<SubscriptionPlan> {
@@ -161,60 +135,95 @@ export async function createSubscriptionPlan(
   });
 }
 
+/**
+ * Update a subscription plan
+ */
 export async function updateSubscriptionPlan(
   planId: string,
   request: UpdateSubscriptionPlanRequest
 ): Promise<SubscriptionPlan> {
-  return apiRequest<SubscriptionPlan>(`/dev/subscription-plans/${planId}`, {
-    method: "PUT",
-    body: JSON.stringify(request),
+  return apiRequest<SubscriptionPlan>(
+    `/dev/subscription-plans/${planId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(request),
+    }
+  );
+}
+
+/**
+ * Delete a subscription plan
+ */
+export async function deleteSubscriptionPlan(planId: string): Promise<void> {
+  await apiRequest(`/dev/subscription-plans/${planId}`, {
+    method: "DELETE",
   });
 }
 
-export async function deleteSubscriptionPlan(planId: string): Promise<void> {
-  await apiRequest(`/dev/subscription-plans/${planId}`, { method: "DELETE" });
-}
+/**
+ * USER SUBSCRIPTIONS API
+ */
 
-// ─── Admin Subscription CRUD ──────────────────────────────────────────────────
-
-export async function getUserSubscriptions(): Promise<AdminSubscriptionView[]> {
+/**
+ * Get all user subscriptions
+ */
+export async function getUserSubscriptions(): Promise<UserSubscription[]> {
   try {
-    const subs = await apiRequest<AdminSubscriptionView[]>("/dev/subscriptions");
-    return Array.isArray(subs) ? subs : [];
+    const subscriptions = await apiRequest<UserSubscription[]>("/dev/subscriptions");
+    return Array.isArray(subscriptions) ? subscriptions : [];
   } catch {
     return [];
   }
 }
 
-export async function getSubscriptionById(id: string): Promise<AdminSubscriptionView> {
-  return apiRequest<AdminSubscriptionView>(`/dev/subscriptions/${id}`);
+/**
+ * Get subscription by ID
+ */
+export async function getSubscriptionById(
+  subscriptionId: string
+): Promise<UserSubscription> {
+  return apiRequest<UserSubscription>(`/dev/subscriptions/${subscriptionId}`);
 }
 
+/**
+ * Create a user subscription
+ */
 export async function createUserSubscription(
-  request: CreateAdminSubscriptionRequest
-): Promise<AdminSubscriptionView> {
-  return apiRequest<AdminSubscriptionView>("/dev/subscriptions", {
+  request: CreateUserSubscriptionRequest
+): Promise<UserSubscription> {
+  return apiRequest<UserSubscription>("/dev/subscriptions", {
     method: "POST",
     body: JSON.stringify(request),
   });
 }
 
+/**
+ * Update a user subscription
+ */
 export async function updateUserSubscription(
-  id: string,
-  request: UpdateAdminSubscriptionRequest
-): Promise<AdminSubscriptionView> {
-  return apiRequest<AdminSubscriptionView>(`/dev/subscriptions/${id}`, {
+  subscriptionId: string,
+  request: UpdateUserSubscriptionRequest
+): Promise<UserSubscription> {
+  return apiRequest<UserSubscription>(`/dev/subscriptions/${subscriptionId}`, {
     method: "PUT",
     body: JSON.stringify(request),
   });
 }
 
-export async function deleteUserSubscription(id: string): Promise<void> {
-  await apiRequest(`/dev/subscriptions/${id}`, { method: "DELETE" });
+/**
+ * Delete a user subscription
+ */
+export async function deleteUserSubscription(
+  subscriptionId: string
+): Promise<void> {
+  await apiRequest(`/dev/subscriptions/${subscriptionId}`, {
+    method: "DELETE",
+  });
 }
 
-// ─── Users (for selection dropdowns) ─────────────────────────────────────────
-
+/**
+ * Get all users (for user selection dropdown)
+ */
 export async function getAllUsers(): Promise<
   Array<{ id: string; fullName: string; email: string }>
 > {
@@ -226,83 +235,4 @@ export async function getAllUsers(): Promise<
   } catch {
     return [];
   }
-}
-
-// ─── Payment Types ────────────────────────────────────────────────────────────
-
-export interface PaymentType {
-  id: string;
-  code: string;
-  displayName: string;
-  description?: string;
-  isActive: boolean;
-  isSystem: boolean;
-  sortOrder: number;
-  config: Record<string, unknown>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export async function getAllPaymentTypes(): Promise<PaymentType[]> {
-  try {
-    const res = await apiRequest<PaymentType[]>("/dev/payment-types");
-    return Array.isArray(res) ? res : [];
-  } catch {
-    return [];
-  }
-}
-
-export async function createPaymentType(req: {
-  code: string;
-  displayName: string;
-  description?: string;
-  isActive: boolean;
-  sortOrder?: number;
-  config?: Record<string, unknown>;
-}): Promise<PaymentType> {
-  return apiRequest<PaymentType>("/dev/payment-types", {
-    method: "POST",
-    body: JSON.stringify(req),
-  });
-}
-
-export async function updatePaymentType(
-  id: string,
-  req: {
-    displayName?: string;
-    description?: string;
-    isActive?: boolean;
-    sortOrder?: number;
-  }
-): Promise<PaymentType> {
-  return apiRequest<PaymentType>(`/dev/payment-types/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(req),
-  });
-}
-
-export async function togglePaymentType(id: string): Promise<PaymentType> {
-  return apiRequest<PaymentType>(`/dev/payment-types/${id}/toggle`, {
-    method: "POST",
-  });
-}
-
-export async function deletePaymentType(id: string): Promise<void> {
-  await apiRequest(`/dev/payment-types/${id}`, { method: "DELETE" });
-}
-
-// ─── Developer Trial Override ─────────────────────────────────────────────────
-
-export async function adminGrantTrial(
-  userId: string,
-  days: number,
-  notes: string
-): Promise<AdminSubscriptionView> {
-  return apiRequest<AdminSubscriptionView>(
-    `/dev/subscriptions/${userId}/grant-trial`,
-    {
-      method: "POST",
-      body: JSON.stringify({ days, notes }),
-    }
-  );
 }

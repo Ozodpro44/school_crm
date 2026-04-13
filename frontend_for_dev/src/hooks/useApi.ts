@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
 import api from "@/lib/api";
-import { toast } from "@/components/ui/sonner";
 
 interface UseApiState<T> {
   data: T | null;
@@ -8,9 +7,9 @@ interface UseApiState<T> {
   error: string | null;
 }
 
-interface UseApiOptions<T = unknown> {
+interface UseApiOptions {
   immediate?: boolean;
-  onSuccess?: (data: T) => void;
+  onSuccess?: (data: any) => void;
   onError?: (error: string) => void;
 }
 
@@ -20,8 +19,8 @@ interface UseApiOptions<T = unknown> {
  * const { data, loading, error } = useApi(() => api.getHealth());
  */
 export function useApi<T>(
-  fetcher: () => Promise<{ data: T; error?: string }>,
-  options: UseApiOptions<T> = {}
+  fetcher: () => Promise<any>,
+  options: UseApiOptions = {}
 ) {
   const [state, setState] = useState<UseApiState<T>>({
     data: null,
@@ -38,7 +37,6 @@ export function useApi<T>(
       if (response.error) {
         setState({ data: null, loading: false, error: response.error });
         onError?.(response.error);
-        toast.error(response.error);
       } else {
         setState({
           data: response.data,
@@ -51,7 +49,6 @@ export function useApi<T>(
       const errorMessage = err instanceof Error ? err.message : "Unknown error";
       setState({ data: null, loading: false, error: errorMessage });
       onError?.(errorMessage);
-      toast.error(errorMessage);
     }
   }, [fetcher, onSuccess, onError]);
 
@@ -59,8 +56,7 @@ export function useApi<T>(
     if (immediate) {
       execute();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [immediate]);
+  }, []);
 
   return {
     ...state,
@@ -73,9 +69,9 @@ export function useApi<T>(
  * Hook for polling API endpoints
  */
 export function useApiPolling<T>(
-  fetcher: () => Promise<{ data: T; error?: string }>,
+  fetcher: () => Promise<any>,
   interval: number = 5000,
-  options: UseApiOptions<T> = {}
+  options: UseApiOptions = {}
 ) {
   const api = useApi<T>(fetcher, { immediate: true, ...options });
 

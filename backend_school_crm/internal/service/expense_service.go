@@ -14,24 +14,11 @@ import (
 )
 
 type ExpenseService struct {
-	db        *db.Database
-	branchSvc *BranchService
+	db *db.Database
 }
 
-func NewExpenseService(database *db.Database, branchSvc *BranchService) *ExpenseService {
-	return &ExpenseService{db: database, branchSvc: branchSvc}
-}
-
-// ExpenseFilterInput replaces the long parameter list of GetByBranchIDWithFilters.
-type ExpenseFilterInput struct {
-	BranchID      string
-	Page          string
-	Limit         string
-	Search        string
-	Category      string
-	PaymentMethod string
-	Month         string
-	Year          string
+func NewExpenseService(database *db.Database) *ExpenseService {
+	return &ExpenseService{db: database}
 }
 
 type CreateExpenseRequest struct {
@@ -56,20 +43,6 @@ type UpdateExpenseRequest struct {
 }
 
 func (s *ExpenseService) Create(ctx context.Context, req *CreateExpenseRequest, createdBy string) (*models.Expense, error) {
-	// Guard: financial month lock — expense date must fall in the branch's current month.
-	if s.branchSvc != nil && req.BranchID != "" {
-		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, req.BranchID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to verify financial month: %w", err)
-		}
-		expMonth := int(req.Date.Month())
-		expYear := req.Date.Year()
-		currentMonthInt, _ := strconv.Atoi(currentMonth)
-		if expMonth != currentMonthInt || expYear != currentYear {
-			return nil, fmt.Errorf("%w: can only create expenses for the branch's current month", ErrFinancialMonthLocked)
-		}
-	}
-
 	expense := &models.Expense{
 		ID:            uuid.New().String(),
 		Title:         req.Title,
@@ -132,26 +105,11 @@ func (s *ExpenseService) GetByBranchID(ctx context.Context, branchID string) ([]
 	return expenses, rows.Err()
 }
 
-func (s *ExpenseService) Update(ctx context.Context, id string, req *UpdateExpenseRequest, isAdmin bool) (*models.Expense, error) {
+func (s *ExpenseService) Update(ctx context.Context, id string, req *UpdateExpenseRequest) (*models.Expense, error) {
 	// Get existing expense
 	expense, err := s.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
-	}
-
-	// Guard: financial month lock — non-admin users cannot edit past-month expenses.
-	if s.branchSvc != nil {
-		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, expense.BranchID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to verify financial month: %w", err)
-		}
-		expMonth := int(expense.Date.Month())
-		expYear := expense.Date.Year()
-		currentMonthInt, _ := strconv.Atoi(currentMonth)
-		isPast := expMonth != currentMonthInt || expYear != currentYear
-		if isPast && !isAdmin {
-			return nil, fmt.Errorf("%w: cannot modify expenses from past months", ErrFinancialMonthLocked)
-		}
 	}
 
 	// Update fields if provided
@@ -224,9 +182,9 @@ func (s *ExpenseService) GetByBranchIDAndPeriod(ctx context.Context, branchID st
 }
 
 // GetByBranchIDWithFilters retrieves expenses with search, filters, and pagination
-func (s *ExpenseService) GetByBranchIDWithFilters(ctx context.Context, in ExpenseFilterInput) (*models.ExpenseFilterResult, error) {
-	page, _ := strconv.Atoi(in.Page)
-	limit, _ := strconv.Atoi(in.Limit)
+func (s *ExpenseService) GetByBranchIDWithFilters(ctx context.Context, branchID string, pageStr string, limitStr string, search string, category string, paymentMethod string, month string, year string) (*models.ExpenseFilterResult, error) {
+	page, _ := strconv.Atoi(pageStr)
+	limit, _ := strconv.Atoi(limitStr)
 	if page < 1 {
 		page = 1
 	}
@@ -234,13 +192,6 @@ func (s *ExpenseService) GetByBranchIDWithFilters(ctx context.Context, in Expens
 		limit = 10
 	}
 	offset := (page - 1) * limit
-
-	branchID := in.BranchID
-	search := in.Search
-	category := in.Category
-	paymentMethod := in.PaymentMethod
-	month := in.Month
-	year := in.Year
 
 	// Build the WHERE clause dynamically
 	whereClause := "WHERE branch_id = $1"

@@ -9,9 +9,7 @@ interface Bucket {
   warnings: number;
 }
 
-type RawLog = { timestamp?: string; level?: string };
-
-function buildBuckets(logs: RawLog[]): Bucket[] {
+function buildBuckets(logs: any[]): Bucket[] {
   const now = new Date();
   // 12 buckets × 2h = 24h
   const buckets: Bucket[] = Array.from({ length: 12 }, (_, i) => {
@@ -48,11 +46,11 @@ export function ApiPerformanceChart() {
     async function fetchLogs() {
       try {
         const logs = await apiClient.getLogs(500);
-        const arr: RawLog[] = Array.isArray(logs) ? (logs as RawLog[]) : [];
+        const arr = Array.isArray(logs) ? logs : [];
         const buckets = buildBuckets(arr);
         setData(buckets);
-        setTotalErrors(arr.filter((l) => (l.level || "").toUpperCase() === "ERROR").length);
-        setTotalWarnings(arr.filter((l) => (l.level || "").toUpperCase() === "WARN").length);
+        setTotalErrors(arr.filter((l: any) => (l.level || "").toUpperCase() === "ERROR").length);
+        setTotalWarnings(arr.filter((l: any) => (l.level || "").toUpperCase() === "WARN").length);
       } catch {
         setData(buildBuckets([]));
       } finally {

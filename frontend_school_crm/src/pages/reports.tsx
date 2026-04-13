@@ -32,23 +32,24 @@ import {
 } from "@/lib/storage";
 import * as api from "@/lib/api";
 import {
-  runReportJob,
+  getPaymentReport,
+  getSalaryReport,
+  getDebtorsReport,
+  getExpensesReport,
+  getFinancialSummary,
   getBranch,
   listClasses,
-  getForecastData,
-  type ForecastData,
 } from "@/lib/api";
 import { Payment, Salary, Branch } from "@/types";
-import { Download, FileText, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Loader2, TrendingUp, TrendingDown, DollarSign, Users, Printer, FileDown } from "lucide-react";
+import { Download, FileText, AlertCircle, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { printReport, downloadCSV, type PrintColumn } from "@/lib/printExport";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
-type ReportType = "payment" | "salary" | "debtors" | "income" | "expenses" | "forecast";
+type ReportType = "payment" | "salary" | "debtors" | "income" | "expenses";
 
 export default function ReportsPage() {
   const router = useRouter();
@@ -71,8 +72,6 @@ export default function ReportsPage() {
   const [summary, setSummary] = useState({ total: 0, count: 0, avg: 0 });
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [paymentMethodsData, setPaymentMethodsData] = useState<any[]>([]);
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [forecastData, setForecastData] = useState<ForecastData | null>(null);
   const language = useLanguage();
   const t = (key: string) => getTranslation(key, language);
   const canViewReports = hasPermission("canViewReports");
@@ -237,9 +236,6 @@ export default function ReportsPage() {
           }
           await generateExpensesReport();
           break;
-        case "forecast":
-          await generateForecastReport();
-          break;
       }
     } finally {
       setIsLoading(false);
@@ -252,29 +248,22 @@ export default function ReportsPage() {
       if (!branchId) {
         toast({
           title: t("error"),
-          description: t("noBranchSelected") || t("error"),
+          description: "No branch selected",
           variant: "destructive",
         });
         return;
       }
 
-      const startYear = parseInt(paymentYear) || new Date().getFullYear();
-      const startDate = new Date(startYear, parseInt(paymentMonth) - 1, 1).toISOString();
-      const endDate   = new Date(startYear, parseInt(paymentMonth), 0, 23, 59, 59).toISOString();
-
-      const result = await runReportJob("payment_report", {
+      const response = await getPaymentReport(
         branchId,
-        startDate,
-        endDate,
-        classId: classId !== "all" ? classId : "",
+        paymentMonth,
+        paymentYear,
+        classId,
         page,
-        limit,
-      });
+        limit
+      );
 
-      const items = result?.items ?? result ?? [];
-      const response = { data: Array.isArray(items) ? items : [], total: result?.total ?? 0, totalPages: Math.ceil((result?.total ?? 0) / limit) };
-
-      if (!response.data.length) {
+      if (!response || !response.data) {
         setReportData([]);
         setSummary({ total: 0, count: 0, avg: 0 });
         setTotal(0);
@@ -282,7 +271,7 @@ export default function ReportsPage() {
         return;
       }
 
-      const data = response.data.map((item: any) => ({
+      const data = response.data.map((item) => ({
         id: item.id,
         studentName: item.studentName,
         className: item.className,
@@ -329,7 +318,7 @@ export default function ReportsPage() {
       if (!branchId) {
         toast({
           title: t("error"),
-          description: t("noBranchSelected") || t("error"),
+          description: "No branch selected",
           variant: "destructive",
         });
         return;
@@ -343,16 +332,14 @@ export default function ReportsPage() {
       const newStartDate = startDateObj.toISOString().split("T")[0];
       const newEndDate = endDateObj.toISOString().split("T")[0];
 
-      const result = await runReportJob("salary_report", {
+      const items = await getSalaryReport(
         branchId,
-        startDate: new Date(newStartDate).toISOString(),
-        endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
-        status: "",
-      });
+        newStartDate,
+        newEndDate,
+        ""
+      );
 
-      const items = Array.isArray(result) ? result : [];
-
-      if (!items.length) {
+      if (!items || !Array.isArray(items)) {
         setReportData([]);
         setSummary({ total: 0, count: 0, avg: 0 });
         return;
@@ -402,7 +389,7 @@ export default function ReportsPage() {
       if (!branchId) {
         toast({
           title: t("error"),
-          description: t("noBranchSelected") || t("error"),
+          description: "No branch selected",
           variant: "destructive",
         });
         return;
@@ -422,14 +409,12 @@ export default function ReportsPage() {
         yearNum,
       });
 
-      const result = await runReportJob("debtors_report", {
+      const items = await getDebtorsReport(
         branchId,
-        month: debtorMonth,
-        year: yearNum,
-        classId: classId !== "all" ? classId : "",
-      });
-
-      const items = Array.isArray(result) ? result : [];
+        debtorMonth,
+        yearNum,
+        classId === "all" ? undefined : classId
+      );
 
       console.log("Debtors Report Response:", items);
 
@@ -472,7 +457,7 @@ export default function ReportsPage() {
       if (!branchId) {
         toast({
           title: t("error"),
-          description: t("noBranchSelected") || t("error"),
+          description: "No branch selected",
           variant: "destructive",
         });
         setReportData([]);
@@ -487,13 +472,11 @@ export default function ReportsPage() {
       const newStartDate = startDateObj.toISOString().split("T")[0];
       const newEndDate = endDateObj.toISOString().split("T")[0];
 
-      const result = await runReportJob("expenses_report", {
+      const expenses = await getExpensesReport(
         branchId,
-        startDate: new Date(newStartDate).toISOString(),
-        endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
-      });
-
-      const expenses = Array.isArray(result) ? result : [];
+        newStartDate,
+        newEndDate
+      );
 
       const data = expenses.map((e: any) => {
         return {
@@ -540,7 +523,7 @@ export default function ReportsPage() {
       if (!branchId) {
         toast({
           title: t("error"),
-          description: t("noBranchSelected") || t("error"),
+          description: "No branch selected",
           variant: "destructive",
         });
         return;
@@ -554,11 +537,11 @@ export default function ReportsPage() {
       const newStartDate = startDateObj.toISOString().split("T")[0];
       const newEndDate = endDateObj.toISOString().split("T")[0];
 
-      const financialSummary = await runReportJob("financial_summary", {
+      const financialSummary = await getFinancialSummary(
         branchId,
-        startDate: new Date(newStartDate).toISOString(),
-        endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
-      });
+        newStartDate,
+        newEndDate
+      );
 
       const totalExpense =
         financialSummary.totalSalaries + financialSummary.totalExpenses;
@@ -619,220 +602,88 @@ export default function ReportsPage() {
     }
   };
 
-  const generateForecastReport = async () => {
-    try {
-      const branchId = localStorage.getItem("selectedBranchId");
-      if (!branchId) {
-        toast({ title: t("error"), description: t("noBranchSelected") || t("error"), variant: "destructive" });
-        return;
-      }
-      const now = new Date();
-      const month = now.getMonth() + 1;
-      const year = now.getFullYear();
-      const data = await getForecastData(branchId, month, year);
-      setForecastData(data);
-    } catch (error) {
-      console.error("Failed to load forecast data:", error);
-      toast({ title: t("error"), description: "Failed to load forecast data", variant: "destructive" });
-      setForecastData(null);
-    }
-  };
+  const downloadReport = () => {
+    let csv = "";
+    const periodLabel = `${paymentMonth}/${paymentYear}`;
 
-  const downloadReport = async () => {
-    if (reportData.length === 0) {
-      toast({
-        title: t("noDataFound"),
-        description: t("generateReportFirst") || t("noDataFound"),
-        variant: "destructive",
+    if (reportType === "income") {
+      csv = "Financial Summary Report\n";
+      csv += `Period: ${periodLabel}\n\n`;
+      csv += "Label,Amount\n";
+      reportData.forEach((item) => {
+        csv += `${item.label},${item.amount}\n`;
       });
-      return;
-    }
-
-    setIsDownloading(true);
-    try {
-      let csv = "";
-      const periodLabel = `${paymentMonth}/${paymentYear}`;
-
-      if (reportType === "income") {
-        csv = `${t("financialSummary")}\n`;
-        csv += `${t("dateRange")}: ${periodLabel}\n\n`;
-        csv += `${t("label") || "Label"},${t("amount") || "Amount"}\n`;
-        reportData.forEach((item) => {
-          csv += `${item.label},${item.amount}\n`;
-        });
+    } else {
+      let columns: string[] = [];
+      if (reportType === "debtors") {
+        columns = [
+          "Student Name",
+          "Class",
+          "Month",
+          "Year",
+          "Monthly Payment",
+          "Paid Amount",
+          "Due Amount",
+          "Status",
+        ];
+      } else if (reportType === "expenses") {
+        columns = [
+          "Title",
+          "Category",
+          "Amount",
+          "Payment Method",
+          "Date",
+          "Notes",
+        ];
+      } else if (reportType === "salary") {
+        columns = [
+          "Teacher Name",
+          "Amount",
+          "Month",
+          "Year",
+          "Status",
+          "Paid Date",
+          "Added By",
+        ];
       } else {
-        let columns: string[] = [];
-        if (reportType === "debtors") {
-          columns = [
-            t("fullName") || "Student Name",
-            t("class") || "Class",
-            t("month") || "Month",
-            t("year") || "Year",
-            t("monthlyPayment") || "Monthly Payment",
-            t("paidAmount") || "Paid Amount",
-            t("dueAmount") || "Due Amount",
-            t("status") || "Status",
-          ];
-        } else if (reportType === "expenses") {
-          columns = [
-            t("title") || "Title",
-            t("category") || "Category",
-            t("amount") || "Amount",
-            t("paymentMethod") || "Payment Method",
-            t("date") || "Date",
-            t("notes") || "Notes",
-          ];
-        } else if (reportType === "salary") {
-          columns = [
-            t("teacherName") || "Teacher Name",
-            t("amount") || "Amount",
-            t("month") || "Month",
-            t("year") || "Year",
-            t("status") || "Status",
-            t("paidDate") || "Paid Date",
-            t("addedBy") || "Added By",
-          ];
-        } else {
-          columns = [
-            t("fullName") || "Student Name",
-            t("class") || "Class",
-            t("amount") || "Amount",
-            t("month") || "Month",
-            t("year") || "Year",
-            t("status") || "Status",
-            t("paidDate") || "Paid Date",
-            t("addedBy") || "Added By",
-          ];
-        }
-
-        csv = `${t(reportType + "Report") || reportType.toUpperCase()}\n`;
-        csv += `${t("dateRange") || "Period"}: ${periodLabel}\n\n`;
-        csv += columns.join(",") + "\n";
-
-        reportData.forEach((item) => {
-          if (reportType === "debtors") {
-            csv += `${item.studentName},${item.className},${item.month},${item.year},${item.monthlyPayment},${item.paidAmount},${item.dueAmount},${item.status}\n`;
-          } else if (reportType === "expenses") {
-            csv += `${item.title},${item.category},${item.amount},${item.paymentMethod},${item.date},${item.description}\n`;
-          } else if (reportType === "salary") {
-            csv += `${item.teacherName},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
-          } else {
-            csv += `${item.studentName},${item.className},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
-          }
-        });
+        columns = [
+          "Student Name",
+          "Class",
+          "Amount",
+          "Month",
+          "Year",
+          "Status",
+          "Paid Date",
+          "Added By",
+        ];
       }
 
-      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${reportType}-report-${periodLabel}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      csv = `${reportType.toUpperCase()} REPORT\n`;
+      csv += `Period: ${periodLabel}\n\n`;
+      csv += columns.join(",") + "\n";
 
-      toast({
-        title: t("success"),
-        description: t("reportDownloaded") || t("downloadReport"),
-        variant: "success",
+      reportData.forEach((item) => {
+        if (reportType === "debtors") {
+          csv += `${item.studentName},${item.className},${item.month},${item.year},${item.monthlyPayment},${item.paidAmount},${item.dueAmount},${item.status}\n`;
+        } else if (reportType === "expenses") {
+          csv += `${item.title},${item.category},${item.amount},${item.paymentMethod},${item.date},${item.description}\n`;
+        } else if (reportType === "salary") {
+          csv += `${item.teacherName},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
+        } else {
+          csv += `${item.studentName},${item.className},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
+        }
       });
-    } catch {
-      toast({
-        title: t("error"),
-        description: t("failedToDownloadReport") || t("error"),
-        variant: "destructive",
-      });
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  // Build a PrintColumn/data structure for the current reportType
-  const buildPrintOptions = (format: "pdf" | "csv") => {
-    const periodLabel = reportType === "debtors"
-      ? `${debtorMonth}/${debtorYear}`
-      : `${paymentMonth}/${paymentYear}`;
-
-    const titles: Record<string, string> = {
-      payment: t("studentPayments") || "Payment Report",
-      salary:  t("teacherSalaries") || "Salary Report",
-      debtors: t("studentDebtors") || "Debtors Report",
-      income:  t("financialSummary") || "Financial Summary",
-      expenses: t("expensesReport") || "Expenses Report",
-    };
-
-    const title = titles[reportType] || reportType;
-    const subtitle = `${t("period") || "Period"}: ${periodLabel}`;
-    const filename = `${reportType}-report-${periodLabel}`;
-
-    let columns: PrintColumn[] = [];
-    let data: Record<string, unknown>[] = [];
-
-    if (reportType === "payment") {
-      columns = [
-        { header: t("fullName") || "Student", key: "studentName" },
-        { header: t("class") || "Class", key: "className" },
-        { header: t("amount") || "Amount", key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("month") || "Month", key: "month", align: "center" },
-        { header: t("year") || "Year", key: "year", align: "center" },
-        { header: t("status") || "Status", key: "status", align: "center" },
-        { header: t("paidDate") || "Paid Date", key: "paidDate" },
-        { header: t("addedBy") || "Added By", key: "addedBy" },
-      ];
-      data = reportData;
-    } else if (reportType === "salary") {
-      columns = [
-        { header: t("teacherName") || "Teacher", key: "teacherName" },
-        { header: t("amount") || "Amount", key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("month") || "Month", key: "month", align: "center" },
-        { header: t("year") || "Year", key: "year", align: "center" },
-        { header: t("status") || "Status", key: "status", align: "center" },
-        { header: t("paidDate") || "Paid Date", key: "paidDate" },
-        { header: t("addedBy") || "Added By", key: "addedBy" },
-      ];
-      data = reportData;
-    } else if (reportType === "debtors") {
-      columns = [
-        { header: t("fullName") || "Student", key: "studentName" },
-        { header: t("class") || "Class", key: "className" },
-        { header: t("month") || "Month", key: "month", align: "center" },
-        { header: t("year") || "Year", key: "year", align: "center" },
-        { header: t("monthlyPayment") || "Monthly", key: "monthlyPayment", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("paid") || "Paid", key: "paidAmount", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("due") || "Due", key: "dueAmount", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("status") || "Status", key: "status", align: "center" },
-      ];
-      data = reportData;
-    } else if (reportType === "income") {
-      columns = [
-        { header: t("label") || "Label", key: "label" },
-        { header: t("amount") || "Amount", key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
-      ];
-      data = reportData;
-    } else if (reportType === "expenses") {
-      columns = [
-        { header: t("title") || "Title", key: "title" },
-        { header: t("category") || "Category", key: "category" },
-        { header: t("amount") || "Amount", key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("paymentMethod") || "Method", key: "paymentMethod", align: "center" },
-        { header: t("date") || "Date", key: "date" },
-        { header: t("description") || "Notes", key: "description" },
-      ];
-      data = reportData;
     }
 
-    return { title, subtitle, columns, data, filename };
-  };
-
-  const handleExportPDF = () => {
-    if (reportData.length === 0 && reportType !== "forecast") return;
-    printReport(buildPrintOptions("pdf"));
-  };
-
-  const handleExportCSV = () => {
-    if (reportData.length === 0 && reportType !== "forecast") return;
-    downloadCSV(buildPrintOptions("csv"));
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${reportType}-report-${periodLabel}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   if (isLoading) {
@@ -898,14 +749,11 @@ export default function ReportsPage() {
                   <SelectItem value="income">
                     {t("financialSummary")}
                   </SelectItem>
-                  <SelectItem value="forecast">
-                    {t("financialForecast") || "Financial Forecast"}
-                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {reportType !== "debtors" && reportType !== "forecast" && (
+            {reportType !== "debtors" && (
               <div className="space-y-2">
                 <Label htmlFor="paymentMonth">{t("month") || "Month"}</Label>
                 <div className="flex gap-2">
@@ -952,8 +800,7 @@ export default function ReportsPage() {
 
             {reportType !== "salary" &&
               reportType !== "income" &&
-              reportType !== "expenses" &&
-              reportType !== "forecast" && (
+              reportType !== "expenses" && (
                 <div className="space-y-2">
                   <Label htmlFor="classId">{t("class")}</Label>
                   <Select value={classId} onValueChange={setClassId}>
@@ -1026,53 +873,17 @@ export default function ReportsPage() {
             )}
           </div>
 
-          <div className="flex justify-end gap-2 flex-wrap">
-            {/* Legacy CSV (keeps existing behaviour for income/forecast types) */}
-            <Button
-              variant="outline"
-              onClick={downloadReport}
-              disabled={(reportData.length === 0 && reportType !== "forecast") || isDownloading}
-              title={t("downloadCSV") || "Download CSV"}
-            >
-              {isDownloading ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Download className="w-4 h-4 mr-2" />
-              )}
-              CSV
+          <div className="flex justify-end">
+            <Button onClick={downloadReport} disabled={reportData.length === 0}>
+              <Download className="w-4 h-4 mr-2" />
+              {t("downloadReport")}
             </Button>
-
-            {/* Improved CSV with proper quoting */}
-            {reportType !== "forecast" && (
-              <Button
-                variant="outline"
-                onClick={handleExportCSV}
-                disabled={reportData.length === 0}
-                title={t("downloadExcel") || "Download Excel-compatible CSV"}
-              >
-                <FileDown className="w-4 h-4 mr-2" />
-                {t("excel") || "Excel"}
-              </Button>
-            )}
-
-            {/* PDF via print dialog */}
-            {reportType !== "forecast" && (
-              <Button
-                onClick={handleExportPDF}
-                disabled={reportData.length === 0}
-                title={t("exportPDF") || "Export PDF"}
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-              >
-                <Printer className="w-4 h-4 mr-2" />
-                {t("printPDF") || "Print / PDF"}
-              </Button>
-            )}
           </div>
         </CardContent>
       </Card>
 
       {/* Summary */}
-      {reportType !== "income" && reportType !== "forecast" && (
+      {reportType !== "income" && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="border-l-4 border-l-blue-500">
             <CardHeader className="pb-2">
@@ -1115,144 +926,8 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {/* Forecast UI */}
-      {reportType === "forecast" && (
-        forecastData ? (
-          <div className="space-y-6">
-            {/* KPI cards row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="border-l-4 border-l-emerald-500">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <DollarSign className="w-3.5 h-3.5" />
-                    {t("expectedMonthlyIncome") || "Expected Monthly Income"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                    {formatCurrency(forecastData.expectedMonthlyIncome)}
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {forecastData.activeStudentCount} {t("activeStudents") || "active students"} · {t("avg") || "avg"} {formatCurrency(forecastData.avgMonthlyPayment)}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-l-4 border-l-blue-500">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <TrendingUp className="w-3.5 h-3.5" />
-                    {t("actualIncomeThisMonth") || "Actual Income (This Month)"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    {formatCurrency(forecastData.actualIncomeThisMonth)}
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {forecastData.expectedMonthlyIncome > 0
-                      ? `${Math.round((forecastData.actualIncomeThisMonth / forecastData.expectedMonthlyIncome) * 100)}% ${t("ofExpected") || "of expected"}`
-                      : "—"}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-l-4 border-l-red-400">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <TrendingDown className="w-3.5 h-3.5" />
-                    {t("totalExpensesThisMonth") || "Total Expenses (This Month)"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-500 dark:text-red-400">
-                    {formatCurrency(forecastData.totalExpensesThisMonth)}
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {t("salaries") || "Salaries"} + {t("expenses") || "expenses"}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card className="border-l-4 border-l-orange-400">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5" />
-                    {t("projectedSalaryCosts") || "Projected Salary Costs"}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-orange-500 dark:text-orange-400">
-                    {formatCurrency(forecastData.projectedSalaryCosts)}
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    {t("nextMonthEstimate") || "based on active teachers"}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Break-even analysis */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">{t("breakEvenAnalysis") || "Break-Even Analysis"}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4">
-                  <div className={`flex items-center gap-2 text-sm font-semibold px-3 py-1.5 rounded-full ${forecastData.isBreakingEven ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
-                    {forecastData.isBreakingEven ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                    {forecastData.isBreakingEven ? (t("profitable") || "Profitable") : (t("operatingAtLoss") || "Operating at loss")}
-                  </div>
-                  <span className="text-sm text-slate-500">
-                    {t("expensesCoverRate") || "Expenses cover"} {Math.round(forecastData.breakEvenRate)}% {t("ofExpectedIncome") || "of expected income"}
-                  </span>
-                </div>
-                <div className="mt-4 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${forecastData.breakEvenRate <= 100 ? "bg-emerald-500" : "bg-red-500"}`}
-                    style={{ width: `${Math.min(forecastData.breakEvenRate, 100)}%` }}
-                  />
-                </div>
-                <div className="flex justify-between mt-1 text-[11px] text-slate-400">
-                  <span>0%</span>
-                  <span>100%</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* 6-month expected vs actual chart */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">{t("sixMonthTrend") || "6-Month Trend: Expected vs Actual"}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={forecastData.trend} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatCurrency(v)} width={90} />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="expectedIncome" name={t("expectedIncome") || "Expected"} fill="#6366f1" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="actualIncome" name={t("actualIncome") || "Actual Income"} fill="#10b981" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="actualExpenses" name={t("actualExpenses") || "Actual Expenses"} fill="#f87171" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
-          <Card>
-            <CardContent className="py-16 text-center text-slate-400">
-              <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">{t("loadingForecast") || "Loading forecast data…"}</p>
-            </CardContent>
-          </Card>
-        )
-      )}
-
       {/* Report Data */}
-      {reportType !== "forecast" && (reportType === "income" ? (
+      {reportType === "income" ? (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {reportData.map((item, idx) => (
@@ -1620,7 +1295,7 @@ export default function ReportsPage() {
             )}
           </CardContent>
         </Card>
-      ))}
+      )}
     </div>
   );
 }

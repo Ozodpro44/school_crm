@@ -115,18 +115,13 @@ export default function Users() {
         apiClient.getUsers(),
         apiClient.getBranches(),
       ]);
-      type RawUser = { id?: string; email?: string; fullName?: string; role?: string; branchId?: string; branch_id?: string };
       const usersArr: SystemUser[] = Array.isArray(allUsers)
-        ? (allUsers as RawUser[]).map((u) => ({
-            id: u.id ?? "",
-            email: u.email ?? "",
-            fullName: u.fullName ?? "",
-            role: u.role ?? "",
+        ? allUsers.map((u: any) => ({
+            ...u,
             branchId: u.branchId ?? u.branch_id ?? "",
           }))
         : [];
-      type RawBranch = { id?: string; adminId?: string; admin_id?: string };
-      const branchesArr: RawBranch[] = Array.isArray(branches) ? (branches as RawBranch[]) : [];
+      const branchesArr: any[] = Array.isArray(branches) ? branches : [];
 
       setUsers(usersArr);
 

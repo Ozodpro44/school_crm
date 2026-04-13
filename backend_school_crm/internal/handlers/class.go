@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,38 +8,22 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterClassRoutes(router *gin.RouterGroup, classService *service.ClassService, userService *service.UserService, subService *service.SubscriptionService) {
+func RegisterClassRoutes(router *gin.RouterGroup, classService *service.ClassService, userService *service.UserService) {
 	classes := router.Group("/classes")
 	// Authenticated users can view and edit
-	classes.POST("", middleware.PermissionChecker(userService, "canCreateClasses"), createClass(classService, subService))
+	classes.POST("", middleware.PermissionChecker(userService, "canCreateClasses"), createClass(classService))
 	classes.GET("/:id", middleware.PermissionChecker(userService, "canViewClasses"), getClass(classService))
 	classes.GET("", middleware.PermissionChecker(userService, "canViewClasses"), listClasses(classService))
 	classes.PUT("/:id", middleware.PermissionChecker(userService, "canEditClasses"), updateClass(classService))
 	classes.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteClasses"), deleteClass(classService))
 }
 
-func createClass(classService *service.ClassService, subService *service.SubscriptionService) gin.HandlerFunc {
+func createClass(classService *service.ClassService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.CreateClassRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
-		}
-
-		// Enforce subscription class limit before inserting.
-		if req.BranchID != "" {
-			ownerID, err := subService.GetOwnerIDFromBranch(c.Request.Context(), req.BranchID)
-			if err == nil && ownerID != "" {
-				if limitErr := subService.CheckResourceLimit(c.Request.Context(), ownerID, "classes"); limitErr != nil {
-					if errors.Is(limitErr, service.ErrSubscriptionLimitReached) {
-						c.JSON(http.StatusPaymentRequired, gin.H{
-							"error":  "subscription_limit_reached",
-							"detail": limitErr.Error(),
-						})
-						return
-					}
-				}
-			}
 		}
 
 		class, err := classService.Create(c.Request.Context(), &req)

@@ -4,8 +4,8 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { railwayLogsService, type RailwayLog, type RailwayDeployment } from '@/services/railway-logs';
-import { apiClient } from '@/services/api-client';
+import { railwayLogsService, type RailwayLog } from '@/services/railway-logs';
+import { apiClient } from '@/lib/api-client';
 
 interface ServerInfo {
   status: 'healthy' | 'checking' | 'error';
@@ -198,7 +198,7 @@ export function ServerLogsPanel() {
  * Deployment Info Sub-component
  */
 function DeploymentInfo() {
-  const [deployment, setDeployment] = useState<RailwayDeployment | null>(null);
+  const [deployment, setDeployment] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {

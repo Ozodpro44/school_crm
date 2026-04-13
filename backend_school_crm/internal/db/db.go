@@ -10,11 +10,12 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
 	"github.com/golang-migrate/migrate/v4"
+	migratedb "github.com/golang-migrate/migrate/v4/database"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-) // fmt still needed for error messages in New()
+	_ "github.com/lib/pq"
+)
 
 type Database struct {
 	conn *sql.DB
@@ -52,10 +53,8 @@ func (db *Database) BeginTx(ctx context.Context) (*sql.Tx, error) {
 	return db.conn.BeginTx(ctx, nil)
 }
 
-// RunMigrations runs all pending database migrations automatically
-// This is called during database initialization on app startup
+// RunMigrations runs all pending database migrations automatically.
 func (db *Database) RunMigrations(ctx context.Context) error {
-	// Find migrations directory
 	migrationPath := os.Getenv("MIGRATION_PATH")
 	if strings.HasPrefix(migrationPath, "file:/") && !strings.HasPrefix(migrationPath, "file://") {
 		normalized := strings.TrimPrefix(migrationPath, "file:")
@@ -64,8 +63,7 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		}
 		migrationPath = "file://" + filepath.ToSlash(normalized)
 	}
-	if migrationPath == "" || strings.HasPrefix(migrationPath, "file://") == false {
-		// Try common locations
+	if migrationPath == "" || !strings.HasPrefix(migrationPath, "file://") {
 		wd, err := os.Getwd()
 		if err != nil {
 			return fmt.Errorf("failed to get working directory: %w", err)
@@ -78,13 +76,11 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 				migrationPath = "file://" + filepath.ToSlash(filepath.Join(wd, migrationPath))
 			}
 		} else {
-			// Check if migrations directory exists in current directory
 			if _, err := os.Stat(filepath.Join(wd, "migrations")); err == nil {
 				migrationPath = "file://" + filepath.ToSlash(filepath.Join(wd, "migrations"))
 			} else if _, err := os.Stat(filepath.Join(wd, "backend_school_crm", "migrations")); err == nil {
 				migrationPath = "file://" + filepath.ToSlash(filepath.Join(wd, "backend_school_crm", "migrations"))
 			} else {
-				// Default to file://migrations (relative to working directory)
 				migrationPath = "file://" + filepath.ToSlash(filepath.Join(wd, "migrations"))
 			}
 		}
@@ -92,28 +88,44 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 
 	log.Printf("[Database.RunMigrations] Using migration path: %s", migrationPath)
 
-	// Get database URL from connection string
-	// The dsn is already validated at this point
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		return fmt.Errorf("DATABASE_URL environment variable not set")
 	}
 
-	// Create migration instance
 	m, err := migrate.New(migrationPath, databaseURL)
 	if err != nil {
 		return fmt.Errorf("failed to create migration instance: %w", err)
 	}
 	defer m.Close()
 
-	// Dirty state means a previous migration failed part-way.
-	// Do not force-forward automatically, because it can skip required tables.
+	// Version 0 is not golang-migrate's empty database marker; NilVersion (-1) is.
+	// Some deployments ended up with schema_migrations.version = 0, which makes
+	// Up() look for a nonexistent 000000 migration before applying 000001.
 	version, dirty, err := m.Version()
-	if err == nil && dirty {
-		return fmt.Errorf("database is in dirty migration state at version %d; fix migration and run force manually", version)
+	if err == nil && version == 0 {
+		log.Printf("[Database.RunMigrations] Detected invalid migration version 0 (dirty: %v). Resetting to nil version before running migrations.", dirty)
+		if err := m.Force(migratedb.NilVersion); err != nil {
+			return fmt.Errorf("failed to reset migration version 0: %w", err)
+		}
+	} else if err == nil && dirty {
+		return fmt.Errorf("database is dirty at migration version %d; repair the failed migration and force the correct version", version)
+	} else if err != nil && err != migrate.ErrNilVersion {
+		return fmt.Errorf("failed to get migration version: %w", err)
 	}
 
-	// Run migrations up
+	if err == migrate.ErrNilVersion {
+		log.Printf("[Database.RunMigrations] No migration version found; running from the first migration")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	if err := db.ensureMigrationVersionIsNotZero(ctx); err != nil {
+		return err
+	}
+
 	err = m.Up()
 	if err != nil && err != migrate.ErrNoChange {
 		return fmt.Errorf("migration failed: %w", err)
@@ -129,8 +141,6 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		log.Printf("[Database.RunMigrations] Migrations applied successfully. Current version: %d (dirty: %v)", version, dirty)
 	}
 
-	// Safety check: migration metadata can be out of sync with real schema.
-	// If required tables are missing even though version is up-to-date, repair automatically.
 	requiredTables := []string{
 		"users",
 		"branches",
@@ -162,7 +172,7 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		log.Printf("[Database.RunMigrations] Detected missing tables despite migration state: %s", strings.Join(missingTables, ", "))
 		log.Printf("[Database.RunMigrations] Attempting auto-repair: force version to -1 (NilVersion) and re-run all migrations")
 
-		if err := m.Force(-1); err != nil {
+		if err := m.Force(migratedb.NilVersion); err != nil {
 			return fmt.Errorf("failed to force migration version to -1 for repair: %w", err)
 		}
 		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
@@ -200,4 +210,34 @@ func (db *Database) getMissingTables(ctx context.Context, tableNames []string) (
 		}
 	}
 	return missing, nil
+}
+
+func (db *Database) ensureMigrationVersionIsNotZero(ctx context.Context) error {
+	var exists bool
+	if err := db.conn.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.tables
+			WHERE table_schema = 'public' AND table_name = 'schema_migrations'
+		)
+	`).Scan(&exists); err != nil {
+		return fmt.Errorf("failed to inspect schema_migrations table: %w", err)
+	}
+	if !exists {
+		return nil
+	}
+
+	result, err := db.conn.ExecContext(ctx, `
+		UPDATE schema_migrations
+		SET version = $1, dirty = false
+		WHERE version = 0
+	`, migratedb.NilVersion)
+	if err != nil {
+		return fmt.Errorf("failed to repair migration version 0: %w", err)
+	}
+	if rows, err := result.RowsAffected(); err == nil && rows > 0 {
+		log.Printf("[Database.RunMigrations] Repaired schema_migrations version 0 to nil version")
+	}
+
+	return nil
 }

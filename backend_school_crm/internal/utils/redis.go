@@ -76,11 +76,6 @@ func (rc *RedisClient) DeletePasswordReset(ctx context.Context, email string) er
 	return rc.client.Del(ctx, key).Err()
 }
 
-// GetClient returns the underlying redis.Client for use by the cache package.
-func (rc *RedisClient) GetClient() *redis.Client {
-	return rc.client
-}
-
 // Close closes the Redis connection
 func (rc *RedisClient) Close() error {
 	return rc.client.Close()

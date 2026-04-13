@@ -4,31 +4,22 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq"
-	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/utils"
 )
 
 type ClassService struct {
-	db    *db.Database
-	cache *cache.Client
+	db *db.Database
 }
 
 func NewClassService(database *db.Database) *ClassService {
 	return &ClassService{db: database}
 }
-
-// SetCache wires in the optional Redis cache client.
-func (s *ClassService) SetCache(c *cache.Client) { s.cache = c }
-
-const classCacheTTL = 2 * time.Minute
 
 type CreateClassRequest struct {
 	Name      string  `json:"name" binding:"required"`
@@ -61,9 +52,6 @@ func (s *ClassService) Create(ctx context.Context, req *CreateClassRequest) (*mo
 	         VALUES ($1, $2, $3, $4, $5, $6)`
 
 	_, err = s.db.GetConn().ExecContext(ctx, query, class.ID, class.Name, class.TeacherID, class.BranchID, class.CreatedAt, class.UpdatedAt)
-	if err == nil && s.cache != nil {
-		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:classes:%s", req.BranchID))
-	}
 
 	return class, err
 }
@@ -90,74 +78,26 @@ func (s *ClassService) GetByID(ctx context.Context, id string) (*models.Class, e
 }
 
 func (s *ClassService) GetByBranchID(ctx context.Context, branchID string) ([]models.Class, error) {
-	if s.cache != nil {
-		cacheKey := fmt.Sprintf("crm:classes:%s", branchID)
-		var cached []models.Class
-		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
-			return cached, nil
-		}
-		result, err := s.getByBranchIDDB(ctx, branchID)
-		if err == nil {
-			_ = s.cache.Set(ctx, cacheKey, result, classCacheTTL)
-		}
-		return result, err
-	}
-	return s.getByBranchIDDB(ctx, branchID)
-}
+	query := `SELECT id, name, teacher_id, branch_id, created_at, updated_at FROM classes WHERE branch_id = $1 ORDER BY name`
 
-func (s *ClassService) getByBranchIDDB(ctx context.Context, branchID string) ([]models.Class, error) {
-	// Fetch all classes in one query
-	rows, err := s.db.GetConn().QueryContext(ctx,
-		`SELECT id, name, teacher_id, branch_id, created_at, updated_at
-		 FROM classes WHERE branch_id = $1 ORDER BY name`, branchID)
+	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	var classes []models.Class
-	var classIDs []string
 	for rows.Next() {
 		var class models.Class
 		if err := rows.Scan(&class.ID, &class.Name, &class.TeacherID, &class.BranchID, &class.CreatedAt, &class.UpdatedAt); err != nil {
 			return nil, err
 		}
+		// Load student IDs for each class
+		s.loadStudentIDs(ctx, &class)
 		classes = append(classes, class)
-		classIDs = append(classIDs, class.ID)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 
-	if len(classIDs) == 0 {
-		return classes, nil
-	}
-
-	// Batch-load all active student IDs for every class in one query (eliminates N+1)
-	studentRows, err := s.db.GetConn().QueryContext(ctx,
-		`SELECT class_id, id FROM students
-		 WHERE class_id = ANY($1) AND status = 'active'`, pq.Array(classIDs))
-	if err != nil {
-		return classes, nil // non-fatal: return classes without student IDs
-	}
-	defer studentRows.Close()
-
-	// Build a map class_id → []student_id
-	studentMap := make(map[string][]string, len(classIDs))
-	for studentRows.Next() {
-		var classID, studentID string
-		if err := studentRows.Scan(&classID, &studentID); err != nil {
-			continue
-		}
-		studentMap[classID] = append(studentMap[classID], studentID)
-	}
-
-	// Attach student IDs to each class
-	for i := range classes {
-		classes[i].StudentID = studentMap[classes[i].ID]
-	}
-
-	return classes, nil
+	return classes, rows.Err()
 }
 
 func (s *ClassService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Class, error) {
@@ -202,21 +142,12 @@ func (s *ClassService) Update(ctx context.Context, id string, updates map[string
 		return nil, err
 	}
 
-	if s.cache != nil {
-		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:classes:%s", currentClass.BranchID))
-	}
 	return s.GetByID(ctx, id)
 }
 
 func (s *ClassService) Delete(ctx context.Context, id string) error {
-	var branchID string
-	_ = s.db.GetConn().QueryRowContext(ctx, `SELECT branch_id FROM classes WHERE id = $1`, id).Scan(&branchID)
-
 	query := `DELETE FROM classes WHERE id = $1`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
-	if err == nil && s.cache != nil && branchID != "" {
-		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:classes:%s", branchID))
-	}
 	return err
 }
 

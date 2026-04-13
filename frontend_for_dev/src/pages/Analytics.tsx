@@ -73,15 +73,14 @@ export default function Analytics() {
       ]);
 
       if (healthData.status === "fulfilled") {
-        // healthCheck() now injects a client-measured responseTime (ms)
-        setHealth(healthData.value as HealthData);
+        setHealth(healthData.value);
       }
       if (logsData.status === "fulfilled") {
-        setLogs(Array.isArray(logsData.value) ? logsData.value as LogEntry[] : []);
+        setLogs(Array.isArray(logsData.value) ? logsData.value : []);
       }
       setLastRefresh(new Date());
     } catch {
-      toast.error("Ma'lumotlarni yuklashda xatolik");
+      toast.error("Failed to fetch analytics data");
     } finally {
       setLoading(false);
     }
@@ -173,9 +172,9 @@ export default function Analytics() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">API Tahlili</h1>
+          <h1 className="text-2xl font-bold text-foreground">API Analytics</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Ishlash ko'rsatkichlari va API foydalanish statistikasi
+            Performance metrics and API usage statistics
           </p>
         </div>
         <button
@@ -203,12 +202,11 @@ export default function Analytics() {
         <div className="metric-card">
           <div className="flex items-center justify-between mb-2">
             <Clock className="w-5 h-5 text-primary" />
-            <span className="text-xs text-muted-foreground">/health</span>
           </div>
           <p className="text-2xl font-bold text-foreground">
-            {loading ? "—" : health?.responseTime != null ? `${health.responseTime}ms` : "—"}
+            {loading ? "—" : health?.responseTime ? `${health.responseTime}ms` : "—"}
           </p>
-          <p className="text-sm text-muted-foreground">Javob vaqti (Response Time)</p>
+          <p className="text-sm text-muted-foreground">Response Time</p>
         </div>
         <div className="metric-card">
           <div className="flex items-center justify-between mb-2">
@@ -374,13 +372,8 @@ export default function Analytics() {
 
       {/* Top Modules Table */}
       <div className="glass-card rounded-lg overflow-hidden">
-        <div className="p-4 border-b border-border flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-semibold text-foreground">Top Log Sources</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Barcha backend modullari — dev va school CRM loglarini o'z ichiga oladi
-            </p>
-          </div>
+        <div className="p-4 border-b border-border">
+          <h3 className="font-semibold text-foreground">Top Log Sources</h3>
         </div>
         {loading ? (
           <div className="p-8 text-center text-muted-foreground text-sm">Loading...</div>

@@ -11,10 +11,6 @@ import {
   XCircle,
   Loader2,
   RefreshCw,
-  Key,
-  Copy,
-  Eye,
-  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,14 +51,13 @@ const defaults = {
 
 type DevSettings = typeof defaults;
 
-function mergeWithDefaults(raw: Record<string, unknown>): DevSettings {
-  const rawNotifs = (raw.notifications as Partial<DevSettings["notifications"]>) || {};
+function mergeWithDefaults(raw: Record<string, any>): DevSettings {
   return {
     ...defaults,
     ...raw,
     notifications: {
       ...defaults.notifications,
-      ...rawNotifs,
+      ...(raw.notifications || {}),
     },
   };
 }
@@ -130,16 +125,12 @@ export default function Settings() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      const saved = await apiClient.updateDevSettings(settings as Record<string, unknown>);
+      const saved = await apiClient.updateDevSettings(settings as Record<string, any>);
       setSettings(mergeWithDefaults(saved));
       setDirty(false);
-      // Persist maintenanceMode to localStorage so DashboardLayout can show
-      // the banner immediately without an extra API call on every page load.
-      localStorage.setItem("dev:maintenanceMode", String(settings.maintenanceMode));
-      window.dispatchEvent(new Event("dev:maintenanceModeChanged"));
-      toast.success("Sozlamalar saqlandi");
+      toast.success("Settings saved to backend");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Sozlamalarni saqlashda xatolik");
+      toast.error(e instanceof Error ? e.message : "Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -165,9 +156,9 @@ export default function Settings() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Sozlamalar</h1>
+          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Dasturchi paneli sozlamalari — backend'da saqlanadi
+            Developer dashboard preferences — saved per account to the backend
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -410,8 +401,8 @@ export default function Settings() {
             </div>
             <div className="flex items-center justify-between py-2">
               <div>
-                <p className="font-medium text-foreground">Texnik ishlar rejimi</p>
-                <p className="text-sm text-muted-foreground">Dashboard bo'ylab texnik ishlar bannerini ko'rsatish</p>
+                <p className="font-medium text-foreground">Maintenance Mode</p>
+                <p className="text-sm text-muted-foreground">Show maintenance banner across dashboard</p>
               </div>
               <Switch
                 checked={settings.maintenanceMode}
@@ -452,9 +443,6 @@ export default function Settings() {
           </div>
         </div>
 
-        {/* ── API Token Inspector ───────────────────────────────────────── */}
-        <ApiTokenInspector />
-
       </div>
 
       {/* Dirty indicator */}
@@ -464,119 +452,5 @@ export default function Settings() {
         </p>
       )}
     </DashboardLayout>
-  );
-}
-
-// ── API Token Inspector ────────────────────────────────────────────────────────
-
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const payload = parts[1];
-    // base64url → base64 → JSON
-    const padded = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(
-      payload.length + (4 - (payload.length % 4)) % 4,
-      "="
-    );
-    return JSON.parse(atob(padded)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function maskToken(token: string): string {
-  if (token.length <= 16) return "•".repeat(token.length);
-  return token.slice(0, 8) + "•".repeat(Math.min(token.length - 16, 40)) + token.slice(-8);
-}
-
-function ApiTokenInspector() {
-  const [showFull, setShowFull] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const token = localStorage.getItem("auth_token") ?? "";
-  const payload = token ? decodeJwtPayload(token) : null;
-
-  const expTs = payload?.exp as number | undefined;
-  const iatTs = payload?.iat as number | undefined;
-  const expDate = expTs ? new Date(expTs * 1000) : null;
-  const iatDate = iatTs ? new Date(iatTs * 1000) : null;
-  const expired = expDate ? expDate < new Date() : false;
-
-  const handleCopy = () => {
-    if (!token) return;
-    navigator.clipboard.writeText(token).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  return (
-    <div className="glass-card rounded-lg overflow-hidden lg:col-span-2">
-      <div className="p-4 border-b border-border">
-        <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Key className="w-4 h-4 text-status-info" />
-          API Token Inspector
-        </h3>
-      </div>
-      <div className="p-4 space-y-4">
-        {!token ? (
-          <p className="text-sm text-muted-foreground">No auth token found. Please log in.</p>
-        ) : (
-          <>
-            {/* Token value */}
-            <div className="space-y-2">
-              <Label>Current Token</Label>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 p-2 bg-accent/30 rounded-lg text-xs font-mono text-foreground break-all">
-                  {showFull ? token : maskToken(token)}
-                </code>
-                <button
-                  onClick={() => setShowFull((v) => !v)}
-                  className="p-2 rounded-lg hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
-                  title={showFull ? "Hide token" : "Show full token"}
-                >
-                  {showFull ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={handleCopy}
-                  className="p-2 rounded-lg hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
-                  title="Copy token"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-              {copied && <p className="text-xs text-status-healthy">Copied to clipboard!</p>}
-            </div>
-
-            {/* Decoded payload */}
-            {payload ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Issued At</p>
-                  <p className="text-sm text-foreground font-medium">
-                    {iatDate ? iatDate.toLocaleString() : "—"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Expires At</p>
-                  <p className={`text-sm font-medium ${expired ? "text-status-critical" : "text-status-healthy"}`}>
-                    {expDate ? expDate.toLocaleString() : "—"}
-                    {expired && " (EXPIRED)"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Subject / Role</p>
-                  <p className="text-sm text-foreground font-medium font-mono">
-                    {String(payload.sub ?? payload.role ?? "—")}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">Token is not a valid JWT (cannot decode payload).</p>
-            )}
-          </>
-        )}
-      </div>
-    </div>
   );
 }

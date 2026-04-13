@@ -211,7 +211,7 @@ export default function ManagersPage() {
         }
         
         // API call will handle adding to branch_managers table
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/users`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api'}/users`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

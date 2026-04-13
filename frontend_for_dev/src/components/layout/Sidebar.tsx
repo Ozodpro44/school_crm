@@ -14,7 +14,6 @@ import {
   ChevronRight,
   Zap,
   LogOut,
-  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,8 +26,7 @@ const navigation = [
   { name: "Branches", href: "/branches", icon: Building2 },
   { name: "Subscriptions", href: "/subscriptions", icon: CreditCard },
   { name: "Subscription Plans", href: "/subscription-plans", icon: CreditCard },
-  { name: "Payment Types",      href: "/payment-types",      icon: Wallet     },
-  { name: "Users & Admins",     href: "/users",              icon: Users      },
+  { name: "Users & Admins", href: "/users", icon: Users },
   { name: "API Analytics", href: "/analytics", icon: Activity },
   { name: "Notifications", href: "/notifications", icon: Bell },
   { name: "Settings", href: "/settings", icon: Settings },

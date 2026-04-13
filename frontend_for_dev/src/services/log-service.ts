@@ -126,14 +126,14 @@ export class LogService {
   /**
    * Force flush all pending logs
    */
-  flush(): void {
+  async flush(): Promise<void> {
     if (this.batchInterval) {
       clearInterval(this.batchInterval);
       this.batchInterval = null;
     }
 
     while (this.batchQueue.length > 0) {
-      this.flushBatch();
+      await this.flushBatch();
     }
   }
 

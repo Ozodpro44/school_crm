@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"log"
 	"strconv"
 
@@ -26,7 +25,7 @@ type UserService struct {
 func NewUserService(database *db.Database) *UserService {
 	return &UserService{
 		db:                  database,
-		branchService:       NewBranchService(database, NewSubscriptionService(database)),
+		branchService:       NewBranchService(database),
 		subscriptionService: NewSubscriptionService(database),
 		redisClient:         nil,
 		emailSender:         nil,
@@ -60,21 +59,20 @@ type LoginRequest struct {
 }
 
 type RegisterRequest struct {
-	Email      string `json:"email"      binding:"required,email"`
-	Password   string `json:"password"   binding:"required,min=6"`
-	FullName   string `json:"fullName"   binding:"required"`
-	Role       string `json:"role"       binding:"required"`
-	SchoolName string `json:"schoolName"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=6"`
+	FullName string `json:"fullName" binding:"required"`
+	Role     string `json:"role" binding:"required"`
 }
 
 func (s *UserService) Login(ctx context.Context, email, password string) (*models.User, error) {
 	log.Printf("[UserService.Login] Authenticating user: %s", email)
 
 	user := &models.User{}
-	query := `SELECT id, email, password, role, full_name, branch_id, created_at, updated_at FROM users WHERE email = $1`
+	query := `SELECT id, email, password, role, full_name, created_at, updated_at FROM users WHERE email = $1`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, email).Scan(
-		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.BranchID, &user.CreatedAt, &user.UpdatedAt,
+		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.CreatedAt, &user.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -157,170 +155,89 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*model
 func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*models.User, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, fmt.Errorf("register: hash password: %w", err)
+		return nil, err
 	}
-
-	isAdmin := models.UserRole(req.Role) == models.RoleAdmin
-
-	// Resolve the free-trial plan before opening the transaction — it is
-	// idempotent and does not need to be part of the atomic block.
-	var trialPlanID string
-	if isAdmin {
-		trialPlan, err := s.subscriptionService.GetOrCreateFreeTrial(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("register: get free trial plan: %w", err)
-		}
-		trialPlanID = trialPlan.ID
-	}
-
-	tx, err := s.db.BeginTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("register: begin transaction: %w", err)
-	}
-	defer tx.Rollback() // no-op after Commit
-
-	now := utils.GetLocalTime()
-	userID := uuid.New().String()
-
-	// Step 1: Insert the user row (branch_id is NULL until Step 3).
-	log.Printf("[UserService.Register] Step 1/6: inserting user %s", req.Email)
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO users (id, email, password, role, full_name, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		userID, req.Email, string(hashedPassword), req.Role, req.FullName, now, now,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("register: insert user: %w", err)
-	}
-
-	// Non-admin users need no branch/subscription setup — commit and return.
-	if !isAdmin {
-		if err := tx.Commit(); err != nil {
-			return nil, fmt.Errorf("register: commit: %w", err)
-		}
-		return &models.User{
-			ID:        userID,
-			Email:     req.Email,
-			Role:      models.UserRole(req.Role),
-			FullName:  req.FullName,
-			CreatedAt: now,
-			UpdatedAt: now,
-		}, nil
-	}
-
-	// ── Admin (school-owner) full onboarding ──────────────────────────────────
-
-	// Step 2: Create the default branch inline, bypassing BranchService.Create
-	// so we avoid the subscription-limit guard that would reject a brand-new user.
-	log.Printf("[UserService.Register] Step 2/6: creating default branch for user %s", userID)
-	branchID := uuid.New().String()
-	branchName := req.SchoolName
-	if branchName == "" {
-		branchName = req.FullName + " Branch"
-	}
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO branches (id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		branchID, branchName, "Default Address", "N/A",
-		0.0, "UZS", userID, now, now,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("register: create branch: %w", err)
-	}
-
-	// Step 3: Link the user to their new branch and mark the trial as used.
-	log.Printf("[UserService.Register] Step 3/6: linking branch %s to user %s", branchID, userID)
-	_, err = tx.ExecContext(ctx,
-		`UPDATE users SET branch_id = $1, trial_used_at = $2, updated_at = $3 WHERE id = $4`,
-		branchID, now, now, userID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("register: update user branch_id: %w", err)
-	}
-
-	// Step 4: Create the 14-day trial subscription.
-	log.Printf("[UserService.Register] Step 4/6: creating trial subscription for user %s", userID)
-	endDate := now.AddDate(0, 0, 14)
-	paymentMethod := "free_trial"
-	notes := "Automatic 14-day free trial"
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO subscriptions
-		     (user_id, plan_id, branch_id, status, start_date, end_date, renewal_date, auto_renew, payment_method, notes)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		userID, trialPlanID, branchID, "trial",
-		now, endDate, endDate, false, paymentMethod, notes,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("register: create subscription: %w", err)
-	}
-
-	// Step 5: Initialize full admin permissions.
-	// Column list mirrors PermissionService.CreateForUser to stay in sync with the schema.
-	log.Printf("[UserService.Register] Step 5/6: initializing admin permissions for user %s", userID)
-	permID := uuid.New().String()
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO permissions (
-		     id, user_id,
-		     can_view_students, can_edit_students, can_delete_students,
-		     can_view_teachers, can_edit_teachers, can_delete_teachers,
-		     can_view_classes,  can_edit_classes,  can_delete_classes,
-		     can_view_payments, can_edit_payments,
-		     can_view_salaries, can_edit_salaries,
-		     can_view_expenses, can_edit_expenses, can_delete_expenses,
-		     can_view_reports,  can_view_settings, can_edit_settings
-		 ) VALUES (
-		     $1, $2,
-		     true, true, true,
-		     true, true, true,
-		     true, true, true,
-		     true, true,
-		     true, true,
-		     true, true, true,
-		     true, true, true
-		 )`,
-		permID, userID,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("register: create permissions: %w", err)
-	}
-
-	// Step 6: Open the first financial month for the new branch.
-	log.Printf("[UserService.Register] Step 6/6: opening financial month for branch %s", branchID)
-	fmID := uuid.New().String()
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO financial_months
-		     (id, branch_id, year, month, status, payment_amount, opened_at, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		 ON CONFLICT (branch_id, year, month) DO NOTHING`,
-		fmID, branchID, now.Year(), int(now.Month()),
-		models.MonthStatusOpen, 0.0, now, now, now,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("register: create financial month: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("register: commit: %w", err)
-	}
-	log.Printf("[UserService.Register] Onboarding complete — user=%s branch=%s", userID, branchID)
 
 	user := &models.User{
-		ID:        userID,
+		ID:        uuid.New().String(),
 		Email:     req.Email,
+		Password:  string(hashedPassword),
 		Role:      models.UserRole(req.Role),
 		FullName:  req.FullName,
-		BranchID:  &branchID,
-		BranchIDs: []string{branchID},
-		CreatedAt: now,
-		UpdatedAt: now,
+		CreatedAt: utils.GetLocalTime(),
+		UpdatedAt: utils.GetLocalTime(),
 	}
 
-	// Fetch the permissions we just inserted so the auth handler can embed
-	// them in the JWT response without a second round-trip login.
-	permissionService := NewPermissionService(s.db)
-	permissions, err := permissionService.GetByUserID(ctx, userID)
+	// Insert user
+	query := `INSERT INTO users (id, email, password, role, full_name, created_at, updated_at) 
+	         VALUES ($1, $2, $3, $4, $5, $6, $7)`
+
+	_, err = s.db.GetConn().ExecContext(ctx, query, user.ID, user.Email, user.Password, user.Role, user.FullName, user.CreatedAt, user.UpdatedAt)
 	if err != nil {
-		log.Printf("[UserService.Register] Warning: failed to fetch permissions for user %s: %v", userID, err)
+		return nil, err
+	}
+
+	// For admin users, create a default branch after user is inserted
+	var branchID *string
+	if user.Role == models.RoleAdmin {
+		log.Printf("[UserService.Register] Creating default branch for admin user: %s", req.Email)
+
+		branchReq := &CreateBranchRequest{
+			Name:           req.FullName + " Branch",
+			Address:        "Default Address",
+			Phone:          "N/A",
+			MonthlyPayment: 0,
+			AdminID:        &user.ID,
+		}
+
+		branch, err := s.branchService.Create(ctx, branchReq)
+		if err != nil {
+			log.Printf("[UserService.Register] Failed to create default branch for %s: %v", req.Email, err)
+			return nil, err
+		}
+
+		log.Printf("[UserService.Register] Default branch created: %s (ID: %s)", branch.Name, branch.ID)
+		branchID = &branch.ID
+	}
+
+	// Create free trial subscription for new user
+	log.Printf("[UserService.Register] Creating free trial subscription for user: %s", req.Email)
+	trialPlan, err := s.subscriptionService.GetOrCreateFreeTrial(ctx)
+	if err != nil {
+		log.Printf("[UserService.Register] Warning: Failed to create free trial subscription: %v", err)
+		// Don't fail the registration if subscription creation fails
+	} else {
+		now := utils.GetLocalTime()
+		endDate := now.AddDate(0, 0, 14) // 14 days from now
+		paymentMethod := "free_trial"
+		notes := "Automatic free trial subscription"
+		subscription := &models.Subscription{
+			UserID:        user.ID,
+			PlanID:        trialPlan.ID,
+			BranchID:      branchID,
+			Status:        "active",
+			StartDate:     now,
+			RenewalDate:   &endDate,
+			AutoRenew:     false,
+			PaymentMethod: &paymentMethod,
+			Notes:         &notes,
+		}
+
+		err = s.subscriptionService.CreateSubscription(ctx, subscription)
+		if err != nil {
+			log.Printf("[UserService.Register] Warning: Failed to create subscription for user %s: %v", user.ID, err)
+		} else {
+			log.Printf("[UserService.Register] Free trial subscription created for user: %s (Plan: %s)", user.ID, trialPlan.Name)
+		}
+	}
+
+	user.Password = ""
+
+	// Fetch permissions for the user
+	permissionService := NewPermissionService(s.db)
+	permissions, err := permissionService.GetByUserID(ctx, user.ID)
+	if err != nil {
+		log.Printf("[UserService.Register] Failed to fetch permissions for user %s: %v", user.ID, err)
 	} else {
 		user.Permissions = permissions
 	}
@@ -358,13 +275,7 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*models.User, err
 }
 
 func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
-	query := `
-		SELECT u.id, u.email, u.password, u.role, u.full_name, u.created_at, u.updated_at,
-		       bm.branch_id
-		FROM users u
-		LEFT JOIN branch_managers bm ON bm.manager_id = u.id
-		ORDER BY u.created_at
-	`
+	query := `SELECT id, email, password, role, full_name, created_at, updated_at FROM users`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query)
 	if err != nil {
@@ -372,49 +283,26 @@ func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
 	}
 	defer rows.Close()
 
-	// Deduplicate by user ID (a manager can appear in multiple branches)
-	seen := map[string]*models.User{}
-	var order []string
+	var users []models.User
 	permissionService := NewPermissionService(s.db)
 
 	for rows.Next() {
-		var u models.User
-		var branchID *string
-		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.Role, &u.FullName, &u.CreatedAt, &u.UpdatedAt, &branchID); err != nil {
+		var user models.User
+		if err := rows.Scan(&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.CreatedAt, &user.UpdatedAt); err != nil {
 			return nil, err
 		}
-		u.Password = ""
+		user.Password = ""
 
-		if existing, ok := seen[u.ID]; ok {
-			// Additional branch for a manager — append to BranchIDs
-			if branchID != nil {
-				existing.BranchIDs = append(existing.BranchIDs, *branchID)
-			}
-			continue
-		}
-
-		if branchID != nil {
-			u.BranchID = branchID
-			u.BranchIDs = []string{*branchID}
-		}
-
-		permissions, err := permissionService.GetByUserID(ctx, u.ID)
+		// Fetch permissions for the user
+		permissions, err := permissionService.GetByUserID(ctx, user.ID)
 		if err == nil {
-			u.Permissions = permissions
+			user.Permissions = permissions
 		}
 
-		seen[u.ID] = &u
-		order = append(order, u.ID)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+		users = append(users, user)
 	}
 
-	users := make([]models.User, 0, len(order))
-	for _, id := range order {
-		users = append(users, *seen[id])
-	}
-	return users, nil
+	return users, rows.Err()
 }
 
 func (s *UserService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.User, error) {
@@ -586,43 +474,6 @@ func (s *UserService) RemoveBranchManager(ctx context.Context, branchID, manager
 }
 
 // GetBranchManagers returns all managers for a branch
-// GetBranchAdminID returns the admin_id for the given branch.
-// Used by subscription gating to trace staff → branch admin → subscription.
-func (s *UserService) GetBranchAdminID(ctx context.Context, branchID string) (string, error) {
-	var adminID string
-	err := s.db.GetConn().QueryRowContext(ctx,
-		`SELECT COALESCE(admin_id::text, '') FROM branches WHERE id = $1`, branchID,
-	).Scan(&adminID)
-	if err == sql.ErrNoRows {
-		return "", nil
-	}
-	return adminID, err
-}
-
-// BelongsToBranch returns true when userID is legitimately associated with branchID.
-// Covers three cases:
-//   - admin:         they own the branch (branches.admin_id = userID)
-//   - manager/ba:    they are in branch_managers for this branch
-//   - teacher/staff: their users.branch_id points to this branch
-//
-// A single UNION query keeps it to one round-trip.
-func (s *UserService) BelongsToBranch(ctx context.Context, userID, branchID string) (bool, error) {
-	var count int
-	err := s.db.GetConn().QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM (
-			SELECT 1 FROM branches        WHERE id = $2 AND admin_id = $1
-			UNION ALL
-			SELECT 1 FROM branch_managers WHERE branch_id = $2 AND manager_id = $1
-			UNION ALL
-			SELECT 1 FROM users           WHERE id = $1 AND branch_id = $2
-		) AS access
-	`, userID, branchID).Scan(&count)
-	if err != nil {
-		return false, fmt.Errorf("BelongsToBranch: %w", err)
-	}
-	return count > 0, nil
-}
-
 func (s *UserService) GetBranchManagers(ctx context.Context, branchID string) ([]models.User, error) {
 	managers := []models.User{}
 	query := `

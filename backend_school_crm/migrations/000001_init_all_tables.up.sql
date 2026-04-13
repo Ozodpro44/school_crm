@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     plan_id UUID NOT NULL REFERENCES subscription_plans(id) ON DELETE RESTRICT,
-    branch_id UUID,
+    branch_id UUID REFERENCES branches(id) ON DELETE CASCADE,
     status VARCHAR(50) NOT NULL DEFAULT 'active',
     start_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     end_date TIMESTAMP,
@@ -138,10 +138,6 @@ CREATE TABLE IF NOT EXISTS teachers (
 -- Add teacher_id foreign key to classes
 ALTER TABLE classes
 ADD CONSTRAINT fk_classes_teacher_id FOREIGN KEY (teacher_id) REFERENCES teachers (id) ON DELETE SET NULL;
-
--- Add branch_id foreign key to subscriptions
-ALTER TABLE subscriptions
-ADD CONSTRAINT fk_subscriptions_branch_id FOREIGN KEY (branch_id) REFERENCES branches (id) ON DELETE CASCADE;
 
 -- Create teacher_subjects table
 CREATE TABLE IF NOT EXISTS teacher_subjects (

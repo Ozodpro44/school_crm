@@ -242,10 +242,4 @@ export const settingsTranslations: Partial<Translation> = {
     "uz-latn": "Keyingi oy",
     en: "Next Month",
   },
-
-  onlyNumericAllowed: {
-    "uz-cyrl": "Фақат рақам киритиш мумкин",
-    "uz-latn": "Faqat raqam kiritish mumkin",
-    en: "Only numeric values are allowed",
-  },
 };

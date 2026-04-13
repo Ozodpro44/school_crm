@@ -48,7 +48,6 @@ import {
   deleteStudent as apiDeleteStudent,
   createClass as apiCreateClass,
   getBranch,
-  listClasses,
 } from "@/lib/api";
 import { Branch } from "@/types";
 import type { Student as ApiStudent } from "@/lib/api";
@@ -173,7 +172,6 @@ export default function StudentsPage() {
     statusOverride?: string,
     classOverride?: string,
     paymentStatusOverride?: string,
-    pageOverride?: number,
   ) => {
     const user = getCurrentUser();
     if (!user) {
@@ -219,22 +217,19 @@ export default function StudentsPage() {
         filters.month = currentMonth;
         filters.year = currentYear.toString();
 
-        const effectivePage = pageOverride !== undefined ? pageOverride : page;
-        const [consolidated, fetchedClasses] = await Promise.all([
-          apiGetStudentsConsolidatedData(selectedBranchId, effectivePage, limit, filters),
-          listClasses(selectedBranchId),
-        ]);
+        const consolidated = await apiGetStudentsConsolidatedData(selectedBranchId, page, limit, filters);
         if (loadId !== currentLoadIdRef.current) {
           return;
         }
         const studentsList = consolidated?.items || consolidated?.data || [];
+        const classesList = consolidated?.classes || [];
         const totalVal = consolidated?.total || 0;
+        const totalPagesVal = consolidated?.totalPages || consolidated?.total_pages || 0;
 
         setStudents(studentsList);
         setTotal(totalVal);
         setTotalPages(Math.ceil(totalVal / limit));
-        // Use the dedicated classes fetch — always returns all classes for the branch.
-        setClasses(fetchedClasses.length > 0 ? fetchedClasses : (consolidated?.classes || []));
+        setClasses(classesList);
         setBranchData(branch);
       }
     } catch (error) {
@@ -251,77 +246,73 @@ export default function StudentsPage() {
 
   // Initial load is handled in the [router.isReady] effect above
 
-  // ── Effect: re-fetch when filters / search / limit change ──────────────
-  // Always loads page 1.  If the current page is already 1 the page effect
-  // below won't fire (setPage is a no-op), so we call loadData here with an
-  // explicit pageOverride=1.  If the current page is not 1 we set the skip
-  // flag so the page effect (which fires because setPage(1) changed state)
-  // knows to stand down — this effect is already handling the fetch.
+  // Reload data when filters change
   useEffect(() => {
-    if (!initialLoadDoneRef.current) return;
-
-    if (page !== 1) {
-      filterChangeInProgressRef.current = true;
-      setPage(1);
+    // Skip if this is the initial load (URL params are being set)
+    if (!initialLoadDoneRef.current) {
+      return;
     }
 
+    // Mark filter change in progress to prevent duplicate API calls from page useEffect
+    filterChangeInProgressRef.current = true;
+    setPage(1); // Reset to first page on filter changes
     setIsListLoading(true);
-    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus, 1)
-      .finally(() => setIsListLoading(false));
-
+    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
+    // Update URL with filters
     const params = new URLSearchParams();
-    if (searchTerm) params.set("search", searchTerm);
-    if (filterStatus !== "all") params.set("status", filterStatus);
-    if (filterClass !== "all") params.set("classId", filterClass);
-    if (filterPaymentStatus !== "all") params.set("paymentStatus", filterPaymentStatus);
-    params.set("page", "1");
-    params.set("limit", limit.toString());
+    if (searchTerm) params.set('search', searchTerm);
+    if (filterStatus !== 'all') params.set('status', filterStatus);
+    if (filterClass !== 'all') params.set('classId', filterClass);
+    if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
+    params.set('page', '1');
+    params.set('limit', limit.toString());
     router.push(`/students?${params.toString()}`, undefined, { shallow: true });
   }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, limit]);
 
-  // ── Effect: re-fetch when the page number changes (pagination clicks) ──
-  // Skip if the page change was caused by a filter reset above.
+  // Reload data when page changes
   useEffect(() => {
+    // Skip if initial load hasn't completed yet
     if (!initialLoadDoneRef.current) return;
 
+    // Skip if a filter change is in progress (filter useEffect handles the load)
     if (filterChangeInProgressRef.current) {
       filterChangeInProgressRef.current = false;
       return;
     }
 
     setIsListLoading(true);
-    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus, page)
-      .finally(() => setIsListLoading(false));
-
+    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
+    // Update URL with current page
     const params = new URLSearchParams();
-    if (searchTerm) params.set("search", searchTerm);
-    if (filterStatus !== "all") params.set("status", filterStatus);
-    if (filterClass !== "all") params.set("classId", filterClass);
-    if (filterPaymentStatus !== "all") params.set("paymentStatus", filterPaymentStatus);
-    params.set("page", page.toString());
-    params.set("limit", limit.toString());
+    if (searchTerm) params.set('search', searchTerm);
+    if (filterStatus !== 'all') params.set('status', filterStatus);
+    if (filterClass !== 'all') params.set('classId', filterClass);
+    if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
+    params.set('page', page.toString());
+    params.set('limit', limit.toString());
     router.push(`/students?${params.toString()}`, undefined, { shallow: true });
   }, [page]);
 
-  // ── Re-fetch when branch is switched ───────────────────────────────────
+  // Reload data when branch is switched
   useEffect(() => {
     const handleBranchChange = async () => {
       setPage(1);
       setIsListLoading(true);
-      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus, 1);
+      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
       setIsListLoading(false);
     };
     window.addEventListener("branchChange", handleBranchChange);
     return () => window.removeEventListener("branchChange", handleBranchChange);
   }, []);
 
-  // ── Refetch on tab focus (preserves current filters & page) ────────────
+  // Refetch data when page regains focus (preserves current filters)
   const refetchData = useCallback(() => {
     setIsListLoading(true);
-    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus, page)
-      .finally(() => setIsListLoading(false));
+    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
   }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, page, limit]);
   useRefetchOnFocus(refetchData);
+
+
 
   const hasCurrentMonthPayment = (studentId: string): boolean => {
     // Payment data not available with consolidated endpoint
@@ -789,9 +780,13 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
   };
 
   const handleSearch = () => {
-    // Updating searchTerm triggers the filter effect, which handles the
-    // API call and page reset — no need to call loadData directly here.
+    setPage(1); // Reset to first page on search
     setSearchTerm(searchInput);
+    setIsListLoading(true);
+    // Pass override values to loadData
+    loadData(searchInput, filterStatus, filterClass, filterPaymentStatus).finally(
+      () => setIsListLoading(false),
+    );
   };
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -802,7 +797,13 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleClearSearch = () => {
     setSearchInput("");
-    setSearchTerm(""); // triggers filter effect → reload with empty search
+    setPage(1);
+    setSearchTerm("");
+    setIsListLoading(true);
+    // Pass empty search as override
+    loadData("", filterStatus, filterClass, filterPaymentStatus).finally(() =>
+      setIsListLoading(false),
+    );
   };
 
   // Students are now filtered by backend including payment status
@@ -985,7 +986,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                 className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
                 onClick={handleOpenDialog}
                 disabled={!canCreateStudents}
-                title={!canCreateStudents ? t("noPermission") : ""}
+                title={!canCreateStudents ? t("noPermission") || "No permission to create students" : ""}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 {t("addStudent")}
@@ -1139,10 +1140,9 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     onChange={(e) => {
                       const value = e.target.value;
                       setSearchInput(value);
-                      // When the field is fully cleared, commit the empty search
-                      // immediately (without waiting for Enter) so the list resets.
-                      // The filter effect handles the API call and page reset.
+                      // Auto-clear search when input is empty
                       if (value === "") {
+                        setPage(1);
                         setSearchTerm("");
                       }
                     }}
@@ -1412,7 +1412,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                                 {toTitleCase(student.fullName)}
                               </p>
                               <p className="text-sm text-slate-500 dark:text-slate-400">
-                                {formatPhoneNumber(student.phone)}
+                                {formatPhoneNumber(student.parentPhone)}
                               </p>
                             </div>
                           </td>

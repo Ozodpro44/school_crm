@@ -82,8 +82,7 @@ export default function Logs() {
       setError(null);
 
       const raw = await apiClient.getDevLogs({ limit: 200 });
-      type RawLog = { id?: string; timestamp?: string; level?: string; module?: string; service?: string; message?: string; metadata?: Record<string, string> };
-      const entries: LogEntry[] = (raw || []).map((log: RawLog, index: number) => {
+      const entries: LogEntry[] = (raw || []).map((log: any, index: number) => {
         let level: LogLevel = 'INFO';
         const upperLevel = (log.level || 'info').toUpperCase();
         if (upperLevel === 'ERROR') level = 'ERROR';
@@ -131,30 +130,7 @@ export default function Logs() {
     a.download = `logs-${new Date().toISOString().split("T")[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Logs exported as JSON");
-  };
-
-  const handleExportCsv = () => {
-    const header = ["timestamp", "level", "module", "message", "details"].join(",");
-    const rows = filteredLogs.map((log) => {
-      const escape = (v: string) => `"${(v ?? "").replace(/"/g, '""')}"`;
-      return [
-        escape(new Date(log.timestamp).toISOString()),
-        escape(log.level),
-        escape(log.module),
-        escape(log.message),
-        escape(log.details ?? ""),
-      ].join(",");
-    });
-    const csv = [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `logs-${new Date().toISOString().split("T")[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Logs exported as CSV");
+    toast.success("Logs exported successfully");
   };
 
   const handleCopyLog = (log: LogEntry) => {
@@ -207,11 +183,7 @@ export default function Logs() {
           </Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={handleExportLogs}>
             <Download className="w-4 h-4" />
-            Export JSON
-          </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportCsv}>
-            <Download className="w-4 h-4" />
-            Export CSV
+            Export Logs
           </Button>
           <Button 
             variant="outline" 

@@ -4,7 +4,6 @@ import { QuickStats } from "@/components/dashboard/QuickStats";
 import { RecentIncidents } from "@/components/dashboard/RecentIncidents";
 import { BranchOverview } from "@/components/dashboard/BranchOverview";
 import { ApiPerformanceChart } from "@/components/dashboard/ApiPerformanceChart";
-import { BackendConnectivity } from "@/components/dashboard/BackendConnectivity";
 import { Calendar, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -38,7 +37,6 @@ export default function Dashboard() {
       {/* Content */}
       <div className="space-y-6 animate-fade-in">
         <QuickStats />
-        <BackendConnectivity />
         <SystemHealthPanel />
         
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">

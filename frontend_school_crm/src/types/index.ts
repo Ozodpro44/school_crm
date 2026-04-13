@@ -5,7 +5,7 @@ export type StudentStatus = "active" | "left" | "suspended";
 export type PaymentStatus = "paid" | "partial";
 export type Language = "uz-cyrl" | "uz-latn" | "en";
 export type MonthStatus = "OPEN" | "CLOSED";
-export type SubscriptionStatus = "active" | "trial" | "paused" | "cancelled" | "expired" | "pending_payment" | "past_due";
+export type SubscriptionStatus = "active" | "paused" | "cancelled" | "expired";
 export type SubscriptionPaymentStatus = "pending" | "completed" | "failed" | "refunded";
 export type BillingPeriod = "monthly" | "yearly";
 

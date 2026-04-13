@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -13,14 +13,15 @@ import (
 
 func RegisterSalaryRoutes(router *gin.RouterGroup, salaryService *service.SalaryService, branchService *service.BranchService, userService *service.UserService) {
 	salaries := router.Group("/salaries")
-	salaries.POST("", middleware.PermissionChecker(userService, "canCreateSalaries"), createSalary(salaryService))
+	// Authenticated users can view and edit salaries
+	salaries.POST("", middleware.PermissionChecker(userService, "canCreateSalaries"), createSalary(salaryService, branchService))
 	salaries.GET("/:id", middleware.PermissionChecker(userService, "canViewSalaries"), getSalary(salaryService))
 	salaries.GET("", middleware.PermissionChecker(userService, "canViewSalaries"), listSalaries(salaryService, branchService, userService))
-	salaries.PUT("/:id", middleware.PermissionChecker(userService, "canEditSalaries"), updateSalary(salaryService, userService))
+	salaries.PUT("/:id", middleware.PermissionChecker(userService, "canEditSalaries"), updateSalary(salaryService, branchService, userService))
 	salaries.DELETE("/:id", middleware.PermissionChecker(userService, "canEditSalaries"), deleteSalary(salaryService, branchService, userService))
 }
 
-func createSalary(salaryService *service.SalaryService) gin.HandlerFunc {
+func createSalary(salaryService *service.SalaryService, branchService *service.BranchService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := middleware.GetUserID(c)
 		if err != nil {
@@ -34,15 +35,25 @@ func createSalary(salaryService *service.SalaryService) gin.HandlerFunc {
 			return
 		}
 
+		// Validate that salary is for the branch's current month
+		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), req.BranchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+			return
+		}
+
+		// Only allow creating salaries for the current month of the branch
+		if req.Month != currentMonth || req.Year != currentYear {
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("can only create salaries for current month (%s/%d)", currentMonth, currentYear)})
+			return
+		}
+
 		salary, err := salaryService.Create(c.Request.Context(), &req, userID)
 		if err != nil {
-			if errors.Is(err, service.ErrFinancialMonthLocked) {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
 		c.JSON(http.StatusCreated, salary)
 	}
 }
@@ -114,12 +125,33 @@ func listSalaries(salaryService *service.SalaryService, branchService *service.B
 	}
 }
 
-func updateSalary(salaryService *service.SalaryService, userService *service.UserService) gin.HandlerFunc {
+func updateSalary(salaryService *service.SalaryService, branchService *service.BranchService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
 
+		// Get existing salary
+		existingSalary, err := salaryService.GetByID(c.Request.Context(), id)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Get branch's current month
+		currentMonth, currentYear, err := branchService.GetCurrentMonth(c.Request.Context(), existingSalary.BranchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get branch current month"})
+			return
+		}
+
+		// Check if salary is from a past month - only Admin can edit past months
 		userRole, _ := middleware.GetUserRole(c, userService)
 		isAdmin := userRole == models.RoleAdmin
+
+		isPastMonth := existingSalary.Month != currentMonth || existingSalary.Year != currentYear
+		if isPastMonth && !isAdmin {
+			c.JSON(http.StatusForbidden, gin.H{"error": "cannot modify salaries from past months"})
+			return
+		}
 
 		var updates map[string]interface{}
 		if err := c.ShouldBindJSON(&updates); err != nil {
@@ -127,15 +159,12 @@ func updateSalary(salaryService *service.SalaryService, userService *service.Use
 			return
 		}
 
-		salary, err := salaryService.Update(c.Request.Context(), id, updates, isAdmin)
+		salary, err := salaryService.Update(c.Request.Context(), id, updates)
 		if err != nil {
-			if errors.Is(err, service.ErrFinancialMonthLocked) {
-				c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
-				return
-			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
 		c.JSON(http.StatusOK, salary)
 	}
 }

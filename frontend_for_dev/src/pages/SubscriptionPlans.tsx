@@ -14,7 +14,7 @@ import {
   Loader2,
 } from "lucide-react";
 import {
-  getAllSubscriptionPlans,
+  getSubscriptionPlans,
   createSubscriptionPlan,
   updateSubscriptionPlan,
   deleteSubscriptionPlan,
@@ -100,15 +100,13 @@ export default function SubscriptionPlans() {
     maxBranches: 1,
     maxStudents: 100,
     maxClasses: 5,
-    status: "active" as "active" | "inactive",
   });
 
   const [subForm, setSubForm] = useState({
     userId: "",
     planId: "",
-    status: "active",
     autoRenew: true,
-    paymentMethod: "click",
+    paymentMethod: "credit_card",
   });
 
   // Load data on mount
@@ -121,7 +119,7 @@ export default function SubscriptionPlans() {
       setLoading(true);
       setError(null);
       const [plansData, subscriptionsData, usersData] = await Promise.all([
-        getAllSubscriptionPlans(),
+        getSubscriptionPlans(),
         getUserSubscriptions(),
         getAllUsers(),
       ]);
@@ -158,7 +156,6 @@ export default function SubscriptionPlans() {
       maxBranches: 1,
       maxStudents: 100,
       maxClasses: 5,
-      status: "active",
     });
     setIsPlanModalOpen(true);
   };
@@ -167,13 +164,12 @@ export default function SubscriptionPlans() {
     setEditingPlan(plan);
     setPlanForm({
       name: plan.name,
-      description: plan.description ?? "",
+      description: plan.description,
       price: plan.price,
       billingPeriod: plan.billingPeriod,
-      maxBranches: plan.maxBranches ?? 1,
-      maxStudents: plan.maxStudents ?? 100,
-      maxClasses: plan.maxClasses ?? 5,
-      status: plan.status,
+      maxBranches: plan.maxBranches,
+      maxStudents: plan.maxStudents,
+      maxClasses: plan.maxClasses,
     });
     setIsPlanModalOpen(true);
   };
@@ -227,9 +223,8 @@ export default function SubscriptionPlans() {
     setSubForm({
       userId: "",
       planId: "",
-      status: "active",
       autoRenew: true,
-      paymentMethod: "click",
+      paymentMethod: "credit_card",
     });
     setIsSubscriptionModalOpen(true);
   };
@@ -239,9 +234,8 @@ export default function SubscriptionPlans() {
     setSubForm({
       userId: sub.userId,
       planId: sub.planId,
-      status: sub.status || "active",
       autoRenew: sub.autoRenew,
-      paymentMethod: sub.paymentMethod || "click",
+      paymentMethod: sub.paymentMethod || "credit_card",
     });
     setIsSubscriptionModalOpen(true);
   };
@@ -257,7 +251,6 @@ export default function SubscriptionPlans() {
       if (editingSub) {
         await updateUserSubscription(editingSub.id, {
           planId: subForm.planId,
-          status: subForm.status,
           autoRenew: subForm.autoRenew,
           paymentMethod: subForm.paymentMethod,
         });
@@ -305,13 +298,6 @@ export default function SubscriptionPlans() {
       currency: "UZS",
       maximumFractionDigits: 0,
     }).format(amount);
-  };
-
-  const formatDate = (iso?: string) => {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    if (isNaN(d.getTime()) || d.getFullYear() < 2000) return "—";
-    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   };
 
   if (loading) {
@@ -535,26 +521,19 @@ export default function SubscriptionPlans() {
                 <tbody>
                   {filteredSubscriptions.map((sub) => (
                     <tr key={sub.id} className="border-b hover:bg-muted/30">
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="font-medium text-foreground text-sm">
-                            {sub.userFullName || "—"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {sub.userEmail}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="text-sm text-foreground font-medium">
-                            {sub.planName || "—"}
-                          </p>
-                          <p className="text-xs text-muted-foreground capitalize">
-                            {sub.billingPeriod}
-                          </p>
-                        </div>
-                      </td>
+                       <td className="px-4 py-3">
+                         <div>
+                           <p className="font-medium text-foreground font-mono text-xs">
+                             {sub.userId.slice(0, 8)}...
+                           </p>
+                           <p className="text-sm text-muted-foreground">
+                             User ID
+                           </p>
+                         </div>
+                       </td>
+                       <td className="px-4 py-3 text-foreground font-mono text-xs">
+                         {sub.planId.slice(0, 8)}...
+                       </td>
                       <td className="px-4 py-3">
                         <span
                           className={cn(
@@ -570,10 +549,10 @@ export default function SubscriptionPlans() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-foreground text-sm">
-                        {formatDate(sub.startDate)}
+                        {sub.startDate}
                       </td>
                       <td className="px-4 py-3 text-foreground text-sm">
-                        {formatDate(sub.renewalDate)}
+                        {sub.renewalDate || "—"}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <DropdownMenu>
@@ -736,27 +715,6 @@ export default function SubscriptionPlans() {
                 />
               </div>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select
-                value={planForm.status}
-                onValueChange={(val) =>
-                  setPlanForm({
-                    ...planForm,
-                    status: val as "active" | "inactive",
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
           </div>
 
           <DialogFooter>
@@ -878,29 +836,6 @@ export default function SubscriptionPlans() {
             </div>
 
             <div className="space-y-2">
-              <Label>Status</Label>
-              <Select
-                value={subForm.status}
-                onValueChange={(val) =>
-                  setSubForm({ ...subForm, status: val })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="trial">Trial</SelectItem>
-                  <SelectItem value="paused">Paused</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                  <SelectItem value="expired">Expired</SelectItem>
-                  <SelectItem value="pending_payment">Pending Payment</SelectItem>
-                  <SelectItem value="past_due">Past Due</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="payment">Payment Method</Label>
               <Select
                 value={subForm.paymentMethod}
@@ -912,9 +847,9 @@ export default function SubscriptionPlans() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="click">Click.uz</SelectItem>
-                  <SelectItem value="telegram">Telegram</SelectItem>
-                  <SelectItem value="manual">Bank Transfer</SelectItem>
+                  <SelectItem value="credit_card">Credit Card</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="paypal">PayPal</SelectItem>
                 </SelectContent>
               </Select>
             </div>
