@@ -351,6 +351,7 @@ func main() {
 	handlers.RegisterReportRoutes(legacyProtected, reportService, userService, branchService)
 	handlers.RegisterNotificationRoutes(legacyProtected, notificationService)
 	handlers.RegisterAuditRoutes(legacyProtected, database)
+	handlers.RegisterJobRoutes(legacyProtected, jobQueue)
 	handlers.RegisterBranchRoutes(legacyProtected, branchService, userService, subscriptionService)
 	handlers.RegisterSettingsRoutes(legacyProtected, branchService, userService)
 
