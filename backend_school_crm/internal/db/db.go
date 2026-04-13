@@ -149,6 +149,9 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		"developers",
 		"logs",
 		"branch_managers",
+		"notifications",
+		"audit_logs",
+		"expense_budgets",
 	}
 
 	missingTables, err := db.getMissingTables(ctx, requiredTables)

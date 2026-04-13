@@ -1545,6 +1545,173 @@ export async function getDashboardData(
 }
 
 // ============================================================================
+// NOTIFICATIONS ENDPOINTS
+// ============================================================================
+
+export interface AppNotification {
+  id: string;
+  branchId: string;
+  title: string;
+  message: string;
+  type: "payment" | "student" | "system";
+  resourceType?: string;
+  resourceId?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export async function getNotifications(limit = 20): Promise<AppNotification[]> {
+  return apiRequest<AppNotification[]>(`/notifications?limit=${limit}`);
+}
+
+export async function getUnreadCount(): Promise<number> {
+  const data = await apiRequest<{ count: number }>("/notifications/count");
+  return data.count;
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  return apiRequest(`/notifications/${id}/read`, { method: "PUT" });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  return apiRequest("/notifications/read-all", { method: "PUT" });
+}
+
+// ============================================================================
+// AUDIT LOG ENDPOINTS
+// ============================================================================
+
+export interface AuditLogEntry {
+  id: string;
+  branchId: string | null;
+  userId: string | null;
+  userName: string;
+  action: "create" | "update" | "delete";
+  resource: string;
+  resourceId: string | null;
+  description: string;
+  createdAt: string;
+}
+
+export interface AuditLogResponse {
+  data: AuditLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export async function getAuditLogs(params: {
+  resource?: string;
+  userId?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}): Promise<AuditLogResponse> {
+  const q = new URLSearchParams();
+  if (params.resource) q.set("resource", params.resource);
+  if (params.userId) q.set("userId", params.userId);
+  if (params.from) q.set("from", params.from);
+  if (params.to) q.set("to", params.to);
+  if (params.page) q.set("page", String(params.page));
+  if (params.limit) q.set("limit", String(params.limit));
+  return apiRequest<AuditLogResponse>(`/audit-logs?${q.toString()}`);
+}
+
+// ============================================================================
+// FORECAST ENDPOINTS
+// ============================================================================
+
+export interface MonthlyForecastPoint {
+  label: string;
+  expectedIncome: number;
+  actualIncome: number;
+  actualExpenses: number;
+}
+
+export interface ForecastData {
+  expectedMonthlyIncome: number;
+  activeStudentCount: number;
+  avgMonthlyPayment: number;
+  actualIncomeThisMonth: number;
+  totalExpensesThisMonth: number;
+  projectedSalaryCosts: number;
+  breakEvenRate: number;
+  isBreakingEven: boolean;
+  trend: MonthlyForecastPoint[];
+}
+
+export async function getForecastData(branchId: string, month: number, year: number): Promise<ForecastData> {
+  return apiRequest<ForecastData>(`/reports/forecast?branchId=${branchId}&month=${month}&year=${year}`);
+}
+
+export interface BranchAnalyticsItem {
+  branchId: string;
+  branchName: string;
+  activeStudents: number;
+  revenue: number;
+  collectionRate: number;
+  teacherCount: number;
+}
+
+export interface BranchesOverview {
+  month: number;
+  year: number;
+  branches: BranchAnalyticsItem[];
+  topBranchId: string;
+  topBranchName: string;
+  totalRevenue: number;
+  totalStudents: number;
+}
+
+export async function getBranchesOverview(month: number, year: number): Promise<BranchesOverview> {
+  return apiRequest<BranchesOverview>(`/reports/branches-overview?month=${month}&year=${year}`);
+}
+
+// ============================================================================
+// EXPENSE BUDGETS ENDPOINTS
+// ============================================================================
+
+export interface BudgetWithActual {
+  id: string;
+  branchId: string;
+  category: string;
+  month: string;
+  year: number;
+  amount: number;
+  actual: number;
+  usedPct: number;
+  isExceeded: boolean;
+  isNearLimit: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getExpenseBudgets(branchId: string, month: string, year: number): Promise<BudgetWithActual[]> {
+  return apiRequest<BudgetWithActual[]>(`/expense-budgets?branchId=${branchId}&month=${month}&year=${year}`);
+}
+
+export async function upsertExpenseBudget(data: {
+  branchId: string;
+  category: string;
+  month: string;
+  year: number;
+  amount: number;
+}): Promise<BudgetWithActual> {
+  return apiRequest<BudgetWithActual>("/expense-budgets", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteExpenseBudget(branchId: string, category: string, month: string, year: number): Promise<void> {
+  return apiRequest<void>(`/expense-budgets?branchId=${branchId}&category=${encodeURIComponent(category)}&month=${month}&year=${year}`, {
+    method: "DELETE",
+  });
+}
+
+// ============================================================================
 // SETTINGS ENDPOINTS
 // ============================================================================
 

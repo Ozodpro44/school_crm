@@ -10,12 +10,12 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterStudentRoutes(router *gin.RouterGroup, studentService *service.StudentService, userService *service.UserService, financeService *service.FinanceService) {
+func RegisterStudentRoutes(router *gin.RouterGroup, studentService *service.StudentService, userService *service.UserService, financeService *service.FinanceService, notifService *service.NotificationService) {
 	students := router.Group("/students")
 	students.POST("", middleware.PermissionChecker(userService, "canCreateStudents"), createStudent(studentService))
 	students.GET("/:id", middleware.PermissionChecker(userService, "canViewStudents"), getStudent(studentService))
 	students.GET("", middleware.PermissionChecker(userService, "canViewStudents"), listStudents(studentService))
-	students.PUT("/:id", middleware.PermissionChecker(userService, "canEditStudents"), updateStudent(studentService))
+	students.PUT("/:id", middleware.PermissionChecker(userService, "canEditStudents"), updateStudent(studentService, notifService))
 	students.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteStudents"), deleteStudent(studentService))
 	students.GET("/consolidated/data", middleware.PermissionChecker(userService, "canViewStudents"), getStudentsConsolidatedData(studentService))
 	students.GET("/search/with-payments", middleware.PermissionChecker(userService, "canViewStudents"), searchStudentsWithPayments(financeService))
@@ -96,7 +96,7 @@ func listStudents(studentService *service.StudentService) gin.HandlerFunc {
 	}
 }
 
-func updateStudent(studentService *service.StudentService) gin.HandlerFunc {
+func updateStudent(studentService *service.StudentService, notifService *service.NotificationService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
 
@@ -111,6 +111,18 @@ func updateStudent(studentService *service.StudentService) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
+		// Notify when a student is marked as left/inactive
+		if notifService != nil {
+			if newStatus, ok := updates["status"].(string); ok &&
+				(newStatus == "inactive" || newStatus == "left" || newStatus == "suspended") {
+				_ = notifService.Create(c.Request.Context(), student.BranchID,
+					"Student left",
+					student.FullName+" has been marked as "+newStatus,
+					service.NotifTypeStudent, "student", student.ID)
+			}
+		}
+
 		c.JSON(http.StatusOK, student)
 	}
 }

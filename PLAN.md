@@ -176,7 +176,7 @@ Now I have the full picture. Let me compile the plan.
   - Salary payout %: how much of salary budget has been paid
 
   ---
-  2.2 Notifications System 🔴
+  2.2 Notifications System ✅ DONE
 
   No notification system exists. Add:
   - In-app notifications — bell icon in sidebar, notification center
@@ -190,7 +190,7 @@ Now I have the full picture. Let me compile the plan.
   payment/student events.
 
   ---
-  2.3 Audit Log UI 🟠
+  2.3 Audit Log UI ✅ DONE
 
   logs table exists in the database but there is no UI for it. Add /audit-log page showing:
   - Who did what and when (create/update/delete)
@@ -198,7 +198,7 @@ Now I have the full picture. Let me compile the plan.
   - Useful for investigating disputes ("who changed this payment?")
 
   ---
-  2.4 Financial Forecasting 🟠
+  2.4 Financial Forecasting ✅ DONE
 
   On the reports page, add a "Forecast" tab:
   - Expected monthly income = active students × average monthly payment
@@ -207,7 +207,7 @@ Now I have the full picture. Let me compile the plan.
   - Projected salary costs for next month
 
   ---
-  2.5 Multi-Branch Analytics 🟠
+  2.5 Multi-Branch Analytics ✅ DONE
 
   Admin users managing multiple branches currently have to switch branches to compare them.
   Add a Cross-Branch Overview page:
@@ -217,7 +217,7 @@ Now I have the full picture. Let me compile the plan.
   - Top performing branch highlight
 
   ---
-  2.6 Expense Categories Budget 🟡
+  2.6 Expense Categories Budget ✅ DONE
 
   Current expenses track amount + category but no budgeting. Add:
   - Monthly budget per category (e.g., Rent: $2,000/month)
@@ -225,7 +225,7 @@ Now I have the full picture. Let me compile the plan.
   - Alert when a category exceeds 90% of budget
 
   ---
-  2.7 Printable / Exportable Reports 🟡
+  2.7 Printable / Exportable Reports ✅ DONE
 
   The report download exists but is limited. Add:
   - PDF export for payment history, salary summary, debtor list

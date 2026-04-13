@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -11,13 +12,13 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.PaymentService, branchService *service.BranchService, userService *service.UserService, financeService *service.FinanceService) {
+func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.PaymentService, branchService *service.BranchService, userService *service.UserService, financeService *service.FinanceService, notifService *service.NotificationService) {
 	payments := router.Group("/payments")
-	payments.POST("", middleware.PermissionChecker(userService, "canCreatePayments"), createPayment(paymentService))
+	payments.POST("", middleware.PermissionChecker(userService, "canCreatePayments"), createPayment(paymentService, notifService))
 	payments.GET("/:id", middleware.PermissionChecker(userService, "canViewPayments"), getPayment(paymentService))
 	payments.GET("", middleware.PermissionChecker(userService, "canViewPayments"), listPayments(paymentService, branchService, userService))
 	payments.GET("/consolidated/data", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentsConsolidatedData(paymentService, branchService, userService, financeService))
-	payments.PUT("/:id", middleware.PermissionChecker(userService, "canEditPayments"), updatePayment(paymentService, userService))
+	payments.PUT("/:id", middleware.PermissionChecker(userService, "canEditPayments"), updatePayment(paymentService, userService, notifService))
 	payments.DELETE("/:id", middleware.PermissionChecker(userService, "canEditPayments"), deletePayment(paymentService, branchService, userService))
 	payments.GET("/branch/:branchId/summary", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentSummary(paymentService, branchService))
 	payments.GET("/payments/:branchId/indicators", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentIndicators(paymentService))
@@ -26,7 +27,7 @@ func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.Paym
 	payments.GET("/search/students", middleware.PermissionChecker(userService, "canViewPayments"), searchStudentsWithPaymentStatus(financeService))
 }
 
-func createPayment(paymentService *service.PaymentService) gin.HandlerFunc {
+func createPayment(paymentService *service.PaymentService, notifService *service.NotificationService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := middleware.GetUserID(c)
 		if err != nil {
@@ -49,6 +50,15 @@ func createPayment(paymentService *service.PaymentService) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
+		// Fire notification (non-blocking, failure is silently ignored)
+		if notifService != nil {
+			msg := formatPaymentNotifMsg(payment.Amount, payment.Month, payment.Year, string(payment.Status))
+			_ = notifService.Create(c.Request.Context(), req.BranchID,
+				"Payment recorded", msg,
+				service.NotifTypePayment, "payment", payment.ID)
+		}
+
 		c.JSON(http.StatusCreated, payment)
 	}
 }
@@ -130,7 +140,7 @@ func listPayments(paymentService *service.PaymentService, branchService *service
 	}
 }
 
-func updatePayment(paymentService *service.PaymentService, userService *service.UserService) gin.HandlerFunc {
+func updatePayment(paymentService *service.PaymentService, userService *service.UserService, notifService *service.NotificationService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
 
@@ -152,8 +162,30 @@ func updatePayment(paymentService *service.PaymentService, userService *service.
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
+		// Notify when payment is confirmed as paid
+		if notifService != nil {
+			if newStatus, ok := updates["status"].(string); ok && newStatus == "paid" {
+				msg := formatPaymentNotifMsg(payment.Amount, payment.Month, payment.Year, "paid")
+				_ = notifService.Create(c.Request.Context(), payment.BranchID,
+					"Payment confirmed", msg,
+					service.NotifTypePayment, "payment", payment.ID)
+			}
+		}
+
 		c.JSON(http.StatusOK, payment)
 	}
+}
+
+// formatPaymentNotifMsg builds a human-readable notification message for a payment event.
+func formatPaymentNotifMsg(amount float64, month string, year int, status string) string {
+	statusLabel := "recorded"
+	if status == "paid" {
+		statusLabel = "confirmed as paid"
+	} else if status == "partial" {
+		statusLabel = "partial payment recorded"
+	}
+	return fmt.Sprintf("Payment of %.0f for %s/%d %s", amount, month, year, statusLabel)
 }
 
 func deletePayment(paymentService *service.PaymentService, branchService *service.BranchService, userService *service.UserService) gin.HandlerFunc {

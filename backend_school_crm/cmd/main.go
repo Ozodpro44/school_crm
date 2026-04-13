@@ -116,9 +116,11 @@ func main() {
 	}
 	salaryService := service.NewSalaryService(database, branchService)
 	expenseService := service.NewExpenseService(database, branchService)
+	budgetService := service.NewBudgetService(database)
 	reportService := service.NewReportService(database)
 	financeService := service.NewFinanceService(branchService, paymentService, studentService, classService)
 	paymentTypeService := service.NewPaymentTypeService(database)
+	notificationService := service.NewNotificationService(database)
 	developerService := service.NewDeveloperService(database)
 
 	// Initialize Click.uz service (requires environment variables)
@@ -156,7 +158,8 @@ func main() {
 	router.Use(middleware.StructuredLogger(logger))
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandling())
-	router.Use(handlers.SafeRequestLogger(database)) // persist 4xx/5xx to DB logs table
+	router.Use(handlers.SafeRequestLogger(database))  // persist 4xx/5xx to DB logs table
+	router.Use(middleware.AuditMiddleware(database))   // persist CRUD operations to audit_logs
 
 	// healthHandler returns real system stats
 	healthHandler := func(c *gin.Context) {
@@ -261,10 +264,10 @@ func main() {
 	handlers.RegisterUserRoutes(protected, userService)
 
 	// Students
-	handlers.RegisterStudentRoutes(protected, studentService, userService, financeService)
+	handlers.RegisterStudentRoutes(protected, studentService, userService, financeService, notificationService)
 
 	// Payments
-	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService, financeService)
+	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService, financeService, notificationService)
 
 	// Classes
 	handlers.RegisterClassRoutes(protected, classService, userService, subscriptionService)
@@ -280,9 +283,16 @@ func main() {
 
 	// Expenses
 	handlers.RegisterExpenseRoutes(protected, expenseService, branchService, userService)
+	handlers.RegisterBudgetRoutes(protected, budgetService, userService)
 
 	// Reports
-	handlers.RegisterReportRoutes(protected, reportService, userService)
+	handlers.RegisterReportRoutes(protected, reportService, userService, branchService)
+
+	// Notifications
+	handlers.RegisterNotificationRoutes(protected, notificationService)
+
+	// Audit logs
+	handlers.RegisterAuditRoutes(protected, database)
 
 	// Background jobs (async report generation)
 	handlers.RegisterJobRoutes(protected, jobQueue)

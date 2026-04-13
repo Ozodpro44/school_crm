@@ -955,3 +955,254 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 		TopDebtors:          topDebtors,
 	}, nil
 }
+
+// MonthlyForecastPoint holds expected vs actual figures for a single month.
+type MonthlyForecastPoint struct {
+	Label          string  `json:"label"`
+	ExpectedIncome float64 `json:"expectedIncome"`
+	ActualIncome   float64 `json:"actualIncome"`
+	ActualExpenses float64 `json:"actualExpenses"`
+}
+
+// ForecastData is returned by GetForecastData.
+type ForecastData struct {
+	// Current expected monthly income (active students × their monthly payment)
+	ExpectedMonthlyIncome float64 `json:"expectedMonthlyIncome"`
+	ActiveStudentCount    int     `json:"activeStudentCount"`
+	AvgMonthlyPayment     float64 `json:"avgMonthlyPayment"`
+	// This month's actuals (calendar month of the request)
+	ActualIncomeThisMonth  float64 `json:"actualIncomeThisMonth"`
+	TotalExpensesThisMonth float64 `json:"totalExpensesThisMonth"`
+	// Projected salary costs = sum of monthly_salary of active teachers
+	ProjectedSalaryCosts float64 `json:"projectedSalaryCosts"`
+	// Break-even rate = totalExpenses / expectedMonthlyIncome * 100
+	BreakEvenRate  float64 `json:"breakEvenRate"`
+	IsBreakingEven bool    `json:"isBreakingEven"`
+	// 6-month trend (oldest first)
+	Trend []MonthlyForecastPoint `json:"trend"`
+}
+
+// GetForecastData computes financial forecast figures for the given branch.
+// month and year define the "current" month for this-month actuals.
+func (s *ReportService) GetForecastData(ctx context.Context, branchID string, month, year int) (*ForecastData, error) {
+	// ── Expected income: sum of monthly_payment for all active students ───────
+	var expectedIncome sql.NullFloat64
+	var activeCount int
+	err := s.db.GetConn().QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(monthly_payment), 0), COUNT(*)
+		FROM students
+		WHERE branch_id = $1 AND status = 'active'
+	`, branchID).Scan(&expectedIncome, &activeCount)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	avgPayment := 0.0
+	if activeCount > 0 {
+		avgPayment = expectedIncome.Float64 / float64(activeCount)
+	}
+
+	// ── Projected salary costs: sum of monthly_salary for all active teachers ─
+	var projectedSalary sql.NullFloat64
+	err = s.db.GetConn().QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(monthly_salary), 0)
+		FROM teachers
+		WHERE branch_id = $1 AND status = 'active'
+	`, branchID).Scan(&projectedSalary)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	// ── This month actuals ────────────────────────────────────────────────────
+	thisMonthStr := fmt.Sprintf("%02d", month)
+
+	var actualIncome sql.NullFloat64
+	err = s.db.GetConn().QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM payments
+		WHERE branch_id = $1 AND month = $2 AND year = $3
+			AND status IN ('paid', 'partial')
+	`, branchID, thisMonthStr, year).Scan(&actualIncome)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	var actualExpenses sql.NullFloat64
+	err = s.db.GetConn().QueryRowContext(ctx, `
+		SELECT
+			COALESCE((SELECT SUM(amount) FROM salaries
+			           WHERE branch_id = $1 AND month = $2 AND year = $3 AND status = 'paid'), 0) +
+			COALESCE((SELECT SUM(amount) FROM expenses
+			           WHERE branch_id = $1
+			             AND LPAD(EXTRACT(MONTH FROM date)::text, 2, '0') = $2
+			             AND EXTRACT(YEAR FROM date)::int = $3), 0)
+	`, branchID, thisMonthStr, year).Scan(&actualExpenses)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	// ── Break-even ────────────────────────────────────────────────────────────
+	breakEvenRate := 0.0
+	if expectedIncome.Float64 > 0 {
+		breakEvenRate = (actualExpenses.Float64 / expectedIncome.Float64) * 100
+	}
+
+	// ── 6-month trend ─────────────────────────────────────────────────────────
+	trend := make([]MonthlyForecastPoint, 0, 6)
+	for i := 5; i >= 0; i-- {
+		m := month - i
+		y := year
+		for m <= 0 {
+			m += 12
+			y--
+		}
+		mStr := fmt.Sprintf("%02d", m)
+		label := fmt.Sprintf("%02d/%d", m, y)
+
+		// Expected at that time: use current student base as a proxy (no historical snapshot)
+		exp := expectedIncome.Float64
+
+		var actIncome, actExp sql.NullFloat64
+		_ = s.db.GetConn().QueryRowContext(ctx, `
+			SELECT COALESCE(SUM(amount), 0)
+			FROM payments
+			WHERE branch_id = $1 AND month = $2 AND year = $3
+				AND status IN ('paid', 'partial')
+		`, branchID, mStr, y).Scan(&actIncome)
+
+		_ = s.db.GetConn().QueryRowContext(ctx, `
+			SELECT
+				COALESCE((SELECT SUM(amount) FROM salaries
+				           WHERE branch_id = $1 AND month = $2 AND year = $3 AND status = 'paid'), 0) +
+				COALESCE((SELECT SUM(amount) FROM expenses
+				           WHERE branch_id = $1
+				             AND LPAD(EXTRACT(MONTH FROM date)::text, 2, '0') = $2
+				             AND EXTRACT(YEAR FROM date)::int = $3), 0)
+		`, branchID, mStr, y).Scan(&actExp)
+
+		trend = append(trend, MonthlyForecastPoint{
+			Label:          label,
+			ExpectedIncome: exp,
+			ActualIncome:   actIncome.Float64,
+			ActualExpenses: actExp.Float64,
+		})
+	}
+
+	return &ForecastData{
+		ExpectedMonthlyIncome:  expectedIncome.Float64,
+		ActiveStudentCount:     activeCount,
+		AvgMonthlyPayment:      avgPayment,
+		ActualIncomeThisMonth:  actualIncome.Float64,
+		TotalExpensesThisMonth: actualExpenses.Float64,
+		ProjectedSalaryCosts:   projectedSalary.Float64,
+		BreakEvenRate:          breakEvenRate,
+		IsBreakingEven:         actualIncome.Float64 >= actualExpenses.Float64,
+		Trend:                  trend,
+	}, nil
+}
+
+// BranchAnalyticsItem holds cross-branch analytics for one branch.
+type BranchAnalyticsItem struct {
+	BranchID       string  `json:"branchId"`
+	BranchName     string  `json:"branchName"`
+	ActiveStudents int     `json:"activeStudents"`
+	Revenue        float64 `json:"revenue"`        // paid payments this month
+	CollectionRate float64 `json:"collectionRate"` // 0-100
+	TeacherCount   int     `json:"teacherCount"`
+}
+
+// BranchesOverview is returned by GetBranchesOverview.
+type BranchesOverview struct {
+	Month          int                   `json:"month"`
+	Year           int                   `json:"year"`
+	Branches       []BranchAnalyticsItem `json:"branches"`
+	TopBranchID    string                `json:"topBranchId"`
+	TopBranchName  string                `json:"topBranchName"`
+	TotalRevenue   float64               `json:"totalRevenue"`
+	TotalStudents  int                   `json:"totalStudents"`
+}
+
+// GetBranchesOverview computes cross-branch analytics for all provided branch IDs.
+func (s *ReportService) GetBranchesOverview(ctx context.Context, branchIDs []string, month, year int) (*BranchesOverview, error) {
+	if len(branchIDs) == 0 {
+		return &BranchesOverview{Month: month, Year: year, Branches: []BranchAnalyticsItem{}}, nil
+	}
+
+	monthStr := fmt.Sprintf("%02d", month)
+	items := make([]BranchAnalyticsItem, 0, len(branchIDs))
+	var totalRevenue float64
+	var totalStudents int
+	topIdx := -1
+	topRevenue := -1.0
+
+	for i, bid := range branchIDs {
+		var item BranchAnalyticsItem
+		item.BranchID = bid
+
+		// Branch name
+		_ = s.db.GetConn().QueryRowContext(ctx, `SELECT name FROM branches WHERE id = $1`, bid).
+			Scan(&item.BranchName)
+
+		// Active students
+		_ = s.db.GetConn().QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM students WHERE branch_id = $1 AND status = 'active'`, bid).
+			Scan(&item.ActiveStudents)
+
+		// Teacher count
+		_ = s.db.GetConn().QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM teachers WHERE branch_id = $1 AND status = 'active'`, bid).
+			Scan(&item.TeacherCount)
+
+		// Revenue (paid/partial payments this month)
+		var revenue sql.NullFloat64
+		_ = s.db.GetConn().QueryRowContext(ctx,
+			`SELECT COALESCE(SUM(amount), 0) FROM payments
+			 WHERE branch_id = $1 AND month = $2 AND year = $3
+			   AND status IN ('paid', 'partial')`,
+			bid, monthStr, year).Scan(&revenue)
+		item.Revenue = revenue.Float64
+
+		// Collection rate
+		var paid, expected sql.NullFloat64
+		_ = s.db.GetConn().QueryRowContext(ctx, `
+			SELECT
+				COALESCE(SUM(p.amount), 0)           AS paid,
+				COALESCE(SUM(s.monthly_payment), 0)  AS expected
+			FROM students s
+			LEFT JOIN payments p ON p.student_id = s.id
+				AND p.month = $2 AND p.year = $3
+				AND p.status IN ('paid', 'partial')
+			WHERE s.branch_id = $1 AND s.status = 'active'
+		`, bid, monthStr, year).Scan(&paid, &expected)
+
+		if expected.Float64 > 0 {
+			rate := (paid.Float64 / expected.Float64) * 100
+			if rate > 100 {
+				rate = 100
+			}
+			item.CollectionRate = rate
+		}
+
+		totalRevenue += item.Revenue
+		totalStudents += item.ActiveStudents
+		if item.Revenue > topRevenue {
+			topRevenue = item.Revenue
+			topIdx = i
+		}
+
+		items = append(items, item)
+	}
+
+	overview := &BranchesOverview{
+		Month:         month,
+		Year:          year,
+		Branches:      items,
+		TotalRevenue:  totalRevenue,
+		TotalStudents: totalStudents,
+	}
+	if topIdx >= 0 {
+		overview.TopBranchID = items[topIdx].BranchID
+		overview.TopBranchName = items[topIdx].BranchName
+	}
+	return overview, nil
+}

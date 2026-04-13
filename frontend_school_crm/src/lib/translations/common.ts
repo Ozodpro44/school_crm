@@ -1079,6 +1079,14 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Jami xarajatlar",
     en: "Total Expenses",
   },
+  // Audit log translations (2.3)
+  auditLog: { "uz-cyrl": "Аудит журнали", "uz-latn": "Audit jurnali", en: "Audit Log" },
+  auditLogDesc: {
+    "uz-cyrl": "Филиалдаги ким нима қилганини кузатинг",
+    "uz-latn": "Filialdagi kim nima qilganini kuzating",
+    en: "Track who did what and when across your branch",
+  },
+
   // KPI translations (2.1)
   collectionRate: { "uz-cyrl": "Йиғиш даражаси", "uz-latn": "Yig'ish darajasi", en: "Collection Rate" },
   collectionRateDesc: { "uz-cyrl": "Тўланган / Кутилган", "uz-latn": "To'langan / Kutilgan", en: "Paid / Expected" },
@@ -1091,6 +1099,56 @@ export const commonTranslations: Partial<Translation> = {
   topDebtors: { "uz-cyrl": "Асосий қарздорлар", "uz-latn": "Asosiy qarzdorlar", en: "Top Debtors" },
   outstanding: { "uz-cyrl": "Қолган қарз", "uz-latn": "Qolgan qarz", en: "Outstanding" },
   debtors: { "uz-cyrl": "Қарздорлар", "uz-latn": "Qarzdorlar", en: "Debtors" },
+
+  // Multi-branch analytics translations (2.5)
+  branchesOverview: { "uz-cyrl": "Филиаллар таҳлили", "uz-latn": "Filiallar tahlili", en: "Multi-Branch Overview" },
+  branchesOverviewDesc: { "uz-cyrl": "Барча филиалларнинг даромади, ўқувчилар сони ва тўлов кўрсаткичларини солиштиринг", "uz-latn": "Barcha filiallarning daromadi, o'quvchilar soni va to'lov ko'rsatkichlarini solishtiring", en: "Compare revenue, students, and collection rate across all your branches" },
+  totalRevenue: { "uz-cyrl": "Жами даромад", "uz-latn": "Jami daromad", en: "Total Revenue" },
+  topPerformingBranch: { "uz-cyrl": "Энг яхши филиал", "uz-latn": "Eng yaxshi filial", en: "Top Performing Branch" },
+  revenueByBranch: { "uz-cyrl": "Филиал бўйича даромад", "uz-latn": "Filial bo'yicha daromad", en: "Revenue by Branch" },
+  branchComparison: { "uz-cyrl": "Филиаллар таққослаш", "uz-latn": "Filiallar taqqoslash", en: "Branch Comparison" },
+  studentCountByBranch: { "uz-cyrl": "Филиал бўйича ўқувчилар", "uz-latn": "Filial bo'yicha o'quvchilar", en: "Active Students by Branch" },
+  revenue: { "uz-cyrl": "Даромад", "uz-latn": "Daromad", en: "Revenue" },
+
+  // Printable / exportable reports translations (2.7)
+  downloadCSV:    { "uz-cyrl": "CSV юклаш", "uz-latn": "CSV yuklash", en: "Download CSV" },
+  downloadExcel:  { "uz-cyrl": "Excel юклаш", "uz-latn": "Excel yuklash", en: "Download Excel CSV" },
+  excel:          { "uz-cyrl": "Excel", "uz-latn": "Excel", en: "Excel" },
+  exportPDF:      { "uz-cyrl": "PDF экспорт", "uz-latn": "PDF eksport", en: "Export PDF" },
+  printPDF:       { "uz-cyrl": "Чоп этиш / PDF", "uz-latn": "Chop etish / PDF", en: "Print / PDF" },
+
+  // Expense budget translations (2.6)
+  budgetVsActual: { "uz-cyrl": "Бюджет / Реал харажат", "uz-latn": "Byudjet / Real xarajat", en: "Budget vs Actual" },
+  setBudget: { "uz-cyrl": "Бюджет белгилаш", "uz-latn": "Byudjet belgilash", en: "Set Budget" },
+  noBudgetsSet: { "uz-cyrl": "Бу давр учун бюджет белгиланмаган. \"Бюджет белгилаш\" тугмасини босинг.", "uz-latn": "Bu davr uchun byudjet belgilanmagan. \"Byudjet belgilash\" tugmasini bosing.", en: "No budgets set for this period. Click \"Set Budget\" to add one." },
+  budgetNearLimit: { "uz-cyrl": "Бюджет чегарасига яқинлашяпти", "uz-latn": "Byudjet chegarasiga yaqinlashyapti", en: "Approaching budget limit" },
+  budgetExceeded: { "uz-cyrl": "Бюджет ошиб кетди", "uz-latn": "Byudjet oshib ketdi", en: "Budget exceeded" },
+  budgetAmount: { "uz-cyrl": "Бюджет миқдори", "uz-latn": "Byudjet miqdori", en: "Budget Amount" },
+  currentBudget: { "uz-cyrl": "Жорий бюджет", "uz-latn": "Joriy byudjet", en: "Current budget" },
+  budgetSaved: { "uz-cyrl": "Бюджет сақланди", "uz-latn": "Byudjet saqlandi", en: "Budget saved" },
+  failedToSaveBudget: { "uz-cyrl": "Бюджетни сақлаб бўлмади", "uz-latn": "Byudjetni saqlab bo'lmadi", en: "Failed to save budget" },
+  failedToDeleteBudget: { "uz-cyrl": "Бюджетни ўчириб бўлмади", "uz-latn": "Byudjetni o'chirib bo'lmadi", en: "Failed to delete budget" },
+
+  // Forecast translations (2.4)
+  financialForecast: { "uz-cyrl": "Молиявий прогноз", "uz-latn": "Moliyaviy prognoz", en: "Financial Forecast" },
+  expectedMonthlyIncome: { "uz-cyrl": "Кутилган ойлик даромад", "uz-latn": "Kutilgan oylik daromad", en: "Expected Monthly Income" },
+  actualIncomeThisMonth: { "uz-cyrl": "Реал даромад (бу ой)", "uz-latn": "Real daromad (bu oy)", en: "Actual Income (This Month)" },
+  totalExpensesThisMonth: { "uz-cyrl": "Жами харажатлар (бу ой)", "uz-latn": "Jami xarajatlar (bu oy)", en: "Total Expenses (This Month)" },
+  projectedSalaryCosts: { "uz-cyrl": "Прогноз иш ҳақи харажатлари", "uz-latn": "Prognoz ish haqqi xarajatlari", en: "Projected Salary Costs" },
+  breakEvenAnalysis: { "uz-cyrl": "Зарарсизлик таҳлили", "uz-latn": "Zararsizlik tahlili", en: "Break-Even Analysis" },
+  sixMonthTrend: { "uz-cyrl": "6 ойлик тренд", "uz-latn": "6 oylik trend", en: "6-Month Trend" },
+  expectedIncome: { "uz-cyrl": "Кутилган", "uz-latn": "Kutilgan", en: "Expected" },
+  actualIncome: { "uz-cyrl": "Реал даромад", "uz-latn": "Real daromad", en: "Actual Income" },
+  actualExpenses: { "uz-cyrl": "Реал харажатлар", "uz-latn": "Real xarajatlar", en: "Actual Expenses" },
+  profitable: { "uz-cyrl": "Фойдали", "uz-latn": "Foydali", en: "Profitable" },
+  operatingAtLoss: { "uz-cyrl": "Зарарда ишлаяпти", "uz-latn": "Zararda ishlamoqda", en: "Operating at Loss" },
+  ofExpected: { "uz-cyrl": "кутилганнинг", "uz-latn": "kutilganining", en: "of expected" },
+  expensesCoverRate: { "uz-cyrl": "Харажатлар қоплайди", "uz-latn": "Xarajatlar qoplaydi", en: "Expenses cover" },
+  ofExpectedIncome: { "uz-cyrl": "кутилган даромаднинг", "uz-latn": "kutilgan daromadning", en: "of expected income" },
+  avg: { "uz-cyrl": "ўрт.", "uz-latn": "o'rt.", en: "avg" },
+  nextMonthEstimate: { "uz-cyrl": "фаол ўқитувчилар асосида", "uz-latn": "faol o'qituvchilar asosida", en: "based on active teachers" },
+  loadingForecast: { "uz-cyrl": "Прогноз маълумотлари юкланмоқда…", "uz-latn": "Prognoz ma'lumotlari yuklanmoqda…", en: "Loading forecast data…" },
+
   daily: { "uz-cyrl": "Кунлик", "uz-latn": "Kunlik", en: "Daily" },
   monthly: { "uz-cyrl": "Ойлик", "uz-latn": "Oylik", en: "Monthly" },
   dailyFourteenDays: {
