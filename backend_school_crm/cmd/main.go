@@ -316,6 +316,44 @@ func main() {
 	// Developer-only test payment endpoint (behind DevAuth)
 	handlers.RegisterClickUzDevRoutes(devProtected, clickUzService)
 
+	// ── Backward-compatible /api/ aliases (clients not yet on /api/v1/) ──────────
+	// Auth
+	router.POST("/api/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret))
+	router.POST("/api/auth/register", authRateLimit, handlers.Register(userService, cfg.JWTSecret))
+	router.POST("/api/auth/forgot-password", authRateLimit, handlers.ForgotPassword(userService))
+	router.POST("/api/auth/verify-otp", authRateLimit, handlers.VerifyOTP(userService))
+	router.POST("/api/auth/resend-otp", authRateLimit, handlers.ResendOTP(userService))
+	router.POST("/api/auth/reset-password", authRateLimit, handlers.ResetPassword(userService))
+
+	// Dev protected (old prefix)
+	legacyDevProtected := router.Group("/api")
+	legacyDevProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret))
+	handlers.RegisterDevLogsRoutes(legacyDevProtected, database)
+	handlers.RegisterDevCRMRoutes(legacyDevProtected, userService, branchService)
+
+	// All other protected routes under /api (old prefix)
+	legacyProtected := router.Group("/api")
+	legacyProtected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	legacyProtected.Use(middleware.SubscriptionGate(userService, subscriptionService))
+	legacyProtected.Use(middleware.TenantBranchMiddleware(userService))
+	legacyProtected.Use(middleware.RequestTimeout(30 * time.Second))
+	if rateLimiter != nil {
+		legacyProtected.Use(rateLimiter.ByUser(300, time.Minute))
+	}
+	handlers.RegisterUserRoutes(legacyProtected, userService)
+	handlers.RegisterStudentRoutes(legacyProtected, studentService, userService, financeService, notificationService)
+	handlers.RegisterPaymentRoutes(legacyProtected, paymentService, branchService, userService, financeService, notificationService)
+	handlers.RegisterClassRoutes(legacyProtected, classService, userService, subscriptionService)
+	handlers.RegisterTeacherRoutes(legacyProtected, teacherService, userService)
+	handlers.RegisterSalaryRoutes(legacyProtected, salaryService, branchService, userService)
+	handlers.RegisterExpenseRoutes(legacyProtected, expenseService, branchService, userService)
+	handlers.RegisterBudgetRoutes(legacyProtected, budgetService, userService)
+	handlers.RegisterReportRoutes(legacyProtected, reportService, userService, branchService)
+	handlers.RegisterNotificationRoutes(legacyProtected, notificationService)
+	handlers.RegisterAuditRoutes(legacyProtected, database)
+	handlers.RegisterBranchRoutes(legacyProtected, branchService, userService, subscriptionService)
+	handlers.RegisterSettingsRoutes(legacyProtected, branchService, userService)
+
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Starting server on %s", addr)
