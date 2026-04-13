@@ -210,6 +210,7 @@ func main() {
 
 	// Public subscription plans
 	router.GET("/api/v1/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
+	router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService)) // legacy alias
 
 	// Public: active payment types (used by billing UI)
 	publicApi := router.Group("/api/v1")
