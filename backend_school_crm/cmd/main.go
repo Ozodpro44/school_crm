@@ -123,6 +123,8 @@ func main() {
 	notificationService := service.NewNotificationService(database)
 	developerService := service.NewDeveloperService(database)
 	attendanceService := service.NewAttendanceService(database)
+	studentNotesService := service.NewStudentNotesService(database)
+	teacherPortalService := service.NewTeacherPortalService(database, teacherService)
 
 	// Initialize Click.uz service (requires environment variables)
 	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
@@ -309,6 +311,12 @@ func main() {
 	// Attendance
 	handlers.RegisterAttendanceRoutes(protected, attendanceService, userService)
 
+	// Student notes, contact log, and per-student attendance
+	handlers.RegisterStudentNotesRoutes(protected, studentNotesService, attendanceService, userService)
+
+	// Teacher portal
+	handlers.RegisterTeacherPortalRoutes(protected, teacherPortalService, userService)
+
 	// Payment initiation routes — placed on authOnly so expired/trial users can still pay
 	handlers.RegisterClickUzRoutes(authOnly, clickUzService, subscriptionService)
 	handlers.RegisterTelegramPaymentRoutes(authOnly, telegramPaymentService, subscriptionService)
@@ -384,6 +392,8 @@ func main() {
 	handlers.RegisterBranchRoutes(legacyProtected, branchService, userService, subscriptionService)
 	handlers.RegisterSettingsRoutes(legacyProtected, branchService, userService)
 	handlers.RegisterAttendanceRoutes(legacyProtected, attendanceService, userService)
+	handlers.RegisterStudentNotesRoutes(legacyProtected, studentNotesService, attendanceService, userService)
+	handlers.RegisterTeacherPortalRoutes(legacyProtected, teacherPortalService, userService)
 
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)

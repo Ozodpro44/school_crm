@@ -25,6 +25,7 @@ func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.Paym
 	payments.GET("/student/:studentId/history", middleware.PermissionChecker(userService, "canViewPayments"), getStudentPaymentHistory(paymentService, userService))
 	payments.GET("/status/:studentId", middleware.PermissionChecker(userService, "canViewPayments"), getStudentPaymentStatus(financeService))
 	payments.GET("/search/students", middleware.PermissionChecker(userService, "canViewPayments"), searchStudentsWithPaymentStatus(financeService))
+	payments.POST("/bulk", middleware.PermissionChecker(userService, "canCreatePayments"), bulkCreatePayments(paymentService, notifService))
 }
 
 func createPayment(paymentService *service.PaymentService, notifService *service.NotificationService) gin.HandlerFunc {
@@ -426,6 +427,58 @@ func getPaymentsConsolidatedData(paymentService *service.PaymentService, branchS
 			Total:      result.Total,
 			Page:       result.Page,
 			Limit:      result.Limit,
+		})
+	}
+}
+
+// bulkCreatePayments handles POST /payments/bulk.
+// Body: { branchId, paymentMethod, entries: [{studentId, amount, notes?}] }
+func bulkCreatePayments(paymentService *service.PaymentService, notifService *service.NotificationService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, err := middleware.GetUserID(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		var req struct {
+			BranchID      string                      `json:"branchId"      binding:"required"`
+			PaymentMethod string                      `json:"paymentMethod" binding:"required"`
+			Entries       []service.BulkCreateRequest `json:"entries"       binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if len(req.Entries) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "entries must not be empty"})
+			return
+		}
+
+		results := paymentService.BulkCreate(c.Request.Context(), req.BranchID, req.PaymentMethod, req.Entries, userID)
+
+		// Fire notifications for each successful payment (non-blocking)
+		if notifService != nil {
+			for _, r := range results {
+				if r.Payment != nil {
+					msg := formatPaymentNotifMsg(r.Payment.Amount, r.Payment.Month, r.Payment.Year, string(r.Payment.Status))
+					_ = notifService.Create(c.Request.Context(), req.BranchID,
+						"Payment recorded", msg,
+						service.NotifTypePayment, "payment", r.Payment.ID)
+				}
+			}
+		}
+
+		succeeded := 0
+		for _, r := range results {
+			if r.Payment != nil {
+				succeeded++
+			}
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"results":   results,
+			"succeeded": succeeded,
+			"failed":    len(results) - succeeded,
 		})
 	}
 }

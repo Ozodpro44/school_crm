@@ -112,6 +112,7 @@ export interface Teacher {
   monthlySalary: number;
   phone: string;
   email: string;
+  userId?: string;
   assignedClasses: string[];
   branchId: string;
   joinedDate?: string;

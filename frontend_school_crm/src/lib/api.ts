@@ -1736,6 +1736,205 @@ export async function updateSettings(
 }
 
 // ============================================================================
+// TEACHER PORTAL
+// ============================================================================
+
+export interface TeacherPortalClass {
+  id: string;
+  name: string;
+  branchId: string;
+  studentCount: number;
+}
+
+export interface TeacherPortalStudent {
+  id: string;
+  fullName: string;
+  phone: string;
+  classId: string;
+  className: string;
+  monthlyPayment: number;
+  paymentStatus: "paid" | "partial" | "unpaid";
+  paidAmount: number;
+}
+
+export interface TeacherPortalSalary {
+  id?: string;
+  amount: number;
+  month: string;
+  year: number;
+  status: string;
+  monthlySalary: number;
+}
+
+export interface TeacherPortalData {
+  teacher: {
+    id: string;
+    fullName: string;
+    phone: string;
+    email: string;
+    monthlySalary: number;
+    subjects: string[];
+    userId?: string;
+    branchId: string;
+    joinedDate?: string;
+  } | null;
+  classes: TeacherPortalClass[];
+  students: TeacherPortalStudent[];
+  salary: TeacherPortalSalary | null;
+}
+
+/**
+ * Get teacher portal data for the currently logged-in teacher user
+ */
+export async function getTeacherPortalData(): Promise<TeacherPortalData> {
+  return apiRequest<TeacherPortalData>("/teacher-portal/me");
+}
+
+/**
+ * Link a teacher record to a user account (admin only)
+ */
+export async function linkTeacherToUser(teacherId: string, userId: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(`/teacher-portal/me/link/${teacherId}`, {
+    method: "PUT",
+    body: JSON.stringify({ userId }),
+  });
+}
+
+// ============================================================================
+// ATTENDANCE (per-student)
+// ============================================================================
+
+export interface AttendanceRecord {
+  id: string;
+  branchId: string;
+  classId: string;
+  studentId: string;
+  date: string;
+  status: "present" | "absent" | "late";
+  note?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+  studentName?: string;
+}
+
+/**
+ * Get attendance records for a specific student, optionally filtered by year/month
+ */
+export async function getStudentAttendanceRecords(
+  studentId: string,
+  year?: number,
+  month?: number
+): Promise<AttendanceRecord[]> {
+  let query = `/students/${studentId}/attendance`;
+  const params: string[] = [];
+  if (year) params.push(`year=${year}`);
+  if (month) params.push(`month=${month}`);
+  if (params.length > 0) query += "?" + params.join("&");
+  return apiRequest<AttendanceRecord[]>(query);
+}
+
+// ============================================================================
+// STUDENT NOTES
+// ============================================================================
+
+export interface StudentNote {
+  id: string;
+  branchId: string;
+  studentId: string;
+  content: string;
+  createdBy?: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * List internal notes for a student
+ */
+export async function listStudentNotes(studentId: string, branchId: string): Promise<StudentNote[]> {
+  return apiRequest<StudentNote[]>(`/students/${studentId}/notes?branchId=${branchId}`);
+}
+
+/**
+ * Add a note for a student
+ */
+export async function addStudentNote(
+  studentId: string,
+  branchId: string,
+  content: string
+): Promise<StudentNote> {
+  return apiRequest<StudentNote>(`/students/${studentId}/notes?branchId=${branchId}`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
+/**
+ * Delete a student note
+ */
+export async function deleteStudentNote(
+  studentId: string,
+  branchId: string,
+  noteId: string
+): Promise<void> {
+  return apiRequest<void>(`/students/${studentId}/notes/${noteId}?branchId=${branchId}`, {
+    method: "DELETE",
+  });
+}
+
+// ============================================================================
+// CONTACT LOG
+// ============================================================================
+
+export interface ContactLogEntry {
+  id: string;
+  branchId: string;
+  studentId: string;
+  contactType: string;
+  outcome: string;
+  note: string;
+  contactedAt: string;
+  createdBy?: string;
+  createdByName: string;
+  createdAt: string;
+}
+
+/**
+ * List contact log entries for a student
+ */
+export async function listContactLog(studentId: string, branchId: string): Promise<ContactLogEntry[]> {
+  return apiRequest<ContactLogEntry[]>(`/students/${studentId}/contact-log?branchId=${branchId}`);
+}
+
+/**
+ * Add a contact log entry
+ */
+export async function addContactLog(
+  studentId: string,
+  branchId: string,
+  data: { contactType?: string; outcome?: string; note: string; contactedAt?: string }
+): Promise<ContactLogEntry> {
+  return apiRequest<ContactLogEntry>(`/students/${studentId}/contact-log?branchId=${branchId}`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Delete a contact log entry
+ */
+export async function deleteContactLog(
+  studentId: string,
+  branchId: string,
+  logId: string
+): Promise<void> {
+  return apiRequest<void>(`/students/${studentId}/contact-log/${logId}?branchId=${branchId}`, {
+    method: "DELETE",
+  });
+}
+
+// ============================================================================
 // HEALTH CHECK
 // ============================================================================
 

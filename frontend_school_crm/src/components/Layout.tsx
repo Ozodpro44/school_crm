@@ -43,6 +43,8 @@ import {
   Shield,
   BarChart2,
   ClipboardList,
+  Zap,
+  GraduationCap as PortalIcon,
 } from "lucide-react";
 
 import {
@@ -553,15 +555,17 @@ export function Layout({ children }: LayoutProps) {
         { name: t("students"), href: "/students", icon: Users, show: true },
         { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: true },
         { name: t("classes"), href: "/classes", icon: BookOpen, show: true },
-        { name: t("attendance") || "Attendance", href: "/attendance", icon: ClipboardList, show: true },
+        { name: t("attendance") || "Attendance", href: "/attendance", icon: ClipboardList, show: user?.role !== "teacher" },
+        { name: t("teacherPortal") || "Teacher Portal", href: "/teacher-portal", icon: PortalIcon, show: user?.role === "teacher" },
       ],
     },
     {
       title: t("finance") || "Finance",
       items: [
-        { name: t("payments"), href: "/payments", icon: DollarSign, show: true },
-        { name: t("salaries"), href: "/salaries", icon: Wallet, show: true },
-        { name: t("expenses"), href: "/expenses", icon: TrendingDown, show: true },
+        { name: t("payments"), href: "/payments", icon: DollarSign, show: user?.role !== "teacher" },
+        { name: t("quickPayment") || "Quick Pay", href: "/quick-pay", icon: Zap, show: user?.role !== "teacher" },
+        { name: t("salaries"), href: "/salaries", icon: Wallet, show: user?.role !== "teacher" },
+        { name: t("expenses"), href: "/expenses", icon: TrendingDown, show: user?.role !== "teacher" },
       ],
     },
     {

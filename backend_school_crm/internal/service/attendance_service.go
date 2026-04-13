@@ -129,6 +129,52 @@ func (s *AttendanceService) GetStudentMonthSummary(ctx context.Context, classID 
 	return summaries, rows.Err()
 }
 
+// GetByStudent returns all attendance records for a specific student,
+// optionally filtered by year and month.
+func (s *AttendanceService) GetByStudent(ctx context.Context, studentID string, year, month int) ([]models.Attendance, error) {
+	query := `
+		SELECT a.id, a.branch_id, a.class_id, a.student_id, a.date::text,
+		       a.status, a.note, a.created_by, a.created_at, a.updated_at,
+		       s.full_name
+		FROM attendance a
+		JOIN students s ON s.id = a.student_id
+		WHERE a.student_id = $1`
+	args := []interface{}{studentID}
+
+	if year > 0 {
+		args = append(args, year)
+		query += fmt.Sprintf(" AND EXTRACT(YEAR FROM a.date) = $%d", len(args))
+	}
+	if month > 0 {
+		args = append(args, month)
+		query += fmt.Sprintf(" AND EXTRACT(MONTH FROM a.date) = $%d", len(args))
+	}
+	query += " ORDER BY a.date DESC"
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []models.Attendance
+	for rows.Next() {
+		var a models.Attendance
+		if err := rows.Scan(
+			&a.ID, &a.BranchID, &a.ClassID, &a.StudentID, &a.Date,
+			&a.Status, &a.Note, &a.CreatedBy, &a.CreatedAt, &a.UpdatedAt,
+			&a.StudentName,
+		); err != nil {
+			return nil, err
+		}
+		records = append(records, a)
+	}
+	if records == nil {
+		records = []models.Attendance{}
+	}
+	return records, rows.Err()
+}
+
 // GetConsecutiveAbsences returns students with 3 or more consecutive absent days
 // in the given branch, looking at the last 14 days.
 func (s *AttendanceService) GetConsecutiveAbsences(ctx context.Context, branchID string) ([]models.AttendanceStudentSummary, error) {

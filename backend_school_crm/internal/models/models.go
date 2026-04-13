@@ -124,11 +124,52 @@ type Teacher struct {
 	MonthlySalary   float64    `json:"monthlySalary" db:"monthly_salary"`
 	Phone           string     `json:"phone" db:"phone"`
 	Email           string     `json:"email" db:"email"`
+	UserID          *string    `json:"userId" db:"user_id"`
 	AssignedClasses []string   `json:"assignedClasses" db:"-"`
 	BranchID        string     `json:"branchId" db:"branch_id"`
 	JoinedDate      *time.Time `json:"joinedDate" db:"joined_date"`
 	CreatedAt       time.Time  `json:"createdAt" db:"created_at"`
 	UpdatedAt       time.Time  `json:"updatedAt" db:"updated_at"`
+}
+
+// ─── Teacher Portal ───────────────────────────────────────────────────────────
+
+// TeacherPortalClass is a class with enriched data for the portal.
+type TeacherPortalClass struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	BranchID     string `json:"branchId"`
+	StudentCount int    `json:"studentCount"`
+}
+
+// TeacherPortalStudent is a student shown in the teacher's portal.
+type TeacherPortalStudent struct {
+	ID             string  `json:"id"`
+	FullName       string  `json:"fullName"`
+	Phone          string  `json:"phone"`
+	ClassID        string  `json:"classId"`
+	ClassName      string  `json:"className"`
+	MonthlyPayment float64 `json:"monthlyPayment"`
+	PaymentStatus  string  `json:"paymentStatus"` // "paid", "partial", "unpaid"
+	PaidAmount     float64 `json:"paidAmount"`
+}
+
+// TeacherPortalSalary is the teacher's salary record for the current month.
+type TeacherPortalSalary struct {
+	ID            *string  `json:"id"`
+	Amount        float64  `json:"amount"`
+	Month         string   `json:"month"`
+	Year          int      `json:"year"`
+	Status        string   `json:"status"`
+	MonthlySalary float64  `json:"monthlySalary"`
+}
+
+// TeacherPortalResponse is the full response for GET /teacher-portal/me.
+type TeacherPortalResponse struct {
+	Teacher  *Teacher               `json:"teacher"`
+	Classes  []TeacherPortalClass   `json:"classes"`
+	Students []TeacherPortalStudent `json:"students"`
+	Salary   *TeacherPortalSalary   `json:"salary"`
 }
 
 type Salary struct {
@@ -354,5 +395,44 @@ type AttendanceStudentSummary struct {
 	Late        int     `json:"late"`
 	Total       int     `json:"total"`
 	PresentPct  float64 `json:"presentPct"`
+}
+
+// ─── Student Notes ────────────────────────────────────────────────────────────
+
+type StudentNote struct {
+	ID              string    `json:"id"`
+	BranchID        string    `json:"branchId"`
+	StudentID       string    `json:"studentId"`
+	Content         string    `json:"content"`
+	CreatedBy       *string   `json:"createdBy"`
+	CreatedByName   string    `json:"createdByName"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+type CreateStudentNoteRequest struct {
+	Content string `json:"content" binding:"required"`
+}
+
+// ─── Contact Log ──────────────────────────────────────────────────────────────
+
+type ContactLogEntry struct {
+	ID              string    `json:"id"`
+	BranchID        string    `json:"branchId"`
+	StudentID       string    `json:"studentId"`
+	ContactType     string    `json:"contactType"`
+	Outcome         string    `json:"outcome"`
+	Note            string    `json:"note"`
+	ContactedAt     time.Time `json:"contactedAt"`
+	CreatedBy       *string   `json:"createdBy"`
+	CreatedByName   string    `json:"createdByName"`
+	CreatedAt       time.Time `json:"createdAt"`
+}
+
+type CreateContactLogRequest struct {
+	ContactType string `json:"contactType"`
+	Outcome     string `json:"outcome"`
+	Note        string `json:"note"`
+	ContactedAt string `json:"contactedAt"` // "YYYY-MM-DDTHH:MM" or RFC3339
 }
 

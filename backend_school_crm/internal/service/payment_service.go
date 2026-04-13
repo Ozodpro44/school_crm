@@ -798,6 +798,64 @@ func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in Paym
 	}, nil
 }
 
+// BulkCreateRequest is a single entry in a bulk payment request.
+type BulkCreateRequest struct {
+	StudentID     string  `json:"studentId"     binding:"required"`
+	Amount        float64 `json:"amount"        binding:"required,gt=0"`
+	PaymentMethod string  `json:"paymentMethod" binding:"required"`
+	Notes         *string `json:"notes"`
+}
+
+// BulkCreateResult is returned per-student from BulkCreate.
+type BulkCreateResult struct {
+	StudentID string          `json:"studentId"`
+	Payment   *models.Payment `json:"payment,omitempty"`
+	Error     string          `json:"error,omitempty"`
+}
+
+// BulkCreate creates payments for multiple students in the branch's current
+// financial month. Each student is processed independently so a failure on one
+// does not roll back the others. Returns per-student results.
+func (s *PaymentService) BulkCreate(ctx context.Context, branchID, paymentMethod string, entries []BulkCreateRequest, createdBy string) []BulkCreateResult {
+	currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, branchID)
+	if err != nil {
+		// Propagate as a universal error across all entries
+		results := make([]BulkCreateResult, len(entries))
+		for i, e := range entries {
+			results[i] = BulkCreateResult{StudentID: e.StudentID, Error: "could not determine current month"}
+		}
+		return results
+	}
+
+	results := make([]BulkCreateResult, 0, len(entries))
+	for _, e := range entries {
+		method := e.PaymentMethod
+		if method == "" {
+			method = paymentMethod
+		}
+		now := time.Now().UTC()
+		req := &CreatePaymentRequest{
+			StudentID:     e.StudentID,
+			Amount:        e.Amount,
+			Month:         currentMonth,
+			Year:          currentYear,
+			PaymentMethod: method,
+			Status:        "paid",
+			InvoiceNumber: fmt.Sprintf("QP-%d", time.Now().UnixMilli()),
+			Notes:         e.Notes,
+			PaidDate:      &now,
+			BranchID:      branchID,
+		}
+		p, err := s.Create(ctx, req, createdBy)
+		if err != nil {
+			results = append(results, BulkCreateResult{StudentID: e.StudentID, Error: err.Error()})
+		} else {
+			results = append(results, BulkCreateResult{StudentID: e.StudentID, Payment: p})
+		}
+	}
+	return results
+}
+
 // GetByStudentAndPeriod returns payments for a student in a specific month/year
 func (s *PaymentService) GetByStudentAndPeriod(ctx context.Context, studentID, month string, year int) ([]models.Payment, error) {
 	query := `

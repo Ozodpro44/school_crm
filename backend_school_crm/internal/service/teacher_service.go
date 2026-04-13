@@ -79,12 +79,12 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 func (s *TeacherService) GetByID(ctx context.Context, id string) (*models.Teacher, error) {
 	teacher := &models.Teacher{}
 
-	query := `SELECT id, full_name, monthly_salary, phone, email, branch_id, joined_date, created_at, updated_at
+	query := `SELECT id, full_name, monthly_salary, phone, email, user_id, branch_id, joined_date, created_at, updated_at
 	          FROM teachers WHERE id = $1`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&teacher.ID, &teacher.FullName, &teacher.MonthlySalary,
-		&teacher.Phone, &teacher.Email, &teacher.BranchID,
+		&teacher.Phone, &teacher.Email, &teacher.UserID, &teacher.BranchID,
 		&teacher.JoinedDate, &teacher.CreatedAt, &teacher.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -123,10 +123,29 @@ func (s *TeacherService) GetByBranchID(ctx context.Context, branchID string) ([]
 	return s.getByBranchIDDB(ctx, branchID)
 }
 
+func (s *TeacherService) GetByUserID(ctx context.Context, userID string) (*models.Teacher, error) {
+	teacher := &models.Teacher{}
+	err := s.db.GetConn().QueryRowContext(ctx,
+		`SELECT id, full_name, monthly_salary, phone, email, user_id, branch_id, joined_date, created_at, updated_at
+		 FROM teachers WHERE user_id = $1 LIMIT 1`, userID,
+	).Scan(
+		&teacher.ID, &teacher.FullName, &teacher.MonthlySalary,
+		&teacher.Phone, &teacher.Email, &teacher.UserID, &teacher.BranchID,
+		&teacher.JoinedDate, &teacher.CreatedAt, &teacher.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return teacher, nil
+}
+
 func (s *TeacherService) getByBranchIDDB(ctx context.Context, branchID string) ([]models.Teacher, error) {
 	// Fetch all teachers in one query
 	rows, err := s.db.GetConn().QueryContext(ctx,
-		`SELECT id, full_name, monthly_salary, phone, email, branch_id, joined_date, created_at, updated_at
+		`SELECT id, full_name, monthly_salary, phone, email, user_id, branch_id, joined_date, created_at, updated_at
 		 FROM teachers WHERE branch_id = $1 ORDER BY full_name`, branchID)
 	if err != nil {
 		return nil, err
@@ -138,7 +157,7 @@ func (s *TeacherService) getByBranchIDDB(ctx context.Context, branchID string) (
 	for rows.Next() {
 		var t models.Teacher
 		if err := rows.Scan(&t.ID, &t.FullName, &t.MonthlySalary, &t.Phone, &t.Email,
-			&t.BranchID, &t.JoinedDate, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.UserID, &t.BranchID, &t.JoinedDate, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		teachers = append(teachers, t)

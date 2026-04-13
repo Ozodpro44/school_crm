@@ -16,7 +16,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Teacher } from "@/types";
-import { Plus, Search, Edit2, Trash2, BookOpen, Loader2 } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, BookOpen, Loader2, Link2 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
@@ -24,7 +24,7 @@ import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
-import { createTeacher, updateTeacher, deleteTeacher, listTeachers, listClasses } from "@/lib/api";
+import { createTeacher, updateTeacher, deleteTeacher, listTeachers, listClasses, linkTeacherToUser, listUsers } from "@/lib/api";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function TeachersPage() {
@@ -37,6 +37,11 @@ export default function TeachersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [deletingTeacherId, setDeletingTeacherId] = useState<string | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkingTeacher, setLinkingTeacher] = useState<Teacher | null>(null);
+  const [linkUserId, setLinkUserId] = useState("");
+  const [isLinking, setIsLinking] = useState(false);
+  const [branchUsers, setBranchUsers] = useState<any[]>([]);
   const language = useLanguage();
   const { toast } = useToast();
   const {
@@ -209,6 +214,36 @@ export default function TeachersPage() {
         setIsDeleteLoading(false);
         setDeletingTeacherId(null);
       }
+    }
+  };
+
+  const handleOpenLinkDialog = async (teacher: Teacher) => {
+    setLinkingTeacher(teacher);
+    setLinkUserId(teacher.userId || "");
+    setLinkDialogOpen(true);
+    try {
+      const branchId = localStorage.getItem("selectedBranchId");
+      const users = await listUsers(branchId || undefined);
+      setBranchUsers(users.filter((u: any) => u.role === "teacher"));
+    } catch {
+      setBranchUsers([]);
+    }
+  };
+
+  const handleLinkUser = async () => {
+    if (!linkingTeacher || !linkUserId.trim()) return;
+    setIsLinking(true);
+    try {
+      await linkTeacherToUser(linkingTeacher.id, linkUserId.trim());
+      setTeachers((prev) =>
+        prev.map((t) => t.id === linkingTeacher.id ? { ...t, userId: linkUserId.trim() } : t)
+      );
+      toast({ title: t("success"), variant: "success" });
+      setLinkDialogOpen(false);
+    } catch {
+      toast({ title: t("error"), variant: "destructive" });
+    } finally {
+      setIsLinking(false);
     }
   };
 
@@ -557,6 +592,17 @@ export default function TeachersPage() {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-end gap-2">
+                          {canEditTeachers && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title={t("linkAccount") || "Link user account"}
+                              onClick={() => handleOpenLinkDialog(teacher)}
+                              className={teacher.userId ? "text-green-600" : "text-slate-400"}
+                            >
+                              <Link2 className="w-4 h-4" />
+                            </Button>
+                          )}
                           <Button
                             size="icon"
                             variant="ghost"
@@ -594,7 +640,58 @@ export default function TeachersPage() {
             </div>
           </CardContent>
         </Card>
+
+      {/* Link user account dialog */}
+      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("linkAccount") || "Link User Account"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              {t("noTeacherRecordDesc") || "Link this teacher record to a login user account so they can access the Teacher Portal."}
+            </p>
+            {linkingTeacher?.userId && (
+              <div className="p-2 rounded bg-green-50 dark:bg-green-900/20 text-sm text-green-700 dark:text-green-300">
+                Currently linked to user ID: <code className="text-xs">{linkingTeacher.userId}</code>
+              </div>
+            )}
+            {branchUsers.length > 0 ? (
+              <div className="space-y-2">
+                <Label>{t("selectUser") || "Select teacher user"}</Label>
+                <select
+                  className="w-full border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"
+                  value={linkUserId}
+                  onChange={(e) => setLinkUserId(e.target.value)}
+                >
+                  <option value="">— {t("select") || "select"} —</option>
+                  {branchUsers.map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.fullName} ({u.email})</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>User ID</Label>
+                <Input
+                  placeholder="Paste user ID..."
+                  value={linkUserId}
+                  onChange={(e) => setLinkUserId(e.target.value)}
+                />
+                <p className="text-xs text-slate-400">The teacher can find their User ID on the Teacher Portal page.</p>
+              </div>
+            )}
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setLinkDialogOpen(false)}>{t("cancel")}</Button>
+              <Button onClick={handleLinkUser} disabled={isLinking || !linkUserId.trim()}>
+                {isLinking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {t("save")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
       </div>
-    
+
   );
 }
