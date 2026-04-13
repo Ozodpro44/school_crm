@@ -304,3 +304,55 @@ type ExpenseFilterResult struct {
 	Page  int       `json:"page"`
 	Limit int       `json:"limit"`
 }
+
+// ─── Attendance ───────────────────────────────────────────────────────────────
+
+type AttendanceStatus string
+
+const (
+	AttendancePresent AttendanceStatus = "present"
+	AttendanceAbsent  AttendanceStatus = "absent"
+	AttendanceLate    AttendanceStatus = "late"
+)
+
+// Attendance is one per-student record for a given class session (date).
+type Attendance struct {
+	ID          string           `json:"id"`
+	BranchID    string           `json:"branchId"`
+	ClassID     string           `json:"classId"`
+	StudentID   string           `json:"studentId"`
+	Date        string           `json:"date"` // "YYYY-MM-DD"
+	Status      AttendanceStatus `json:"status"`
+	Note        *string          `json:"note"`
+	CreatedBy   *string          `json:"createdBy"`
+	CreatedAt   time.Time        `json:"createdAt"`
+	UpdatedAt   time.Time        `json:"updatedAt"`
+	StudentName string           `json:"studentName,omitempty"`
+}
+
+// AttendanceEntry is used in bulk-save requests.
+type AttendanceEntry struct {
+	StudentID string           `json:"studentId" binding:"required"`
+	Status    AttendanceStatus `json:"status"    binding:"required"`
+	Note      *string          `json:"note"`
+}
+
+// BulkAttendanceRequest is the payload for POST /attendance.
+type BulkAttendanceRequest struct {
+	BranchID string            `json:"branchId" binding:"required"`
+	ClassID  string            `json:"classId"  binding:"required"`
+	Date     string            `json:"date"     binding:"required"` // "YYYY-MM-DD"
+	Records  []AttendanceEntry `json:"records"  binding:"required"`
+}
+
+// AttendanceStudentSummary holds monthly attendance stats for one student.
+type AttendanceStudentSummary struct {
+	StudentID   string  `json:"studentId"`
+	StudentName string  `json:"studentName"`
+	Present     int     `json:"present"`
+	Absent      int     `json:"absent"`
+	Late        int     `json:"late"`
+	Total       int     `json:"total"`
+	PresentPct  float64 `json:"presentPct"`
+}
+

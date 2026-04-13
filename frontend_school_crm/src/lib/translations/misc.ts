@@ -175,6 +175,25 @@ export const miscTranslations: Partial<Translation> = {
   pleaseWait: { "uz-cyrl": "Илтимос, кутинг", "uz-latn": "Iltimos, kuting", en: "Please wait" },
   processing: { "uz-cyrl": "Ишланмоқда...", "uz-latn": "Ishlanmoqda...", en: "Processing..." },
 
+  // Attendance
+  attendance:           { "uz-cyrl": "Давомат",                    "uz-latn": "Davomat",                    en: "Attendance" },
+  markAttendance:       { "uz-cyrl": "Davomatni belgilash",        "uz-latn": "Davomatni belgilash",        en: "Mark Attendance" },
+  present:              { "uz-cyrl": "Keldi",                      "uz-latn": "Keldi",                      en: "Present" },
+  absent:               { "uz-cyrl": "Kelmadi",                    "uz-latn": "Kelmadi",                    en: "Absent" },
+  late:                 { "uz-cyrl": "Kechikdi",                   "uz-latn": "Kechikdi",                   en: "Late" },
+  attendanceSaved:      { "uz-cyrl": "Davomat saqlandi",           "uz-latn": "Davomat saqlandi",           en: "Attendance saved" },
+  selectClassAndDate:   { "uz-cyrl": "Sinf va sanani tanlang",     "uz-latn": "Sinf va sanani tanlang",     en: "Select a class and date" },
+  noStudentsInClass:    { "uz-cyrl": "Sinfda o'quvchi yo'q",       "uz-latn": "Sinfda o'quvchi yo'q",       en: "No students in this class" },
+  attendanceSummary:    { "uz-cyrl": "Davomat xulosasi",           "uz-latn": "Davomat xulosasi",           en: "Attendance Summary" },
+  consecutiveAbsences:  { "uz-cyrl": "Ketma-ket devonsizlik",      "uz-latn": "Ketma-ket devonsizlik",      en: "Consecutive Absences" },
+  absenceAlert:         { "uz-cyrl": "Devonsizlik ogohlantirishi", "uz-latn": "Devonsizlik ogohlantirishi", en: "Absence Alert" },
+  daysAbsent:           { "uz-cyrl": "Kun kelmagan",               "uz-latn": "Kun kelmagan",               en: "days absent" },
+  saveAttendance:       { "uz-cyrl": "Davomatni saqlash",          "uz-latn": "Davomatni saqlash",          en: "Save Attendance" },
+  attendanceRate:       { "uz-cyrl": "Davomat foizi",              "uz-latn": "Davomat foizi",              en: "Attendance Rate" },
+  note:                 { "uz-cyrl": "Izoh",                       "uz-latn": "Izoh",                       en: "Note" },
+  addNote:              { "uz-cyrl": "Izoh qo'shish",              "uz-latn": "Izoh qo'shish",              en: "Add note" },
+  totalSessions:        { "uz-cyrl": "Jami darslar",               "uz-latn": "Jami darslar",               en: "Total Sessions" },
+
   // Subscription
   subscriptionRequired: { "uz-cyrl": "Обуна талаб қилинади", "uz-latn": "Obuna talab qilinadi", en: "Subscription Required" },
   subscriptionRequiredDesc: {

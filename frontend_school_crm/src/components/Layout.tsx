@@ -42,6 +42,7 @@ import {
   CheckCheck,
   Shield,
   BarChart2,
+  ClipboardList,
 } from "lucide-react";
 
 import {
@@ -552,6 +553,7 @@ export function Layout({ children }: LayoutProps) {
         { name: t("students"), href: "/students", icon: Users, show: true },
         { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: true },
         { name: t("classes"), href: "/classes", icon: BookOpen, show: true },
+        { name: t("attendance") || "Attendance", href: "/attendance", icon: ClipboardList, show: true },
       ],
     },
     {

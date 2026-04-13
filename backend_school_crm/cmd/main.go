@@ -122,6 +122,7 @@ func main() {
 	paymentTypeService := service.NewPaymentTypeService(database)
 	notificationService := service.NewNotificationService(database)
 	developerService := service.NewDeveloperService(database)
+	attendanceService := service.NewAttendanceService(database)
 
 	// Initialize Click.uz service (requires environment variables)
 	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
@@ -305,6 +306,9 @@ func main() {
 	// Settings
 	handlers.RegisterSettingsRoutes(protected, branchService, userService)
 
+	// Attendance
+	handlers.RegisterAttendanceRoutes(protected, attendanceService, userService)
+
 	// Payment initiation routes — placed on authOnly so expired/trial users can still pay
 	handlers.RegisterClickUzRoutes(authOnly, clickUzService, subscriptionService)
 	handlers.RegisterTelegramPaymentRoutes(authOnly, telegramPaymentService, subscriptionService)
@@ -379,6 +383,7 @@ func main() {
 	handlers.RegisterJobRoutes(legacyProtected, jobQueue)
 	handlers.RegisterBranchRoutes(legacyProtected, branchService, userService, subscriptionService)
 	handlers.RegisterSettingsRoutes(legacyProtected, branchService, userService)
+	handlers.RegisterAttendanceRoutes(legacyProtected, attendanceService, userService)
 
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
