@@ -202,7 +202,7 @@ func main() {
 
 	// Public routes
 	router.POST("/api/v1/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret))
-	router.POST("/api/v1/auth/register", authRateLimit, handlers.Register(userService, cfg.JWTSecret))
+	router.POST("/api/v1/auth/register", authRateLimit, handlers.Register(userService, subscriptionService, cfg.JWTSecret))
 	router.POST("/api/v1/auth/forgot-password", authRateLimit, handlers.ForgotPassword(userService))
 	router.POST("/api/v1/auth/verify-otp", authRateLimit, handlers.VerifyOTP(userService))
 	router.POST("/api/v1/auth/resend-otp", authRateLimit, handlers.ResendOTP(userService))
@@ -328,7 +328,7 @@ func main() {
 
 	// Auth
 	router.POST("/api/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret))
-	router.POST("/api/auth/register", authRateLimit, handlers.Register(userService, cfg.JWTSecret))
+	router.POST("/api/auth/register", authRateLimit, handlers.Register(userService, subscriptionService, cfg.JWTSecret))
 	router.POST("/api/auth/forgot-password", authRateLimit, handlers.ForgotPassword(userService))
 	router.POST("/api/auth/verify-otp", authRateLimit, handlers.VerifyOTP(userService))
 	router.POST("/api/auth/resend-otp", authRateLimit, handlers.ResendOTP(userService))

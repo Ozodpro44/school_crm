@@ -43,7 +43,7 @@ func countUnread(svc *service.NotificationService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		branchID := c.GetHeader("X-Branch-ID")
 		if branchID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "X-Branch-ID header required"})
+			c.JSON(http.StatusOK, gin.H{"count": 0})
 			return
 		}
 		count, err := svc.CountUnread(c.Request.Context(), branchID)

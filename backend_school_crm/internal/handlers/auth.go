@@ -61,12 +61,12 @@ func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
 	}
 }
 
-func Register(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
+func Register(userService *service.UserService, subscriptionService *service.SubscriptionService, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.RegisterRequest
-		
+
 		log.Printf("[REGISTER] Incoming registration request from %s", c.ClientIP())
-		
+
 		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Printf("[REGISTER ERROR] Failed to parse JSON: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -92,6 +92,15 @@ func Register(userService *service.UserService, jwtSecret string) gin.HandlerFun
 		}
 
 		log.Printf("[REGISTER SUCCESS] User %s (ID: %s) registered successfully", req.Email, user.ID)
+
+		// Auto-grant a 30-day free trial so the new school owner (and their staff)
+		// can access the CRM immediately after registration.
+		if _, err := subscriptionService.AdminGrantTrial(c.Request.Context(), user.ID, 30, "Auto-granted on registration"); err != nil {
+			log.Printf("[REGISTER WARNING] Failed to auto-grant trial for %s: %v", user.ID, err)
+			// Non-fatal — user is still created; they can subscribe manually.
+		} else {
+			log.Printf("[REGISTER] 30-day trial granted to %s", user.ID)
+		}
 
 		// Generate JWT token for the newly registered user
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &middleware.CustomClaims{
