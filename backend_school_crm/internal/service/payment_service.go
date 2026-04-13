@@ -715,17 +715,24 @@ func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in Paym
 	}
 
 	// -------------------------
-	// data query
+	// data query — also selects student info so the frontend can display
+	// student name, phone, class without a second round-trip.
 	// -------------------------
 	dataQuery := `
-		SELECT 
-			p.id, p.student_id, p.amount, p.month, p.year, 
+		SELECT
+			p.id, p.student_id, p.amount, p.month, p.year,
 			p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date,
 			p.branch_id, p.created_by, p.financial_month_id, p.created_at,
-			u.full_name as created_by_name
+			u.full_name as created_by_name,
+			s.full_name  as student_full_name,
+			COALESCE(s.phone, '') as student_phone,
+			COALESCE(s.class_id::text, '') as student_class_id,
+			COALESCE(c.name, '') as student_class_name,
+			COALESCE(s.monthly_payment, 0) as student_monthly_payment
 		FROM payments p
 		JOIN students s ON s.id = p.student_id
 		LEFT JOIN users u ON u.id = p.created_by
+		LEFT JOIN classes c ON c.id = s.class_id
 		` + where + `
 		ORDER BY p.created_at DESC
 		LIMIT $` + strconv.Itoa(argID) + ` OFFSET $` + strconv.Itoa(argID+1)
@@ -739,14 +746,18 @@ func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in Paym
 	defer rows.Close()
 
 	var payments []models.Payment
+	studentMap := make(map[string]models.StudentInfo)
 	for rows.Next() {
 		var p models.Payment
 		var createdByName sql.NullString
+		var stuName, stuPhone, stuClassID, stuClassName string
+		var stuMonthlyPayment float64
 		err := rows.Scan(
 			&p.ID, &p.StudentID, &p.Amount, &p.Month, &p.Year,
 			&p.PaymentMethod, &p.Status, &p.InvoiceNumber, &p.Notes, &p.PaidDate,
 			&p.BranchID, &p.CreatedBy, &p.FinancialMonthID, &p.CreatedAt,
 			&createdByName,
+			&stuName, &stuPhone, &stuClassID, &stuClassName, &stuMonthlyPayment,
 		)
 		if err != nil {
 			return nil, err
@@ -756,17 +767,34 @@ func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in Paym
 		}
 		p.PaymentMethod = models.PaymentMethod(normalizeStudentPaymentMethod(string(p.PaymentMethod)))
 		payments = append(payments, p)
+
+		if _, seen := studentMap[p.StudentID]; !seen {
+			studentMap[p.StudentID] = models.StudentInfo{
+				ID:             p.StudentID,
+				FullName:       stuName,
+				Phone:          stuPhone,
+				ClassID:        stuClassID,
+				ClassName:      stuClassName,
+				MonthlyPayment: stuMonthlyPayment,
+			}
+		}
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
 
+	students := make([]models.StudentInfo, 0, len(studentMap))
+	for _, si := range studentMap {
+		students = append(students, si)
+	}
+
 	return &models.PaymentListResponse{
-		Items: payments,
-		Total: total,
-		Page:  intPage,
-		Limit: intLimit,
+		Items:    payments,
+		Students: students,
+		Total:    total,
+		Page:     intPage,
+		Limit:    intLimit,
 	}, nil
 }
 
