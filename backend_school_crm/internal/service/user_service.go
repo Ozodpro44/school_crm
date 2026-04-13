@@ -599,6 +599,31 @@ func (s *UserService) GetBranchAdminID(ctx context.Context, branchID string) (st
 	return adminID, err
 }
 
+// GetOwnerIDForUser resolves the school-owner (admin) user ID for any non-admin
+// user. It covers three association paths in one query:
+//  1. users.branch_id → branches.admin_id  (teachers, accountants, staff)
+//  2. branch_managers → branches.admin_id  (managers, branch_admins)
+//
+// Returns "" when no branch association is found.
+func (s *UserService) GetOwnerIDForUser(ctx context.Context, userID string) (string, error) {
+	var adminID string
+	err := s.db.GetConn().QueryRowContext(ctx, `
+		SELECT COALESCE(b.admin_id::text, '')
+		FROM branches b
+		WHERE b.id = (
+			SELECT branch_id FROM users WHERE id = $1 AND branch_id IS NOT NULL
+			UNION
+			SELECT branch_id FROM branch_managers WHERE manager_id = $1
+			LIMIT 1
+		)
+		LIMIT 1
+	`, userID).Scan(&adminID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return adminID, err
+}
+
 // BelongsToBranch returns true when userID is legitimately associated with branchID.
 // Covers three cases:
 //   - admin:         they own the branch (branches.admin_id = userID)

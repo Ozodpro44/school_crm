@@ -174,4 +174,12 @@ export const miscTranslations: Partial<Translation> = {
   loading: { "uz-cyrl": "Юкланмоқда...", "uz-latn": "Yuklanmoqda...", en: "Loading..." },
   pleaseWait: { "uz-cyrl": "Илтимос, кутинг", "uz-latn": "Iltimos, kuting", en: "Please wait" },
   processing: { "uz-cyrl": "Ишланмоқда...", "uz-latn": "Ishlanmoqda...", en: "Processing..." },
+
+  // Subscription
+  subscriptionRequired: { "uz-cyrl": "Обуна талаб қилинади", "uz-latn": "Obuna talab qilinadi", en: "Subscription Required" },
+  subscriptionRequiredDesc: {
+    "uz-cyrl": "Ушбу CRM тизимига кириш учун фаол обуна талаб қилинади. Обунани янгилаш ёки фаоллаштириш учун мактаб администратори билан боғланинг.",
+    "uz-latn": "Ushbu CRM tizimiga kirish uchun faol obuna talab qilinadi. Obunani yangilash yoki faollashtirish uchun maktab administratori bilan bog'laning.",
+    en: "Access to this CRM requires an active subscription. Please contact your school administrator to renew or activate the subscription.",
+  },
 };

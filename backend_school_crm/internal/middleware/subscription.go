@@ -14,7 +14,6 @@ package middleware
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"net/http"
 
@@ -74,15 +73,8 @@ func SubscriptionGate(userSvc *service.UserService, subSvc *service.Subscription
 }
 
 // resolveSchoolOwnerID returns the admin (school owner) user_id for the given
-// user by walking: user.BranchID → branches.admin_id.
-// branch_admin, manager, accountant, teacher all go through this path.
+// user. It uses GetOwnerIDForUser which covers both users.branch_id (teachers,
+// staff) and branch_managers (managers, branch_admins) in a single query.
 func resolveSchoolOwnerID(ctx context.Context, userSvc *service.UserService, user *models.User) (string, error) {
-	if user.BranchID == nil {
-		return "", nil
-	}
-	adminID, err := userSvc.GetBranchAdminID(ctx, *user.BranchID)
-	if err == sql.ErrNoRows || adminID == "" {
-		return "", nil
-	}
-	return adminID, err
+	return userSvc.GetOwnerIDForUser(ctx, user.ID)
 }

@@ -13,6 +13,8 @@ import {
 import { formatPrice, getDaysUntilExpiry } from "@/lib/subscription-api";
 import type { SubscriptionPlan, SubscriptionResponse, SubscriptionUsage } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
+import { useLanguage } from "@/hooks/use-language";
+import { getTranslation } from "@/lib/translations";
 import { 
   CheckCircle2, 
   AlertCircle, 
@@ -119,6 +121,8 @@ function iconForCode(code: string): React.ReactNode {
 
 export default function BillingPage() {
   const router = useRouter();
+  const language = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const { branches } = useBranch();
   const [currentSub, setCurrentSub] = useState<SubscriptionResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -251,11 +255,10 @@ export default function BillingPage() {
               <AlertIcon className="w-8 h-8 text-red-600 dark:text-red-400" />
             </div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-              Subscription Required
+              {t("subscriptionRequired")}
             </h2>
             <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
-              Access to this CRM requires an active subscription. Please contact
-              your school administrator to renew or activate the subscription.
+              {t("subscriptionRequiredDesc")}
             </p>
           </div>
         </div>
