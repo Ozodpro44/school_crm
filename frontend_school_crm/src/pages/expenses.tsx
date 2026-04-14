@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { usersDB } from "@/lib/storage";
 import { Expense, PaymentMethod } from "@/types";
 import {
   Plus,
@@ -498,13 +497,6 @@ export default function ExpensesPage() {
       return userCache[userId];
     }
 
-    // Try local storage fallback
-    const localUser = usersDB.getAll().find((u) => u.id === userId);
-    if (localUser?.fullName) {
-      return localUser.fullName;
-    }
-
-    // Return loading state and fetch from API
     return "-";
   };
 

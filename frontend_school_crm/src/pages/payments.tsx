@@ -24,9 +24,6 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  branchesDB,
-} from "@/lib/storage";
-import {
   Payment,
   PaymentStatus,
   StudentPaymentMethod,
@@ -2691,16 +2688,7 @@ export default function PaymentsPage() {
                     {t("receipt") || "RECEIPT"}
                   </p>
                   <p className="text-xs text-slate-600 dark:text-slate-400 print:text-black print:text-opacity-70">
-                    {(() => {
-                      const user = getCurrentUser();
-                      if (user?.branchId) {
-                        const branch = branchesDB
-                          .getAll()
-                          .find((b) => b.id === user.branchId);
-                        return branch?.name || user.branchId;
-                      }
-                      return "Branch";
-                    })()}
+                    {branchData?.name || "Branch"}
                   </p>
                   <p className="text-xs text-slate-600 dark:text-slate-400 print:text-black print:text-opacity-70">
                     {new Date().toLocaleDateString("en-GB").replace(/\//g, ".")}

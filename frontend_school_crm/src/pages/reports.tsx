@@ -21,20 +21,13 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  studentsDB,
-  paymentsDB,
-  salariesDB,
-  teachersDB,
-  classesDB,
-  monthArchivesDB,
-  usersDB,
-} from "@/lib/storage";
 import * as api from "@/lib/api";
 import {
   runReportJob,
   getBranch,
   listClasses,
+  listStudents,
+  listUsers,
   getForecastData,
   type ForecastData,
 } from "@/lib/api";
@@ -149,17 +142,29 @@ export default function ReportsPage() {
       }
     } catch (error) {
       console.error("Failed to load classes:", error);
-      // Fallback to localStorage
-      setClasses(classesDB.getAll());
     }
   };
 
-  const loadStudents = () => {
-    setStudents(studentsDB.getAll());
+  const loadStudents = async () => {
+    try {
+      const branchId = localStorage.getItem("selectedBranchId");
+      if (branchId) {
+        const res = await listStudents(branchId, undefined, 1000);
+        setStudents(res.data ?? []);
+      }
+    } catch (error) {
+      console.error("Failed to load students:", error);
+    }
   };
 
-  const loadUsers = () => {
-    setUsers(usersDB.getAll());
+  const loadUsers = async () => {
+    try {
+      const branchId = localStorage.getItem("selectedBranchId");
+      const data = await listUsers(branchId || undefined);
+      setUsers(data);
+    } catch (error) {
+      console.error("Failed to load users:", error);
+    }
   };
 
   const getUserName = (userId: string, userName?: string) => {
@@ -175,16 +180,11 @@ export default function ReportsPage() {
     currentUser?.role === "admin" || currentUser?.role === "branch_admin";
 
   const isMonthVisible = (
-    month: string | number,
-    year: string | number
+    _month: string | number,
+    _year: string | number
   ): boolean => {
-    // Admins can see all data including archived
-    if (isAdmin) return true;
-
-    // Non-admins can't see archived months
-    const monthStr = month.toString().padStart(2, "0");
-    const yearNum = parseInt(year.toString());
-    return !monthArchivesDB.isMonthArchived(monthStr, yearNum);
+    // Backend handles month visibility filtering
+    return true;
   };
 
   const getStatusLabel = (status: string) => {

@@ -326,7 +326,7 @@ Now I have the full picture. Let me compile the plan.
   - Add a make test target and wire into CI
 
   ---
-  4.3 Remove the localStorage Storage Layer 🟠
+  4.3 Remove the localStorage Storage Layer ✅ DONE
 
   frontend_school_crm/src/lib/storage.ts is a full localStorage-based DB that was the
   original offline fallback. It's now partly bypassed by the real API. It should be deleted
@@ -370,7 +370,7 @@ Now I have the full picture. Let me compile the plan.
       - npm run build
 
   ---
-  4.7 Remove Dead Code 🟡
+  4.7 Remove Dead Code ✅ DONE
 
   Several .disabled files exist in frontend pages:
   src/pages/subscriptions.tsx.disabled

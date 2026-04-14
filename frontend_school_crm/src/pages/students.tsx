@@ -23,10 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  studentsDB,
-  branchesDB,
-} from "@/lib/storage";
 import { Student, StudentStatus } from "@/types";
 import {
   Plus,
@@ -337,9 +333,7 @@ export default function StudentsPage() {
     try {
       const lines = csvText.trim().split("\n");
       const branchId = localStorage.getItem("selectedBranchId");
-      const branch = branchId ? branchesDB.getById(branchId) : null;
-      const defaultPayment =
-        branch?.monthlyPayment || settings?.monthlyPayment || 500000;
+      const defaultPayment = settings?.monthlyPayment || 500000;
 
       let importedCount = 0;
       const warnings: string[] = [];
@@ -549,9 +543,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     }
 
     const branchId = localStorage.getItem("selectedBranchId");
-    const branch = branchId ? branchesDB.getById(branchId) : null;
-    const defaultMonthlyPayment =
-      branch?.monthlyPayment || settings?.monthlyPayment || 500000;
+    const defaultMonthlyPayment = settings?.monthlyPayment || 500000;
     const monthlyPayment =
       parseInt(formData.monthlyPayment) || defaultMonthlyPayment;
 
@@ -715,9 +707,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     const selectedIds = getSelectedIds();
     if (selectedIds.length === 0 || !bulkChangeClassId) return;
 
-    selectedIds.forEach((id) => {
-      studentsDB.update(id, { classId: bulkChangeClassId });
-    });
+    await Promise.all(selectedIds.map((id) => apiUpdateStudent(id, { classId: bulkChangeClassId })));
 
     clearSelection();
     await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);

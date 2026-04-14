@@ -21,12 +21,11 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { salariesDB, teachersDB, usersDB, monthArchivesDB, branchesDB } from "@/lib/storage";
 import { Salary, PaymentStatus, Teacher, PaymentMethod, Branch } from "@/types";
 import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
-import { listSalaries, getBranch } from "@/lib/api";
+import { listSalaries, getBranch, listTeachers, createSalary, updateSalary, deleteSalary } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -153,12 +152,14 @@ export default function SalariesPage() {
           setSelectedYear(currentYear);
         }
 
-        // Fetch salaries from API filtered by branch and month
-        const data = await listSalaries(branchId, targetMonth, targetYear);
+        // Fetch salaries and teachers from API
+        const [data, teacherList] = await Promise.all([
+          listSalaries(branchId, targetMonth, targetYear),
+          listTeachers(branchId),
+        ]);
         setSalaries(data);
+        setTeachers(teacherList);
       }
-
-      setTeachers(teachersDB.getAll());
     } catch (error) {
       console.error("Failed to load salaries:", error);
       toast({
@@ -169,22 +170,17 @@ export default function SalariesPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     const user = getCurrentUser();
-    if (!user) {
-      setIsSubmitting(false);
-      return;
-    }
+    if (!user) { setIsSubmitting(false); return; }
 
+    const branchId = localStorage.getItem("selectedBranchId") || user.branchId || "";
     try {
       if (editingSalaryId) {
-        salariesDB.update(editingSalaryId, {
-          teacherId: formData.teacherId,
+        await updateSalary(editingSalaryId, {
           amount: parseFloat(formData.amount),
-          month: formData.month,
-          year: parseInt(formData.year),
           status: formData.status,
           paymentMethod: formData.paymentMethod,
           notes: formData.notes || undefined,
@@ -192,7 +188,7 @@ export default function SalariesPage() {
         });
         setEditingSalaryId(null);
       } else {
-        salariesDB.create({
+        await createSalary({
           teacherId: formData.teacherId,
           amount: parseFloat(formData.amount),
           month: formData.month,
@@ -201,32 +197,29 @@ export default function SalariesPage() {
           paymentMethod: formData.paymentMethod,
           notes: formData.notes || undefined,
           paidDate: formData.status === "paid" ? new Date().toISOString() : undefined,
-          branchId: user.branchId || "",
+          branchId,
         });
       }
-
       resetForm();
-      loadData();
+      await loadData();
       setIsDialogOpen(false);
+      toast({ title: t("success"), variant: "success" });
     } catch (error) {
       console.error("Failed to save salary:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToSaveSalary"),
-        variant: "destructive",
-      });
+      toast({ title: t("error"), description: t("failedToSaveSalary"), variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleMarkPaid = (id: string) => {
-    salariesDB.update(id, {
-      status: "paid",
-      paidDate: new Date().toISOString(),
-    });
-    loadData();
-    toast({ title: t("success") || "Success", description: "Salary marked as paid", variant: "success" });
+  const handleMarkPaid = async (id: string) => {
+    try {
+      await updateSalary(id, { status: "paid", paidDate: new Date().toISOString() });
+      await loadData();
+      toast({ title: t("success") || "Success", description: "Salary marked as paid", variant: "success" });
+    } catch {
+      toast({ title: t("error"), variant: "destructive" });
+    }
   };
 
   const handleEdit = (salary: Salary) => {
@@ -251,7 +244,7 @@ export default function SalariesPage() {
     if (deleteConfirmId) {
       setIsDeleteLoading(true);
       try {
-        salariesDB.delete(deleteConfirmId);
+        await deleteSalary(deleteConfirmId);
         await loadData();
         toast({ title: t("deleted") || "Deleted", description: t("salaryRecordDeleted"), variant: "success" });
       } catch (error) {
@@ -283,11 +276,6 @@ export default function SalariesPage() {
   const getTeacherName = (teacherId: string) => {
     const teacher = teachers.find((t) => t.id === teacherId);
     return teacher?.fullName || "Unknown";
-  };
-
-  const getUserName = (userId: string) => {
-    const user = usersDB.getAll().find((u) => u.id === userId);
-    return user?.fullName || "-";
   };
 
   const filteredSalaries = salaries.filter((salary) => {
@@ -752,7 +740,7 @@ export default function SalariesPage() {
                         : "-"}
                     </td>
                     <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      <span className="text-sm">{salary.createdBy ? getUserName(salary.createdBy) : "-"}</span>
+                      <span className="text-sm">{salary.createdBy || "-"}</span>
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center justify-end gap-2">

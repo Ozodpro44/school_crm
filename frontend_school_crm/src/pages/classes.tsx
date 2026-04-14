@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { classesDB, studentsDB } from "@/lib/storage";
 import { Class, Student, Teacher } from "@/types";
 import {
   Plus,
@@ -337,8 +336,8 @@ export default function ClassesPage() {
       isOpen: true,
       title: t("removeStudent"),
       message: t("confirmRemoveStudent"),
-      onConfirm: () => {
-        studentsDB.update(studentId, { classId: undefined });
+      onConfirm: async () => {
+        await updateStudent(studentId, { classId: undefined });
         loadData();
         toast({
           title: t("updated"),
