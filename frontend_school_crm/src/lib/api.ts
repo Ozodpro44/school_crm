@@ -215,6 +215,7 @@ export interface CreateTeacherRequest {
   monthlySalary: number;
   phone: string;
   email: string;
+  password?: string;
   branchId: string;
   joinedDate?: string;
 }

@@ -17,13 +17,6 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Teacher } from "@/types";
 import { Plus, Search, Edit2, Trash2, BookOpen, Loader2 } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
@@ -31,7 +24,7 @@ import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
-import { createTeacher, updateTeacher, deleteTeacher, listTeachers, listClasses, linkTeacherToUser, listUsers } from "@/lib/api";
+import { createTeacher, updateTeacher, deleteTeacher, listTeachers, listClasses } from "@/lib/api";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function TeachersPage() {
@@ -44,7 +37,6 @@ export default function TeachersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [deletingTeacherId, setDeletingTeacherId] = useState<string | null>(null);
-  const [userAccounts, setUserAccounts] = useState<any[]>([]);
   const language = useLanguage();
   const { toast } = useToast();
   const {
@@ -64,11 +56,10 @@ export default function TeachersPage() {
     monthlySalary: "",
     phone: "",
     email: "",
-    userId: "none",
+    password: "",
   });
 
   useEffect(() => {
-    const user = getCurrentUser();
     setIsLoading(true);
     loadData();
   }, []);
@@ -105,12 +96,6 @@ export default function TeachersPage() {
         setTeachers(teacherList);
         setClasses(classList);
       }
-      try {
-        const users = await listUsers(undefined);
-        setUserAccounts(users.filter((u: any) => u.role === "teacher"));
-      } catch {
-        setUserAccounts([]);
-      }
     } catch (error) {
       console.error("Failed to load teachers:", error);
       toast({
@@ -130,8 +115,13 @@ export default function TeachersPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    if (!canEditTeachers) {
-      toast({ title: t("permissionDenied"), description: t("noPermissionCreate"), variant: "destructive" });
+    const hasAccess = editingTeacher ? canEditTeachers : canCreateTeachers;
+    if (!hasAccess) {
+      toast({
+        title: t("permissionDenied"),
+        description: editingTeacher ? t("permissionDeniedEdit") : t("noPermissionCreate"),
+        variant: "destructive",
+      });
       setIsSubmitting(false);
       return;
     }
@@ -142,7 +132,6 @@ export default function TeachersPage() {
       return;
     }
 
-    const selectedUserId = formData.userId !== "none" ? formData.userId : undefined;
     try {
       if (editingTeacher) {
         await updateTeacher(editingTeacher.id, {
@@ -152,26 +141,21 @@ export default function TeachersPage() {
           phone: formData.phone,
           email: formData.email,
         });
-        if (selectedUserId && selectedUserId !== editingTeacher.userId) {
-          await linkTeacherToUser(editingTeacher.id, selectedUserId);
-        }
         toast({
           title: t("success"),
           description: t("teacherUpdatedSuccess"),
           variant: "success",
         });
       } else {
-        const newTeacher = await createTeacher({
+        await createTeacher({
           fullName: formData.fullName,
           subjects: subjectsArray,
           monthlySalary: parseFloat(formData.monthlySalary),
           phone: formData.phone,
           email: formData.email,
+          password: formData.password,
           branchId: branchId,
         });
-        if (selectedUserId) {
-          await linkTeacherToUser(newTeacher.id, selectedUserId);
-        }
         toast({
           title: t("success"),
           description: t("teacherAddedSuccess"),
@@ -206,7 +190,7 @@ export default function TeachersPage() {
       monthlySalary: teacher.monthlySalary.toString(),
       phone: teacher.phone,
       email: teacher.email,
-      userId: teacher.userId || "none",
+      password: "",
     });
     setIsDialogOpen(true);
   };
@@ -273,7 +257,7 @@ export default function TeachersPage() {
       monthlySalary: "",
       phone: "",
       email: "",
-      userId: "none",
+      password: "",
     });
     setEditingTeacher(null);
   };
@@ -383,6 +367,27 @@ export default function TeachersPage() {
                     />
                   </div>
 
+                  {!editingTeacher && (
+                    <div className="space-y-2">
+                      <Label htmlFor="password">{t("password")} *</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={formData.password}
+                        onChange={(e) =>
+                          setFormData({ ...formData, password: e.target.value })
+                        }
+                        required={!editingTeacher}
+                        minLength={6}
+                        autoComplete="new-password"
+                        placeholder="Minimum 6 characters"
+                      />
+                      <p className="text-xs text-slate-400">
+                        Teacher login will be created with this email and password.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label htmlFor="phone">{t("phone")} *</Label>
                     <Input
@@ -425,31 +430,6 @@ export default function TeachersPage() {
                       required
                     />
                   </div>
-
-                  {userAccounts.length > 0 && (
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>{t("linkAccount") || "User Account"}</Label>
-                      <Select
-                        value={formData.userId}
-                        onValueChange={(v) => setFormData({ ...formData, userId: v })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={t("selectUser") || "Select account (optional)"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">— {t("none") || "None"} —</SelectItem>
-                          {userAccounts.map((u: any) => (
-                            <SelectItem key={u.id} value={u.id}>
-                              {u.fullName} ({u.email})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-slate-400">
-                        {t("linkAccountDesc") || "Link to a login account so this teacher can access the Teacher Portal."}
-                      </p>
-                    </div>
-                  )}
                 </div>
 
                   <div className="flex justify-end gap-3 pt-4">

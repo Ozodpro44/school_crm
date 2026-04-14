@@ -14,6 +14,7 @@ import (
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/utils"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type TeacherService struct {
@@ -36,11 +37,13 @@ type CreateTeacherRequest struct {
 	MonthlySalary float64    `json:"monthlySalary" binding:"required,gt=0"`
 	Phone         string     `json:"phone" binding:"required"`
 	Email         string     `json:"email" binding:"required,email"`
+	Password      string     `json:"password" binding:"omitempty,min=6"`
 	BranchID      string     `json:"branchId" binding:"required"`
 	JoinedDate    *time.Time `json:"joinedDate"`
 }
 
 func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) (*models.Teacher, error) {
+	now := time.Now().UTC()
 	teacher := &models.Teacher{
 		ID:            uuid.New().String(),
 		FullName:      req.FullName,
@@ -50,23 +53,50 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 		Email:         req.Email,
 		BranchID:      req.BranchID,
 		JoinedDate:    req.JoinedDate,
-		CreatedAt:     time.Now().UTC(),
-		UpdatedAt:     time.Now().UTC(),
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 
-	query := `INSERT INTO teachers (id, full_name, monthly_salary, phone, email, branch_id, joined_date, created_at, updated_at)
-	         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	tx, err := s.db.BeginTx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
 
-	_, err := s.db.GetConn().ExecContext(ctx, query,
+	if req.Password != "" {
+		userID := uuid.New().String()
+		hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if hashErr != nil {
+			return nil, hashErr
+		}
+
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO users (id, email, password, role, full_name, branch_id, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			userID, req.Email, string(hashedPassword), models.RoleTeacher, req.FullName, req.BranchID, now, now,
+		)
+		if err != nil {
+			return nil, err
+		}
+		teacher.UserID = &userID
+	}
+
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO teachers (id, full_name, monthly_salary, phone, email, user_id, branch_id, joined_date, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		teacher.ID, teacher.FullName, teacher.MonthlySalary,
-		teacher.Phone, teacher.Email, teacher.BranchID,
-		teacher.JoinedDate, teacher.CreatedAt, teacher.UpdatedAt)
+		teacher.Phone, teacher.Email, teacher.UserID, teacher.BranchID,
+		teacher.JoinedDate, teacher.CreatedAt, teacher.UpdatedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	// Insert subjects into teacher_subjects
-	if err := s.replaceSubjects(ctx, teacher.ID, req.Subjects); err != nil {
+	if err := s.replaceSubjectsWithExec(ctx, tx, teacher.ID, req.Subjects); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
@@ -300,7 +330,15 @@ func (s *TeacherService) getSubjects(ctx context.Context, teacherID string) ([]s
 }
 
 func (s *TeacherService) replaceSubjects(ctx context.Context, teacherID string, subjects []string) error {
-	_, err := s.db.GetConn().ExecContext(ctx,
+	return s.replaceSubjectsWithExec(ctx, s.db.GetConn(), teacherID, subjects)
+}
+
+type subjectExec interface {
+	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+}
+
+func (s *TeacherService) replaceSubjectsWithExec(ctx context.Context, exec subjectExec, teacherID string, subjects []string) error {
+	_, err := exec.ExecContext(ctx,
 		`DELETE FROM teacher_subjects WHERE teacher_id = $1`, teacherID)
 	if err != nil {
 		return err
@@ -309,7 +347,7 @@ func (s *TeacherService) replaceSubjects(ctx context.Context, teacherID string, 
 		if sub == "" {
 			continue
 		}
-		_, err = s.db.GetConn().ExecContext(ctx,
+		_, err = exec.ExecContext(ctx,
 			`INSERT INTO teacher_subjects (id, teacher_id, subject) VALUES ($1, $2, $3)`,
 			uuid.New().String(), teacherID, sub)
 		if err != nil {

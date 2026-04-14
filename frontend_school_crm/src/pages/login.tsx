@@ -34,7 +34,7 @@ export default function LoginPage() {
   useEffect(() => {
     const user = getCurrentUser();
     if (user) {
-      router.push("/");
+      router.push(user.role === "teacher" ? "/teacher-portal" : "/");
     }
   }, [router]);
 
@@ -55,18 +55,18 @@ export default function LoginPage() {
       const response = await apiLogin({ email, password });
 
       if (response.user && response.token) {
-        // Wait for BranchContext to load branches and set selectedBranchId
-        let retries = 0;
-        const maxRetries = 30;
-        while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          retries++;
-        }
+        localStorage.removeItem("selectedBranchId");
 
-        // Teacher role → teacher portal, others → dashboard
         if (response.user.role === "teacher") {
           router.push("/teacher-portal");
         } else {
+          let retries = 0;
+          const maxRetries = 30;
+          while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            retries++;
+          }
+
           router.push("/");
         }
       } else {
