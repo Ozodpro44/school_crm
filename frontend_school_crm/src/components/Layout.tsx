@@ -97,7 +97,7 @@ const LANGUAGES: { value: Language; label: string }[] = [
   { value: "en",      label: "English" },
 ];
 
-function NotificationBell({ direction = "up" }: { direction?: "up" | "down" }) {
+function NotificationBell({ direction = "up", align = "right" }: { direction?: "up" | "down"; align?: "left" | "right" }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -205,7 +205,8 @@ function NotificationBell({ direction = "up" }: { direction?: "up" | "down" }) {
         <div
           ref={panelRef}
           className={cn(
-            "absolute right-0 w-80 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 z-50 overflow-hidden",
+            "absolute w-80 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 z-50 overflow-hidden",
+            align === "left" ? "left-0" : "right-0",
             direction === "up" ? "bottom-full mb-2" : "top-full mt-2"
           )}
         >
@@ -725,7 +726,7 @@ export function Layout({ children }: LayoutProps) {
           <SidebarFooter className="p-2 border-t border-slate-200 dark:border-slate-800">
             {/* Bell — hidden in icon mode (tooltip-only mode has no room) */}
             <div className="group-data-[collapsible=icon]:hidden mb-1 px-1">
-              <NotificationBell />
+              <NotificationBell align="left" />
             </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

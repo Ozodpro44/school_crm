@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS builder
+FROM --platform=linux/amd64 golang:1.23-alpine AS builder
 
 WORKDIR /app
 
@@ -9,9 +9,9 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -ldflags="-w -s" -o rest-api ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o rest-api ./cmd/main.go
 
-FROM alpine:latest
+FROM --platform=linux/amd64 alpine:3.19
 
 WORKDIR /app
 

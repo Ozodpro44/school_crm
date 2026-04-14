@@ -6,20 +6,22 @@ import {
   Card,
   CardContent,
   CardHeader,
-  CardTitle,
-  CardDescription,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { GraduationCap, AlertCircle, Loader2, Eye, EyeOff } from "lucide-react";
+import { GraduationCap, AlertCircle, Loader2, Eye, EyeOff, ShieldCheck, BookOpen } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { login as apiLogin } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
+import { cn } from "@/lib/utils";
+
+type LoginMode = "admin" | "teacher";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<LoginMode>("admin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -36,47 +38,46 @@ export default function LoginPage() {
     }
   }, [router]);
 
+  // Clear error when switching mode
+  const switchMode = (m: LoginMode) => {
+    setMode(m);
+    setError("");
+    setEmail("");
+    setPassword("");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
 
     try {
-      console.log("[Login] Attempting login for:", email);
       const response = await apiLogin({ email, password });
 
-      console.log("[Login] Response:", response);
-
       if (response.user && response.token) {
-        console.log("[Login] Login successful, user:", response.user.email);
-        console.log("[Login] Token saved to localStorage");
-        
         // Wait for BranchContext to load branches and set selectedBranchId
-        // This prevents the dashboard from showing zero data
         let retries = 0;
-        const maxRetries = 30; // 3 seconds max wait
-        
+        const maxRetries = 30;
         while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
           await new Promise(resolve => setTimeout(resolve, 100));
           retries++;
         }
-        
-        console.log("[Login] Branch loaded, redirecting to dashboard...");
-        router.push("/").then(() => {
-          console.log("[Login] Navigation completed");
-        });
+
+        // Teacher role → teacher portal, others → dashboard
+        if (response.user.role === "teacher") {
+          router.push("/teacher-portal");
+        } else {
+          router.push("/");
+        }
       } else {
-        console.log("[Login] Invalid response:", response);
         setError(t("invalidEmailOrPassword"));
       }
     } catch (error) {
-      console.error("[Login] Login error:", error);
       if (error instanceof Error) {
-        // Check if it's a known error message that needs translation
-        const errorMessage = error.message.toLowerCase();
-        if (errorMessage.includes("invalid") || errorMessage.includes("unauthorized")) {
+        const msg = error.message.toLowerCase();
+        if (msg.includes("invalid") || msg.includes("unauthorized")) {
           setError(t("invalidEmailOrPassword"));
-        } else if (errorMessage.includes("network")) {
+        } else if (msg.includes("network")) {
           setError(t("networkError"));
         } else {
           setError(t("errorOccurred"));
@@ -90,102 +91,141 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-blue-50 dark:bg-slate-950 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md shadow-2xl">
-        <CardHeader className="space-y-4">
-          <div className="flex justify-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-lg">
-              <GraduationCap className="w-10 h-10 text-white" />
-            </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-indigo-50 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center p-4">
+      <div className="w-full max-w-md space-y-4">
+
+        {/* Logo */}
+        <div className="flex flex-col items-center gap-2 mb-2">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-lg">
+            <GraduationCap className="w-8 h-8 text-white" />
           </div>
-          <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            {t("dashboard")}
-          </CardTitle>
-          <CardDescription className="text-center text-base">
-            {t("signIn")} {t("accessDashboard")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            School CRM
+          </h1>
+        </div>
+
+        {/* Mode switcher */}
+        <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 gap-1">
+          <button
+            type="button"
+            onClick={() => switchMode("admin")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all",
+              mode === "admin"
+                ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
             )}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            Admin / Manager
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode("teacher")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition-all",
+              mode === "teacher"
+                ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm"
+                : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+            )}
+          >
+            <BookOpen className="w-4 h-4" />
+            Teacher
+          </button>
+        </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">{t("email")}</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="admin@school.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={loading}
-                className="h-11"
-              />
-            </div>
+        {/* Card */}
+        <Card className="shadow-xl border-0">
+          <CardHeader className="pb-2 pt-6">
+            <p className="text-center text-sm text-slate-500 dark:text-slate-400">
+              {mode === "admin"
+                ? "Sign in to manage your school"
+                : "Sign in to access your teacher portal"}
+            </p>
+          </CardHeader>
+          <CardContent className="pb-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">{t("password")}</Label>
-                {/* Only show forgot password link - will be validated on backend for admin role */}
-                <button
-                  type="button"
-                  onClick={() => setForgotPasswordOpen(true)}
-                  className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium transition-colors"
-                  disabled={loading}
-                  title="Password reset available for admin users only"
-                >
-                  {t("forgotPassword")}
-                </button>
-              </div>
-              <div className="relative">
+              <div className="space-y-2">
+                <Label htmlFor="email">{t("email")}</Label>
                 <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder={t("enterPassword")}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  id="email"
+                  type="email"
+                  placeholder={mode === "admin" ? "admin@school.com" : "teacher@school.com"}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={loading}
-                  className="h-11 pr-10"
+                  className="h-11"
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  disabled={loading}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? (
-                    <EyeOff className="w-5 h-5" />
-                  ) : (
-                    <Eye className="w-5 h-5" />
-                  )}
-                </button>
               </div>
-            </div>
 
-            <Button
-              type="submit"
-              className="w-full h-11 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 disabled:opacity-70"
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("signingIn")}
-                </>
-              ) : (
-                t("signIn")
-              )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">{t("password")}</Label>
+                  {mode === "admin" && (
+                    <button
+                      type="button"
+                      onClick={() => setForgotPasswordOpen(true)}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium transition-colors"
+                      disabled={loading}
+                    >
+                      {t("forgotPassword")}
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder={t("enterPassword")}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    disabled={loading}
+                    className="h-11 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={loading}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-50 transition-colors"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                className={cn(
+                  "w-full h-11 font-semibold",
+                  mode === "admin"
+                    ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                    : "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
+                )}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {t("signingIn")}
+                  </>
+                ) : (
+                  mode === "admin" ? t("signIn") : "Sign in as Teacher"
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
 
       <ForgotPasswordModal
         open={forgotPasswordOpen}
