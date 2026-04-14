@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import { Layout } from "@/components/Layout";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { apiRequest, listClasses, listStudents } from "@/lib/api";
@@ -217,8 +216,7 @@ export default function AttendancePage() {
   ];
 
   return (
-    <Layout>
-      <div className="space-y-6">
+    <div className="space-y-6">
 
         {/* ── Page header ── */}
         <div>
@@ -528,7 +526,6 @@ export default function AttendancePage() {
           </div>
         )}
       </div>
-    </Layout>
   );
 }
 

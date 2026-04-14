@@ -77,8 +77,9 @@ import { cn } from "@/lib/utils";
 import { getCurrentUser, logout, hasPermission } from "@/lib/auth";
 import { User } from "@/types";
 import { getTranslation } from "@/lib/translations";
-import { useLanguage } from "@/hooks/use-language";
+import { useLanguage, useSetLanguage } from "@/hooks/use-language";
 import { useBranch } from "@/context/BranchContext";
+import type { Language } from "@/types";
 import { getCurrentSubscription } from "@/lib/subscription-api";
 import {
   getNotifications,
@@ -90,7 +91,13 @@ import {
 
 // ── Notification bell ─────────────────────────────────────────────────────────
 
-function NotificationBell() {
+const LANGUAGES: { value: Language; label: string }[] = [
+  { value: "uz-latn", label: "O'zbek" },
+  { value: "uz-cyrl", label: "Ўзбекча" },
+  { value: "en",      label: "English" },
+];
+
+function NotificationBell({ direction = "up" }: { direction?: "up" | "down" }) {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -197,7 +204,10 @@ function NotificationBell() {
       {open && (
         <div
           ref={panelRef}
-          className="absolute right-0 bottom-10 w-80 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 z-50 overflow-hidden"
+          className={cn(
+            "absolute right-0 w-80 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 z-50 overflow-hidden",
+            direction === "up" ? "bottom-full mb-2" : "top-full mt-2"
+          )}
         >
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
@@ -541,7 +551,14 @@ export function Layout({ children }: LayoutProps) {
     router.push("/login");
   };
 
+  const setLanguage = useSetLanguage();
   const handleBranchChange = (branchId: string) => setCurrentBranchById(branchId);
+
+  const cycleLanguage = () => {
+    const idx = LANGUAGES.findIndex((l) => l.value === language);
+    const next = LANGUAGES[(idx + 1) % LANGUAGES.length];
+    setLanguage(next.value);
+  };
 
   const t = (key: string) => getTranslation(key, language);
 
@@ -755,13 +772,13 @@ export function Layout({ children }: LayoutProps) {
                   className="rounded-md gap-2 cursor-pointer py-2"
                 >
                   <UserCog className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm font-medium">Account</span>
+                  <span className="text-sm font-medium">{t("account") || "Account"}</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="rounded-md gap-2 cursor-pointer py-2">
+                <DropdownMenuItem onClick={cycleLanguage} className="rounded-md gap-2 cursor-pointer py-2">
                   <Globe className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm font-medium flex-1">Language</span>
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded uppercase">
-                    {language}
+                  <span className="text-sm font-medium flex-1">{t("language") || "Language"}</span>
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
+                    {LANGUAGES.find((l) => l.value === language)?.label ?? language}
                   </span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -770,7 +787,7 @@ export function Layout({ children }: LayoutProps) {
                   className="rounded-md gap-2 cursor-pointer py-2 text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20"
                 >
                   <LogOut className="h-4 w-4" />
-                  <span className="text-sm font-medium">Log out</span>
+                  <span className="text-sm font-medium">{t("logout") || "Log out"}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -792,7 +809,7 @@ export function Layout({ children }: LayoutProps) {
             </div>
 
             <div className="flex items-center gap-2">
-              <NotificationBell />
+              <NotificationBell direction="down" />
 
             {/* Mobile user avatar + dropdown */}
             <DropdownMenu>
@@ -820,16 +837,23 @@ export function Layout({ children }: LayoutProps) {
                   </p>
                 </div>
                 <div className="flex items-center justify-between px-2 py-1.5 mb-1">
-                  <span className="text-xs text-slate-500">Theme</span>
+                  <span className="text-xs text-slate-500">{t("theme") || "Theme"}</span>
                   <ThemeSwitch />
                 </div>
+                <DropdownMenuItem onClick={cycleLanguage} className="rounded-md gap-2 cursor-pointer py-1.5">
+                  <Globe className="h-4 w-4 text-slate-400" />
+                  <span className="text-sm flex-1">{t("language") || "Language"}</span>
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
+                    {LANGUAGES.find((l) => l.value === language)?.label ?? language}
+                  </span>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => router.push("/admin-profile")}
                   className="rounded-md gap-2 cursor-pointer py-2"
                 >
                   <UserCog className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm">Account</span>
+                  <span className="text-sm">{t("account") || "Account"}</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -837,7 +861,7 @@ export function Layout({ children }: LayoutProps) {
                   className="rounded-md gap-2 cursor-pointer py-2 text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20"
                 >
                   <LogOut className="h-4 w-4" />
-                  <span className="text-sm">Log out</span>
+                  <span className="text-sm">{t("logout") || "Log out"}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

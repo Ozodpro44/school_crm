@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Layout } from "@/components/Layout";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import {
@@ -607,8 +606,8 @@ export default function QuickPayPage() {
   const unpaidCount = students.length - paidCount;
 
   return (
-    <Layout>
-      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+    <>
+    <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -785,10 +784,9 @@ export default function QuickPayPage() {
             onPaid={(r) => setReceipt(r)}
           />
         )}
-      </div>
-
-      {/* Receipt modal */}
-      <ReceiptModal data={receipt} onClose={() => setReceipt(null)} />
-    </Layout>
+    </div>
+    {/* Receipt modal */}
+    <ReceiptModal data={receipt} onClose={() => setReceipt(null)} />
+    </>
   );
 }
