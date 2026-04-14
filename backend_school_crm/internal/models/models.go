@@ -436,3 +436,111 @@ type CreateContactLogRequest struct {
 	ContactedAt string `json:"contactedAt"` // "YYYY-MM-DDTHH:MM" or RFC3339
 }
 
+// ─── Class Schedule ───────────────────────────────────────────────────────────
+
+type ScheduleSlot struct {
+	ID          string    `json:"id"`
+	BranchID    string    `json:"branchId"`
+	ClassID     string    `json:"classId"`
+	TeacherID   *string   `json:"teacherId"`
+	TeacherName string    `json:"teacherName,omitempty"`
+	DayOfWeek   int       `json:"dayOfWeek"` // 1=Mon … 6=Sat
+	StartTime   string    `json:"startTime"` // "09:00"
+	EndTime     string    `json:"endTime"`   // "10:30"
+	Room        string    `json:"room"`
+	Subject     string    `json:"subject"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type UpsertScheduleSlotRequest struct {
+	BranchID  string  `json:"branchId"  binding:"required"`
+	ClassID   string  `json:"classId"   binding:"required"`
+	TeacherID *string `json:"teacherId"`
+	DayOfWeek int     `json:"dayOfWeek" binding:"required,min=1,max=6"`
+	StartTime string  `json:"startTime" binding:"required"`
+	EndTime   string  `json:"endTime"   binding:"required"`
+	Room      string  `json:"room"`
+	Subject   string  `json:"subject"`
+}
+
+// ─── Mass Messaging ───────────────────────────────────────────────────────────
+
+type MessageLog struct {
+	ID               string    `json:"id"`
+	BranchID         string    `json:"branchId"`
+	SentBy           *string   `json:"sentBy"`
+	Message          string    `json:"message"`
+	TemplateKey      string    `json:"templateKey"`
+	RecipientsCount  int       `json:"recipientsCount"`
+	DeliveredCount   int       `json:"deliveredCount"`
+	Filters          string    `json:"filters"`
+	CreatedAt        time.Time `json:"createdAt"`
+}
+
+type SendMessageRequest struct {
+	BranchID    string            `json:"branchId"  binding:"required"`
+	Message     string            `json:"message"   binding:"required"`
+	TemplateKey string            `json:"templateKey"`
+	Filters     MessageFilters    `json:"filters"`
+}
+
+type MessageFilters struct {
+	ClassIDs      []string `json:"classIds"`
+	PaymentStatus string   `json:"paymentStatus"` // "paid","unpaid","partial",""=all
+	EnrolledAfter string   `json:"enrolledAfter"` // YYYY-MM-DD
+	EnrolledBefore string  `json:"enrolledBefore"`
+	StudentIDs    []string `json:"studentIds"` // explicit list
+}
+
+// ─── Assignments ──────────────────────────────────────────────────────────────
+
+type Assignment struct {
+	ID           string    `json:"id"`
+	BranchID     string    `json:"branchId"`
+	ClassID      string    `json:"classId"`
+	ClassName    string    `json:"className,omitempty"`
+	TeacherID    *string   `json:"teacherId"`
+	Subject      string    `json:"subject"`
+	Title        string    `json:"title"`
+	Description  string    `json:"description"`
+	DueDate      string    `json:"dueDate"` // YYYY-MM-DD
+	CreatedBy    *string   `json:"createdBy"`
+	TotalStudents int      `json:"totalStudents,omitempty"`
+	SubmittedCount int     `json:"submittedCount,omitempty"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+type CreateAssignmentRequest struct {
+	BranchID    string  `json:"branchId"   binding:"required"`
+	ClassID     string  `json:"classId"    binding:"required"`
+	TeacherID   *string `json:"teacherId"`
+	Subject     string  `json:"subject"`
+	Title       string  `json:"title"      binding:"required"`
+	Description string  `json:"description"`
+	DueDate     string  `json:"dueDate"    binding:"required"`
+}
+
+type AssignmentSubmission struct {
+	ID           string     `json:"id"`
+	AssignmentID string     `json:"assignmentId"`
+	StudentID    string     `json:"studentId"`
+	StudentName  string     `json:"studentName,omitempty"`
+	Status       string     `json:"status"`
+	Grade        *float64   `json:"grade"`
+	Feedback     string     `json:"feedback"`
+	SubmittedAt  *time.Time `json:"submittedAt"`
+	GradedAt     *time.Time `json:"gradedAt"`
+	GradedBy     *string    `json:"gradedBy"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
+}
+
+type UpdateSubmissionRequest struct {
+	Status   string   `json:"status"`
+	Grade    *float64 `json:"grade"`
+	Feedback string   `json:"feedback"`
+}
+
+

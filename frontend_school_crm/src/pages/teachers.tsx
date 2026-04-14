@@ -16,7 +16,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Teacher } from "@/types";
-import { Plus, Search, Edit2, Trash2, BookOpen, Loader2, Link2 } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, BookOpen, Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
@@ -37,11 +44,7 @@ export default function TeachersPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [deletingTeacherId, setDeletingTeacherId] = useState<string | null>(null);
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [linkingTeacher, setLinkingTeacher] = useState<Teacher | null>(null);
-  const [linkUserId, setLinkUserId] = useState("");
-  const [isLinking, setIsLinking] = useState(false);
-  const [branchUsers, setBranchUsers] = useState<any[]>([]);
+  const [userAccounts, setUserAccounts] = useState<any[]>([]);
   const language = useLanguage();
   const { toast } = useToast();
   const {
@@ -61,6 +64,7 @@ export default function TeachersPage() {
     monthlySalary: "",
     phone: "",
     email: "",
+    userId: "none",
   });
 
   useEffect(() => {
@@ -94,10 +98,18 @@ export default function TeachersPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId");
       if (branchId) {
-        const teacherList = await listTeachers(branchId);
+        const [teacherList, classList] = await Promise.all([
+          listTeachers(branchId),
+          listClasses(branchId),
+        ]);
         setTeachers(teacherList);
-        const classList = await listClasses(branchId);
         setClasses(classList);
+      }
+      try {
+        const users = await listUsers(undefined);
+        setUserAccounts(users.filter((u: any) => u.role === "teacher"));
+      } catch {
+        setUserAccounts([]);
       }
     } catch (error) {
       console.error("Failed to load teachers:", error);
@@ -130,6 +142,7 @@ export default function TeachersPage() {
       return;
     }
 
+    const selectedUserId = formData.userId !== "none" ? formData.userId : undefined;
     try {
       if (editingTeacher) {
         await updateTeacher(editingTeacher.id, {
@@ -139,13 +152,16 @@ export default function TeachersPage() {
           phone: formData.phone,
           email: formData.email,
         });
+        if (selectedUserId && selectedUserId !== editingTeacher.userId) {
+          await linkTeacherToUser(editingTeacher.id, selectedUserId);
+        }
         toast({
           title: t("success"),
           description: t("teacherUpdatedSuccess"),
           variant: "success",
         });
       } else {
-        await createTeacher({
+        const newTeacher = await createTeacher({
           fullName: formData.fullName,
           subjects: subjectsArray,
           monthlySalary: parseFloat(formData.monthlySalary),
@@ -153,6 +169,9 @@ export default function TeachersPage() {
           email: formData.email,
           branchId: branchId,
         });
+        if (selectedUserId) {
+          await linkTeacherToUser(newTeacher.id, selectedUserId);
+        }
         toast({
           title: t("success"),
           description: t("teacherAddedSuccess"),
@@ -187,6 +206,7 @@ export default function TeachersPage() {
       monthlySalary: teacher.monthlySalary.toString(),
       phone: teacher.phone,
       email: teacher.email,
+      userId: teacher.userId || "none",
     });
     setIsDialogOpen(true);
   };
@@ -214,36 +234,6 @@ export default function TeachersPage() {
         setIsDeleteLoading(false);
         setDeletingTeacherId(null);
       }
-    }
-  };
-
-  const handleOpenLinkDialog = async (teacher: Teacher) => {
-    setLinkingTeacher(teacher);
-    setLinkUserId(teacher.userId || "");
-    setLinkDialogOpen(true);
-    try {
-      const branchId = localStorage.getItem("selectedBranchId");
-      const users = await listUsers(branchId || undefined);
-      setBranchUsers(users.filter((u: any) => u.role === "teacher"));
-    } catch {
-      setBranchUsers([]);
-    }
-  };
-
-  const handleLinkUser = async () => {
-    if (!linkingTeacher || !linkUserId.trim()) return;
-    setIsLinking(true);
-    try {
-      await linkTeacherToUser(linkingTeacher.id, linkUserId.trim());
-      setTeachers((prev) =>
-        prev.map((t) => t.id === linkingTeacher.id ? { ...t, userId: linkUserId.trim() } : t)
-      );
-      toast({ title: t("success"), variant: "success" });
-      setLinkDialogOpen(false);
-    } catch {
-      toast({ title: t("error"), variant: "destructive" });
-    } finally {
-      setIsLinking(false);
     }
   };
 
@@ -283,6 +273,7 @@ export default function TeachersPage() {
       monthlySalary: "",
       phone: "",
       email: "",
+      userId: "none",
     });
     setEditingTeacher(null);
   };
@@ -434,6 +425,31 @@ export default function TeachersPage() {
                       required
                     />
                   </div>
+
+                  {userAccounts.length > 0 && (
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>{t("linkAccount") || "User Account"}</Label>
+                      <Select
+                        value={formData.userId}
+                        onValueChange={(v) => setFormData({ ...formData, userId: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder={t("selectUser") || "Select account (optional)"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">— {t("none") || "None"} —</SelectItem>
+                          {userAccounts.map((u: any) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.fullName} ({u.email})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-slate-400">
+                        {t("linkAccountDesc") || "Link to a login account so this teacher can access the Teacher Portal."}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                   <div className="flex justify-end gap-3 pt-4">
@@ -592,17 +608,6 @@ export default function TeachersPage() {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-end gap-2">
-                          {canEditTeachers && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              title={t("linkAccount") || "Link user account"}
-                              onClick={() => handleOpenLinkDialog(teacher)}
-                              className={teacher.userId ? "text-green-600" : "text-slate-400"}
-                            >
-                              <Link2 className="w-4 h-4" />
-                            </Button>
-                          )}
                           <Button
                             size="icon"
                             variant="ghost"
@@ -641,56 +646,6 @@ export default function TeachersPage() {
           </CardContent>
         </Card>
 
-      {/* Link user account dialog */}
-      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("linkAccount") || "Link User Account"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              {t("noTeacherRecordDesc") || "Link this teacher record to a login user account so they can access the Teacher Portal."}
-            </p>
-            {linkingTeacher?.userId && (
-              <div className="p-2 rounded bg-green-50 dark:bg-green-900/20 text-sm text-green-700 dark:text-green-300">
-                Currently linked to user ID: <code className="text-xs">{linkingTeacher.userId}</code>
-              </div>
-            )}
-            {branchUsers.length > 0 ? (
-              <div className="space-y-2">
-                <Label>{t("selectUser") || "Select teacher user"}</Label>
-                <select
-                  className="w-full border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"
-                  value={linkUserId}
-                  onChange={(e) => setLinkUserId(e.target.value)}
-                >
-                  <option value="">— {t("select") || "select"} —</option>
-                  {branchUsers.map((u: any) => (
-                    <option key={u.id} value={u.id}>{u.fullName} ({u.email})</option>
-                  ))}
-                </select>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label>User ID</Label>
-                <Input
-                  placeholder="Paste user ID..."
-                  value={linkUserId}
-                  onChange={(e) => setLinkUserId(e.target.value)}
-                />
-                <p className="text-xs text-slate-400">The teacher can find their User ID on the Teacher Portal page.</p>
-              </div>
-            )}
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setLinkDialogOpen(false)}>{t("cancel")}</Button>
-              <Button onClick={handleLinkUser} disabled={isLinking || !linkUserId.trim()}>
-                {isLinking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                {t("save")}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
       </div>
 
   );

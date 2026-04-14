@@ -174,9 +174,6 @@ export default function TeacherPortalPage() {
         <GraduationCap className="w-16 h-16 text-slate-300" />
         <h2 className="text-xl font-semibold text-slate-700 dark:text-slate-300">{t("noTeacherRecord")}</h2>
         <p className="text-slate-500 dark:text-slate-400 max-w-md">{t("noTeacherRecordDesc")}</p>
-        <p className="text-sm text-slate-400">
-          User ID: <code className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-xs">{currentUser?.id}</code>
-        </p>
       </div>
     );
   }

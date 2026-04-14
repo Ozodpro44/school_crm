@@ -463,7 +463,7 @@ export default function QuickPayPage() {
 
   const [tab, setTab]                     = useState<TabId>("collect");
   const [payMethod, setPayMethod]         = useState<PayMethod>("cash");
-  const [classFilter, setClassFilter]     = useState("");
+  const [classFilter, setClassFilter]     = useState("all");
   const [search, setSearch]               = useState("");
   const [classes, setClasses]             = useState<Class[]>([]);
   const [students, setStudents]           = useState<StudentPaymentInfo[]>([]);
@@ -490,7 +490,7 @@ export default function QuickPayPage() {
       const res = await searchStudentsWithPaymentStatus({
         branchId,
         search,
-        classId: classFilter || undefined,
+        classId: classFilter !== "all" ? classFilter : undefined,
         limit: 200,
       });
       setStudents(res.data ?? []);
@@ -673,7 +673,7 @@ export default function QuickPayPage() {
                 <SelectValue placeholder={t("classes")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">{t("classes")} (all)</SelectItem>
+                <SelectItem value="all">{t("classes")} (all)</SelectItem>
                 {classes.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>

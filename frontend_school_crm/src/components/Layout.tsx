@@ -45,6 +45,9 @@ import {
   ClipboardList,
   Zap,
   GraduationCap as PortalIcon,
+  Calendar,
+  MessageSquare,
+  ClipboardCheck,
 } from "lucide-react";
 
 import {
@@ -557,6 +560,9 @@ export function Layout({ children }: LayoutProps) {
         { name: t("classes"), href: "/classes", icon: BookOpen, show: true },
         { name: t("attendance") || "Attendance", href: "/attendance", icon: ClipboardList, show: user?.role !== "teacher" },
         { name: t("teacherPortal") || "Teacher Portal", href: "/teacher-portal", icon: PortalIcon, show: user?.role === "teacher" },
+        { name: t("timetable") || "Schedule", href: "/schedule", icon: Calendar, show: true },
+        { name: t("assignments") || "Assignments", href: "/assignments", icon: ClipboardCheck, show: true },
+        { name: t("messaging") || "Messaging", href: "/messaging", icon: MessageSquare, show: user?.role !== "teacher" },
       ],
     },
     {

@@ -125,6 +125,8 @@ func main() {
 	attendanceService := service.NewAttendanceService(database)
 	studentNotesService := service.NewStudentNotesService(database)
 	teacherPortalService := service.NewTeacherPortalService(database, teacherService)
+	scheduleService := service.NewScheduleService(database)
+	assignmentService := service.NewAssignmentService(database)
 
 	// Initialize Click.uz service (requires environment variables)
 	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
@@ -141,6 +143,7 @@ func main() {
 		log.Println("Warning: TELEGRAM_BOT_TOKEN not set. Telegram payment webhooks will not work.")
 	}
 	telegramPaymentService := service.NewTelegramPaymentService(database, telegramBotToken)
+	messagingService := service.NewMessagingService(database, telegramBotToken)
 
 	// Initialize router
 	if cfg.Environment == "production" {
@@ -317,6 +320,15 @@ func main() {
 	// Teacher portal
 	handlers.RegisterTeacherPortalRoutes(protected, teacherPortalService, userService)
 
+	// Class schedule
+	handlers.RegisterScheduleRoutes(protected, scheduleService, userService)
+
+	// Mass messaging
+	handlers.RegisterMessagingRoutes(protected, messagingService, userService)
+
+	// Assignments
+	handlers.RegisterAssignmentRoutes(protected, assignmentService, userService)
+
 	// Payment initiation routes — placed on authOnly so expired/trial users can still pay
 	handlers.RegisterClickUzRoutes(authOnly, clickUzService, subscriptionService)
 	handlers.RegisterTelegramPaymentRoutes(authOnly, telegramPaymentService, subscriptionService)
@@ -394,6 +406,9 @@ func main() {
 	handlers.RegisterAttendanceRoutes(legacyProtected, attendanceService, userService)
 	handlers.RegisterStudentNotesRoutes(legacyProtected, studentNotesService, attendanceService, userService)
 	handlers.RegisterTeacherPortalRoutes(legacyProtected, teacherPortalService, userService)
+	handlers.RegisterScheduleRoutes(legacyProtected, scheduleService, userService)
+	handlers.RegisterMessagingRoutes(legacyProtected, messagingService, userService)
+	handlers.RegisterAssignmentRoutes(legacyProtected, assignmentService, userService)
 
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)

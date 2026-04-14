@@ -1736,6 +1736,162 @@ export async function updateSettings(
 }
 
 // ============================================================================
+// CLASS SCHEDULE
+// ============================================================================
+
+export interface ScheduleSlot {
+  id: string;
+  branchId: string;
+  classId: string;
+  teacherId?: string;
+  teacherName?: string;
+  dayOfWeek: number; // 1=Mon…6=Sat
+  startTime: string; // "09:00"
+  endTime: string;
+  room: string;
+  subject: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listSchedule(branchId: string, classId?: string): Promise<ScheduleSlot[]> {
+  let q = `/schedule?branchId=${branchId}`;
+  if (classId) q += `&classId=${classId}`;
+  const res = await apiRequest<ScheduleSlot[]>(q);
+  return Array.isArray(res) ? res : [];
+}
+
+export async function upsertScheduleSlot(data: {
+  branchId: string; classId: string; teacherId?: string;
+  dayOfWeek: number; startTime: string; endTime: string; room?: string; subject?: string;
+}): Promise<ScheduleSlot> {
+  return apiRequest<ScheduleSlot>("/schedule", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function deleteScheduleSlot(id: string, branchId: string): Promise<void> {
+  return apiRequest<void>(`/schedule/${id}?branchId=${branchId}`, { method: "DELETE" });
+}
+
+// ============================================================================
+// MASS MESSAGING
+// ============================================================================
+
+export interface MessageLogEntry {
+  id: string;
+  branchId: string;
+  sentBy?: string;
+  message: string;
+  templateKey: string;
+  recipientsCount: number;
+  deliveredCount: number;
+  filters: string;
+  createdAt: string;
+}
+
+export interface SendMessagePayload {
+  branchId: string;
+  message: string;
+  templateKey?: string;
+  filters?: {
+    classIds?: string[];
+    paymentStatus?: string;
+    enrolledAfter?: string;
+    enrolledBefore?: string;
+    studentIds?: string[];
+  };
+}
+
+export async function listMessageHistory(branchId: string, limit = 50): Promise<MessageLogEntry[]> {
+  const res = await apiRequest<MessageLogEntry[]>(`/messages?branchId=${branchId}&limit=${limit}`);
+  return Array.isArray(res) ? res : [];
+}
+
+export async function sendMassMessage(payload: SendMessagePayload): Promise<MessageLogEntry> {
+  return apiRequest<MessageLogEntry>("/messages/send", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function setStudentTelegramChatId(studentId: string, chatId: string): Promise<void> {
+  return apiRequest<void>(`/messages/student/${studentId}/telegram`, {
+    method: "PUT",
+    body: JSON.stringify({ chatId }),
+  });
+}
+
+// ============================================================================
+// ASSIGNMENTS
+// ============================================================================
+
+export interface AssignmentItem {
+  id: string;
+  branchId: string;
+  classId: string;
+  className?: string;
+  teacherId?: string;
+  subject: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  createdBy?: string;
+  totalStudents?: number;
+  submittedCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssignmentSubmission {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  studentName?: string;
+  status: "pending" | "submitted" | "late" | "missing";
+  grade?: number;
+  feedback: string;
+  submittedAt?: string;
+  gradedAt?: string;
+  gradedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listAssignments(branchId: string, classId?: string): Promise<AssignmentItem[]> {
+  let q = `/assignments?branchId=${branchId}`;
+  if (classId) q += `&classId=${classId}`;
+  const res = await apiRequest<AssignmentItem[]>(q);
+  return Array.isArray(res) ? res : [];
+}
+
+export async function createAssignment(data: {
+  branchId: string; classId: string; teacherId?: string;
+  subject?: string; title: string; description?: string; dueDate: string;
+}): Promise<AssignmentItem> {
+  return apiRequest<AssignmentItem>("/assignments", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function deleteAssignment(id: string, branchId: string): Promise<void> {
+  return apiRequest<void>(`/assignments/${id}?branchId=${branchId}`, { method: "DELETE" });
+}
+
+export async function getAssignmentSubmissions(assignmentId: string): Promise<AssignmentSubmission[]> {
+  const res = await apiRequest<AssignmentSubmission[]>(`/assignments/${assignmentId}/submissions`);
+  return Array.isArray(res) ? res : [];
+}
+
+export async function updateSubmission(
+  submissionId: string,
+  data: { status?: string; grade?: number; feedback?: string }
+): Promise<AssignmentSubmission> {
+  return apiRequest<AssignmentSubmission>(`/assignments/submissions/${submissionId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getStudentAssignmentProgress(studentId: string, branchId: string): Promise<AssignmentSubmission[]> {
+  const res = await apiRequest<AssignmentSubmission[]>(`/assignments/student/${studentId}/progress?branchId=${branchId}`);
+  return Array.isArray(res) ? res : [];
+}
+
+// ============================================================================
 // TEACHER PORTAL
 // ============================================================================
 

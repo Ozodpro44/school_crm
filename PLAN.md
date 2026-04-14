@@ -236,7 +236,7 @@ Now I have the full picture. Let me compile the plan.
   ---
   PART 3 — SCHOOL EMPLOYEES
 
-  3.1 Attendance Tracking 🔴
+  3.1 Attendance Tracking ✅ DONE
 
   No attendance system exists. This is the most requested feature in school software:
   - /attendance page: daily class attendance grid
@@ -249,7 +249,7 @@ Now I have the full picture. Let me compile the plan.
   status(present/absent/late), note, created_by.
 
   ---
-  3.2 Quick Payment Entry 🔴
+  3.2 Quick Payment Entry ✅ DONE
 
   Currently adding a payment requires opening a dialog, searching for a student, filling a
   form. Teachers/managers need:
@@ -259,7 +259,7 @@ Now I have the full picture. Let me compile the plan.
   - One-tap receipt printing from student card
 
   ---
-  3.3 Student Profile — Full History 🟠
+  3.3 Student Profile — Full History ✅ DONE
 
   The student details page should show:
   - Complete payment history with running balance
@@ -269,7 +269,7 @@ Now I have the full picture. Let me compile the plan.
   - Contact attempts log ("Called parent on 12.03.2025, no answer")
 
   ---
-  3.4 Teacher Portal View 🟠
+  3.4 Teacher Portal View ✅ DONE
 
   Teachers currently have a limited view. Add a dedicated teacher dashboard:
   - My classes: list of classes they teach with student counts
@@ -279,7 +279,7 @@ Now I have the full picture. Let me compile the plan.
   - No access to other teachers' salaries or financial data
 
   ---
-  3.5 Class Schedule / Timetable 🟡
+  3.5 Class Schedule / Timetable ✅ DONE
 
   No schedule/timetable system. Add:
   - Weekly schedule grid per class (Mon–Sat, time slots)
@@ -289,7 +289,7 @@ Now I have the full picture. Let me compile the plan.
   - iCal export for Google Calendar sync
 
   ---
-  3.6 Mass Messaging 🟡
+  3.6 Mass Messaging ✅ DONE
 
   Add a messaging page for managers:
   - Select students by: class, payment status, enrollment date range
@@ -298,7 +298,7 @@ Now I have the full picture. Let me compile the plan.
   - Message history log
 
   ---
-  3.7 Homework / Assignment Tracker 🟢
+  3.7 Homework / Assignment Tracker ✅ DONE
 
   - Teacher creates assignment: subject, due date, description
   - Students marked as submitted/not submitted
