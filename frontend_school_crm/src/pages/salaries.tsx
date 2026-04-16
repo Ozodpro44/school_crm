@@ -675,7 +675,8 @@ export default function SalariesPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          {/* Desktop table */}
+          <div className="hidden md:overflow-x-auto md:block">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800">
@@ -786,6 +787,71 @@ export default function SalariesPage() {
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Mobile card view */}
+          <div className="md:hidden space-y-3">
+            {filteredSalaries.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-slate-500 dark:text-slate-400">{t("noSalaryRecordsFound")}</p>
+              </div>
+            ) : (
+              paginatedSalaries.map((salary) => (
+                <div
+                  key={salary.id}
+                  className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-900 dark:text-slate-100">
+                        {getTeacherName(salary.teacherId)}
+                      </p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {getMonthName(salary.month)} {salary.year}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="font-semibold text-slate-900 dark:text-slate-100">
+                        {formatCurrency(salary.amount)}
+                      </span>
+                      <Badge className={getStatusColor(salary.status)}>
+                        {salary.status === "partial" ? t("partialPaid") : t(salary.status)}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
+                        {getPaymentMethodIcon(salary.paymentMethod)}
+                        <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
+                      </Badge>
+                      {salary.paidDate && (
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {new Date(salary.paidDate).toLocaleDateString("en-GB").replace(/\//g, ".")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {salary.status === "partial" && (
+                        <Button size="sm" variant="outline" className="text-green-600 h-7 text-xs px-2" onClick={() => handleMarkPaid(salary.id)}>
+                          {t("markPaid")}
+                        </Button>
+                      )}
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(salary)} disabled={!canEditSalaries}>
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(salary.id)} disabled={!canDeleteSalaries}>
+                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                      </Button>
+                    </div>
+                  </div>
+                  {salary.createdBy && (
+                    <p className="text-xs text-slate-400 dark:text-slate-500">{t("whoAddedSalaries")}: {salary.createdBy}</p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
 
             {/* Pagination */}
             {filteredSalaries.length > 0 && (
@@ -827,7 +893,6 @@ export default function SalariesPage() {
                 </div>
               </div>
             )}
-          </div>
         </CardContent>
       </Card>
 

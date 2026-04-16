@@ -505,7 +505,8 @@ export default function TeachersPage() {
 
             <Card>
             <CardContent>
-            <div className="overflow-x-auto">
+            {/* Desktop table */}
+            <div className="hidden md:overflow-x-auto md:block">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800">
@@ -621,6 +622,90 @@ export default function TeachersPage() {
                     {t("noTeachersYet")}
                   </p>
                 </div>
+              )}
+            </div>
+
+            {/* Mobile card view */}
+            <div className="md:hidden space-y-3">
+              {filteredTeachers.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-slate-500 dark:text-slate-400">{t("noTeachersYet")}</p>
+                </div>
+              ) : (
+                filteredTeachers.map((teacher) => (
+                  <div
+                    key={teacher.id}
+                    className={`border rounded-lg p-4 transition-all ${
+                      isSelected(teacher.id)
+                        ? "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700"
+                        : "border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <Checkbox
+                          checked={isSelected(teacher.id)}
+                          onCheckedChange={() => toggleSelect(teacher.id)}
+                          className="mt-1 flex-shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-slate-900 dark:text-slate-100 truncate">
+                            {teacher.fullName}
+                          </p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
+                            {teacher.email}
+                          </p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                            {formatPhoneNumber(teacher.phone)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => canEditTeachers && handleEdit(teacher)}
+                          disabled={!canEditTeachers}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => canDeleteTeachers && handleDelete(teacher.id)}
+                          disabled={!canDeleteTeachers || (isDeleteLoading && deletingTeacherId === teacher.id)}
+                        >
+                          {isDeleteLoading && deletingTeacherId === teacher.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex flex-wrap gap-1">
+                        {teacher.subjects.slice(0, 3).map((subject, index) => (
+                          <Badge key={index} variant="secondary" className="text-xs">
+                            {subject}
+                          </Badge>
+                        ))}
+                        {teacher.subjects.length > 3 && (
+                          <Badge variant="secondary" className="text-xs">
+                            +{teacher.subjects.length - 3}
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        {formatCurrency(teacher.monthlySalary)}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                      <BookOpen className="w-3 h-3" />
+                      <span>{getAssignedClasses(teacher.assignedClasses).join(", ") || t("noClassesYet")}</span>
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </CardContent>

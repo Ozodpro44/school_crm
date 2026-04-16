@@ -1332,7 +1332,8 @@ export default function ExpensesPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          {/* Desktop table */}
+          <div className="hidden md:overflow-x-auto md:block">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800">
@@ -1456,6 +1457,72 @@ export default function ExpensesPage() {
                 </p>
               </div>
             )}
+          </div>
+
+          {/* Mobile card view */}
+          <div className="md:hidden space-y-3">
+            {paginatedExpenses.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-slate-500 dark:text-slate-400">{t("noExpensesFound")}</p>
+              </div>
+            ) : (
+              paginatedExpenses.map((expense) => (
+                <div
+                  key={expense.id}
+                  className={`border rounded-lg p-4 transition-all ${
+                    isSelected(expense.id)
+                      ? "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700"
+                      : "border-slate-200 dark:border-slate-700"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <Checkbox
+                        checked={isSelected(expense.id)}
+                        onCheckedChange={() => toggleSelect(expense.id)}
+                        className="mt-0.5 flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-slate-900 dark:text-slate-100 truncate">
+                          {expense.title}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {new Date(expense.date).toLocaleDateString("en-GB").replace(/\//g, ".")}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="font-semibold text-red-600 dark:text-red-400 flex-shrink-0">
+                      {formatCurrency(expense.amount)}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="text-xs">
+                        {t(getCategoryTranslationKey(expense.category))}
+                      </Badge>
+                      <Badge className={`gap-1 text-xs ${getPaymentMethodColor(expense.paymentMethod)}`}>
+                        {getPaymentMethodIcon(expense.paymentMethod)}
+                        <span>{t(expense.paymentMethod === "bank" ? "bankTransfer" : expense.paymentMethod)}</span>
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(expense)} disabled={!canEditExpenses}>
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(expense.id)} disabled={!canDeleteExpenses}>
+                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                      </Button>
+                    </div>
+                  </div>
+                  {expense.createdBy && (
+                    <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                      {t("whoAddedExpenses")}: {getUserName(expense.createdBy)}
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
 
             {/* Pagination */}
             {totalExpenses > 0 && (
@@ -1515,7 +1582,6 @@ export default function ExpensesPage() {
                 </div>
               </div>
             )}
-          </div>
         </CardContent>
       </Card>
 

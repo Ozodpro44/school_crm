@@ -2391,7 +2391,9 @@ export default function PaymentsPage() {
               ))}
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+            {/* Desktop table */}
+            <div className="hidden md:overflow-x-auto md:block">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800">
@@ -2573,6 +2575,119 @@ export default function PaymentsPage() {
                 </div>
               )}
             </div>
+
+            {/* Mobile card view */}
+            <div className="md:hidden space-y-3">
+              {paginatedPayments.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-slate-500 dark:text-slate-400">{t("noPaymentsFound")}</p>
+                </div>
+              ) : (
+                paginatedPayments.map((payment) => (
+                  <div
+                    key={payment.id}
+                    className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-slate-900 dark:text-slate-100">
+                          {toTitleCase(getStudentName(payment.studentId))}
+                        </p>
+                        <p className="text-sm text-slate-500 dark:text-slate-400">
+                          {getClassName(payment.studentId)} · {getMonthName(payment.month)} {payment.year}
+                        </p>
+                        <p className="text-xs font-mono text-slate-400 dark:text-slate-500 mt-0.5">
+                          {payment.invoiceNumber}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                        <span className="font-semibold text-slate-900 dark:text-slate-100">
+                          {formatCurrency(payment.amount)}
+                        </span>
+                        <Badge className={getStatusColor(getEffectivePaymentStatus(payment))}>
+                          {getPaymentStatusLabel(getEffectivePaymentStatus(payment))}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {payment.paymentMethod && (
+                          <Badge className={`gap-1 text-xs ${getPaymentMethodColor(payment.paymentMethod)}`}>
+                            {getPaymentMethodIcon(payment.paymentMethod)}
+                            <span>{getPaymentMethodLabel(payment.paymentMethod)}</span>
+                          </Badge>
+                        )}
+                        {payment.paidDate && (
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
+                            {new Date(payment.paidDate).toLocaleDateString("en-GB", {
+                              timeZone: "Asia/Tashkent",
+                              year: "numeric",
+                              month: "2-digit",
+                              day: "2-digit",
+                            }).replace(/\//g, ".")}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            const studentInfo = studentInfoMap.get(payment.studentId);
+                            const selectedBranchId = localStorage.getItem("selectedBranchId") || "";
+                            setPosPreviewData({
+                              payment,
+                              student: {
+                                id: payment.studentId,
+                                fullName: studentInfo?.fullName || getStudentName(payment.studentId),
+                                phone: studentInfo?.phone || "",
+                                classId: studentInfo?.classId || "",
+                                monthlyPayment: studentInfo?.monthlyPayment || 0,
+                                branchId: selectedBranchId,
+                                status: "active",
+                                parentPhone: "",
+                                enrollmentDate: undefined,
+                                createdAt: new Date().toISOString(),
+                                updatedAt: new Date().toISOString(),
+                              },
+                              className: studentInfo?.className || getClassName(payment.studentId),
+                            });
+                          }}
+                          title={t("printReceipt")}
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => handleEdit(payment)}
+                          disabled={!canEditPayments || processingPaymentId === payment.id}
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={() => handleDelete(payment.id)}
+                          disabled={!canDeletePayments || processingPaymentId === payment.id}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                    {payment.createdByName && (
+                      <p className="text-xs text-slate-400 dark:text-slate-500">
+                        {t("whoAddedPayment")}: {payment.createdByName}
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            </>
           )}
 
           {/* Pagination */}
