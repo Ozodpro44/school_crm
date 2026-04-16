@@ -217,7 +217,15 @@ export const studentTranslations: Partial<Translation> = {
 
   noPayments: {
     "uz-cyrl": "Ҳеч қандай тўлов йўқ",
-    "uz-latn": "Hech qanday to‘lov yo‘q",
+    "uz-latn": "Hech qanday to’lov yo’q",
     en: "No payments",
   },
+
+  // Missing keys
+  studentCreatedSuccessfully: { "uz-cyrl": "Ўқувчи муваффақиятли қўшилди", "uz-latn": "O’quvchi muvaffaqiyatli qo’shildi", en: "Student created successfully" },
+  studentUpdatedSuccessfully: { "uz-cyrl": "Ўқувчи маълумотлари янгиланди", "uz-latn": "O’quvchi ma’lumotlari yangilandi", en: "Student updated successfully" },
+  failedToDeleteStudents: { "uz-cyrl": "Ўқувчиларни ўчиришда хатолик", "uz-latn": "O’quvchilarni o’chirishda xatolik", en: "Failed to delete students" },
+  failedToUpdateStudent: { "uz-cyrl": "Ўқувчини янгилашда хатолик", "uz-latn": "O’quvchini yangilashda xatolik", en: "Failed to update student" },
+  failedToUpdateStudentStatus: { "uz-cyrl": "Ўқувчи статусини янгилашда хатолик", "uz-latn": "O’quvchi statusini yangilashda xatolik", en: "Failed to update student status" },
+  noPermissionToCreateOrEditStudents: { "uz-cyrl": "Ўқувчи қўшиш ёки таҳрирлаш ҳуқуқи йўқ", "uz-latn": "O’quvchi qo’shish yoki tahrirlash huquqi yo’q", en: "No permission to create or edit students" },
 };

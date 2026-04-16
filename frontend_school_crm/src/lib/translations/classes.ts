@@ -114,4 +114,14 @@ export const classTranslations: Partial<Translation> = {
     "uz-latn": "Sinflarga qaytish",
     en: "Back to Classes"
   },
+
+  // Missing keys
+  confirmDeleteClass: { "uz-cyrl": "Синфни ўчиришни тасдиқланг", "uz-latn": "Sinfni o'chirishni tasdiqlang", en: "Confirm delete class" },
+  confirmRemoveStudent: { "uz-cyrl": "Ўқувчини чиқаришни тасдиқланг", "uz-latn": "O'quvchini chiqarishni tasdiqlang", en: "Confirm remove student" },
+  deleteClass: { "uz-cyrl": "Синфни ўчириш", "uz-latn": "Sinfni o'chirish", en: "Delete Class" },
+  removeStudent: { "uz-cyrl": "Ўқувчини чиқариш", "uz-latn": "O'quvchini chiqarish", en: "Remove Student" },
+  willBeAddedTo: { "uz-cyrl": "Қуйидаги синфга қўшилади", "uz-latn": "Quyidagi sinfga qo'shiladi", en: "Will be added to" },
+  noPermissionAssignStudents: { "uz-cyrl": "Ўқувчиларни синфга бириктириш ҳуқуқи йўқ", "uz-latn": "O'quvchilarni sinfga biriktirish huquqi yo'q", en: "No permission to assign students" },
+  noPermissionDeleteClasses: { "uz-cyrl": "Синфларни ўчириш ҳуқуқи йўқ", "uz-latn": "Sinflarni o'chirish huquqi yo'q", en: "No permission to delete classes" },
+  noPermissionRemoveStudents: { "uz-cyrl": "Ўқувчиларни синфдан чиқариш ҳуқуқи йўқ", "uz-latn": "O'quvchilarni sinfdan chiqarish huquqi yo'q", en: "No permission to remove students" },
 };

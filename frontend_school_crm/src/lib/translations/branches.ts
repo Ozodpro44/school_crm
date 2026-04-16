@@ -121,4 +121,9 @@ export const branchTranslations: Partial<Translation> = {
     "uz-latn": "Oylik to'lov 0 dan katta bo'lishi kerak",
     en: "Monthly payment must be greater than 0",
   },
+
+  // Missing keys
+  failedToCreateAdmin: { "uz-cyrl": "Администратор яратишда хатолик", "uz-latn": "Administrator yaratishda xatolik", en: "Failed to create admin" },
+  managerBranchNote: { "uz-cyrl": "Менежер фақат ўзига тегишли филиал маълумотларини кўра олади", "uz-latn": "Menejer faqat o'ziga tegishli filial ma'lumotlarini ko'ra oladi", en: "Manager can only view their assigned branch data" },
+  failedToLoadData: { "uz-cyrl": "Маълумотларни юклашда хатолик", "uz-latn": "Ma'lumotlarni yuklashda xatolik", en: "Failed to load data" },
 };

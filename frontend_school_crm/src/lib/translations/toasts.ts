@@ -468,4 +468,8 @@ export const toastTranslations: Partial<Translation> = {
     "uz-latn": "Xarajatlarni o'chirish muvaffaqiyatsiz bo'ldi",
     en: "Failed to delete expenses",
   },
+
+  // Missing keys
+  passwordUpdatedSuccess: { "uz-cyrl": "Парол муваффақиятли янгиланди", "uz-latn": "Parol muvaffaqiyatli yangilandi", en: "Password updated successfully" },
+  passwordUpdateError: { "uz-cyrl": "Паролни янгилашда хатолик", "uz-latn": "Parolni yangilashda xatolik", en: "Failed to update password" },
 };

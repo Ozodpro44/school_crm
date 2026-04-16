@@ -1909,6 +1909,32 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Izohlar",
     en: "Notes",
   },
+
+  // Missing keys — general
+  account: { "uz-cyrl": "Аккаунт", "uz-latn": "Akkaunt", en: "Account" },
+  action: { "uz-cyrl": "Амал", "uz-latn": "Amal", en: "Action" },
+  added: { "uz-cyrl": "Қўшилди", "uz-latn": "Qo'shildi", en: "Added" },
+  administration: { "uz-cyrl": "Бошқарув", "uz-latn": "Boshqaruv", en: "Administration" },
+  all: { "uz-cyrl": "Барчаси", "uz-latn": "Barchasi", en: "All" },
+  allStatuses: { "uz-cyrl": "Барча статуслар", "uz-latn": "Barcha statuslar", en: "All Statuses" },
+  clear: { "uz-cyrl": "Тозалаш", "uz-latn": "Tozalash", en: "Clear" },
+  day: { "uz-cyrl": "Кун", "uz-latn": "Kun", en: "Day" },
+  due: { "uz-cyrl": "Қарз", "uz-latn": "Qarz", en: "Due" },
+  finance: { "uz-cyrl": "Молия", "uz-latn": "Moliya", en: "Finance" },
+  incomeVsExpenses: { "uz-cyrl": "Даромад ва харажатлар", "uz-latn": "Daromad va xarajatlar", en: "Income vs Expenses" },
+  invalidResponse: { "uz-cyrl": "Нотўғри жавоб", "uz-latn": "Noto'g'ri javob", en: "Invalid server response" },
+  main: { "uz-cyrl": "Асосий", "uz-latn": "Asosiy", en: "Main" },
+  monthYear: { "uz-cyrl": "Ой / Йил", "uz-latn": "Oy / Yil", en: "Month / Year" },
+  more: { "uz-cyrl": "Кўпроқ", "uz-latn": "Ko'proq", en: "More" },
+  movedTo: { "uz-cyrl": "Кўчирилди", "uz-latn": "Ko'chirildi", en: "Moved to" },
+  none: { "uz-cyrl": "Йўқ", "uz-latn": "Yo'q", en: "None" },
+  recording: { "uz-cyrl": "Ёзиб олиш", "uz-latn": "Yozib olish", en: "Recording" },
+  saved: { "uz-cyrl": "Сақланди", "uz-latn": "Saqlandi", en: "Saved" },
+  searching: { "uz-cyrl": "Қидириляпти…", "uz-latn": "Qidirilayapti…", en: "Searching…" },
+  subject: { "uz-cyrl": "Фан", "uz-latn": "Fan", en: "Subject" },
+  support: { "uz-cyrl": "Қўллаб-қувватлаш", "uz-latn": "Qo'llab-quvvatlash", en: "Support" },
+  switching: { "uz-cyrl": "Алмаштирилмоқда", "uz-latn": "Almashtirilmoqda", en: "Switching…" },
+  studentName: { "uz-cyrl": "Ўқувчи исми", "uz-latn": "O'quvchi ismi", en: "Student Name" },
   };
 
 
