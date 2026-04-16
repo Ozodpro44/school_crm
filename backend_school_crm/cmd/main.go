@@ -46,12 +46,78 @@ func main() {
 	if cfg.Environment == "" {
 		cfg.Environment = "development"
 	}
-	if cfg.JWTSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is required")
-	}
+
+	// ── Startup config validation ─────────────────────────────────────────────
+	var startupErrors []string
+	var startupWarnings []string
+
 	if cfg.DatabaseURL == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
+		startupErrors = append(startupErrors, "DATABASE_URL is required")
 	}
+	if cfg.JWTSecret == "" {
+		startupErrors = append(startupErrors, "JWT_SECRET is required")
+	} else if len(cfg.JWTSecret) < 32 {
+		startupErrors = append(startupErrors, fmt.Sprintf("JWT_SECRET is too short (%d chars); minimum 32 required", len(cfg.JWTSecret)))
+	}
+	if cfg.RedisURL == "" {
+		startupWarnings = append(startupWarnings, "REDIS_URL not set — rate limiting, OTP, and caching will be disabled")
+	}
+	if cfg.ResendAPIKey == "" || cfg.ResendFrom == "" {
+		startupWarnings = append(startupWarnings, "RESEND_API_KEY / RESEND_FROM not set — password-reset emails will be disabled")
+	}
+	if os.Getenv("CLICK_MERCHANT_ID") == "" {
+		startupWarnings = append(startupWarnings, "CLICK_MERCHANT_ID / CLICK_SERVICE_ID / CLICK_SECRET_KEY not set — Click.uz webhooks disabled")
+	}
+	if os.Getenv("TELEGRAM_BOT_TOKEN") == "" {
+		startupWarnings = append(startupWarnings, "TELEGRAM_BOT_TOKEN not set — Telegram notifications/payments disabled")
+	}
+
+	// Print startup summary
+	log.Println("──────────────────────────────────────────────")
+	log.Printf("  School CRM Backend  [%s]", cfg.Environment)
+	log.Println("──────────────────────────────────────────────")
+	log.Printf("  Port         : %s", cfg.Port)
+	log.Printf("  Database     : %s", func() string {
+		if cfg.DatabaseURL != "" { return "✓ configured" }
+		return "✗ MISSING"
+	}())
+	log.Printf("  JWT secret   : %s", func() string {
+		if cfg.JWTSecret == "" { return "✗ MISSING" }
+		if len(cfg.JWTSecret) < 32 { return fmt.Sprintf("✗ too short (%d/32 chars)", len(cfg.JWTSecret)) }
+		return fmt.Sprintf("✓ OK (%d chars)", len(cfg.JWTSecret))
+	}())
+	log.Printf("  Redis        : %s", func() string {
+		if cfg.RedisURL != "" { return "✓ configured" }
+		return "⚠ not set (optional)"
+	}())
+	log.Printf("  Email (Resend): %s", func() string {
+		if cfg.ResendAPIKey != "" && cfg.ResendFrom != "" { return "✓ configured" }
+		return "⚠ not set (optional)"
+	}())
+	log.Printf("  Click.uz     : %s", func() string {
+		if os.Getenv("CLICK_MERCHANT_ID") != "" { return "✓ configured" }
+		return "⚠ not set (optional)"
+	}())
+	log.Printf("  Telegram bot : %s", func() string {
+		if os.Getenv("TELEGRAM_BOT_TOKEN") != "" { return "✓ configured" }
+		return "⚠ not set (optional)"
+	}())
+
+	if len(startupWarnings) > 0 {
+		log.Println("──────────────────────────────────────────────")
+		for _, w := range startupWarnings {
+			log.Printf("  ⚠ WARNING: %s", w)
+		}
+	}
+	if len(startupErrors) > 0 {
+		log.Println("──────────────────────────────────────────────")
+		for _, e := range startupErrors {
+			log.Printf("  ✗ ERROR: %s", e)
+		}
+		log.Println("──────────────────────────────────────────────")
+		log.Fatal("Startup aborted due to configuration errors above")
+	}
+	log.Println("──────────────────────────────────────────────")
 
 	// Initialize database
 	database, err := db.New(context.Background(), cfg.DatabaseURL)
