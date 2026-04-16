@@ -644,7 +644,7 @@ export function Layout({ children }: LayoutProps) {
             {/* Branch switcher (admin only, expanded only) */}
             {branches.length > 0 && user?.role === "admin" && (
               <div className="mb-3 px-1 group-data-[collapsible=icon]:hidden">
-                <Select value={currentBranch?.id || ""} onValueChange={handleBranchChange}>
+                <Select value={currentBranch?.id || "__none__"} onValueChange={(v) => v !== "__none__" && handleBranchChange(v)}>
                   <SelectTrigger className="w-full h-9 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-xs focus:ring-1 focus:ring-indigo-500">
                     <div className="flex items-center gap-2 min-w-0">
                       <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
