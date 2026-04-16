@@ -1935,6 +1935,12 @@ export const commonTranslations: Partial<Translation> = {
   support: { "uz-cyrl": "Қўллаб-қувватлаш", "uz-latn": "Qo'llab-quvvatlash", en: "Support" },
   switching: { "uz-cyrl": "Алмаштирилмоқда", "uz-latn": "Almashtirilmoqda", en: "Switching…" },
   studentName: { "uz-cyrl": "Ўқувчи исми", "uz-latn": "O'quvchi ismi", en: "Student Name" },
+
+  // Offline banner
+  offlineBannerTitle: { "uz-cyrl": "Интернет йўқ", "uz-latn": "Internet yo'q", en: "No internet connection" },
+  offlineBannerDesc: { "uz-cyrl": "Уланиш тикланганча ўзгаришлар сақланмайди", "uz-latn": "Ulanish tiklanguncha o'zgarishlar saqlanmaydi", en: "Changes may not be saved until connection is restored" },
+  connectionRestored: { "uz-cyrl": "Интернет тикланди", "uz-latn": "Internet tiklandi", en: "Connection restored" },
+  retryConnection: { "uz-cyrl": "Қайта уриниш", "uz-latn": "Qayta urinish", en: "Retry" },
   };
 
 

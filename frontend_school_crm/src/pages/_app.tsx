@@ -6,62 +6,33 @@ import { Layout } from "@/components/Layout";
 import "@/styles/globals.css";
 import type { AppProps } from "next/app";
 import { useRouter } from "next/router";
-import { useEffect, useRef } from "react";
-import { toast, useToast } from "@/hooks/use-toast";
+import { useEffect, useState, useCallback } from "react";
+import { toast } from "@/hooks/use-toast";
+import { WifiOff, RefreshCw } from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
+import { getTranslation } from "@/lib/translations";
 
-function NetworkStatusHandler() {
-  const { dismiss } = useToast();
-  const offlineToastIdRef = useRef<string | null>(null);
-  const isOnlineRef = useRef<boolean>(navigator.onLine);
+function OfflineBanner() {
+  const [isOnline, setIsOnline] = useState(true);
+  const [showRestored, setShowRestored] = useState(false);
+  const language = useLanguage();
+  const t = useCallback((key: string) => getTranslation(key as never, language), [language]);
 
   useEffect(() => {
+    // Set initial state safely (SSR guard)
+    setIsOnline(navigator.onLine);
+
     const handleOnline = () => {
-      // Prevent multiple calls
-      if (isOnlineRef.current) return;
-      isOnlineRef.current = true;
-
-      // Dismiss the offline toast if it exists
-      if (offlineToastIdRef.current) {
-        dismiss(offlineToastIdRef.current);
-        offlineToastIdRef.current = null;
-      }
-
-      // Show reconnected toast
-      toast({
-        title: "Connected",
-        description: "Network connection restored. Reloading page...",
-        variant: "default",
-      });
-
-      // Reload the page after 1 second
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      setIsOnline(true);
+      setShowRestored(true);
+      setTimeout(() => setShowRestored(false), 3000);
     };
 
     const handleOffline = () => {
-      // Prevent multiple calls
-      if (!isOnlineRef.current) return;
-      isOnlineRef.current = false;
-
-      // Don't create duplicate toasts
-      if (offlineToastIdRef.current) return;
-
-      // Show offline toast
-      const offlineToast = toast({
-        title: "No Connection",
-        description: "You are currently offline. Please check your internet connection.",
-        variant: "destructive",
-      });
-      offlineToastIdRef.current = offlineToast.id;
+      setIsOnline(false);
+      setShowRestored(false);
     };
 
-    // Check initial connection status
-    if (!navigator.onLine) {
-      handleOffline();
-    }
-
-    // Add event listeners
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
@@ -69,7 +40,38 @@ function NetworkStatusHandler() {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [dismiss]);
+  }, []);
+
+  // "Connection restored" flash banner
+  if (showRestored) {
+    return (
+      <div className="fixed top-0 left-0 right-0 z-[9999] bg-emerald-500 text-white px-4 py-2.5 flex items-center justify-center gap-2 shadow-lg animate-in slide-in-from-top-2 duration-300">
+        <RefreshCw className="w-4 h-4 flex-shrink-0" />
+        <span className="text-sm font-medium">{t("connectionRestored")}</span>
+      </div>
+    );
+  }
+
+  // Persistent offline banner
+  if (!isOnline) {
+    return (
+      <div className="fixed top-0 left-0 right-0 z-[9999] bg-red-600 text-white px-4 py-2.5 flex items-center justify-between gap-3 shadow-lg">
+        <div className="flex items-center gap-2 min-w-0">
+          <WifiOff className="w-4 h-4 flex-shrink-0" />
+          <div className="min-w-0">
+            <span className="text-sm font-semibold">{t("offlineBannerTitle")} · </span>
+            <span className="text-sm text-red-100">{t("offlineBannerDesc")}</span>
+          </div>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="flex-shrink-0 text-xs font-medium bg-white/20 hover:bg-white/30 transition-colors px-3 py-1 rounded-full"
+        >
+          {t("retryConnection")}
+        </button>
+      </div>
+    );
+  }
 
   return null;
 }
@@ -87,7 +89,7 @@ export default function App({ Component, pageProps }: AppProps) {
     >
       <LanguageProvider>
         <BranchProvider>
-          <NetworkStatusHandler />
+          <OfflineBanner />
           {isAuthPage ? (
             <>
               <Component {...pageProps} />
