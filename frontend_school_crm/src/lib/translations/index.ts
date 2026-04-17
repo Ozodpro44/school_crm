@@ -30,7 +30,7 @@ export const translations: Translation = {
   ...helpTranslations,
   ...authTranslations,
   ...miscTranslations
-};
+} as Translation;
 
 /**
  * Retrieves a translation string for a given key and language.

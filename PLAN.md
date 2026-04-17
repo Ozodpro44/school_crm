@@ -308,7 +308,7 @@ Now I have the full picture. Let me compile the plan.
   ---
   PART 4 — DEVELOPER EXPERIENCE
 
-  4.1 OpenAPI / Swagger Documentation 🔴
+  4.1 OpenAPI / Swagger Documentation ✅ DONE
 
   Zero API documentation exists. Add swaggo/swag to the Go backend:
   go get github.com/swaggo/swag/cmd/swag
@@ -317,7 +317,7 @@ Now I have the full picture. Let me compile the plan.
    developer touching the API will immediately benefit.
 
   ---
-  4.2 Test Coverage — Backend 🔴
+  4.2 Test Coverage — Backend ✅ DONE
 
   Currently only 4 test files exist. Target 70% coverage on:
   - All service layer functions (payment_service_test.go, student_service_test.go, etc.)
@@ -346,7 +346,7 @@ Now I have the full picture. Let me compile the plan.
   on app start, showing a clear error page instead of silent API failures.
 
   ---
-  4.5 Error Monitoring (Sentry) 🟠
+  4.5 Error Monitoring (Sentry) ✅ DONE
 
   Add Sentry to both frontend and backend:
   - Backend: github.com/getsentry/sentry-go — captures panics + 500 errors with stack traces
@@ -381,7 +381,7 @@ Now I have the full picture. Let me compile the plan.
   Also: frontend_for_dev/ is a second frontend — clarify its purpose or remove it.
 
   ---
-  4.8 Frontend Query Layer (React Query / SWR) 🟡
+  4.8 Frontend Query Layer (React Query / SWR) ✅ DONE
 
   Currently every page manages its own useState + useEffect + fetch manually. This leads to:
   - No deduplication (same data fetched multiple times)
@@ -395,7 +395,7 @@ Now I have the full picture. Let me compile the plan.
   - Built-in loading/error states
 
   ---
-  4.9 TypeScript Strict Mode 🟡
+  4.9 TypeScript Strict Mode ✅ DONE
 
   tsconfig.json — enable:
   {
@@ -419,7 +419,7 @@ Now I have the full picture. Let me compile the plan.
   ---
   PART 5 — UX / PRODUCT POLISH
 
-  5.1 Missing Translations 🔴
+  5.1 Missing Translations ✅ DONE
 
   The translation key t("main"), t("support"), t("more") are used in the new sidebar but
   likely not in the translations file. Audit all t("...") calls vs the translations
@@ -429,7 +429,7 @@ Now I have the full picture. Let me compile the plan.
   src/lib/translations.ts.
 
   ---
-  5.2 Offline / Poor Connection State 🟠
+  5.2 Offline / Poor Connection State ✅ DONE
 
   When the API is unreachable:
   - Show a global "No connection" banner instead of silent failures
@@ -448,14 +448,14 @@ Now I have the full picture. Let me compile the plan.
   The bottom nav added in the sidebar redesign is a good start — now the content must match.
 
   ---
-  5.4 Loading Skeleton Consistency 🟡
+  5.4 Loading Skeleton Consistency ✅ DONE
 
   Some pages use <Skeleton>, others show blank space. Audit all pages and ensure every
   data-fetching page has a consistent skeleton that matches the content shape (not just
   random grey bars).
 
   ---
-  5.5 Form Validation UX 🟡
+  5.5 Form Validation UX ✅ DONE
 
   Most forms use basic validation. Improve:
   - Inline field errors (not just toast notifications)

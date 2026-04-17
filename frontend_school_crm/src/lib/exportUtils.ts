@@ -2,12 +2,13 @@
 export function exportTableToCSV(data: unknown[], filename: string) {
   if (data.length === 0) return;
 
-  const headers = Object.keys(data[0]);
+  const first = data[0] as Record<string, unknown>;
+  const headers = Object.keys(first);
   const csvContent = [
     headers.join(","),
     ...data.map((row) =>
       headers.map((header) => {
-        const value = row[header];
+        const value = (row as Record<string, unknown>)[header];
         if (typeof value === "string" && value.includes(",")) {
           return `"${value}"`;
         }

@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { listBranches, getAuthToken } from "@/lib/api";
 import { Branch } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
+import { queryClient } from "@/lib/query-client";
 
 interface BranchContextType {
   currentBranch: Branch | null;
@@ -58,12 +59,14 @@ export function BranchProvider({ children }: { children: ReactNode }) {
         if (savedBranch) {
           setCurrentBranchState(savedBranch);
         } else if (filteredBranches.length > 0) {
-          setCurrentBranchState(filteredBranches[0]);
-          localStorage.setItem("selectedBranchId", filteredBranches[0].id);
+          const first = filteredBranches[0]!;
+          setCurrentBranchState(first);
+          localStorage.setItem("selectedBranchId", first.id);
         }
       } else if (filteredBranches.length > 0) {
-        setCurrentBranchState(filteredBranches[0]);
-        localStorage.setItem("selectedBranchId", filteredBranches[0].id);
+        const first = filteredBranches[0]!;
+        setCurrentBranchState(first);
+        localStorage.setItem("selectedBranchId", first.id);
       }
     } catch (error) {
       console.error("Failed to load branches:", error);
@@ -106,8 +109,10 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   const setCurrentBranch = (branch: Branch) => {
     setCurrentBranchState(branch);
     localStorage.setItem("selectedBranchId", branch.id);
-    // Dispatch event for components that need to refresh
+    // Dispatch event for legacy components that listen to branchChange.
     window.dispatchEvent(new CustomEvent("branchChange", { detail: branch.id }));
+    // Invalidate all branch-scoped React Query caches so pages refetch automatically.
+    queryClient.invalidateQueries();
   };
 
   const setCurrentBranchById = (branchId: string) => {

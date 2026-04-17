@@ -1,0 +1,2139 @@
+basePath: /api/v1
+definitions:
+  models.CreateSubscriptionRequest:
+    properties:
+      branch_id:
+        type: string
+      notes:
+        type: string
+      payment_method:
+        type: string
+      plan_id:
+        type: string
+    required:
+    - plan_id
+    type: object
+  models.DeveloperLoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 6
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  models.DeveloperLoginResponse:
+    properties:
+      email:
+        type: string
+      fullName:
+        type: string
+      id:
+        type: string
+      role:
+        type: string
+      token:
+        type: string
+    type: object
+  models.DeveloperRegisterRequest:
+    properties:
+      email:
+        type: string
+      fullName:
+        minLength: 2
+        type: string
+      password:
+        minLength: 6
+        type: string
+    required:
+    - email
+    - fullName
+    - password
+    type: object
+  models.JSONMap:
+    additionalProperties: true
+    type: object
+  models.Subscription:
+    properties:
+      auto_renew:
+        type: boolean
+      branch_id:
+        type: string
+      cancelled_at:
+        type: string
+      cancelled_by:
+        type: string
+      created_at:
+        type: string
+      end_date:
+        type: string
+      id:
+        type: string
+      notes:
+        type: string
+      payment_method:
+        type: string
+      plan_id:
+        type: string
+      renewal_date:
+        type: string
+      start_date:
+        type: string
+      status:
+        description: active, paused, cancelled, expired
+        type: string
+      stripe_subscription_id:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  models.SubscriptionPayment:
+    properties:
+      amount:
+        type: number
+      click_payment_id:
+        type: string
+      created_at:
+        type: string
+      currency:
+        type: string
+      id:
+        type: string
+      invoice_number:
+        type: string
+      notes:
+        type: string
+      payment_date:
+        type: string
+      payment_method:
+        type: string
+      status:
+        description: pending, completed, failed, refunded
+        type: string
+      stripe_payment_id:
+        type: string
+      subscription_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  models.SubscriptionPlan:
+    properties:
+      billingPeriod:
+        description: monthly, yearly (accept camelCase from frontend)
+        type: string
+      createdAt:
+        type: string
+      description:
+        type: string
+      features:
+        $ref: '#/definitions/models.JSONMap'
+      id:
+        type: string
+      maxBranches:
+        type: integer
+      maxClasses:
+        type: integer
+      maxStudents:
+        type: integer
+      name:
+        type: string
+      price:
+        type: number
+      status:
+        description: active, inactive
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  models.SubscriptionUsage:
+    properties:
+      current_usage:
+        type: integer
+      id:
+        type: string
+      limit_value:
+        type: integer
+      metric_name:
+        description: branches, students, classes
+        type: string
+      reset_date:
+        type: string
+      subscription_id:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  service.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  service.RegisterRequest:
+    properties:
+      email:
+        type: string
+      fullName:
+        type: string
+      password:
+        minLength: 6
+        type: string
+      role:
+        type: string
+      schoolName:
+        type: string
+    required:
+    - email
+    - fullName
+    - password
+    - role
+    type: object
+externalDocs:
+  description: OpenAPI spec
+  url: http://localhost:8080/api/docs/doc.json
+host: localhost:8080
+info:
+  contact:
+    email: support@school-crm.example
+    name: School CRM Support
+  description: REST API for School CRM — manages students, payments, teachers, classes,
+    branches, and salaries.
+  license:
+    name: Proprietary
+  termsOfService: http://swagger.io/terms/
+  title: School CRM API
+  version: "1.0"
+paths:
+  /attendance:
+    get:
+      description: Returns attendance records for a class and date.
+      parameters:
+      - description: Class ID
+        in: query
+        name: classId
+        required: true
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: date
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get attendance
+      tags:
+      - attendance
+    post:
+      consumes:
+      - application/json
+      description: Creates or updates attendance records for a class session.
+      parameters:
+      - description: class_id, date, records (student_id, status)
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Record attendance
+      tags:
+      - attendance
+  /auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Sends a 6-digit OTP to the given email address.
+      parameters:
+      - description: Email
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OTP sent
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: invalid email or user not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Forgot password
+      tags:
+      - auth
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate with email + password. Returns a signed JWT valid
+        for 24 h.
+      parameters:
+      - description: Credentials
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/service.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: token + user object
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: invalid credentials
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Public registration is restricted to the "admin" role. Returns
+        a JWT on success.
+      parameters:
+      - description: Registration data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/service.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: token + user object
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: invalid request body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: only admin role allowed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: internal error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Register
+      tags:
+      - auth
+  /auth/resend-otp:
+    post:
+      consumes:
+      - application/json
+      description: Generates a new OTP and resends it to the given email.
+      parameters:
+      - description: Email
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OTP resent
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Resend OTP
+      tags:
+      - auth
+  /auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Sets a new password using the reset token obtained from VerifyOTP.
+      parameters:
+      - description: Email + resetToken + newPassword
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: password reset successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: invalid token or email
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Reset password
+      tags:
+      - auth
+  /auth/verify-otp:
+    post:
+      consumes:
+      - application/json
+      description: Validates the 6-digit OTP and returns a short-lived reset token.
+      parameters:
+      - description: Email + OTP
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: resetToken
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: invalid or expired OTP
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Verify OTP
+      tags:
+      - auth
+  /branches:
+    get:
+      description: Returns all branches belonging to the authenticated admin.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List branches
+      tags:
+      - branches
+    post:
+      consumes:
+      - application/json
+      description: Creates a new branch under the authenticated school owner.
+      parameters:
+      - description: name, address, phone
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created branch
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "402":
+          description: subscription_limit_reached
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create branch
+      tags:
+      - branches
+  /branches/{id}:
+    delete:
+      parameters:
+      - description: Branch UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: branch deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete branch
+      tags:
+      - branches
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Branch UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update branch
+      tags:
+      - branches
+  /classes:
+    get:
+      description: Returns all classes for a branch.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List classes
+      tags:
+      - classes
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: name, branch_id, teacher_id, schedule
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created class
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create class
+      tags:
+      - classes
+  /classes/{id}:
+    delete:
+      parameters:
+      - description: Class UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: class deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete class
+      tags:
+      - classes
+  /dev/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a developer and return JWT token
+      parameters:
+      - description: Developer login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.DeveloperLoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.DeveloperLoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Developer Login
+      tags:
+      - developer-auth
+  /dev/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new developer account
+      parameters:
+      - description: Developer registration details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.DeveloperRegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.DeveloperLoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Developer Registration
+      tags:
+      - developer-auth
+  /dev/subscription-plans:
+    post:
+      consumes:
+      - application/json
+      description: Create a new subscription plan (dev/admin only)
+      parameters:
+      - description: Create subscription plan request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.SubscriptionPlan'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.SubscriptionPlan'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Create subscription plan
+      tags:
+      - subscriptions
+  /dev/subscription-plans/{id}:
+    delete:
+      description: Delete a subscription plan (dev/admin only)
+      parameters:
+      - description: Plan ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Delete subscription plan
+      tags:
+      - subscriptions
+    put:
+      consumes:
+      - application/json
+      description: Update an existing subscription plan (dev/admin only)
+      parameters:
+      - description: Plan ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update subscription plan request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.SubscriptionPlan'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.SubscriptionPlan'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Update subscription plan
+      tags:
+      - subscriptions
+  /dev/test-payment:
+    post:
+      description: Manually complete a payment for testing
+      parameters:
+      - description: Invoice number
+        in: query
+        name: invoice_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Test payment completion
+      tags:
+      - payments
+  /expenses:
+    get:
+      description: Returns expense records for a branch, optionally filtered by date
+        range.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: startDate
+        type: string
+      - description: YYYY-MM-DD
+        in: query
+        name: endDate
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List expenses
+      tags:
+      - expenses
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: title, amount, category, branch_id, date, payment_method
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created expense
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create expense
+      tags:
+      - expenses
+  /expenses/{id}:
+    delete:
+      parameters:
+      - description: Expense UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: expense deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete expense
+      tags:
+      - expenses
+  /health:
+    get:
+      description: Returns server uptime, DB connection stats, and Redis status.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - system
+  /notifications:
+    get:
+      description: Returns unread notifications for the current user's branch.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List notifications
+      tags:
+      - notifications
+  /notifications/read:
+    post:
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Mark notifications as read
+      tags:
+      - notifications
+  /payments:
+    get:
+      description: Returns payments for a branch, with optional month/year/status
+        filters.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      - description: Month (1-12)
+        in: query
+        name: month
+        type: integer
+      - description: Year (e.g. 2025)
+        in: query
+        name: year
+        type: integer
+      - description: paid | partial | not_paid
+        in: query
+        name: status
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List payments
+      tags:
+      - payments
+    post:
+      consumes:
+      - application/json
+      description: Records a new payment entry for a student.
+      parameters:
+      - description: student_id, branch_id, amount, month, year, payment_method
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created payment
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create payment
+      tags:
+      - payments
+  /payments/{id}:
+    delete:
+      description: Permanently removes a payment record.
+      parameters:
+      - description: Payment UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: payment deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete payment
+      tags:
+      - payments
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Payment UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update payment
+      tags:
+      - payments
+  /payments/consolidated/data:
+    get:
+      description: Returns payment totals, method breakdown, and per-student summary
+        for the dashboard.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      - description: Month (1-12)
+        in: query
+        name: month
+        required: true
+        type: integer
+      - description: Year
+        in: query
+        name: year
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Consolidated payment data
+      tags:
+      - payments
+  /reports:
+    get:
+      description: Returns financial and student summary for the specified branch
+        and period.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      - description: Month (1-12)
+        in: query
+        name: month
+        required: true
+        type: integer
+      - description: Year
+        in: query
+        name: year
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Generate report
+      tags:
+      - reports
+  /salaries:
+    get:
+      description: Returns salary records for a branch, optionally filtered by month/year.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      - description: Month (1-12)
+        in: query
+        name: month
+        type: integer
+      - description: Year
+        in: query
+        name: year
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List salaries
+      tags:
+      - salaries
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: teacher_id, branch_id, amount, month, year, payment_method
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created salary
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create salary record
+      tags:
+      - salaries
+  /salaries/{id}:
+    delete:
+      parameters:
+      - description: Salary UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: salary deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete salary
+      tags:
+      - salaries
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Salary UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update salary
+      tags:
+      - salaries
+  /students:
+    get:
+      description: Returns a paginated list of students for the given branch.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      - description: Page number (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Page size (default 10, max 1000)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: data, total, page, limit, totalPages
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: branchId required
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List students
+      tags:
+      - students
+    post:
+      consumes:
+      - application/json
+      description: Creates a new student in the branch.
+      parameters:
+      - description: Student data (full_name, monthly_payment, status, branch_id)
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created student
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: invalid body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "402":
+          description: subscription_limit_reached
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create student
+      tags:
+      - students
+  /students/{id}:
+    delete:
+      description: Permanently removes a student record.
+      parameters:
+      - description: Student UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: student deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: internal error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete student
+      tags:
+      - students
+    get:
+      description: Returns a single student by ID.
+      parameters:
+      - description: Student UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: student object
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get student
+      tags:
+      - students
+    put:
+      consumes:
+      - application/json
+      description: Partially updates a student record (any field provided in body).
+      parameters:
+      - description: Student UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: updated student
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: invalid body
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: internal error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update student
+      tags:
+      - students
+  /students/consolidated/data:
+    get:
+      description: Returns students with payment status, class info, and filters for
+        the dashboard table.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Limit
+        in: query
+        name: limit
+        type: integer
+      - description: Name search
+        in: query
+        name: search
+        type: string
+      - description: active | inactive | left
+        in: query
+        name: status
+        type: string
+      - description: Filter by class UUID
+        in: query
+        name: classId
+        type: string
+      - description: paid | partial | not_paid
+        in: query
+        name: paymentStatus
+        type: string
+      - description: MM
+        in: query
+        name: month
+        type: string
+      - description: YYYY
+        in: query
+        name: year
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Consolidated student data
+      tags:
+      - students
+  /subscriptions:
+    post:
+      consumes:
+      - application/json
+      description: Create a new subscription for the current user
+      parameters:
+      - description: Create subscription request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.CreateSubscriptionRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.Subscription'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Create subscription
+      tags:
+      - subscriptions
+  /subscriptions/{id}/cancel:
+    post:
+      description: Cancel the current user's subscription
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Cancel subscription
+      tags:
+      - subscriptions
+  /subscriptions/{id}/pay-click:
+    post:
+      consumes:
+      - application/json
+      description: Create a payment order for subscription renewal via Click.uz
+      parameters:
+      - description: Subscription ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Initiate Click.uz payment
+      tags:
+      - payments
+  /subscriptions/{id}/pay-telegram:
+    post:
+      consumes:
+      - application/json
+      description: Create a payment via Click.uz Telegram bot
+      parameters:
+      - description: Subscription ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Initiate Telegram payment
+      tags:
+      - payments
+  /subscriptions/{id}/payments:
+    get:
+      description: Retrieve payment history for a subscription
+      parameters:
+      - description: Subscription ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SubscriptionPayment'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get subscription payments
+      tags:
+      - subscriptions
+  /subscriptions/{id}/usage:
+    get:
+      description: Retrieve usage metrics for a subscription
+      parameters:
+      - description: Subscription ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.SubscriptionUsage'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get subscription usage
+      tags:
+      - subscriptions
+  /subscriptions/payment-status:
+    get:
+      description: Retrieve the current status of a subscription payment
+      parameters:
+      - description: Payment ID
+        in: query
+        name: payment_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get payment status
+      tags:
+      - payments
+  /subscriptions/plans:
+    get:
+      description: Returns available subscription plans (public — no auth required).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+      summary: List subscription plans
+      tags:
+      - subscriptions
+  /teachers:
+    get:
+      description: Returns all teachers for the given branch.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List teachers
+      tags:
+      - teachers
+    post:
+      consumes:
+      - application/json
+      description: Creates a new teacher profile and its linked user account.
+      parameters:
+      - description: full_name, email, phone, branch_id, subjects, monthly_salary
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: created teacher
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create teacher
+      tags:
+      - teachers
+  /teachers/{id}:
+    delete:
+      parameters:
+      - description: Teacher UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: teacher deleted
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete teacher
+      tags:
+      - teachers
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Teacher UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update teacher
+      tags:
+      - teachers
+  /users:
+    get:
+      description: Returns all users visible to the authenticated admin.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List users
+      tags:
+      - users
+  /users/me:
+    get:
+      description: Returns the profile of the authenticated user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get current user
+      tags:
+      - users
+  /webhooks/click-callback:
+    post:
+      consumes:
+      - application/json
+      description: Handle callback from Click.uz payment gateway
+      parameters:
+      - description: Click transaction ID
+        in: query
+        name: click_txn_id
+        required: true
+        type: string
+      - description: Invoice number
+        in: query
+        name: invoice_id
+        required: true
+        type: string
+      - description: Amount paid
+        in: query
+        name: amount
+        required: true
+        type: string
+      - description: Sign time
+        in: query
+        name: sign_time
+        required: true
+        type: string
+      - description: Signature
+        in: query
+        name: sign
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Click.uz payment callback
+      tags:
+      - payments
+  /webhooks/telegram-callback:
+    post:
+      consumes:
+      - application/json
+      description: Handle callback from Click.uz Telegram bot
+      parameters:
+      - description: Invoice number
+        in: query
+        name: invoice_id
+        required: true
+        type: string
+      - description: Payment status (confirmed/completed)
+        in: query
+        name: status
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Telegram payment callback
+      tags:
+      - payments
+securityDefinitions:
+  BearerAuth:
+    description: JWT token — prefix with "Bearer "
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

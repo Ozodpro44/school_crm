@@ -269,7 +269,7 @@ export default function HomePage() {
           const date = new Date(currentYear, currentMonth - i, 1);
           const monthIndex = date.getMonth();
           const monthYear = date.getFullYear();
-          const monthStr = months[monthIndex].substring(0, 3);
+          const monthStr = (months[monthIndex] ?? "").substring(0, 3);
           const monthNum = monthIndex + 1; // 1-12
 
           const monthPayments = paymentsData.filter(
@@ -293,7 +293,7 @@ export default function HomePage() {
           });
 
           monthlyData.push({
-            label: t(months[monthIndex]) || months[monthIndex],
+            label: t(months[monthIndex] ?? "") || (months[monthIndex] ?? ""),
             income: monthPayments.reduce((sum, p) => sum + p.amount, 0),
             expenses:
               monthSalaries.reduce((sum, s) => sum + s.amount, 0) +

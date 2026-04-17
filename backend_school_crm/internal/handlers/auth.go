@@ -12,6 +12,18 @@ import (
 	"github.com/school-crm/backend/internal/utils"
 )
 
+// Login authenticates a user and returns a JWT token.
+//
+//	@Summary      Login
+//	@Description  Authenticate with email + password. Returns a signed JWT valid for 24 h.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      service.LoginRequest   true  "Credentials"
+//	@Success      200   {object}  map[string]interface{} "token + user object"
+//	@Failure      400   {object}  map[string]string      "invalid request body"
+//	@Failure      401   {object}  map[string]string      "invalid credentials"
+//	@Router       /auth/login [post]
 func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.LoginRequest
@@ -61,6 +73,19 @@ func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
 	}
 }
 
+// Register creates a new school-owner (admin) account and grants a 30-day trial.
+//
+//	@Summary      Register
+//	@Description  Public registration is restricted to the "admin" role. Returns a JWT on success.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      service.RegisterRequest  true  "Registration data"
+//	@Success      201   {object}  map[string]interface{}   "token + user object"
+//	@Failure      400   {object}  map[string]string        "invalid request body"
+//	@Failure      403   {object}  map[string]string        "only admin role allowed"
+//	@Failure      500   {object}  map[string]string        "internal error"
+//	@Router       /auth/register [post]
 func Register(userService *service.UserService, subscriptionService *service.SubscriptionService, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.RegisterRequest
@@ -129,6 +154,16 @@ func Register(userService *service.UserService, subscriptionService *service.Sub
 }
 
 // ForgotPassword initiates password reset by sending OTP
+//
+//	@Summary      Forgot password
+//	@Description  Sends a 6-digit OTP to the given email address.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      object              true  "Email"
+//	@Success      200   {object}  map[string]string   "OTP sent"
+//	@Failure      400   {object}  map[string]string   "invalid email or user not found"
+//	@Router       /auth/forgot-password [post]
 func ForgotPassword(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -160,6 +195,16 @@ func ForgotPassword(userService *service.UserService) gin.HandlerFunc {
 }
 
 // VerifyOTP verifies the OTP and returns reset token
+//
+//	@Summary      Verify OTP
+//	@Description  Validates the 6-digit OTP and returns a short-lived reset token.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      object              true  "Email + OTP"
+//	@Success      200   {object}  map[string]string   "resetToken"
+//	@Failure      400   {object}  map[string]string   "invalid or expired OTP"
+//	@Router       /auth/verify-otp [post]
 func VerifyOTP(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -194,6 +239,16 @@ func VerifyOTP(userService *service.UserService) gin.HandlerFunc {
 }
 
 // ResendOTP resends OTP to the user's email
+//
+//	@Summary      Resend OTP
+//	@Description  Generates a new OTP and resends it to the given email.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      object              true  "Email"
+//	@Success      200   {object}  map[string]string   "OTP resent"
+//	@Failure      400   {object}  map[string]string   "error"
+//	@Router       /auth/resend-otp [post]
 func ResendOTP(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -217,6 +272,16 @@ func ResendOTP(userService *service.UserService) gin.HandlerFunc {
 }
 
 // ResetPassword resets the password using reset token
+//
+//	@Summary      Reset password
+//	@Description  Sets a new password using the reset token obtained from VerifyOTP.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      object              true  "Email + resetToken + newPassword"
+//	@Success      200   {object}  map[string]string   "password reset successfully"
+//	@Failure      400   {object}  map[string]string   "invalid token or email"
+//	@Router       /auth/reset-password [post]
 func ResetPassword(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {

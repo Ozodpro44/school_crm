@@ -107,7 +107,7 @@ export interface Student {
 
 export interface CreateStudentRequest {
   fullName: string;
-  classId: string;
+  classId?: string;
   phone: string;
   parentPhone: string;
   monthlyPayment: number;
@@ -333,9 +333,9 @@ export async function apiRequest<T>(
   const token = getAuthToken();
   const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
 
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...fetchOptions.headers,
+    ...(fetchOptions.headers as Record<string, string> | undefined),
   };
 
   if (token) {
@@ -363,6 +363,11 @@ export async function apiRequest<T>(
     });
 
     clearTimeout(timeoutId);
+
+    // Track last successful sync time for the offline banner
+    if (response.ok && typeof window !== "undefined") {
+      localStorage.setItem("lastSyncAt", Date.now().toString());
+    }
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

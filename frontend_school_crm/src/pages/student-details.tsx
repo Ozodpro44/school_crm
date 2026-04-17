@@ -950,11 +950,13 @@ export default function StudentDetailsPage() {
             <div className="space-y-2">
               <Label htmlFor="edit-phone">{t("phone")} *</Label>
               <Input id="edit-phone" type="tel" value={editFormData.phone}
+                placeholder="+998 XX XXX-XX-XX"
                 onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-parentPhone">{t("parentPhone")} *</Label>
               <Input id="edit-parentPhone" type="tel" value={editFormData.parentPhone}
+                placeholder="+998 XX XXX-XX-XX"
                 onChange={(e) => setEditFormData({ ...editFormData, parentPhone: e.target.value })} />
             </div>
             <div className="space-y-2">

@@ -43,6 +43,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -334,7 +335,7 @@ function QRScanTab({
         amount: student.remaining,
         paymentMethod: payMethod,
       }]);
-      const r = res.results[0];
+      const r = res.results[0]!;
       if (r.error) { toast({ title: r.error, variant: "destructive" }); return; }
       onPaid({
         studentName: student.fullName,
@@ -546,7 +547,7 @@ export default function QuickPayPage() {
         amount: student.remaining,
         paymentMethod: payMethod,
       }]);
-      const r = res.results[0];
+      const r = res.results[0]!;
       if (r.error) { toast({ title: r.error, variant: "destructive" }); return; }
       setReceipt(makeReceipt(student, r));
       setStudents((prev) =>
@@ -697,7 +698,22 @@ export default function QuickPayPage() {
         {tab === "collect" && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
             {loading ? (
-              <div className="py-12 text-center text-slate-400 text-sm">Loading...</div>
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="flex items-center gap-4 p-4">
+                    <Skeleton className="h-5 w-5 rounded flex-shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="h-3 w-24" />
+                    </div>
+                    <div className="text-right space-y-1.5">
+                      <Skeleton className="h-5 w-20 ml-auto" />
+                      <Skeleton className="h-3 w-12 ml-auto" />
+                    </div>
+                    <Skeleton className="h-9 w-24 rounded-lg flex-shrink-0" />
+                  </div>
+                ))}
+              </div>
             ) : students.length === 0 ? (
               <div className="py-12 text-center text-slate-400">
                 <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-400" />
@@ -750,7 +766,22 @@ export default function QuickPayPage() {
 
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
               {loading ? (
-                <div className="py-12 text-center text-slate-400 text-sm">Loading...</div>
+                <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="flex items-center gap-4 p-4">
+                      <Skeleton className="h-5 w-5 rounded flex-shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <Skeleton className="h-4 w-40" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                      <div className="text-right space-y-1.5">
+                        <Skeleton className="h-5 w-20 ml-auto" />
+                        <Skeleton className="h-3 w-12 ml-auto" />
+                      </div>
+                      <Skeleton className="h-9 w-24 rounded-lg flex-shrink-0" />
+                    </div>
+                  ))}
+                </div>
               ) : students.length === 0 ? (
                 <div className="py-12 text-center text-slate-400">
                   <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-400" />

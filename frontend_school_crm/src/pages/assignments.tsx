@@ -90,7 +90,7 @@ export default function AssignmentsPage() {
       setAssignments(assignmentsData);
       setClasses(classesData);
       if (classesData.length > 0 && form.classId === "") {
-        setForm((f) => ({ ...f, classId: classesData[0].id }));
+        setForm((f) => ({ ...f, classId: classesData[0]!.id }));
       }
     } catch {
       toast({ title: t("error"), variant: "destructive" });
@@ -129,7 +129,7 @@ export default function AssignmentsPage() {
       const updated = await updateSubmission(subId, { status, grade, feedback });
       setSubmissions((prev) => ({
         ...prev,
-        [assignmentId]: prev[assignmentId].map((s) => (s.id === subId ? updated : s)),
+        [assignmentId]: (prev[assignmentId] ?? []).map((s) => (s.id === subId ? updated : s)),
       }));
     } catch {
       toast({ title: t("error"), variant: "destructive" });

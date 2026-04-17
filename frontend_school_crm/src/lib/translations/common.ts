@@ -867,6 +867,11 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Elektron pochta noghich",
     en: "Invalid email",
   },
+  invalidPhone: {
+    "uz-cyrl": "Телефон рақамини тўғри киритинг: +998 XX XXX-XX-XX",
+    "uz-latn": "Telefon raqamini to'g'ri kiriting: +998 XX XXX-XX-XX",
+    en: "Enter a valid phone: +998 XX XXX-XX-XX",
+  },
   passwordMinLength: {
     "uz-cyrl": "Пароль камида 6 та белгидан иборат бўлиши керак",
     "uz-latn": "Parol kamida 6 ta belgidan iborat bolishi kerak",

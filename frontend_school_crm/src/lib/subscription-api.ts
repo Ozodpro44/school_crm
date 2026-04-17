@@ -237,7 +237,7 @@ export async function getLatestPayment(
   subscriptionId: string
 ): Promise<SubscriptionPayment | null> {
   const payments = await getSubscriptionPayments(subscriptionId);
-  return payments.length > 0 ? payments[0] : null;
+  return payments.length > 0 ? payments[0]! : null;
 }
 
 /**

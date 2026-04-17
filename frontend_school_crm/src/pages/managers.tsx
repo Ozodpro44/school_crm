@@ -397,12 +397,12 @@ export default function ManagersPage() {
   };
 
   const getManagerBranches = (manager: User) => {
-    const branchIds = (manager as any).branchIds || [];
+    const branchIds = ((manager as any).branchIds || []) as string[];
     if (branchIds.length === 0) return "N/A";
     const allBranches = branches;
     return branchIds
-      .map(id => allBranches.find(b => b.id === id)?.name || "")
-      .filter(name => name)
+      .map((id: string) => allBranches.find(b => b.id === id)?.name || "")
+      .filter((name: string) => name)
       .join(", ");
   };
 
@@ -709,7 +709,7 @@ export default function ManagersPage() {
                    </Button>
                    <Button 
                      type="submit"
-                     disabled={isSubmitting || (editingManager && !hasPermissionsChanged())}
+                     disabled={isSubmitting || !!(editingManager && !hasPermissionsChanged())}
                    >
                      {isSubmitting ? (
                        <>

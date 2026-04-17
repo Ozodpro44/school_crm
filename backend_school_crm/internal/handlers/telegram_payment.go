@@ -15,10 +15,10 @@ import (
 // @Accept json
 // @Produce json
 // @Param id path string true "Subscription ID"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 401 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/{id}/pay-telegram [post]
 func InitiateTelegramPayment(telegramService *service.TelegramPaymentService, subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -81,9 +81,9 @@ func InitiateTelegramPayment(telegramService *service.TelegramPaymentService, su
 // @Produce json
 // @Param invoice_id query string true "Invoice number"
 // @Param status query string true "Payment status (confirmed/completed)"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /webhooks/telegram-callback [post]
 func TelegramPaymentCallback(telegramService *service.TelegramPaymentService) gin.HandlerFunc {
 	return func(c *gin.Context) {

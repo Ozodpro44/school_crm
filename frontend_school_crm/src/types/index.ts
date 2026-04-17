@@ -90,8 +90,8 @@ export interface Student {
   status: StudentStatus;
   branchId: string;
   enrollmentDate?: string;
-  leftDate?: string;
-  classSignedDate?: string;
+  leftDate?: string | null;
+  classSignedDate?: string | null;
   classConfirmed?: boolean;
   createdAt: string;
   updatedAt: string;

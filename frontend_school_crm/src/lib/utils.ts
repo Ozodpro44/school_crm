@@ -30,7 +30,7 @@ export function formatDate(date: string | Date | null | undefined): string {
 export function formatNumberWithSpaces(value: string | number): string {
   const num = typeof value === "string" ? value : String(value);
   const parts = num.split(".");
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  parts[0] = (parts[0] ?? "").replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   return parts.join(".");
 }
 

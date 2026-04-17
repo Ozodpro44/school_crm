@@ -45,6 +45,34 @@ jobs:
         run: go tool cover -func=coverage.out | tail -1
 
   # ─────────────────────────────────────────────
+  #  Backend — Integration tests (with Docker)
+  # ─────────────────────────────────────────────
+  backend-integration:
+    name: Backend Integration (Go + Docker)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend_school_crm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend_school_crm/go.mod
+          cache-dependency-path: backend_school_crm/go.sum
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Integration tests
+        run: go test -race -timeout 300s -coverprofile=coverage-integration.out ./...
+
+      - name: Coverage summary (integration)
+        run: go tool cover -func=coverage-integration.out | tail -1
+
+  # ─────────────────────────────────────────────
   #  Frontend — Next.js
   # ─────────────────────────────────────────────
   frontend:

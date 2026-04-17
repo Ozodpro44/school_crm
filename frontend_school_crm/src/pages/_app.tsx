@@ -11,6 +11,9 @@ import { WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { getTranslation } from "@/lib/translations";
 import { validateConfig, hasFatalConfigError, type ConfigError } from "@/lib/config";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { queryClient } from "@/lib/query-client";
 
 // Run config validation once at module load (server + client).
 // Logs warnings to console; fatal errors are surfaced in the UI.
@@ -53,9 +56,31 @@ function ConfigErrorScreen({ errors }: { errors: ConfigError[] }) {
   );
 }
 
+function useLastSyncAgo() {
+  const [label, setLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    function compute() {
+      const raw = localStorage.getItem("lastSyncAt");
+      if (!raw) { setLabel(null); return; }
+      const diffMs = Date.now() - parseInt(raw, 10);
+      const diffMin = Math.floor(diffMs / 60_000);
+      if (diffMin < 1) setLabel("< 1 min ago");
+      else if (diffMin < 60) setLabel(`${diffMin} min ago`);
+      else setLabel(`${Math.floor(diffMin / 60)} h ago`);
+    }
+    compute();
+    const id = setInterval(compute, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return label;
+}
+
 function OfflineBanner() {
   const [isOnline, setIsOnline] = useState(true);
   const [showRestored, setShowRestored] = useState(false);
+  const lastSyncAgo = useLastSyncAgo();
   const language = useLanguage();
   const t = useCallback((key: string) => getTranslation(key as never, language), [language]);
 
@@ -102,6 +127,11 @@ function OfflineBanner() {
           <div className="min-w-0">
             <span className="text-sm font-semibold">{t("offlineBannerTitle")} · </span>
             <span className="text-sm text-red-100">{t("offlineBannerDesc")}</span>
+            {lastSyncAgo && (
+              <span className="text-xs text-red-200 ml-2">
+                {t("lastUpdated") || "Last updated"} {lastSyncAgo}
+              </span>
+            )}
           </div>
         </div>
         <button
@@ -127,28 +157,32 @@ export default function App({ Component, pageProps }: AppProps) {
   }
 
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-    >
-      <LanguageProvider>
-        <BranchProvider>
-          <OfflineBanner />
-          {isAuthPage ? (
-            <>
-              <Component {...pageProps} />
-              <Toaster />
-            </>
-          ) : (
-            <Layout>
-              <Component {...pageProps} />
-              <Toaster />
-            </Layout>
-          )}
-        </BranchProvider>
-      </LanguageProvider>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <LanguageProvider>
+          <BranchProvider>
+            <OfflineBanner />
+            {isAuthPage ? (
+              <>
+                <Component {...pageProps} />
+                <Toaster />
+              </>
+            ) : (
+              <Layout>
+                <Component {...pageProps} />
+                <Toaster />
+              </Layout>
+            )}
+          </BranchProvider>
+        </LanguageProvider>
+      </ThemeProvider>
+      {/* DevTools only visible in development */}
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   );
 }

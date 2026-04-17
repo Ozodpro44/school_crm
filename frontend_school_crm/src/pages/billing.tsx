@@ -25,6 +25,7 @@ import {
   Clock
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useBranch } from "@/context/BranchContext";
 
 // PaymentMethod is now a dynamic string (the code from payment_types table)
@@ -190,7 +191,7 @@ export default function BillingPage() {
       }
 
       if (paymentMethod === "click") {
-        const data = await initiateClickUzPayment(subId);
+        const data = await initiateClickUzPayment(subId!);
         const clickUrl =
           `https://my.click.uz/services/pay?service_id=${data.service_id}` +
           `&merchant_id=${data.merchant_id}` +
@@ -202,7 +203,7 @@ export default function BillingPage() {
       }
 
       if (paymentMethod === "telegram") {
-        const data = await initiateTelegramPayment(subId);
+        const data = await initiateTelegramPayment(subId!);
         setPaymentState({
           step: "telegram_pending",
           subscriptionId: subId,
@@ -228,10 +229,59 @@ export default function BillingPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-4" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">Loading subscription info…</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/30 dark:from-slate-900 dark:via-indigo-950/20 dark:to-purple-950/20 p-6">
+        <div className="max-w-5xl mx-auto space-y-8">
+          {/* Current plan card skeleton */}
+          <div className="rounded-3xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl p-8">
+            <div className="flex flex-col md:flex-row gap-8">
+              <div className="flex-1 space-y-6">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-9 w-48" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-5 w-24" />
+                  </div>
+                  <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-2">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-5 w-16" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 space-y-5">
+                <Skeleton className="h-3 w-28" />
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="flex justify-between">
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-4 w-16" />
+                    </div>
+                    <Skeleton className="h-2 w-full rounded-full" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          {/* Pricing cards skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 space-y-4">
+                <Skeleton className="h-6 w-24" />
+                <Skeleton className="h-10 w-32" />
+                <div className="space-y-2 pt-2">
+                  {[1, 2, 3, 4].map((j) => (
+                    <div key={j} className="flex items-center gap-2">
+                      <Skeleton className="h-4 w-4 rounded-full flex-shrink-0" />
+                      <Skeleton className="h-4 w-full" />
+                    </div>
+                  ))}
+                </div>
+                <Skeleton className="h-10 w-full rounded-lg mt-4" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );

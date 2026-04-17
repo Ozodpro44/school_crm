@@ -1,3 +1,23 @@
+// @title           School CRM API
+// @version         1.0
+// @description     REST API for School CRM — manages students, payments, teachers, classes, branches, and salaries.
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name  School CRM Support
+// @contact.email support@school-crm.example
+
+// @license.name  Proprietary
+
+// @host      localhost:8080
+// @BasePath  /api/v1
+
+// @securityDefinitions.apikey BearerAuth
+// @in                         header
+// @name                       Authorization
+// @description                JWT token — prefix with "Bearer "
+
+// @externalDocs.description  OpenAPI spec
+// @externalDocs.url          http://localhost:8080/api/docs/doc.json
 package main
 
 import (
@@ -9,17 +29,21 @@ import (
 	"os"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/config"
+	_ "github.com/school-crm/backend/docs"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/handlers"
 	"github.com/school-crm/backend/internal/jobs"
 	"github.com/school-crm/backend/internal/middleware"
 	"github.com/school-crm/backend/internal/service"
 	"github.com/school-crm/backend/internal/utils"
+	ginSwagger "github.com/swaggo/gin-swagger"
+	swaggerFiles "github.com/swaggo/files"
 )
 
 var startTime = time.Now()
@@ -38,6 +62,7 @@ func main() {
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
 		ResendFrom:   os.Getenv("RESEND_FROM"),
 		LogsToken:    os.Getenv("LOGS_TOKEN"),
+		SentryDSN:    os.Getenv("SENTRY_DSN"),
 	}
 
 	if cfg.Port == "" {
@@ -102,6 +127,10 @@ func main() {
 		if os.Getenv("TELEGRAM_BOT_TOKEN") != "" { return "✓ configured" }
 		return "⚠ not set (optional)"
 	}())
+	log.Printf("  Sentry       : %s", func() string {
+		if cfg.SentryDSN != "" { return "✓ configured" }
+		return "⚠ not set (optional)"
+	}())
 
 	if len(startupWarnings) > 0 {
 		log.Println("──────────────────────────────────────────────")
@@ -118,6 +147,21 @@ func main() {
 		log.Fatal("Startup aborted due to configuration errors above")
 	}
 	log.Println("──────────────────────────────────────────────")
+
+	// ── Sentry error monitoring (optional) ──────────────────────────────────
+	if cfg.SentryDSN != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              cfg.SentryDSN,
+			Environment:      cfg.Environment,
+			TracesSampleRate: 0.2, // 20% of transactions traced for performance monitoring
+			AttachStacktrace: true,
+		}); err != nil {
+			log.Printf("Warning: Sentry initialization failed: %v", err)
+		} else {
+			log.Println("Sentry initialized")
+			defer sentry.Flush(5 * time.Second)
+		}
+	}
 
 	// Initialize database
 	database, err := db.New(context.Background(), cfg.DatabaseURL)
@@ -227,6 +271,10 @@ func main() {
 	// Middleware
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.RequestID())
+	// Sentry must come after RequestID (so request_id tag is set) but before auth.
+	if cfg.SentryDSN != "" {
+		router.Use(middleware.SentryMiddleware())
+	}
 	router.Use(middleware.StructuredLogger(logger))
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandling())
@@ -265,6 +313,9 @@ func main() {
 	// Register health at both /health (canonical) and /api/health (frontend alias)
 	router.GET("/health", healthHandler)
 	router.GET("/api/health", healthHandler)
+
+	// Swagger UI — available in all environments (restrict in prod via nginx if needed)
+	router.GET("/api/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// Auth rate limiter: 10 req/min per IP (applied when Redis is available)
 	var authRateLimit gin.HandlerFunc = func(c *gin.Context) { c.Next() }

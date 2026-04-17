@@ -19,9 +19,9 @@ import (
 // @Produce json
 // @Param request body models.DeveloperLoginRequest true "Developer login credentials"
 // @Success 200 {object} models.DeveloperLoginResponse
-// @Failure 400 {object} gin.H
-// @Failure 401 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /dev/auth/login [post]
 func DeveloperLogin(developerService *service.DeveloperService, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -78,8 +78,8 @@ func DeveloperLogin(developerService *service.DeveloperService, jwtSecret string
 // @Produce json
 // @Param request body models.DeveloperRegisterRequest true "Developer registration details"
 // @Success 201 {object} models.DeveloperLoginResponse
-// @Failure 400 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Failure 400 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /dev/auth/register [post]
 func DeveloperRegister(developerService *service.DeveloperService, jwtSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {

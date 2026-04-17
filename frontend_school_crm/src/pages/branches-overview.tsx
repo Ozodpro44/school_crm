@@ -229,7 +229,7 @@ export default function BranchesOverviewPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatCurrency(v)} width={100} />
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar
                   dataKey="revenue"

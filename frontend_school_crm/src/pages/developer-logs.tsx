@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, RefreshCw, Trash2, Copy, Check } from 'lucide-react';
 
 interface Log {
@@ -214,7 +215,7 @@ export default function DeveloperLogsPage() {
   };
 
   const getRowClassName = (level: string) => {
-    const colors = LEVEL_COLORS[level] || LEVEL_COLORS.info;
+    const colors = LEVEL_COLORS[level] ?? LEVEL_COLORS["info"]!;
     return colors.bg;
   };
 
@@ -430,12 +431,18 @@ export default function DeveloperLogsPage() {
               </TableHeader>
               <TableBody>
                 {loading && filteredLogs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
-                      <Loader2 className="w-5 h-5 animate-spin inline mr-2" />
-                      Loading logs...
-                    </TableCell>
-                  </TableRow>
+                  <>
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                      <TableRow key={i}>
+                        <TableCell><Skeleton className="h-5 w-14 rounded-full" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-64" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                        <TableCell><Skeleton className="h-7 w-7 rounded" /></TableCell>
+                      </TableRow>
+                    ))}
+                  </>
                 ) : filteredLogs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-8 text-slate-500">

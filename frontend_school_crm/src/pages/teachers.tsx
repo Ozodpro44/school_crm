@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -17,25 +17,39 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Teacher } from "@/types";
 import { Plus, Search, Edit2, Trash2, BookOpen, Loader2 } from "lucide-react";
-import { getCurrentUser, hasPermission } from "@/lib/auth";
+import { hasPermission } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber } from "@/lib/utils";
+import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber, isValidUzbekPhone } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
-import { createTeacher, updateTeacher, deleteTeacher, listTeachers, listClasses } from "@/lib/api";
+import { useBranch } from "@/context/BranchContext";
+import {
+  useTeachersQuery,
+  useClassesQuery,
+  useCreateTeacherMutation,
+  useUpdateTeacherMutation,
+  useDeleteTeacherMutation,
+} from "@/hooks/queries";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function TeachersPage() {
-  const [isLoading, setIsLoading] = useState(true);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
+  const { currentBranch } = useBranch();
+  const branchId = currentBranch?.id ?? null;
+
+  // ── Data fetching ──────────────────────────────────────────────────────────
+  const { data: teachers = [], isLoading } = useTeachersQuery(branchId);
+  const { data: classes = [] } = useClassesQuery(branchId);
+
+  // ── Mutations ──────────────────────────────────────────────────────────────
+  const createMutation = useCreateTeacherMutation();
+  const updateMutation = useUpdateTeacherMutation();
+  const deleteMutation = useDeleteTeacherMutation();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [deletingTeacherId, setDeletingTeacherId] = useState<string | null>(null);
   const language = useLanguage();
   const { toast } = useToast();
@@ -58,55 +72,18 @@ export default function TeachersPage() {
     email: "",
     password: "",
   });
+  const [formErrors, setFormErrors] = useState<{
+    fullName?: string;
+    phone?: string;
+    email?: string;
+    password?: string;
+  }>({});
 
-  useEffect(() => {
-    setIsLoading(true);
-    loadData();
-  }, []);
-
-  // Reload data when branch changes
-  useEffect(() => {
-    const handleBranchChange = () => {
-      loadData();
-    };
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
+  const clearFieldError = (field: keyof typeof formErrors) => {
+    if (formErrors[field]) setFormErrors((e) => ({ ...e, [field]: undefined }));
+  };
 
   const t = (key: string) => getTranslation(key, language);
-
-  const loadData = async () => {
-    const user = getCurrentUser();
-    
-    // If not authenticated, don't try to load data
-    if (!user) {
-      setTeachers([]);
-      setClasses([]);
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const branchId = localStorage.getItem("selectedBranchId");
-      if (branchId) {
-        const [teacherList, classList] = await Promise.all([
-          listTeachers(branchId),
-          listClasses(branchId),
-        ]);
-        setTeachers(teacherList);
-        setClasses(classList);
-      }
-    } catch (error) {
-      console.error("Failed to load teachers:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadTeachers"),
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const canCreateTeachers = hasPermission("canCreateTeachers");
   const canEditTeachers = hasPermission("canEditTeachers");
@@ -114,7 +91,30 @@ export default function TeachersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
+
+    // Inline validation
+    const errors: typeof formErrors = {};
+    if (!formData.fullName.trim()) errors.fullName = t("fieldRequired") || "This field is required";
+    if (!formData.email.trim()) {
+      errors.email = t("fieldRequired") || "This field is required";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      errors.email = t("invalidEmail") || "Enter a valid email address";
+    }
+    if (!formData.phone.trim()) {
+      errors.phone = t("fieldRequired") || "This field is required";
+    } else if (!isValidUzbekPhone(formData.phone)) {
+      errors.phone = t("invalidPhone") || "Enter a valid phone: +998 XX XXX-XX-XX";
+    }
+    if (!editingTeacher && !formData.password) {
+      errors.password = t("fieldRequired") || "This field is required";
+    } else if (!editingTeacher && formData.password.length < 6) {
+      errors.password = t("passwordMinLength") || "Minimum 6 characters";
+    }
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
     const hasAccess = editingTeacher ? canEditTeachers : canCreateTeachers;
     if (!hasAccess) {
       toast({
@@ -122,60 +122,49 @@ export default function TeachersPage() {
         description: editingTeacher ? t("permissionDeniedEdit") : t("noPermissionCreate"),
         variant: "destructive",
       });
-      setIsSubmitting(false);
       return;
     }
+    if (!branchId) return;
+
     const subjectsArray = formData.subjects.split(",").map((s) => s.trim()).filter(Boolean);
-    const branchId = localStorage.getItem("selectedBranchId");
-    if (!branchId) {
-      setIsSubmitting(false);
-      return;
+    const payload = {
+      fullName: formData.fullName,
+      subjects: subjectsArray,
+      monthlySalary: parseFloat(formData.monthlySalary),
+      phone: formData.phone,
+      email: formData.email,
+    };
+
+    if (editingTeacher) {
+      updateMutation.mutate(
+        { id: editingTeacher.id, data: payload },
+        {
+          onSuccess: () => {
+            toast({ title: t("success"), description: t("teacherUpdatedSuccess"), variant: "success" });
+            resetForm();
+            setIsDialogOpen(false);
+          },
+          onError: () => {
+            toast({ title: t("error"), description: t("failedToUpdateTeacher"), variant: "destructive" });
+          },
+        }
+      );
+    } else {
+      createMutation.mutate(
+        { ...payload, password: formData.password, branchId },
+        {
+          onSuccess: () => {
+            toast({ title: t("success"), description: t("teacherAddedSuccess"), variant: "success" });
+            resetForm();
+            setIsDialogOpen(false);
+          },
+          onError: () => {
+            toast({ title: t("error"), description: t("failedToCreateTeacher"), variant: "destructive" });
+          },
+        }
+      );
     }
-
-    try {
-      if (editingTeacher) {
-        await updateTeacher(editingTeacher.id, {
-          fullName: formData.fullName,
-          subjects: subjectsArray,
-          monthlySalary: parseFloat(formData.monthlySalary),
-          phone: formData.phone,
-          email: formData.email,
-        });
-        toast({
-          title: t("success"),
-          description: t("teacherUpdatedSuccess"),
-          variant: "success",
-        });
-      } else {
-        await createTeacher({
-          fullName: formData.fullName,
-          subjects: subjectsArray,
-          monthlySalary: parseFloat(formData.monthlySalary),
-          phone: formData.phone,
-          email: formData.email,
-          password: formData.password,
-          branchId: branchId,
-        });
-        toast({
-          title: t("success"),
-          description: t("teacherAddedSuccess"),
-          variant: "success",
-        });
-      }
-
-      resetForm();
-      await loadData();
-      setIsDialogOpen(false);
-      } catch (error) {
-      toast({
-        title: t("error"),
-        description: editingTeacher ? t("failedToUpdateTeacher") : t("failedToCreateTeacher"),
-        variant: "destructive",
-      });
-      } finally {
-      setIsSubmitting(false);
-      }
-      };
+  };
 
   const handleEdit = (teacher: Teacher) => {
     if (!canEditTeachers) {
@@ -195,30 +184,24 @@ export default function TeachersPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (!canDeleteTeachers) {
       toast({ title: t("permissionDenied"), description: t("permissionDeniedDelete"), variant: "destructive" });
       return;
     }
+    if (!confirm(t("confirmDelete"))) return;
 
-    if (confirm(t("confirmDelete"))) {
-      setDeletingTeacherId(id);
-      setIsDeleteLoading(true);
-      try {
-        await deleteTeacher(id);
-        await loadData();
+    setDeletingTeacherId(id);
+    deleteMutation.mutate(id, {
+      onSuccess: () => {
         toast({ title: t("deleted"), description: t("teacherDeleted"), variant: "success" });
-      } catch (error) {
-        toast({
-          title: t("error"),
-          description: t("failedToDeleteTeacher"),
-          variant: "destructive",
-        });
-      } finally {
-        setIsDeleteLoading(false);
         setDeletingTeacherId(null);
-      }
-    }
+      },
+      onError: () => {
+        toast({ title: t("error"), description: t("failedToDeleteTeacher"), variant: "destructive" });
+        setDeletingTeacherId(null);
+      },
+    });
   };
 
   const handleBulkDelete = async () => {
@@ -232,20 +215,15 @@ export default function TeachersPage() {
 
     if (confirm(`Are you sure? (${selectedIds.length} teachers)`)) {
       try {
-        await Promise.all(selectedIds.map((id) => deleteTeacher(id)));
+        await Promise.all(selectedIds.map((id) => deleteMutation.mutateAsync(id)));
         clearSelection();
-        await loadData();
         toast({
           title: t("deleted"),
           description: `${selectedIds.length} teachers deleted successfully`,
           variant: "success",
         });
-      } catch (error) {
-        toast({
-          title: t("error"),
-          description: t("failedToDeleteTeachers"),
-          variant: "destructive",
-        });
+      } catch {
+        toast({ title: t("error"), description: t("failedToDeleteTeachers"), variant: "destructive" });
       }
     }
   };
@@ -259,6 +237,7 @@ export default function TeachersPage() {
       email: "",
       password: "",
     });
+    setFormErrors({});
     setEditingTeacher(null);
   };
 
@@ -347,11 +326,15 @@ export default function TeachersPage() {
                     <Input
                       id="fullName"
                       value={formData.fullName}
-                      onChange={(e) =>
-                        setFormData({ ...formData, fullName: e.target.value })
-                      }
-                      required
+                      onChange={(e) => {
+                        setFormData({ ...formData, fullName: e.target.value });
+                        clearFieldError("fullName");
+                      }}
+                      className={formErrors.fullName ? "border-red-500 focus-visible:ring-red-500" : ""}
                     />
+                    {formErrors.fullName && (
+                      <p className="text-xs text-red-500">{formErrors.fullName}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -360,11 +343,15 @@ export default function TeachersPage() {
                       id="email"
                       type="email"
                       value={formData.email}
-                      onChange={(e) =>
-                        setFormData({ ...formData, email: e.target.value })
-                      }
-                      required
+                      onChange={(e) => {
+                        setFormData({ ...formData, email: e.target.value });
+                        clearFieldError("email");
+                      }}
+                      className={formErrors.email ? "border-red-500 focus-visible:ring-red-500" : ""}
                     />
+                    {formErrors.email && (
+                      <p className="text-xs text-red-500">{formErrors.email}</p>
+                    )}
                   </div>
 
                   {!editingTeacher && (
@@ -374,17 +361,21 @@ export default function TeachersPage() {
                         id="password"
                         type="password"
                         value={formData.password}
-                        onChange={(e) =>
-                          setFormData({ ...formData, password: e.target.value })
-                        }
-                        required={!editingTeacher}
-                        minLength={6}
+                        onChange={(e) => {
+                          setFormData({ ...formData, password: e.target.value });
+                          clearFieldError("password");
+                        }}
                         autoComplete="new-password"
                         placeholder="Minimum 6 characters"
+                        className={formErrors.password ? "border-red-500 focus-visible:ring-red-500" : ""}
                       />
-                      <p className="text-xs text-slate-400">
-                        Teacher login will be created with this email and password.
-                      </p>
+                      {formErrors.password ? (
+                        <p className="text-xs text-red-500">{formErrors.password}</p>
+                      ) : (
+                        <p className="text-xs text-slate-400">
+                          Teacher login will be created with this email and password.
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -394,11 +385,16 @@ export default function TeachersPage() {
                       id="phone"
                       type="tel"
                       value={formData.phone}
-                      onChange={(e) =>
-                        setFormData({ ...formData, phone: e.target.value })
-                      }
-                      required
+                      onChange={(e) => {
+                        setFormData({ ...formData, phone: e.target.value });
+                        clearFieldError("phone");
+                      }}
+                      placeholder="+998 XX XXX-XX-XX"
+                      className={formErrors.phone ? "border-red-500 focus-visible:ring-red-500" : ""}
                     />
+                    {formErrors.phone && (
+                      <p className="text-xs text-red-500">{formErrors.phone}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -437,12 +433,12 @@ export default function TeachersPage() {
                     type="button"
                     variant="outline"
                     onClick={() => setIsDialogOpen(false)}
-                    disabled={isSubmitting}
+                    disabled={createMutation.isPending || updateMutation.isPending}
                   >
                     {t("cancel")}
                   </Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? (
+                  <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                    {createMutation.isPending || updateMutation.isPending ? (
                       <>
                         <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
                         {editingTeacher ? t("updating") : t("creating")}
@@ -601,9 +597,9 @@ export default function TeachersPage() {
                             size="icon"
                             variant="ghost"
                             onClick={() => canDeleteTeachers && handleDelete(teacher.id)}
-                            disabled={!canDeleteTeachers || (isDeleteLoading && deletingTeacherId === teacher.id)}
+                            disabled={!canDeleteTeachers || (deleteMutation.isPending && deletingTeacherId === teacher.id)}
                           >
-                            {isDeleteLoading && deletingTeacherId === teacher.id ? (
+                            {deleteMutation.isPending && deletingTeacherId === teacher.id ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
                               <Trash2 className="w-4 h-4 text-red-500" />
@@ -673,9 +669,9 @@ export default function TeachersPage() {
                           size="icon"
                           variant="ghost"
                           onClick={() => canDeleteTeachers && handleDelete(teacher.id)}
-                          disabled={!canDeleteTeachers || (isDeleteLoading && deletingTeacherId === teacher.id)}
+                          disabled={!canDeleteTeachers || (deleteMutation.isPending && deletingTeacherId === teacher.id)}
                         >
-                          {isDeleteLoading && deletingTeacherId === teacher.id ? (
+                          {deleteMutation.isPending && deletingTeacherId === teacher.id ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
                           ) : (
                             <Trash2 className="w-4 h-4 text-red-500" />

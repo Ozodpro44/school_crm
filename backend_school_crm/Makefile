@@ -1,4 +1,4 @@
-.PHONY: help swagger run run-grpc build build-grpc proto test fmt lint migrate-up migrate-down migrate-create docker-up docker-down db-create db-drop db-reset
+.PHONY: help swagger run run-grpc build build-grpc proto test test-unit test-integration coverage fmt lint migrate-up migrate-down migrate-create docker-up docker-down db-create db-drop db-reset
 
 # Default environment variables
 POSTGRES_USER ?= school_user
@@ -29,7 +29,10 @@ help:
 	@echo "  make build               - Build REST server executable"
 	@echo "  make build-grpc          - Build gRPC server executable"
 	@echo "  make proto               - Regenerate protobuf Go code from .proto files"
-	@echo "  make test                - Run all tests"
+	@echo "  make test                - Run unit tests (no Docker required)
+  make test-unit           - Run unit tests with race detector
+  make test-integration    - Run integration tests (requires Docker)
+  make coverage            - Generate HTML coverage report"
 	@echo "  make fmt                 - Format code"
 	@echo "  make lint                - Lint code"
 	@echo "  make swagger             - Generate Swagger documentation"
@@ -43,7 +46,9 @@ help:
 
 # Swagger
 swagger:
-	swag init -g cmd/main.go --output ./docs || echo "Swagger not installed. Install with: go install github.com/swaggo/swag/cmd/swag@latest"
+	@command -v swag >/dev/null 2>&1 || { echo "swag not installed. Run: go install github.com/swaggo/swag/cmd/swag@latest"; exit 1; }
+	swag init -g cmd/main.go --output ./docs
+	@echo "✓ Swagger docs written to docs/ — UI available at /api/docs/index.html"
 
 # Protobuf code generation
 # Requires: protoc, protoc-gen-go, protoc-gen-go-grpc
@@ -78,8 +83,19 @@ build:
 build-grpc:
 	go build -o bin/school-crm-grpc cmd/grpc/main.go
 
-test:
-	go test -v ./...
+test: test-unit
+
+test-unit:
+	go test -race -short ./...
+
+test-integration:
+	go test -race -timeout 300s ./...
+
+coverage:
+	go test -race -short -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	go tool cover -func=coverage.out | tail -1
+	@echo "Coverage report written to coverage.html"
 
 fmt:
 	go fmt ./...

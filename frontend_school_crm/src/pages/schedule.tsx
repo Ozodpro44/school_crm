@@ -93,7 +93,7 @@ export default function SchedulePage() {
       setClasses(classesData);
       setTeachers(teachersData);
       if (classesData.length > 0 && form.classId === "") {
-        setForm((f) => ({ ...f, classId: classesData[0].id }));
+        setForm((f) => ({ ...f, classId: classesData[0]!.id }));
       }
     } catch {
       toast({ title: t("error"), variant: "destructive" });
@@ -166,9 +166,31 @@ export default function SchedulePage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid grid-cols-6 gap-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => <Skeleton key={i} className="h-48 rounded-xl" />)}
+        {/* Header */}
+        <div className="flex justify-between items-center gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-9 w-48" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+          <div className="flex gap-3">
+            <Skeleton className="h-10 w-44 rounded-md" />
+            <Skeleton className="h-10 w-28 rounded-md" />
+          </div>
+        </div>
+        {/* Weekly grid — 6 day columns, each with a header + 3 slot cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="space-y-2">
+              <Skeleton className="h-9 w-full rounded-lg" />
+              {[1, 2, 3].map((j) => (
+                <div key={j} className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       </div>
     );

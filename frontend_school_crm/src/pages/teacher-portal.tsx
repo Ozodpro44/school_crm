@@ -71,7 +71,7 @@ export default function TeacherPortalPage() {
       setData(portalData);
 
       if (portalData.classes.length > 0) {
-        setAttendanceClassId(portalData.classes[0].id);
+        setAttendanceClassId(portalData.classes[0]!.id);
       }
     } catch (err) {
       toast({ title: t("error"), description: t("failedToLoadData"), variant: "destructive" });

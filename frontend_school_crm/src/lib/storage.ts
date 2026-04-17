@@ -72,13 +72,13 @@ export const branchesDB = {
     if (index === -1) return null;
 
     branches[index] = {
-      ...branches[index],
+      ...branches[index]!,
       ...updates,
       updatedAt: new Date().toISOString(),
     };
 
     saveToStorage(STORAGE_KEYS.BRANCHES, branches);
-    return branches[index];
+    return branches[index]!;
   },
 
   delete: (id: string): boolean => {
@@ -150,13 +150,13 @@ export const studentsDB = {
     if (index === -1) return null;
 
     students[index] = {
-      ...students[index],
+      ...students[index]!,
       ...updates,
       updatedAt: new Date().toISOString(),
     };
 
     saveToStorage(STORAGE_KEYS.STUDENTS, students);
-    return students[index];
+    return students[index]!;
   },
 
   delete: (id: string): boolean => {
@@ -205,13 +205,13 @@ export const teachersDB = {
     if (index === -1) return null;
 
     teachers[index] = {
-      ...teachers[index],
+      ...teachers[index]!,
       ...updates,
       updatedAt: new Date().toISOString(),
     };
 
     saveToStorage(STORAGE_KEYS.TEACHERS, teachers);
-    return teachers[index];
+    return teachers[index]!;
   },
 
   delete: (id: string): boolean => {
@@ -258,13 +258,13 @@ export const classesDB = {
     if (index === -1) return null;
 
     classes[index] = {
-      ...classes[index],
+      ...classes[index]!,
       ...updates,
       updatedAt: new Date().toISOString(),
     };
 
     saveToStorage(STORAGE_KEYS.CLASSES, classes);
-    return classes[index];
+    return classes[index]!;
   },
 
   delete: (id: string): boolean => {
@@ -309,10 +309,10 @@ export const paymentsDB = {
 
     if (index === -1) return null;
 
-    payments[index] = { ...payments[index], ...updates };
+    payments[index] = { ...payments[index]!, ...updates };
     saveToStorage(STORAGE_KEYS.PAYMENTS, payments);
 
-    return payments[index];
+    return payments[index]!;
   },
   delete: (id: string): boolean => {
     const payments = paymentsDB.getAll();
@@ -356,10 +356,10 @@ export const salariesDB = {
 
     if (index === -1) return null;
 
-    salaries[index] = { ...salaries[index], ...updates };
+    salaries[index] = { ...salaries[index]!, ...updates };
     saveToStorage(STORAGE_KEYS.SALARIES, salaries);
 
-    return salaries[index];
+    return salaries[index]!;
   },
 
   delete: (id: string): boolean => {
@@ -404,10 +404,10 @@ export const expensesDB = {
 
     if (index === -1) return null;
 
-    expenses[index] = { ...expenses[index], ...updates };
+    expenses[index] = { ...expenses[index]!, ...updates };
     saveToStorage(STORAGE_KEYS.EXPENSES, expenses);
 
-    return expenses[index];
+    return expenses[index]!;
   },
 
   delete: (id: string): boolean => {
@@ -461,9 +461,9 @@ export const usersDB = {
     const users = usersDB.getAll();
     const index = users.findIndex((u) => u.id === id);
     if (index === -1) return null;
-    users[index] = { ...users[index], ...updates };
+    users[index] = { ...users[index]!, ...updates };
     saveToStorage(STORAGE_KEYS.USERS, users);
-    return users[index];
+    return users[index]!;
   },
 
   delete: (id: string): boolean => {

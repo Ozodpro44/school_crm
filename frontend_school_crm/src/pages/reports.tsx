@@ -340,8 +340,8 @@ export default function ReportsPage() {
       const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
       const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
 
-      const newStartDate = startDateObj.toISOString().split("T")[0];
-      const newEndDate = endDateObj.toISOString().split("T")[0];
+      const newStartDate = startDateObj.toISOString().split("T")[0]!;
+      const newEndDate = endDateObj.toISOString().split("T")[0]!;
 
       const result = await runReportJob("salary_report", {
         branchId,
@@ -484,8 +484,8 @@ export default function ReportsPage() {
       const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
       const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
 
-      const newStartDate = startDateObj.toISOString().split("T")[0];
-      const newEndDate = endDateObj.toISOString().split("T")[0];
+      const newStartDate = startDateObj.toISOString().split("T")[0]!;
+      const newEndDate = endDateObj.toISOString().split("T")[0]!;
 
       const result = await runReportJob("expenses_report", {
         branchId,
@@ -551,8 +551,8 @@ export default function ReportsPage() {
       const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
       const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
 
-      const newStartDate = startDateObj.toISOString().split("T")[0];
-      const newEndDate = endDateObj.toISOString().split("T")[0];
+      const newStartDate = startDateObj.toISOString().split("T")[0]!;
+      const newEndDate = endDateObj.toISOString().split("T")[0]!;
 
       const financialSummary = await runReportJob("financial_summary", {
         branchId,
@@ -838,8 +838,38 @@ export default function ReportsPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-64 w-full" />
+        {/* Title */}
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-48" />
+          <Skeleton className="h-4 w-72" />
+        </div>
+        {/* Filters card */}
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
+          <Skeleton className="h-5 w-32" />
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="space-y-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-10 w-full rounded-md" />
+              </div>
+            ))}
+          </div>
+          <Skeleton className="h-10 w-36 rounded-md" />
+        </div>
+        {/* Summary stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-8 w-28" />
+            </div>
+          ))}
+        </div>
+        {/* Chart area */}
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-64 w-full rounded-lg" />
+        </div>
       </div>
     );
   }
@@ -932,7 +962,7 @@ export default function ReportsPage() {
                         ];
                         return (
                           <SelectItem key={monthNum} value={monthNum}>
-                            {t(monthNames[i])}
+                            {t(monthNames[i]!)}
                           </SelectItem>
                         );
                       })}
@@ -999,7 +1029,7 @@ export default function ReportsPage() {
                         ];
                         return (
                           <SelectItem key={monthNum} value={monthNum}>
-                            {t(monthNames[i])}
+                            {t(monthNames[i]!)}
                           </SelectItem>
                         );
                       })}
@@ -1231,7 +1261,7 @@ export default function ReportsPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatCurrency(v)} width={90} />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Bar dataKey="expectedIncome" name={t("expectedIncome") || "Expected"} fill="#6366f1" radius={[3, 3, 0, 0]} />
                     <Bar dataKey="actualIncome" name={t("actualIncome") || "Actual Income"} fill="#10b981" radius={[3, 3, 0, 0]} />
@@ -1305,7 +1335,7 @@ export default function ReportsPage() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="label" />
                     <YAxis />
-                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
                     <Legend />
                     <Bar dataKey="amount" fill="#3b82f6" />
                   </BarChart>
@@ -1347,7 +1377,7 @@ export default function ReportsPage() {
                           />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => formatCurrency(value)} />
+                      <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
                     </PieChart>
                   </ResponsiveContainer>
                 </CardContent>

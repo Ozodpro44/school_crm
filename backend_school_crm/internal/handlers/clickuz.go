@@ -16,10 +16,10 @@ import (
 // @Accept json
 // @Produce json
 // @Param id path string true "Subscription ID"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 401 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/{id}/pay-click [post]
 func InitiateClickUzPayment(clickUzService *service.ClickUzService, subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -85,9 +85,9 @@ func InitiateClickUzPayment(clickUzService *service.ClickUzService, subscription
 // @Param amount query string true "Amount paid"
 // @Param sign_time query string true "Sign time"
 // @Param sign query string true "Signature"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /webhooks/click-callback [post]
 func ClickUzCallback(clickUzService *service.ClickUzService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -152,9 +152,9 @@ func ClickUzCallback(clickUzService *service.ClickUzService) gin.HandlerFunc {
 // @Tags payments
 // @Produce json
 // @Param payment_id query string true "Payment ID"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 404 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
 // @Router /subscriptions/payment-status [get]
 func GetPaymentStatus(clickUzService *service.ClickUzService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -190,8 +190,8 @@ func RegisterClickUzRoutes(router *gin.RouterGroup, clickUzService *service.Clic
 // @Tags payments
 // @Produce json
 // @Param invoice_id query string true "Invoice number"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
 // @Router /dev/test-payment [post]
 func TestPaymentCallback(clickUzService *service.ClickUzService) gin.HandlerFunc {
 	return func(c *gin.Context) {

@@ -165,7 +165,7 @@ export default function ClassesPage() {
       if (editingClass) {
         await updateClass(editingClass.id, {
           name: formData.name,
-          teacherId: formData.teacherId || null,
+          teacherId: formData.teacherId || undefined,
         });
         toast({
           title: t("success"),

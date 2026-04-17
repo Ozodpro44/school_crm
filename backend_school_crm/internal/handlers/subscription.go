@@ -15,7 +15,7 @@ import (
 // @Tags subscriptions
 // @Produce json
 // @Success 200 {array} models.SubscriptionPlan
-// @Failure 500 {object} gin.H
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/plans [get]
 func GetSubscriptionPlans(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -117,9 +117,9 @@ func UpdateSubscriptionStatus(subscriptionService *service.SubscriptionService) 
 // @Produce json
 // @Param request body models.CreateSubscriptionRequest true "Create subscription request"
 // @Success 201 {object} models.Subscription
-// @Failure 400 {object} gin.H
-// @Failure 403 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions [post]
 func CreateSubscription(subscriptionService *service.SubscriptionService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -196,10 +196,10 @@ func CreateSubscription(subscriptionService *service.SubscriptionService, userSe
 // @Description Cancel the current user's subscription
 // @Tags subscriptions
 // @Produce json
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 403 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/{id}/cancel [post]
 func CancelSubscription(subscriptionService *service.SubscriptionService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -238,7 +238,7 @@ func CancelSubscription(subscriptionService *service.SubscriptionService, userSe
 // @Produce json
 // @Param id path string true "Subscription ID"
 // @Success 200 {array} models.SubscriptionUsage
-// @Failure 500 {object} gin.H
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/{id}/usage [get]
 func GetSubscriptionUsage(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -269,7 +269,7 @@ func GetSubscriptionUsage(subscriptionService *service.SubscriptionService) gin.
 // @Produce json
 // @Param id path string true "Subscription ID"
 // @Success 200 {array} models.SubscriptionPayment
-// @Failure 500 {object} gin.H
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/{id}/payments [get]
 func GetSubscriptionPayments(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -301,9 +301,9 @@ func GetSubscriptionPayments(subscriptionService *service.SubscriptionService) g
 // @Produce json
 // @Param request body models.SubscriptionPlan true "Create subscription plan request"
 // @Success 201 {object} models.SubscriptionPlan
-// @Failure 400 {object} gin.H
-// @Failure 403 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /dev/subscription-plans [post]
 func CreateSubscriptionPlanHandler(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -332,8 +332,8 @@ func CreateSubscriptionPlanHandler(subscriptionService *service.SubscriptionServ
 // @Param id path string true "Plan ID"
 // @Param request body models.SubscriptionPlan true "Update subscription plan request"
 // @Success 200 {object} models.SubscriptionPlan
-// @Failure 400 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Failure 400 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /dev/subscription-plans/{id} [put]
 func UpdateSubscriptionPlanHandler(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -365,9 +365,9 @@ func UpdateSubscriptionPlanHandler(subscriptionService *service.SubscriptionServ
 // @Tags subscriptions
 // @Produce json
 // @Param id path string true "Plan ID"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /dev/subscription-plans/{id} [delete]
 func DeleteSubscriptionPlanHandler(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {

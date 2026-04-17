@@ -9,4 +9,5 @@ type Config struct {
 	ResendAPIKey string
 	ResendFrom  string
 	LogsToken    string // Bearer token for ingesting logs
+	SentryDSN   string // Optional — Sentry error monitoring
 }

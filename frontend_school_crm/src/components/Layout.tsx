@@ -557,7 +557,7 @@ export function Layout({ children }: LayoutProps) {
 
   const cycleLanguage = () => {
     const idx = LANGUAGES.findIndex((l) => l.value === language);
-    const next = LANGUAGES[(idx + 1) % LANGUAGES.length];
+    const next = LANGUAGES[(idx + 1) % LANGUAGES.length]!;
     setLanguage(next.value);
   };
 

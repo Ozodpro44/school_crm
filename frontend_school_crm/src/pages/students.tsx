@@ -52,7 +52,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber, toTitleCase, formatDate } from "@/lib/utils";
+import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber, isValidUzbekPhone, toTitleCase, formatDate } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useSettings } from "@/hooks/use-settings";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
@@ -118,6 +118,16 @@ export default function StudentsPage() {
     monthlyPayment: "",
     status: "active" as StudentStatus,
   });
+  const [formErrors, setFormErrors] = useState<{
+    fullName?: string;
+    phone?: string;
+    parentPhone?: string;
+    monthlyPayment?: string;
+  }>({});
+
+  const clearFieldError = (field: keyof typeof formErrors) => {
+    if (formErrors[field]) setFormErrors((e) => ({ ...e, [field]: undefined }));
+  };
 
   const t = (key: string) => getTranslation(key, language);
 
@@ -339,7 +349,7 @@ export default function StudentsPage() {
       const warnings: string[] = [];
 
       for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
+        const line = (lines[i] ?? "").trim();
         if (!line) continue;
 
         const parts = line.split(",").map((p) => p.trim());
@@ -351,7 +361,7 @@ export default function StudentsPage() {
             phoneOrParent,
             parentPhoneOrPayment,
             monthlyPaymentStr,
-          ] = parts;
+          ] = parts as [string, string, string, string | undefined, string | undefined];
 
           // Try to detect if second column is a class name or phone
           let className = "";
@@ -531,6 +541,25 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Inline validation
+    const errors: typeof formErrors = {};
+    if (!formData.fullName.trim()) errors.fullName = t("fieldRequired") || "This field is required";
+    if (!formData.phone.trim()) {
+      errors.phone = t("fieldRequired") || "This field is required";
+    } else if (!isValidUzbekPhone(formData.phone)) {
+      errors.phone = t("invalidPhone") || "Enter a valid phone: +998 XX XXX-XX-XX";
+    }
+    if (!formData.parentPhone.trim()) {
+      errors.parentPhone = t("fieldRequired") || "This field is required";
+    } else if (!isValidUzbekPhone(formData.parentPhone)) {
+      errors.parentPhone = t("invalidPhone") || "Enter a valid phone: +998 XX XXX-XX-XX";
+    }
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
     setIsSubmitting(true);
     if (!canEditStudents) {
       toast({
@@ -770,6 +799,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       monthlyPayment: "",
       status: "active",
     });
+    setFormErrors({});
     setEditingStudent(null);
   };
 
@@ -994,11 +1024,15 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     <Input
                       id="fullName"
                       value={formData.fullName}
-                      onChange={(e) =>
-                        setFormData({ ...formData, fullName: e.target.value })
-                      }
-                      required
+                      onChange={(e) => {
+                        setFormData({ ...formData, fullName: e.target.value });
+                        clearFieldError("fullName");
+                      }}
+                      className={formErrors.fullName ? "border-red-500 focus-visible:ring-red-500" : ""}
                     />
+                    {formErrors.fullName && (
+                      <p className="text-xs text-red-500">{formErrors.fullName}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -1029,11 +1063,16 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                       id="phone"
                       type="tel"
                       value={formData.phone}
-                      onChange={(e) =>
-                        setFormData({ ...formData, phone: e.target.value })
-                      }
-                      required
+                      onChange={(e) => {
+                        setFormData({ ...formData, phone: e.target.value });
+                        clearFieldError("phone");
+                      }}
+                      placeholder="+998 XX XXX-XX-XX"
+                      className={formErrors.phone ? "border-red-500 focus-visible:ring-red-500" : ""}
                     />
+                    {formErrors.phone && (
+                      <p className="text-xs text-red-500">{formErrors.phone}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -1042,14 +1081,16 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                       id="parentPhone"
                       type="tel"
                       value={formData.parentPhone}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          parentPhone: e.target.value,
-                        })
-                      }
-                      required
+                      onChange={(e) => {
+                        setFormData({ ...formData, parentPhone: e.target.value });
+                        clearFieldError("parentPhone");
+                      }}
+                      placeholder="+998 XX XXX-XX-XX"
+                      className={formErrors.parentPhone ? "border-red-500 focus-visible:ring-red-500" : ""}
                     />
+                    {formErrors.parentPhone && (
+                      <p className="text-xs text-red-500">{formErrors.parentPhone}</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
