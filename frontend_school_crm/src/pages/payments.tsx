@@ -462,7 +462,7 @@ export default function PaymentsPage() {
           invoiceNumber,
           notes: formData.notes || undefined,
           paidDate: new Date().toISOString(), // Set paidDate for both "paid" and "partial"
-          branchId: student?.branchId || user.branchId || "",
+          branchId: student?.branchId || branchId || user.branchId || "",
         });
 
         // If this payment completes the month, update all related partial payments to "paid"

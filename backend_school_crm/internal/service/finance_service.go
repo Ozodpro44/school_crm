@@ -29,6 +29,7 @@ type StudentWithPayment struct {
 	MonthlyPayment float64 `json:"monthlyPayment"`
 	PaidAmount     float64 `json:"paidAmount"`
 	PaymentStatus  string  `json:"paymentStatus"` // "paid" | "partial" | "none"
+	BranchID       string  `json:"branchId"`
 }
 
 // SearchStudentsWithPayments returns active students matching search with their
@@ -76,6 +77,7 @@ func (f *FinanceService) SearchStudentsWithPayments(ctx context.Context, branchI
 			MonthlyPayment: student.MonthlyPayment,
 			PaidAmount:     paidAmount,
 			PaymentStatus:  paymentStatus,
+			BranchID:       student.BranchID,
 		})
 	}
 	return result, nil
@@ -92,6 +94,7 @@ type StudentPaymentStatus struct {
 	AmountPaid     float64 `json:"amountPaid"`
 	PaymentStatus  string  `json:"paymentStatus"` // paid | partial | not_paid
 	Remaining      float64 `json:"remaining"`
+	BranchID       string  `json:"branchId"`
 }
 
 // SearchStudentsWithPaymentStatus returns all branch students enriched with their
@@ -140,6 +143,7 @@ func (f *FinanceService) SearchStudentsWithPaymentStatus(ctx context.Context, br
 			AmountPaid:     totalPaid,
 			PaymentStatus:  paymentStatusStr,
 			Remaining:      remaining,
+			BranchID:       student.BranchID,
 		}
 
 		if search != "" {
