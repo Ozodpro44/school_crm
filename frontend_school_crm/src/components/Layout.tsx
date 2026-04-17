@@ -64,7 +64,14 @@ import {
   SidebarTrigger,
   useSidebar,
   SidebarInset,
+  SidebarGroupAction,
+  SidebarGroupLabel,
 } from "@/components/ui/sidebar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -427,15 +434,15 @@ function SidebarHeaderSection({
     <SidebarHeader className="p-0 border-b border-slate-200 dark:border-slate-800">
       {/* Expanded state (desktop open + mobile sheet) */}
       <div className="group-data-[collapsible=icon]:hidden flex items-center justify-between px-3 h-14">
-        <Link href="/" className="flex items-center gap-2.5 flex-1 min-w-0 group">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center flex-shrink-0 shadow-sm group-hover:bg-indigo-700 transition-colors">
-            <Building2 className="w-4 h-4 text-white" />
+        <Link href="/" className="flex items-center gap-2.5 flex-1 min-w-0 group/brand">
+          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-600/20 group-hover/brand:scale-110 transition-transform duration-300">
+            <Building2 className="w-5 h-5 text-white" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate leading-none mb-0.5">
+            <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate leading-none mb-1">
               {currentBranchName}
             </p>
-            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-80">
               {schoolName}
             </p>
           </div>
@@ -475,12 +482,12 @@ function MobileMoreButton({ label }: { label: string }) {
   return (
     <button
       onClick={() => setOpenMobile(true)}
-      className="flex flex-col items-center gap-1 px-3 py-1 min-w-[52px] text-slate-400 dark:text-slate-500 active:scale-95 transition-all"
+      className="flex flex-col items-center gap-1.5 px-4 py-2 min-w-[64px] text-slate-400 dark:text-slate-500 active:scale-90 transition-all group"
     >
-      <div className="w-8 h-8 flex items-center justify-center rounded-xl">
+      <div className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-100/50 dark:bg-slate-800/50 group-hover:rotate-12 transition-all duration-300">
         <Menu className="w-5 h-5" />
       </div>
-      <span className="text-[10px] font-medium">{label}</span>
+      <span className="text-[10px] uppercase tracking-widest font-bold opacity-60">{label}</span>
     </button>
   );
 }
@@ -711,54 +718,69 @@ export function Layout({ children }: LayoutProps) {
 
             {/* Navigation groups */}
             {navigationGroups.map((group, groupIdx) => (
-              <SidebarGroup key={group.title} className="px-0 py-0 mb-0.5">
-                {/* Section label — hidden in icon mode */}
-                <p className={cn(
-                  "px-3 mb-0.5 h-7 flex items-end text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest",
-                  "group-data-[collapsible=icon]:hidden",
-                  groupIdx === 0 && "h-5"
-                )}>
-                  {group.title}
-                </p>
+              <Collapsible
+                key={group.title}
+                asChild
+                defaultOpen={groupIdx === 0}
+                className="group/collapsible"
+              >
+                <SidebarGroup className="px-0 py-0 mb-1">
+                  <SidebarGroupLabel
+                    asChild
+                    className={cn(
+                      "px-3 mb-0.5 h-8 flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest cursor-pointer hover:text-indigo-500 transition-colors",
+                      "group-data-[collapsible=icon]:hidden",
+                      groupIdx === 0 && "h-6"
+                    )}
+                  >
+                    <CollapsibleTrigger>
+                      {group.title}
+                      <ChevronDown className="ml-auto h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
+                    </CollapsibleTrigger>
+                  </SidebarGroupLabel>
 
-                <SidebarGroupContent>
-                  <SidebarMenu className="gap-0.5 px-0">
-                    {group.items.filter((i) => i.show).map((item) => {
-                      const isActive = item.href === "/" ? router.pathname === "/" : router.pathname.startsWith(item.href);
-                      const Icon = item.icon;
-                      return (
-                        <SidebarMenuItem key={item.name}>
-                          <SidebarMenuButton
-                            asChild
-                            isActive={isActive}
-                            tooltip={item.name}
-                            className={cn(
-                              "h-9 rounded-lg px-3 gap-3 transition-colors duration-150",
-                              isActive
-                                ? "bg-indigo-600 text-white hover:bg-indigo-700 hover:text-white dark:bg-indigo-600 dark:text-white dark:hover:bg-indigo-700"
-                                : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
-                            )}
-                          >
-                            <Link href={item.href}>
-                              <Icon
+                  <CollapsibleContent>
+                    <SidebarGroupContent>
+                      <SidebarMenu className="gap-0.5 px-0">
+                        {group.items.filter((i) => i.show).map((item) => {
+                          const isActive = item.href === "/" ? router.pathname === "/" : router.pathname.startsWith(item.href);
+                          const Icon = item.icon;
+                          return (
+                            <SidebarMenuItem key={item.name}>
+                              <SidebarMenuButton
+                                asChild
+                                isActive={isActive}
+                                tooltip={item.name}
                                 className={cn(
-                                  "w-[18px] h-[18px] flex-shrink-0",
+                                  "h-9 rounded-xl px-3 gap-3 transition-all duration-200 group/item relative",
                                   isActive
-                                    ? "text-white"
-                                    : "text-slate-400 dark:text-slate-500"
+                                    ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-500/25 dark:shadow-indigo-500/10"
+                                    : "text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:pl-4"
                                 )}
-                              />
-                              <span className="text-sm font-medium group-data-[collapsible=icon]:hidden">
-                                {item.name}
-                              </span>
-                            </Link>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </SidebarGroup>
+                              >
+                                <Link href={item.href}>
+                                  <div className={cn(
+                                    "w-5 h-5 flex items-center justify-center transition-transform duration-200 group-hover/item:scale-110",
+                                    isActive ? "text-white" : "text-slate-400 group-hover/item:text-indigo-500"
+                                  )}>
+                                    <Icon className="w-[18px] h-[18px]" />
+                                  </div>
+                                  <span className="text-sm font-semibold group-data-[collapsible=icon]:hidden">
+                                    {item.name}
+                                  </span>
+                                  {isActive && (
+                                    <div className="absolute right-2 w-1.5 h-1.5 rounded-full bg-white/40 animate-pulse" />
+                                  )}
+                                </Link>
+                              </SidebarMenuButton>
+                            </SidebarMenuItem>
+                          );
+                        })}
+                      </SidebarMenu>
+                    </SidebarGroupContent>
+                  </CollapsibleContent>
+                </SidebarGroup>
+              </Collapsible>
             ))}
 
             {/* Subscription badge */}
@@ -843,14 +865,17 @@ export function Layout({ children }: LayoutProps) {
         <SidebarInset className="flex-1 flex flex-col min-w-0 bg-transparent">
 
           {/* Mobile top bar */}
-          <header className="md:hidden sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 px-4 h-12 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-indigo-600 flex items-center justify-center">
-                <Building2 className="w-3.5 h-3.5 text-white" />
+          <header className="md:hidden sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border-b border-white/20 dark:border-slate-800/20 px-4 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/20">
+                <Building2 className="w-4.5 h-4.5 text-white" />
               </div>
-              <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate max-w-[140px]">
-                {branchDisplayName}
-              </span>
+              <div className="flex flex-col">
+                <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate max-w-[140px] leading-tight">
+                  {branchDisplayName}
+                </span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-tight">Dashboard</span>
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -921,8 +946,8 @@ export function Layout({ children }: LayoutProps) {
           </div>
 
         {/* ──────────────────────── MOBILE BOTTOM NAV ── */}
-        <nav className="md:hidden fixed bottom-6 inset-x-4 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/50 dark:border-slate-800/50 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-none pb-[env(safe-area-inset-bottom,0)]">
-          <div className="flex items-center justify-around px-2 h-16">
+        <nav className="md:hidden fixed bottom-8 inset-x-6 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border border-white/20 dark:border-slate-800/20 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.1)] dark:shadow-none pb-[env(safe-area-inset-bottom,0)] transition-all duration-300">
+          <div className="flex items-center justify-around px-2 h-20">
             {bottomNavItems.map((item) => {
               const isActive = item.href === "/" ? router.pathname === "/" : router.pathname.startsWith(item.href);
               const Icon = item.icon;
@@ -931,21 +956,28 @@ export function Layout({ children }: LayoutProps) {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex flex-col items-center gap-1 px-3 py-1 min-w-[52px] active:scale-95 transition-all",
+                    "flex flex-col items-center gap-1.5 px-4 py-2 min-w-[64px] active:scale-90 transition-all group",
                     isActive
                       ? "text-indigo-600 dark:text-indigo-400"
-                      : "text-slate-400 dark:text-slate-500"
+                      : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                   )}
                 >
                   <div
                     className={cn(
-                      "w-8 h-8 flex items-center justify-center rounded-xl transition-colors",
-                      isActive ? "bg-indigo-50 dark:bg-indigo-900/30" : ""
+                      "w-10 h-10 flex items-center justify-center rounded-2xl transition-all duration-300 group-hover:rotate-6",
+                      isActive 
+                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
+                        : "bg-slate-100/50 dark:bg-slate-800/50"
                     )}
                   >
                     <Icon className="w-5 h-5" />
                   </div>
-                  <span className="text-[10px] font-medium leading-none">{item.name}</span>
+                  <span className={cn(
+                    "text-[10px] uppercase tracking-widest font-bold leading-none",
+                    isActive ? "opacity-100" : "opacity-60"
+                  )}>
+                    {item.name}
+                  </span>
                 </Link>
               );
             })}
