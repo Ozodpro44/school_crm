@@ -893,8 +893,7 @@ export function Layout({ children }: LayoutProps) {
             <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 pb-32 md:pb-8">
               {children}
             </div>
-          </main>
-        </div>
+          </div>
 
         {/* ──────────────────────── MOBILE BOTTOM NAV ── */}
         <nav className="md:hidden fixed bottom-6 inset-x-4 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/50 dark:border-slate-800/50 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-none pb-[env(safe-area-inset-bottom,0)]">
