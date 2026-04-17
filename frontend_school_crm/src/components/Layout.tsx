@@ -149,18 +149,15 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const handleOpen = async () => {
-    setOpen((v) => !v);
-    if (!open) {
-      setLoading(true);
-      try {
-        const data = await getNotifications(20);
-        setNotifications(data);
-      } catch {
-        setNotifications([]);
-      } finally {
-        setLoading(false);
-      }
+  const fetchNotifications = async () => {
+    setLoading(true);
+    try {
+      const data = await getNotifications(20);
+      setNotifications(data);
+    } catch {
+      setNotifications([]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -197,7 +194,7 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
   return (
     <Popover open={open} onOpenChange={(v) => {
       setOpen(v);
-      if (v) handleOpen();
+      if (v) fetchNotifications();
     }}>
       <PopoverTrigger asChild>
         <button
