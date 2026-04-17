@@ -6,5 +6,5 @@ DROP INDEX IF EXISTS idx_attendance_class_date;
 DROP INDEX IF EXISTS idx_attendance_student_month;
 DROP INDEX IF EXISTS idx_audit_logs_branch_created;
 DROP INDEX IF EXISTS idx_audit_logs_user_action;
-DROP INDEX IF EXISTS idx_notifications_user_unread;
+
 DROP INDEX IF EXISTS idx_salaries_teacher_month;

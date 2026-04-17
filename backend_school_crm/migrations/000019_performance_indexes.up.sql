@@ -25,8 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_branch_created
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_action
     ON audit_logs(user_id, action);
 
-CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
-    ON notifications(user_id, is_read) WHERE is_read = false;
+
 
 CREATE INDEX IF NOT EXISTS idx_salaries_teacher_month
     ON salaries(teacher_id, year, month);
