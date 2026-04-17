@@ -63,6 +63,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
   useSidebar,
+  SidebarInset,
 } from "@/components/ui/sidebar";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -464,6 +465,22 @@ interface LayoutProps {
   children: ReactNode;
 }
 
+function MobileSidebarCloser() {
+  const { setOpenMobile, isMobile } = useSidebar();
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleRouteChange = () => {
+      if (isMobile) setOpenMobile(false);
+    };
+    
+    router.events.on("routeChangeComplete", handleRouteChange);
+    return () => router.events.off("routeChangeComplete", handleRouteChange);
+  }, [router.events, isMobile, setOpenMobile]);
+
+  return null;
+}
+
 export function Layout({ children }: LayoutProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -626,11 +643,13 @@ export function Layout({ children }: LayoutProps) {
   return (
     <SidebarProvider defaultOpen={true}>
       <div className="flex min-h-screen w-full overflow-x-hidden bg-slate-50 dark:bg-slate-950">
+        <MobileSidebarCloser />
 
         {/* ────────────────────────────────── SIDEBAR ── */}
         <Sidebar
+          variant="inset"
           collapsible="icon"
-          className="border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+          className="border-slate-200 dark:border-slate-800"
         >
           {/* Header */}
           <SidebarHeaderSection
@@ -679,7 +698,7 @@ export function Layout({ children }: LayoutProps) {
                 <SidebarGroupContent>
                   <SidebarMenu className="gap-0.5 px-0">
                     {group.items.filter((i) => i.show).map((item) => {
-                      const isActive = router.pathname === item.href;
+                      const isActive = item.href === "/" ? router.pathname === "/" : router.pathname.startsWith(item.href);
                       const Icon = item.icon;
                       return (
                         <SidebarMenuItem key={item.name}>
@@ -796,7 +815,7 @@ export function Layout({ children }: LayoutProps) {
         </Sidebar>
 
         {/* ──────────────────────────── MAIN CONTENT ── */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <SidebarInset className="flex-1 flex flex-col min-w-0 bg-transparent">
 
           {/* Mobile top bar */}
           <header className="md:hidden sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 px-4 h-12 flex items-center justify-between">
@@ -870,18 +889,18 @@ export function Layout({ children }: LayoutProps) {
           </header>
 
           {/* Page content */}
-          <main className="flex-1 overflow-x-hidden w-full">
-            <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 pb-24 md:pb-8">
+          <div className="flex-1 overflow-x-hidden w-full">
+            <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 pb-32 md:pb-8">
               {children}
             </div>
           </main>
         </div>
 
         {/* ──────────────────────── MOBILE BOTTOM NAV ── */}
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800">
-          <div className="flex items-center justify-around px-1 h-16">
+        <nav className="md:hidden fixed bottom-6 inset-x-4 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/50 dark:border-slate-800/50 rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-none pb-[env(safe-area-inset-bottom,0)]">
+          <div className="flex items-center justify-around px-2 h-16">
             {bottomNavItems.map((item) => {
-              const isActive = router.pathname === item.href;
+              const isActive = item.href === "/" ? router.pathname === "/" : router.pathname.startsWith(item.href);
               const Icon = item.icon;
               return (
                 <Link
@@ -909,7 +928,7 @@ export function Layout({ children }: LayoutProps) {
             <MobileMoreButton label={t("more") || "More"} />
           </div>
         </nav>
-      </div>
+      </SidebarInset>
 
       {/* Upgrade modal */}
       <Dialog open={upgradeModalOpen} onOpenChange={setUpgradeModalOpen}>
