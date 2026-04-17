@@ -9,6 +9,7 @@ import (
 	"github.com/school-crm/backend/internal/models"
 )
 
+
 type TeacherPortalService struct {
 	db         *db.Database
 	teacherSvc *TeacherService
@@ -21,6 +22,9 @@ func NewTeacherPortalService(database *db.Database, teacherSvc *TeacherService) 
 // GetPortalData returns all data needed for the teacher portal in one call.
 // If the user has no linked teacher record it returns a response with nil Teacher.
 func (s *TeacherPortalService) GetPortalData(ctx context.Context, userID string) (*models.TeacherPortalResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
 	teacher, err := s.teacherSvc.GetByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("lookup teacher: %w", err)

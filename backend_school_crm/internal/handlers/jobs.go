@@ -130,11 +130,10 @@ func submitJob(queue *jobs.Queue) gin.HandlerFunc {
 			return
 		}
 
-		snap := job.Snapshot()
 		c.JSON(http.StatusAccepted, gin.H{
-			"job_id":     snap.ID,
-			"status":     snap.Status,
-			"created_at": snap.CreatedAt,
+			"job_id":     job.ID,
+			"status":     job.Status,
+			"created_at": job.CreatedAt,
 		})
 	}
 }
@@ -148,24 +147,23 @@ func getJob(queue *jobs.Queue) gin.HandlerFunc {
 			return
 		}
 
-		snap := job.Snapshot()
 		resp := gin.H{
-			"job_id":     snap.ID,
-			"type":       snap.Type,
-			"status":     snap.Status,
-			"created_at": snap.CreatedAt,
-			"started_at": snap.StartedAt,
-			"done_at":    snap.DoneAt,
+			"job_id":     job.ID,
+			"type":       job.Type,
+			"status":     job.Status,
+			"created_at": job.CreatedAt,
+			"started_at": job.StartedAt,
+			"done_at":    job.DoneAt,
 		}
-		if snap.Error != "" {
-			resp["error"] = snap.Error
+		if job.Error != "" {
+			resp["error"] = job.Error
 		}
-		if snap.Status == jobs.JobDone && snap.Result != nil {
-			resp["result"] = snap.Result
+		if job.Status == jobs.JobDone && job.Result != nil {
+			resp["result"] = job.Result
 		}
 
 		httpStatus := http.StatusOK
-		if snap.Status == jobs.JobPending || snap.Status == jobs.JobRunning {
+		if job.Status == jobs.JobPending || job.Status == jobs.JobRunning {
 			httpStatus = http.StatusAccepted // 202 tells the client to keep polling
 		}
 		c.JSON(httpStatus, resp)

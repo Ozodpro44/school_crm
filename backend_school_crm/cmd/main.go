@@ -85,7 +85,7 @@ func main() {
 		startupErrors = append(startupErrors, fmt.Sprintf("JWT_SECRET is too short (%d chars); minimum 32 required", len(cfg.JWTSecret)))
 	}
 	if cfg.RedisURL == "" {
-		startupWarnings = append(startupWarnings, "REDIS_URL not set — rate limiting, OTP, and caching will be disabled")
+		startupErrors = append(startupErrors, "REDIS_URL is required — set it to your Redis connection string")
 	}
 	if cfg.ResendAPIKey == "" || cfg.ResendFrom == "" {
 		startupWarnings = append(startupWarnings, "RESEND_API_KEY / RESEND_FROM not set — password-reset emails will be disabled")
@@ -113,7 +113,7 @@ func main() {
 	}())
 	log.Printf("  Redis        : %s", func() string {
 		if cfg.RedisURL != "" { return "✓ configured" }
-		return "⚠ not set (optional)"
+		return "✗ MISSING (required)"
 	}())
 	log.Printf("  Email (Resend): %s", func() string {
 		if cfg.ResendAPIKey != "" && cfg.ResendFrom != "" { return "✓ configured" }
@@ -175,17 +175,12 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Initialize Redis (optional but recommended for OTP)
-	var redisClient *utils.RedisClient
-	if cfg.RedisURL != "" {
-		rc, err := utils.NewRedisClient(cfg.RedisURL)
-		if err != nil {
-			log.Printf("Warning: Failed to connect to Redis: %v. OTP features will be disabled.", err)
-		} else {
-			redisClient = rc
-			defer redisClient.Close()
-		}
+	// Initialize Redis (required — rate limiting, OTP, and caching all depend on it)
+	redisClient, err := utils.NewRedisClient(cfg.RedisURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
+	defer redisClient.Close()
 
 	// Initialize Email Sender (optional for password reset)
 	var emailSender *utils.EmailSender
@@ -197,9 +192,7 @@ func main() {
 	userService := service.NewUserService(database)
 
 	// Set Redis and Email clients in UserService
-	if redisClient != nil {
-		userService.SetRedisClient(redisClient)
-	}
+	userService.SetRedisClient(redisClient)
 	if emailSender != nil {
 		userService.SetEmailSender(emailSender)
 	}
@@ -210,20 +203,17 @@ func main() {
 	classService := service.NewClassService(database)
 	teacherService := service.NewTeacherService(database)
 
-	// Wire Redis cache into hot-path services (no-op when Redis is absent)
-	var rateLimiter *middleware.RateLimiter
-	if redisClient != nil {
-		cacheClient := cache.New(redisClient.GetClient())
-		subscriptionService.SetCache(cacheClient)
-		studentService.SetCache(cacheClient)
-		paymentService.SetCache(cacheClient)
-		classService.SetCache(cacheClient)
-		teacherService.SetCache(cacheClient)
-		log.Println("Redis cache enabled for hot-path services")
+	// Wire Redis cache into all hot-path services
+	cacheClient := cache.New(redisClient.GetClient())
+	subscriptionService.SetCache(cacheClient)
+	studentService.SetCache(cacheClient)
+	paymentService.SetCache(cacheClient)
+	classService.SetCache(cacheClient)
+	teacherService.SetCache(cacheClient)
+	log.Println("Redis cache enabled for hot-path services")
 
-		rateLimiter = middleware.NewRateLimiter(redisClient.GetClient())
-		log.Println("Rate limiting enabled")
-	}
+	rateLimiter := middleware.NewRateLimiter(redisClient.GetClient())
+	log.Println("Rate limiting enabled")
 	salaryService := service.NewSalaryService(database, branchService)
 	expenseService := service.NewExpenseService(database, branchService)
 	budgetService := service.NewBudgetService(database)
@@ -262,8 +252,8 @@ func main() {
 
 	logger := middleware.NewLogger(cfg.Environment)
 
-	// Background job queue (4 workers, report generation)
-	jobQueue := jobs.New(reportService, logger)
+	// Background job queue (4 workers, DB-backed, survives restarts)
+	jobQueue := jobs.New(database, reportService, logger)
 
 	router := gin.New() // use gin.New() so we control all middleware ourselves
 	router.Use(gin.Recovery())
@@ -285,12 +275,8 @@ func main() {
 	healthHandler := func(c *gin.Context) {
 		dbStats := database.GetConn().Stats()
 
-		redisStatus := "inactive"
-		redisConnected := false
-		if redisClient != nil {
-			redisStatus = "active"
-			redisConnected = true
-		}
+		redisStatus := "active"
+		redisConnected := true
 
 		uptimeSeconds := int64(math.Round(time.Since(startTime).Seconds()))
 
@@ -317,11 +303,8 @@ func main() {
 	// Swagger UI — available in all environments (restrict in prod via nginx if needed)
 	router.GET("/api/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// Auth rate limiter: 10 req/min per IP (applied when Redis is available)
-	var authRateLimit gin.HandlerFunc = func(c *gin.Context) { c.Next() }
-	if rateLimiter != nil {
-		authRateLimit = rateLimiter.ByIP(10, time.Minute)
-	}
+	// Auth rate limiter: 10 req/min per IP
+	authRateLimit := rateLimiter.ByIP(10, time.Minute)
 
 	// Public routes
 	router.POST("/api/v1/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret))
@@ -384,9 +367,7 @@ func main() {
 	// Query timeout: cancel context after 30 s to prevent runaway DB queries.
 	protected.Use(middleware.RequestTimeout(30 * time.Second))
 	// API rate limit: 300 req/min per authenticated user
-	if rateLimiter != nil {
-		protected.Use(rateLimiter.ByUser(300, time.Minute))
-	}
+	protected.Use(rateLimiter.ByUser(300, time.Minute))
 
 	// Users
 	handlers.RegisterUserRoutes(protected, userService)
@@ -453,9 +434,7 @@ func main() {
 	// Payment webhooks (public, no auth required — called by external payment providers)
 	// Webhook rate limit: 100 req/min per IP
 	webhookGroup := router.Group("/api/v1")
-	if rateLimiter != nil {
-		webhookGroup.Use(rateLimiter.ByIP(100, time.Minute))
-	}
+	webhookGroup.Use(rateLimiter.ByIP(100, time.Minute))
 	handlers.RegisterClickUzWebhooks(webhookGroup, clickUzService)
 	handlers.RegisterTelegramPaymentWebhooks(webhookGroup, telegramPaymentService)
 
@@ -504,9 +483,7 @@ func main() {
 	legacyProtected.Use(middleware.SubscriptionGate(userService, subscriptionService))
 	legacyProtected.Use(middleware.TenantBranchMiddleware(userService))
 	legacyProtected.Use(middleware.RequestTimeout(30 * time.Second))
-	if rateLimiter != nil {
-		legacyProtected.Use(rateLimiter.ByUser(300, time.Minute))
-	}
+	legacyProtected.Use(rateLimiter.ByUser(300, time.Minute))
 	handlers.RegisterUserRoutes(legacyProtected, userService)
 	handlers.RegisterStudentRoutes(legacyProtected, studentService, userService, financeService, notificationService)
 	handlers.RegisterPaymentRoutes(legacyProtected, paymentService, branchService, userService, financeService, notificationService)

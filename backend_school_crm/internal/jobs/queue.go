@@ -1,17 +1,17 @@
-// Package jobs provides a lightweight in-process job queue for heavy,
-// long-running operations (report generation, bulk recalculations).
-// Jobs are stored in memory; a background goroutine purges completed jobs
-// older than 1 hour to prevent unbounded growth.
+// Package jobs provides a persistent job queue backed by PostgreSQL.
+// Jobs survive server restarts — on startup any pending/running jobs are
+// recovered and re-enqueued automatically.
 package jobs
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/service"
 )
 
@@ -38,7 +38,6 @@ const (
 
 // Job represents one unit of background work.
 type Job struct {
-	mu        sync.RWMutex
 	ID        string          `json:"id"`
 	Type      JobType         `json:"type"`
 	Status    JobStatus       `json:"status"`
@@ -48,23 +47,6 @@ type Job struct {
 	CreatedAt time.Time       `json:"createdAt"`
 	StartedAt *time.Time      `json:"startedAt,omitempty"`
 	DoneAt    *time.Time      `json:"doneAt,omitempty"`
-}
-
-// Snapshot returns a copy safe to serialise without holding the lock.
-func (j *Job) Snapshot() Job {
-	j.mu.RLock()
-	defer j.mu.RUnlock()
-	return Job{
-		ID:        j.ID,
-		Type:      j.Type,
-		Status:    j.Status,
-		Payload:   j.Payload,
-		Result:    j.Result,
-		Error:     j.Error,
-		CreatedAt: j.CreatedAt,
-		StartedAt: j.StartedAt,
-		DoneAt:    j.DoneAt,
-	}
 }
 
 // ── Payloads ──────────────────────────────────────────────────────────────────
@@ -109,23 +91,25 @@ type FinancialSummaryPayload struct {
 // ── Queue ─────────────────────────────────────────────────────────────────────
 
 const (
-	defaultWorkers = 4
-	jobTTL         = time.Hour // completed jobs are purged after this duration
-	cleanupInterval = 15 * time.Minute
+	defaultWorkers  = 4
+	jobTTL          = 24 * time.Hour
+	cleanupInterval = time.Hour
 )
 
-// Queue is the central job dispatcher. Call New() to create one.
+// Queue is the central job dispatcher backed by PostgreSQL.
 type Queue struct {
-	jobs      sync.Map // map[string]*Job
-	ch        chan *Job
+	db        *db.Database
+	ch        chan string // sends job IDs to workers
 	reportSvc *service.ReportService
 	logger    *slog.Logger
 }
 
-// New creates a Queue with `workers` goroutines and starts a cleanup ticker.
-func New(reportSvc *service.ReportService, logger *slog.Logger) *Queue {
+// New creates a Queue, recovers any pending/running jobs from the DB,
+// and starts worker goroutines.
+func New(database *db.Database, reportSvc *service.ReportService, logger *slog.Logger) *Queue {
 	q := &Queue{
-		ch:        make(chan *Job, 256),
+		db:        database,
+		ch:        make(chan string, 256),
 		reportSvc: reportSvc,
 		logger:    logger,
 	}
@@ -133,10 +117,37 @@ func New(reportSvc *service.ReportService, logger *slog.Logger) *Queue {
 		go q.worker()
 	}
 	go q.cleaner()
+	q.recover()
 	return q
 }
 
-// Submit enqueues a new job and returns it immediately (non-blocking).
+// recover re-enqueues jobs that were pending or running when the server last stopped.
+func (q *Queue) recover() {
+	rows, err := q.db.GetConn().QueryContext(context.Background(),
+		`UPDATE background_jobs
+		    SET status = 'pending', started_at = NULL
+		  WHERE status IN ('pending','running')
+		RETURNING id`)
+	if err != nil {
+		q.logger.Error("job recovery failed", slog.String("error", err.Error()))
+		return
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err == nil {
+			q.enqueue(id)
+			count++
+		}
+	}
+	if count > 0 {
+		q.logger.Info("recovered jobs on startup", slog.Int("count", count))
+	}
+}
+
+// Submit persists a new job to the DB and enqueues it for processing.
 func (q *Queue) Submit(jobType JobType, payload interface{}) (*Job, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -149,73 +160,94 @@ func (q *Queue) Submit(jobType JobType, payload interface{}) (*Job, error) {
 		Payload:   data,
 		CreatedAt: time.Now().UTC(),
 	}
-	q.jobs.Store(job.ID, job)
 
-	select {
-	case q.ch <- job:
-	default:
-		// Buffer full — still accepted, workers will pick it up once they free up.
-		// If the channel is truly saturated we degrade gracefully rather than blocking.
+	_, err = q.db.GetConn().ExecContext(context.Background(),
+		`INSERT INTO background_jobs (id, type, status, payload, created_at)
+		 VALUES ($1, $2, $3, $4, $5)`,
+		job.ID, string(job.Type), string(job.Status), json.RawMessage(data), job.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
 	}
 
+	q.enqueue(job.ID)
 	q.logger.Info("job submitted", slog.String("job_id", job.ID), slog.String("type", string(jobType)))
 	return job, nil
 }
 
-// Get returns the job with the given ID, or (nil, false) if not found.
+func (q *Queue) enqueue(id string) {
+	select {
+	case q.ch <- id:
+	default:
+		// Buffer full — job stays in DB as 'pending'; recovery will re-enqueue on restart.
+	}
+}
+
+// Get returns the job with the given ID from the DB.
 func (q *Queue) Get(id string) (*Job, bool) {
-	v, ok := q.jobs.Load(id)
-	if !ok {
+	row := q.db.GetConn().QueryRowContext(context.Background(),
+		`SELECT id, type, status, payload, result, error, created_at, started_at, done_at
+		   FROM background_jobs WHERE id = $1`, id)
+
+	job, err := scanJob(row)
+	if err != nil {
 		return nil, false
 	}
-	return v.(*Job), true
+	return job, true
 }
 
 // ── Worker ────────────────────────────────────────────────────────────────────
 
 func (q *Queue) worker() {
-	for job := range q.ch {
-		q.process(job)
+	for id := range q.ch {
+		q.process(id)
 	}
 }
 
-func (q *Queue) process(job *Job) {
+func (q *Queue) process(id string) {
 	now := time.Now().UTC()
-	job.mu.Lock()
-	job.Status = JobRunning
-	job.StartedAt = &now
-	job.mu.Unlock()
+	_, err := q.db.GetConn().ExecContext(context.Background(),
+		`UPDATE background_jobs SET status = 'running', started_at = $1 WHERE id = $2`,
+		now, id)
+	if err != nil {
+		q.logger.Error("failed to mark job running", slog.String("job_id", id), slog.String("error", err.Error()))
+		return
+	}
 
-	q.logger.Info("job started", slog.String("job_id", job.ID), slog.String("type", string(job.Type)))
+	job, ok := q.Get(id)
+	if !ok {
+		return
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	q.logger.Info("job started", slog.String("job_id", id), slog.String("type", string(job.Type)))
+
+	ctx, cancel := context.WithTimeout(context.Background(), db.BulkImportTimeout)
 	defer cancel()
 
-	result, err := q.execute(ctx, job)
+	result, execErr := q.execute(ctx, job)
 
 	done := time.Now().UTC()
-	job.mu.Lock()
-	job.DoneAt = &done
-	if err != nil {
-		job.Status = JobFailed
-		job.Error = err.Error()
+	if execErr != nil {
+		_, _ = q.db.GetConn().ExecContext(context.Background(),
+			`UPDATE background_jobs SET status = 'failed', error = $1, done_at = $2 WHERE id = $3`,
+			execErr.Error(), done, id)
 		q.logger.Error("job failed",
-			slog.String("job_id", job.ID),
+			slog.String("job_id", id),
 			slog.String("type", string(job.Type)),
-			slog.String("error", err.Error()),
+			slog.String("error", execErr.Error()),
 		)
-	} else {
-		job.Status = JobDone
-		if data, merr := json.Marshal(result); merr == nil {
-			job.Result = data
-		}
-		q.logger.Info("job done",
-			slog.String("job_id", job.ID),
-			slog.String("type", string(job.Type)),
-			slog.Duration("duration", done.Sub(*job.StartedAt)),
-		)
+		return
 	}
-	job.mu.Unlock()
+
+	resultJSON, _ := json.Marshal(result)
+	_, _ = q.db.GetConn().ExecContext(context.Background(),
+		`UPDATE background_jobs SET status = 'done', result = $1, done_at = $2 WHERE id = $3`,
+		json.RawMessage(resultJSON), done, id)
+	q.logger.Info("job done",
+		slog.String("job_id", id),
+		slog.String("type", string(job.Type)),
+		slog.Duration("duration", done.Sub(now)),
+	)
 }
 
 func (q *Queue) execute(ctx context.Context, job *Job) (interface{}, error) {
@@ -277,14 +309,44 @@ func (q *Queue) cleaner() {
 	defer ticker.Stop()
 	for range ticker.C {
 		cutoff := time.Now().UTC().Add(-jobTTL)
-		q.jobs.Range(func(key, val interface{}) bool {
-			job := val.(*Job)
-			snap := job.Snapshot()
-			if (snap.Status == JobDone || snap.Status == JobFailed) &&
-				snap.DoneAt != nil && snap.DoneAt.Before(cutoff) {
-				q.jobs.Delete(key)
+		res, err := q.db.GetConn().ExecContext(context.Background(),
+			`DELETE FROM background_jobs WHERE status IN ('done','failed') AND done_at < $1`,
+			cutoff)
+		if err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				q.logger.Info("cleaned old jobs", slog.Int64("count", n))
 			}
-			return true
-		})
+		}
 	}
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+func scanJob(row *sql.Row) (*Job, error) {
+	var j Job
+	var errStr sql.NullString
+	var startedAt, doneAt sql.NullTime
+	var resultJSON []byte
+
+	err := row.Scan(
+		&j.ID, &j.Type, &j.Status, &j.Payload,
+		&resultJSON, &errStr,
+		&j.CreatedAt, &startedAt, &doneAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(resultJSON) > 0 {
+		j.Result = json.RawMessage(resultJSON)
+	}
+	if errStr.Valid {
+		j.Error = errStr.String
+	}
+	if startedAt.Valid {
+		j.StartedAt = &startedAt.Time
+	}
+	if doneAt.Valid {
+		j.DoneAt = &doneAt.Time
+	}
+	return &j, nil
 }

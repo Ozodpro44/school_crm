@@ -231,6 +231,9 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, in Studen
 }
 
 func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in StudentFilterInput) (*models.StudentListResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
 	intPage, err := strconv.Atoi(in.Page)
 	if err != nil || intPage < 1 {
 		intPage = 1

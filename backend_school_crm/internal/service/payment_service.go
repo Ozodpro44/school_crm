@@ -632,6 +632,9 @@ func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, in Paymen
 }
 
 func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in PaymentFilterInput) (*models.PaymentListResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
 	intPage, err := strconv.Atoi(in.Page)
 	if err != nil || intPage < 1 {
 		intPage = 1

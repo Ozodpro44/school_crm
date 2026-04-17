@@ -137,6 +137,9 @@ type DashboardData struct {
 
 // GetPaymentReport returns a paginated list of payments with student and class info
 func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, startDate, endDate time.Time, status, classID string, page, limit int) ([]PaymentReportItem, int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
+	defer cancel()
+
 	startMonth := fmt.Sprintf("%02d", int(startDate.Month()))
 	startYear := startDate.Year()
 
@@ -254,8 +257,11 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 
 // GetSalaryReport returns a list of salaries with teacher info
 func (s *ReportService) GetSalaryReport(ctx context.Context, branchID string, startDate, endDate time.Time, status string) ([]SalaryReportItem, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
+	defer cancel()
+
 	query := `
-	SELECT 
+	SELECT
 		sal.id,
 		sal.teacher_id,
 		t.full_name as teacher_name,
@@ -318,6 +324,9 @@ func (s *ReportService) GetSalaryReport(ctx context.Context, branchID string, st
 
 // GetDebtorsReport returns students who owe money for a specific month/year
 func (s *ReportService) GetDebtorsReport(ctx context.Context, branchID string, month string, year int, classID string) ([]DebtorReportItem, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
+	defer cancel()
+
 	query := `
 	SELECT 
 		st.id,
@@ -391,6 +400,9 @@ func (s *ReportService) GetDebtorsReport(ctx context.Context, branchID string, m
 
 // GetExpensesReport returns a list of expenses
 func (s *ReportService) GetExpensesReport(ctx context.Context, branchID string, startDate, endDate time.Time, category string) ([]ExpenseReportItem, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
+	defer cancel()
+
 	query := `
 	SELECT 
 		e.id,
@@ -452,6 +464,9 @@ func (s *ReportService) GetExpensesReport(ctx context.Context, branchID string, 
 
 // GetFinancialSummary returns a financial summary for a date range
 func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string, startDate, endDate time.Time) (*FinancialSummary, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
+	defer cancel()
+
 	// Get payment income
 	var totalIncome, totalPaid, totalUnpaid, totalPartial sql.NullFloat64
 	incomeQuery := `
@@ -563,6 +578,9 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 
 // GetDashboardData returns consolidated dashboard data
 func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, month int, year int) (*DashboardData, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
+	defer cancel()
+
 	// Convert month to 2-digit string format (e.g., 1 -> "01")
 	monthStr := fmt.Sprintf("%02d", month)
 
@@ -985,6 +1003,9 @@ type ForecastData struct {
 // GetForecastData computes financial forecast figures for the given branch.
 // month and year define the "current" month for this-month actuals.
 func (s *ReportService) GetForecastData(ctx context.Context, branchID string, month, year int) (*ForecastData, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
+	defer cancel()
+
 	// ── Expected income: sum of monthly_payment for all active students ───────
 	var expectedIncome sql.NullFloat64
 	var activeCount int
@@ -1124,6 +1145,9 @@ type BranchesOverview struct {
 
 // GetBranchesOverview computes cross-branch analytics for all provided branch IDs.
 func (s *ReportService) GetBranchesOverview(ctx context.Context, branchIDs []string, month, year int) (*BranchesOverview, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
+	defer cancel()
+
 	if len(branchIDs) == 0 {
 		return &BranchesOverview{Month: month, Year: year, Branches: []BranchAnalyticsItem{}}, nil
 	}
