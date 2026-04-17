@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
-import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -38,14 +38,17 @@ import {
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
-  getStudentsConsolidatedData as apiGetStudentsConsolidatedData,
   createStudent as apiCreateStudent,
   updateStudent as apiUpdateStudent,
   deleteStudent as apiDeleteStudent,
   createClass as apiCreateClass,
-  getBranch,
-  listClasses,
 } from "@/lib/api";
+import {
+  useStudentsConsolidatedQuery,
+  useClassesQuery,
+  useBranchQuery,
+} from "@/hooks/queries";
+import { useBranch } from "@/context/BranchContext";
 import { Branch } from "@/types";
 import type { Student as ApiStudent } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -56,14 +59,15 @@ import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber, isVa
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useSettings } from "@/hooks/use-settings";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function StudentsPage() {
   const router = useRouter();
   const { settings } = useSettings();
-  const [isLoading, setIsLoading] = useState(true);
-  const [isListLoading, setIsListLoading] = useState(false);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
+  const { currentBranch } = useBranch();
+  const branchId = currentBranch?.id || null;
+  const qc = useQueryClient();
+
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -75,8 +79,6 @@ export default function StudentsPage() {
   const [importData, setImportData] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [branchData, setBranchData] = useState<Branch | null>(null);
   const [isBulkChangeClassOpen, setIsBulkChangeClassOpen] = useState(false);
   const [bulkChangeClassId, setBulkChangeClassId] = useState<string>("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -89,14 +91,43 @@ export default function StudentsPage() {
   const [isMarkLeftLoading, setIsMarkLeftLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [totalPages, setTotalPages] = useState(0);
-  const [total, setTotal] = useState(0);
   const itemsPerPage = 10;
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const initialLoadDoneRef = useRef(false);
-  const currentLoadIdRef = useRef(0);
-  // Track if filter change is in progress to prevent duplicate API calls
-  const filterChangeInProgressRef = useRef(false);
+
+  // Branch data for financial month
+  const { data: branchData } = useBranchQuery(branchId);
+  const currentMonth =
+    branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
+    String(new Date().getMonth() + 1).padStart(2, "0");
+  const currentYear = (branchData?.currentFinancialMonth?.year || new Date().getFullYear()).toString();
+
+  // Build filters object (stable reference when values don't change)
+  const queryFilters = useMemo(
+    () => ({
+      search: searchTerm || undefined,
+      classId: filterClass !== "all" ? filterClass : undefined,
+      status: filterStatus !== "all" ? filterStatus : undefined,
+      paymentStatus: filterPaymentStatus !== "all" ? filterPaymentStatus : undefined,
+      month: currentMonth,
+      year: currentYear,
+    }),
+    [searchTerm, filterClass, filterStatus, filterPaymentStatus, currentMonth, currentYear]
+  );
+
+  const {
+    data: studentsData,
+    isLoading,
+    isFetching: isListLoading,
+  } = useStudentsConsolidatedQuery(branchId, page, limit, queryFilters, {
+    refetchOnWindowFocus: true,
+  });
+
+  const { data: classesData } = useClassesQuery(branchId);
+
+  const students: Student[] = studentsData?.items || studentsData?.data || [];
+  const total: number = studentsData?.total || 0;
+  const totalPages: number = Math.ceil(total / limit);
+  const classes: any[] = classesData || studentsData?.classes || [];
   const language = useLanguage();
   const { toast } = useToast();
   const {
@@ -136,169 +167,24 @@ export default function StudentsPage() {
   const canEditStudents = useMemo(() => hasPermission("canEditStudents"), []);
   const canDeleteStudents = useMemo(() => hasPermission("canDeleteStudents"), []);
 
-  // Initialize state from URL params and load initial data (waits for router.isReady)
+  // Initialize state from URL params (React Query auto-fires when state changes)
   useEffect(() => {
     if (!router.isReady) return;
-
     const { page: qPage, limit: qLimit, search: qSearch, status: qStatus, classId: qClassId, paymentStatus: qPaymentStatus } = router.query;
-
-    const initSearch = (qSearch as string) || "";
-    const initStatus = (qStatus as string) || "all";
-    const initClassId = (qClassId as string) || "all";
-    const initPaymentStatus = (qPaymentStatus as string) || "all";
-
     if (qPage) setPage(parseInt(qPage as string) || 1);
     if (qLimit) setLimit(parseInt(qLimit as string) || 10);
+    const initSearch = (qSearch as string) || "";
     setSearchTerm(initSearch);
     setSearchInput(initSearch);
-    setFilterStatus(initStatus);
-    setFilterClass(initClassId);
-    setFilterPaymentStatus(initPaymentStatus);
-
-    setIsLoading(true);
-    // Pass URL params directly as overrides to avoid stale closure issues
-    loadData(initSearch, initStatus, initClassId, initPaymentStatus).finally(() => {
-      setIsLoading(false);
-      initialLoadDoneRef.current = true;
-    });
+    setFilterStatus((qStatus as string) || "all");
+    setFilterClass((qClassId as string) || "all");
+    setFilterPaymentStatus((qPaymentStatus as string) || "all");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
-  const waitForSelectedBranchId = async () => {
-    let retries = 0;
-    const maxRetries = 20;
-    while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      retries++;
-    }
-    return localStorage.getItem("selectedBranchId");
-  };
-
-  const loadData = async (
-    searchOverride?: string,
-    statusOverride?: string,
-    classOverride?: string,
-    paymentStatusOverride?: string,
-    pageOverride?: number,
-  ) => {
-    const user = getCurrentUser();
-    if (!user) {
-      setStudents([]);
-      setClasses([]);
-      setBranchData(null);
-      return;
-    }
-    const loadId = ++currentLoadIdRef.current;
-    const selectedBranchId = await waitForSelectedBranchId();
-    try {
-      if (selectedBranchId) {
-        const branch = await getBranch(selectedBranchId);
-        setBranchData(branch);
-        const currentMonth =
-          branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
-          String(new Date().getMonth() + 1).padStart(2, "0");
-        const currentYear =
-          branch.currentFinancialMonth?.year || new Date().getFullYear();
-        const filters: any = {};
-        // Use override values first, then state, then URL params
-        const searchValue =
-          searchOverride !== undefined
-            ? searchOverride
-            : searchTerm || (router.query.search as string);
-        const statusValue =
-          statusOverride !== undefined
-            ? statusOverride
-            : filterStatus || (router.query.status as string) || "all";
-        const classValue =
-          classOverride !== undefined
-            ? classOverride
-            : filterClass || (router.query.classId as string) || "all";
-        const paymentStatusValue =
-          paymentStatusOverride !== undefined
-            ? paymentStatusOverride
-            : filterPaymentStatus || (router.query.paymentStatus as string) || "all";
-
-        if (searchValue) filters.search = searchValue;
-        if (statusValue !== "all") filters.status = statusValue;
-        if (classValue !== "all") filters.classId = classValue;
-        if (paymentStatusValue !== "all") filters.paymentStatus = paymentStatusValue;
-        filters.month = currentMonth;
-        filters.year = currentYear.toString();
-
-        const effectivePage = pageOverride !== undefined ? pageOverride : page;
-        const [consolidated, fetchedClasses] = await Promise.all([
-          apiGetStudentsConsolidatedData(selectedBranchId, effectivePage, limit, filters),
-          listClasses(selectedBranchId),
-        ]);
-        if (loadId !== currentLoadIdRef.current) {
-          return;
-        }
-        const studentsList = consolidated?.items || consolidated?.data || [];
-        const totalVal = consolidated?.total || 0;
-
-        setStudents(studentsList);
-        setTotal(totalVal);
-        setTotalPages(Math.ceil(totalVal / limit));
-        // Use the dedicated classes fetch — always returns all classes for the branch.
-        setClasses(fetchedClasses.length > 0 ? fetchedClasses : (consolidated?.classes || []));
-        setBranchData(branch);
-      }
-    } catch (error) {
-      console.error("Failed to load data:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadStudents"),
-        variant: "destructive",
-      });
-      setClasses([]);
-      setBranchData(null);
-    }
-  };
-
-  // Initial load is handled in the [router.isReady] effect above
-
-  // ── Effect: re-fetch when filters / search / limit change ──────────────
-  // Always loads page 1.  If the current page is already 1 the page effect
-  // below won't fire (setPage is a no-op), so we call loadData here with an
-  // explicit pageOverride=1.  If the current page is not 1 we set the skip
-  // flag so the page effect (which fires because setPage(1) changed state)
-  // knows to stand down — this effect is already handling the fetch.
+  // Sync URL params when filters/page change (shallow push, no data refetch needed)
   useEffect(() => {
-    if (!initialLoadDoneRef.current) return;
-
-    if (page !== 1) {
-      filterChangeInProgressRef.current = true;
-      setPage(1);
-    }
-
-    setIsListLoading(true);
-    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus, 1)
-      .finally(() => setIsListLoading(false));
-
-    const params = new URLSearchParams();
-    if (searchTerm) params.set("search", searchTerm);
-    if (filterStatus !== "all") params.set("status", filterStatus);
-    if (filterClass !== "all") params.set("classId", filterClass);
-    if (filterPaymentStatus !== "all") params.set("paymentStatus", filterPaymentStatus);
-    params.set("page", "1");
-    params.set("limit", limit.toString());
-    router.push(`/students?${params.toString()}`, undefined, { shallow: true });
-  }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, limit]);
-
-  // ── Effect: re-fetch when the page number changes (pagination clicks) ──
-  // Skip if the page change was caused by a filter reset above.
-  useEffect(() => {
-    if (!initialLoadDoneRef.current) return;
-
-    if (filterChangeInProgressRef.current) {
-      filterChangeInProgressRef.current = false;
-      return;
-    }
-
-    setIsListLoading(true);
-    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus, page)
-      .finally(() => setIsListLoading(false));
-
+    if (!router.isReady) return;
     const params = new URLSearchParams();
     if (searchTerm) params.set("search", searchTerm);
     if (filterStatus !== "all") params.set("status", filterStatus);
@@ -307,27 +193,8 @@ export default function StudentsPage() {
     params.set("page", page.toString());
     params.set("limit", limit.toString());
     router.push(`/students?${params.toString()}`, undefined, { shallow: true });
-  }, [page]);
-
-  // ── Re-fetch when branch is switched ───────────────────────────────────
-  useEffect(() => {
-    const handleBranchChange = async () => {
-      setPage(1);
-      setIsListLoading(true);
-      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus, 1);
-      setIsListLoading(false);
-    };
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
-
-  // ── Refetch on tab focus (preserves current filters & page) ────────────
-  const refetchData = useCallback(() => {
-    setIsListLoading(true);
-    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus, page)
-      .finally(() => setIsListLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, page, limit]);
-  useRefetchOnFocus(refetchData);
 
   const hasCurrentMonthPayment = (studentId: string): boolean => {
     // Payment data not available with consolidated endpoint
@@ -342,7 +209,6 @@ export default function StudentsPage() {
   const processCSVData = async (csvText: string) => {
     try {
       const lines = csvText.trim().split("\n");
-      const branchId = localStorage.getItem("selectedBranchId");
       const defaultPayment = settings?.monthlyPayment || 500000;
 
       let importedCount = 0;
@@ -467,8 +333,8 @@ export default function StudentsPage() {
 
       setImportData("");
       setIsImportDialogOpen(false);
-      setCurrentPage(1);
-      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
+      setPage(1);
+      qc.invalidateQueries({ queryKey: ["students"] });
     } catch (error) {
       toast({
         title: t("importError"),
@@ -571,7 +437,6 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       return;
     }
 
-    const branchId = localStorage.getItem("selectedBranchId");
     const defaultMonthlyPayment = settings?.monthlyPayment || 500000;
     const monthlyPayment =
       parseInt(formData.monthlyPayment) || defaultMonthlyPayment;
@@ -600,7 +465,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       }
 
       resetForm();
-      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
+      qc.invalidateQueries({ queryKey: ["students"] });
       setIsDialogOpen(false);
       toast({
         title: editingStudent ? t("updated") : t("created"),
@@ -660,7 +525,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       setIsDeleteLoading(true);
       try {
         await apiDeleteStudent(deleteStudentId);
-        await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
+        qc.invalidateQueries({ queryKey: ["students"] });
         toast({
           title: t("deleted"),
           description: t("successfullyDeleted"),
@@ -703,8 +568,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     try {
       await Promise.all(selectedIds.map((id) => apiDeleteStudent(id)));
       clearSelection();
-      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
-      setCurrentPage(1);
+      qc.invalidateQueries({ queryKey: ["students"] });
+      setPage(1);
       toast({
         title: t("deleted"),
         description: `${selectedIds.length} ${t("students")} ${t("deletedSuccessfully")}`,
@@ -739,7 +604,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     await Promise.all(selectedIds.map((id) => apiUpdateStudent(id, { classId: bulkChangeClassId })));
 
     clearSelection();
-    await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
+    qc.invalidateQueries({ queryKey: ["students"] });
     setIsBulkChangeClassOpen(false);
     setBulkChangeClassId("");
     toast({
@@ -764,7 +629,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           status: "left",
           leftDate: new Date().toISOString(),
         });
-        await loadData();
+        qc.invalidateQueries({ queryKey: ["students"] });
         toast({
           title: t("updated"),
           description: t("statusUpdated"),
@@ -889,14 +754,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
-            {t("students")}
-          </h1>
-          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mt-1">
-            {t("manageStudents")}
-          </p>
-        </div>
+        <PageHeader title={t("students")} subtitle={t("manageStudents")} />
 
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Dialog

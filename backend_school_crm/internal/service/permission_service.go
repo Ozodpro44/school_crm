@@ -241,8 +241,8 @@ func (s *PermissionService) getDefaultPermissions(role string) *models.Permissio
 			CanEditExpenses:   true,
 			CanDeleteExpenses: true,
 			CanViewReports:    true,
-			CanViewSettings:   false,
-			CanEditSettings:   false,
+			CanViewSettings:   true,
+			CanEditSettings:   true,
 		}
 	case "manager":
 		return &models.Permission{

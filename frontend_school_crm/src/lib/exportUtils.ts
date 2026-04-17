@@ -24,11 +24,8 @@ export function exportTableToCSV(data: unknown[], filename: string) {
   link.click();
 }
 
-import { settingsDB } from "./storage";
-
 export function formatCurrency(amount: number, currency?: string): string {
-  const settings = typeof window !== "undefined" ? settingsDB.get() : undefined;
-  const cur = currency || settings?.currency || "USD";
+  const cur = currency || "UZS";
   let locale = "en-US";
   const lang = typeof window !== "undefined" ? localStorage.getItem("language") : null;
   

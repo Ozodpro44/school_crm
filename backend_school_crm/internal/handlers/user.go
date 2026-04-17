@@ -51,9 +51,10 @@ func createUser(userService *service.UserService) gin.HandlerFunc {
 			return
 		}
 
-		// Only admin can create users
-		currentUser, err := userService.GetByID(c.Request.Context(), userID)
-		if err != nil || currentUser.Role != "admin" {
+		callerRole := c.GetString("role")
+
+		// Only admin and branch_admin can create users
+		if callerRole != "admin" && callerRole != "branch_admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
@@ -64,6 +65,12 @@ func createUser(userService *service.UserService) gin.HandlerFunc {
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// branch_admin may only create managers, not other admins or branch_admins
+		if callerRole == "branch_admin" && req.Role != "manager" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "branch_admin can only create manager accounts"})
 			return
 		}
 
@@ -84,11 +91,11 @@ func createUser(userService *service.UserService) gin.HandlerFunc {
 		// Associate manager with branch using branch_managers table
 		if user.Role == "manager" {
 			branchID := req.BranchID
-			// If no branchId provided, auto-assign to the admin's own branch
+			// If no branchId provided, auto-assign to the caller's own branch
 			if branchID == nil {
-				adminBranch, branchErr := userService.GetAdminBranch(c.Request.Context(), currentUser.ID)
+				adminBranch, branchErr := userService.GetAdminBranch(c.Request.Context(), userID)
 				if branchErr != nil || adminBranch == nil {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "could not determine admin branch"})
+					c.JSON(http.StatusBadRequest, gin.H{"error": "could not determine branch"})
 					return
 				}
 				branchID = &adminBranch.ID
@@ -126,8 +133,7 @@ func updateUser(userService *service.UserService) gin.HandlerFunc {
 		}
 
 		// Only allow users to update their own profile or admin
-		currentUser, err := userService.GetByID(c.Request.Context(), userID)
-		if err != nil || (currentUser.Role != "admin" && currentUser.ID != id) {
+		if c.GetString("role") != "admin" && userID != id {
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
@@ -138,11 +144,26 @@ func updateUser(userService *service.UserService) gin.HandlerFunc {
 			return
 		}
 
+		// Non-admin users must provide current_password when changing their password
+		if c.GetString("role") != "admin" {
+			if _, hasNewPwd := updates["password"]; hasNewPwd {
+				cp, hasCurrent := updates["current_password"]
+				if !hasCurrent || cp == "" {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "current_password is required to change password"})
+					return
+				}
+			}
+		}
+
 		log.Printf("[updateUser] Updating user %s with data: %+v", id, updates)
 
 		user, err := userService.Update(c.Request.Context(), id, updates)
 		if err != nil {
 			log.Printf("[updateUser] Error updating user: %v", err)
+			if err.Error() == "current password is incorrect" {
+				c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -155,15 +176,13 @@ func updateUser(userService *service.UserService) gin.HandlerFunc {
 func deleteUser(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
-		userID, err := middleware.GetUserID(c)
-		if err != nil {
+		if _, err := middleware.GetUserID(c); err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
 		// Only admin can delete users
-		currentUser, err := userService.GetByID(c.Request.Context(), userID)
-		if err != nil || currentUser.Role != "admin" {
+		if c.GetString("role") != "admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}
@@ -180,15 +199,13 @@ func deleteUser(userService *service.UserService) gin.HandlerFunc {
 func updateUserPermissions(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
-		userID, err := middleware.GetUserID(c)
-		if err != nil {
+		if _, err := middleware.GetUserID(c); err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
 		// Only admin can update user permissions
-		currentUser, err := userService.GetByID(c.Request.Context(), userID)
-		if err != nil || currentUser.Role != "admin" {
+		if c.GetString("role") != "admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
 			return
 		}

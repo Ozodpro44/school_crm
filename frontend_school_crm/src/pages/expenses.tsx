@@ -60,6 +60,7 @@ import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
+import { PageHeader } from "@/components/PageHeader";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DialogFooter } from "@/components/ui/dialog";
@@ -825,12 +826,7 @@ export default function ExpensesPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex-1">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-            {t("expenses")}
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
-            {t("trackManageExpenses")}
-          </p>
+          <PageHeader title={t("expenses")} subtitle={t("trackManageExpenses")} />
         </div>
 
         {isAdmin && branchData && selectedMonth && (

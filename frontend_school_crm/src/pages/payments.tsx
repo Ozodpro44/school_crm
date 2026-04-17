@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
-import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -51,12 +51,11 @@ import {
   createPayment as apiCreatePayment,
   updatePayment as apiUpdatePayment,
   deletePayment as apiDeletePayment,
-  getBranch,
-  getPaymentsConsolidatedData,
   searchStudentsWithPayments,
-  listClasses,
 } from "@/lib/api";
 import { Branch } from "@/types";
+import { usePaymentsConsolidatedQuery, useBranchQuery, useClassesQuery } from "@/hooks/queries";
+import { useBranch } from "@/context/BranchContext";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
@@ -66,10 +65,16 @@ import { formatNumberWithSpaces, removeNumberFormatting, toTitleCase } from "@/l
 import { useSettings } from "@/hooks/use-settings";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function PaymentsPage() {
   const router = useRouter();
   const { settings } = useSettings();
+  const { currentBranch } = useBranch();
+  const branchId = currentBranch?.id || null;
+  const qc = useQueryClient();
+
+  // Derived payment list state (populated from query result via useEffect)
   const [payments, setPayments] = useState<Payment[]>([]);
   const [originalPayments, setOriginalPayments] = useState<Payment[]>([]);
   const [consolidatedPaymentMap, setConsolidatedPaymentMap] = useState<
@@ -113,7 +118,6 @@ export default function PaymentsPage() {
     }>
   >([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [branchData, setBranchData] = useState<Branch | null>(null);
   const getDefaultMonth = () => {
     const month = new Date().getMonth() + 1;
     return month.toString().padStart(2, "0");
@@ -180,7 +184,6 @@ export default function PaymentsPage() {
     student: Student;
     className: string;
   } | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(
     null,
   );
@@ -205,13 +208,6 @@ export default function PaymentsPage() {
 
   const [formSubmitted, setFormSubmitted] = useState(false);
 
-  // Track if initial load has been done to prevent double-loading from filter effects
-  const initialLoadDoneRef = useRef(false);
-  // Track the current load request to prevent race conditions
-  const currentLoadIdRef = useRef<number>(0);
-  // Track if filter change is in progress to prevent duplicate API calls
-  const filterChangeInProgressRef = useRef(false);
-
   const language = useLanguage();
   const { toast } = useToast();
   const t = (key: string) => getTranslation(key, language);
@@ -233,238 +229,43 @@ export default function PaymentsPage() {
     return true;
   };
 
-  const waitForSelectedBranchId = async () => {
-    let retries = 0;
-    const maxRetries = 20;
-    while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      retries++;
+  // ── React Query data fetching ──────────────────────────────────────────
+
+  const { data: branchData } = useBranchQuery(branchId);
+  const { data: classesFromQuery } = useClassesQuery(branchId);
+
+  // Initialize selectedMonth/Year from branch's financial month (once)
+  const financialMonth = branchData?.currentFinancialMonth?.month
+    ?.toString()
+    .padStart(2, "0");
+  const financialYear = branchData?.currentFinancialMonth?.year;
+
+  useEffect(() => {
+    if (financialMonth && financialYear && !selectedMonth) {
+      setSelectedMonth(financialMonth);
+      setSelectedYear(financialYear);
     }
-    return localStorage.getItem("selectedBranchId");
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [financialMonth, financialYear]);
 
-  const loadData = async (
-    month?: string,
-    year?: number,
-    searchOverride?: string,
-    statusOverride?: string,
-    paymentMethodOverride?: string,
-    classIdOverride?: string,
-  ) => {
-    try {
-      // Generate a unique ID for this load request
-      const loadId = ++currentLoadIdRef.current;
-
-      setIsLoading(true);
-      const user = getCurrentUser();
-      if (!user) {
-        setPayments([]);
-        setStudents([]);
-        setClasses([]);
-        return;
-      }
-
-      const selectedBranchId = await waitForSelectedBranchId();
-      if (selectedBranchId) {
-        // Load branch data to get current month
-        const branch = await getBranch(selectedBranchId);
-        setBranchData(branch);
-
-        // Use financial month data if available, otherwise fall back to current date
-        const currentMonth =
-          branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
-          String(new Date().getMonth() + 1).padStart(2, "0");
-        const currentYear =
-          branch.currentFinancialMonth?.year || new Date().getFullYear();
-
-        // Set selected month to branch's current month if not already set
-        if (!selectedMonth) {
-          setSelectedMonth(currentMonth);
-          setSelectedYear(currentYear);
-        }
-
-        // Always use passed parameters first, then state, then URL params, then branch defaults
-        // This ensures explicit calls with parameters take priority
-        const queryMonth =
-          month ||
-          selectedMonth ||
-          (router.query.month as string) ||
-          currentMonth;
-        const queryYear =
-          year ||
-          selectedYear ||
-          parseInt((router.query.year as string) || "") ||
-          currentYear;
-
-        // Use consolidated endpoint instead of multiple calls
-        const filters: any = {};
-        // Use override values first, then state, then URL params
-        const searchValue =
-          searchOverride !== undefined
-            ? searchOverride
-            : searchTerm || (router.query.search as string);
-        const statusValue =
-          statusOverride !== undefined
-            ? statusOverride
-            : filterStatus || (router.query.status as string) || "all";
-        const paymentMethodValue =
-          paymentMethodOverride !== undefined
-            ? paymentMethodOverride
-            : filterPaymentMethod || (router.query.paymentMethod as string) || "all";
-        const classIdValue =
-          classIdOverride !== undefined
-            ? classIdOverride
-            : filterClassId || (router.query.classId as string) || "all";
-
-        if (searchValue) filters.search = searchValue;
-        if (statusValue !== "all") filters.status = statusValue;
-        if (paymentMethodValue !== "all")
-          filters.paymentMethod = paymentMethodValue;
-        if (classIdValue !== "all") filters.classId = classIdValue;
-        filters.month = queryMonth;
-        filters.year = queryYear.toString();
-
-        const consolidated = await getPaymentsConsolidatedData(
-          selectedBranchId,
-          currentPage,
-          itemsPerPage,
-          filters,
-        );
-
-        // Only update state if this is still the latest request
-        if (loadId !== currentLoadIdRef.current) {
-          return;
-        }
-
-        // Handle response
-        const paymentsList = consolidated?.items || consolidated?.data || [];
-        let classesList = consolidated?.classes || [];
-        if (!classesList || classesList.length === 0) {
-          try {
-            classesList = await listClasses(selectedBranchId);
-          } catch (classError) {
-            console.error("Failed to load classes:", classError);
-            classesList = [];
-          }
-        }
-        const studentsList = consolidated?.students || [];
-        const paymentIndicators = consolidated?.indicators || {
-          totalPaid: 0,
-          totalUnpaid: 0,
-          byMethod: { click: 0, cash: 0, bank: 0, terminal: 0 },
-        };
-
-        setTotalPayments(consolidated?.total || 0);
-        setTotalPages(Math.ceil((consolidated?.total || 0) / itemsPerPage));
-
-        // Store original payments for editing
-        setOriginalPayments(paymentsList);
-        setIndicators(paymentIndicators);
-
-        // Build student info map for quick lookup
-        const studentMap = new Map<
-          string,
-          {
-            fullName: string;
-            phone: string;
-            classId: string;
-            className: string;
-            monthlyPayment: number;
-          }
-        >();
-        studentsList.forEach((student: any) => {
-          studentMap.set(student.id, {
-            fullName: student.fullName,
-            phone: student.phone,
-            classId: student.classId,
-            className: student.className,
-            monthlyPayment: student.monthlyPayment,
-          });
-        });
-        setStudentInfoMap(studentMap);
-
-        // Show all payments individually (no consolidation)
-        // Each partial payment is displayed with its own amount, method, and date
-        setPayments(paymentsList);
-        setConsolidatedPaymentMap(new Map());
-        setStudents([]);
-        setClasses(classesList);
-      }
-    } catch (error) {
-      console.error("Failed to load data:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadPayments"),
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Initialize state from URL params and load initial data (only on first router ready)
+  // Initialize state from URL params (React Query auto-fires when state changes)
   useEffect(() => {
     if (!router.isReady) return;
-
     const { page, limit, search, status, month, year, paymentMethod, classId } = router.query;
-
-    // Set state from URL params
     if (page) setCurrentPage(parseInt(page as string) || 1);
     if (limit) setItemsPerPage(parseInt(limit as string) || 10);
-    if (search) {
-      setSearchTerm(search as string);
-      setSearchInput(search as string);
-    }
+    if (search) { setSearchTerm(search as string); setSearchInput(search as string); }
     if (status) setFilterStatus(status as string);
     if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
     if (classId) setFilterClassId(classId as string);
-    const initMonth = (month as string) || selectedMonth;
-    const initYear = parseInt(year as string) || selectedYear || new Date().getFullYear();
-    if (month) setSelectedMonth(initMonth);
-    if (year) setSelectedYear(initYear);
-
-    const initSearch = (search as string) || "";
-    const initStatus = (status as string) || "all";
-    const initPaymentMethod = (paymentMethod as string) || "all";
-    const initClassId = (classId as string) || "all";
-
-    // Load initial data with URL params passed directly as overrides (avoids stale closure issues)
-    setIsLoading(true);
-    loadData(initMonth, initYear, initSearch, initStatus, initPaymentMethod, initClassId).finally(() => {
-      setIsLoading(false);
-      // Mark initial load as done AFTER data is loaded to prevent filter effects from running prematurely
-      initialLoadDoneRef.current = true;
-    });
-
+    if (month) setSelectedMonth(month as string);
+    if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
-  // Reload data when branch changes
+  // Sync URL params when filters/page change
   useEffect(() => {
-    const handleBranchChange = () => {
-      setCurrentPage(1);
-      setIsLoading(true);
-      loadData().finally(() => setIsLoading(false));
-    };
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
-
-  // Load data when page or items per page changes (but not on initial load)
-  useEffect(() => {
-    // Skip if initial load hasn't completed yet
-    if (!initialLoadDoneRef.current) return;
-    
-    // Skip if a filter change is in progress (filter handlers do their own loadData)
-    if (filterChangeInProgressRef.current) {
-      filterChangeInProgressRef.current = false;
-      return;
-    }
-    
-    setIsLoading(true);
-    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId).finally(() => setIsLoading(false));
-    
-    // Update URL with current pagination
+    if (!router.isReady || !selectedMonth) return;
     const params = new URLSearchParams();
     if (searchTerm) params.set("search", searchTerm);
     if (filterStatus !== "all") params.set("status", filterStatus);
@@ -476,37 +277,56 @@ export default function PaymentsPage() {
     params.set("limit", itemsPerPage.toString());
     router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, itemsPerPage]);
+  }, [searchTerm, filterStatus, filterPaymentMethod, filterClassId, currentPage, itemsPerPage, selectedMonth, selectedYear]);
 
-  // Refetch data when page regains focus (preserves current filters)
-  const refetchData = useCallback(() => {
-    setIsLoading(true);
-    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId).finally(() => setIsLoading(false));
-  }, [searchTerm, filterStatus, filterPaymentMethod, filterClassId, selectedMonth, selectedYear, currentPage, itemsPerPage]);
-  useRefetchOnFocus(refetchData);
+  const queryFilters = useMemo(() => ({
+    search: searchTerm || undefined,
+    status: filterStatus !== "all" ? filterStatus : undefined,
+    paymentMethod: filterPaymentMethod !== "all" ? filterPaymentMethod : undefined,
+    classId: filterClassId !== "all" ? filterClassId : undefined,
+    month: selectedMonth || undefined,
+    year: selectedYear ? selectedYear.toString() : undefined,
+  }), [searchTerm, filterStatus, filterPaymentMethod, filterClassId, selectedMonth, selectedYear]);
+
+  const {
+    data: paymentsQueryData,
+    isLoading,
+  } = usePaymentsConsolidatedQuery(branchId, currentPage, itemsPerPage, queryFilters, {
+    enabled: !!branchId && !!selectedMonth,
+    refetchOnWindowFocus: true,
+  });
+
+  // Process query response into component state
+  useEffect(() => {
+    if (!paymentsQueryData) return;
+    const paymentsList = paymentsQueryData?.items || paymentsQueryData?.data || [];
+    const studentsList = paymentsQueryData?.students || [];
+    const classesList = classesFromQuery?.length
+      ? classesFromQuery
+      : paymentsQueryData?.classes || [];
+    const paymentIndicators = paymentsQueryData?.indicators || null;
+
+    setTotalPayments(paymentsQueryData?.total || 0);
+    setTotalPages(Math.ceil((paymentsQueryData?.total || 0) / itemsPerPage));
+    setOriginalPayments(paymentsList);
+    setPayments(paymentsList);
+    setIndicators(paymentIndicators);
+    setClasses(classesList);
+    setConsolidatedPaymentMap(new Map());
+    setStudents([]);
+
+    const studentMap = new Map<string, { fullName: string; phone: string; classId: string; className: string; monthlyPayment: number }>();
+    studentsList.forEach((s: any) => {
+      studentMap.set(s.id, { fullName: s.fullName, phone: s.phone, classId: s.classId, className: s.className, monthlyPayment: s.monthlyPayment });
+    });
+    setStudentInfoMap(studentMap);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentsQueryData, classesFromQuery, itemsPerPage]);
 
   const handleMonthChange = (month: string, year: number) => {
-    // Mark filter change in progress to prevent duplicate API calls
-    filterChangeInProgressRef.current = true;
     setSelectedMonth(month);
     setSelectedYear(year);
-    setCurrentPage(1); // Reset to first page when month changes
-    setIsLoading(true);
-    // Load data with new month/year
-    loadData(month, year, searchTerm, filterStatus, filterPaymentMethod, filterClassId).finally(() =>
-      setIsLoading(false),
-    );
-    // Update URL with new month/year
-    const params = new URLSearchParams();
-    if (searchTerm) params.set("search", searchTerm);
-    if (filterStatus !== "all") params.set("status", filterStatus);
-    if (filterPaymentMethod !== "all")
-      params.set("paymentMethod", filterPaymentMethod);
-    params.set("month", month);
-    params.set("year", year.toString());
-    params.set("page", "1");
-    params.set("limit", itemsPerPage.toString());
-    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+    setCurrentPage(1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -686,7 +506,7 @@ export default function PaymentsPage() {
 
     resetForm();
     setEditingPaymentId(null);
-    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId);
+    qc.invalidateQueries({ queryKey: ["payments"] });
     setIsDialogOpen(false);
     setIsSubmitting(false);
   };
@@ -751,7 +571,7 @@ export default function PaymentsPage() {
     setProcessingPaymentId(id);
     try {
       await apiDeletePayment(id);
-      await loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId);
+      qc.invalidateQueries({ queryKey: ["payments"] });
       toast({ title: t("paymentDeleted"), variant: "success" });
     } catch (error) {
       console.error("Failed to delete payment:", error);
@@ -764,7 +584,7 @@ export default function PaymentsPage() {
           description: "Payment was already removed",
           variant: "default",
         });
-        await loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId);
+        qc.invalidateQueries({ queryKey: ["payments"] });
       } else {
         toast({
           title: t("error"),
@@ -862,7 +682,7 @@ export default function PaymentsPage() {
       });
     }
 
-    loadData(selectedMonth, selectedYear, searchTerm, filterStatus, filterPaymentMethod, filterClassId);
+    qc.invalidateQueries({ queryKey: ["payments"] });
     setIsBulkPaymentOpen(false);
     setSelectedStudentIds([]);
     setBulkSearchTerm("");
@@ -934,7 +754,7 @@ export default function PaymentsPage() {
     const loadBulkPaymentStudents = async () => {
       if (!isBulkPaymentOpen) return;
 
-      const selectedBranchId = localStorage.getItem("selectedBranchId");
+      const selectedBranchId = branchId;
       if (!selectedBranchId) return;
 
       setIsBulkSearching(true);
@@ -1095,7 +915,7 @@ export default function PaymentsPage() {
   // Handle student search in payment modal
   useEffect(() => {
     const handleStudentSearch = async () => {
-      const selectedBranchId = localStorage.getItem("selectedBranchId");
+      const selectedBranchId = branchId;
       if (!selectedBranchId || !studentSearchTerm.trim()) {
         setFilteredStudentsForModal([]);
         return;
@@ -1131,7 +951,7 @@ export default function PaymentsPage() {
     if (!isDialogOpen || !formData.studentId || !selectedStudentInfo) return;
 
     const handleMonthChange = async () => {
-      const selectedBranchId = localStorage.getItem("selectedBranchId");
+      const selectedBranchId = branchId;
       if (!selectedBranchId) return;
 
       try {
@@ -1187,15 +1007,8 @@ export default function PaymentsPage() {
   ]);
 
   const handleSearch = () => {
-    // Mark filter change in progress to prevent duplicate API calls
-    filterChangeInProgressRef.current = true;
     setCurrentPage(1);
     setSearchTerm(searchInput);
-    setIsLoading(true);
-    // Load data immediately with new search term - pass all filter values
-    loadData(selectedMonth, selectedYear, searchInput, filterStatus, filterPaymentMethod, filterClassId).finally(() =>
-      setIsLoading(false),
-    );
     // Update URL with search - always include month/year for consistency
     const params = new URLSearchParams();
     if (searchInput) params.set("search", searchInput);
@@ -1217,15 +1030,9 @@ export default function PaymentsPage() {
 
   const handleClearSearch = () => {
     // Mark filter change in progress to prevent duplicate API calls
-    filterChangeInProgressRef.current = true;
     setSearchInput("");
     setCurrentPage(1);
     setSearchTerm("");
-    setIsLoading(true);
-    // Load data immediately with cleared search - pass all filter values
-    loadData(selectedMonth, selectedYear, "", filterStatus, filterPaymentMethod, filterClassId).finally(() =>
-      setIsLoading(false),
-    );
     // Update URL to clear search - always include month/year for consistency
     const params = new URLSearchParams();
     if (filterStatus !== "all") params.set("status", filterStatus);
@@ -1421,14 +1228,7 @@ export default function PaymentsPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-            {t("payments")}
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
-            {t("trackStudentFees")}
-          </p>
-        </div>
+        <PageHeader title={t("payments")} subtitle={t("trackStudentFees")} />
 
         {/* Month Selector for Admin */}
         {isAdmin && branchData && selectedMonth && (
@@ -2194,11 +1994,9 @@ export default function PaymentsPage() {
                       // Auto-clear search when input is empty
                       if (value === "" && searchTerm !== "") {
                         // Mark filter change in progress to prevent duplicate API calls
-                        filterChangeInProgressRef.current = true;
                         setCurrentPage(1);
                         setSearchTerm("");
-                        setIsLoading(true);
-                        loadData(selectedMonth, selectedYear, "", filterStatus, filterPaymentMethod).finally(() => setIsLoading(false));
+                        qc.invalidateQueries({ queryKey: ["payments"] });;
                         // Update URL to clear search
                         const params = new URLSearchParams();
                         if (filterStatus !== "all") params.set("status", filterStatus);
@@ -2240,18 +2038,10 @@ export default function PaymentsPage() {
                   value={filterStatus}
                   onValueChange={(value) => {
                     // Mark filter change in progress to prevent duplicate API calls
-                    filterChangeInProgressRef.current = true;
                     setFilterStatus(value);
                     // Apply filter immediately when status changes
                     setCurrentPage(1);
-                    setIsLoading(true);
-                    loadData(
-                      selectedMonth,
-                      selectedYear,
-                      searchTerm,
-                      value,
-                      filterPaymentMethod,
-                    ).finally(() => setIsLoading(false));
+                    qc.invalidateQueries({ queryKey: ["payments"] });;
                     const params = new URLSearchParams();
                     if (searchTerm) params.set("search", searchTerm);
                     if (value !== "all") params.set("status", value);
@@ -2278,18 +2068,10 @@ export default function PaymentsPage() {
                   value={filterPaymentMethod}
                   onValueChange={(value) => {
                     // Mark filter change in progress to prevent duplicate API calls
-                    filterChangeInProgressRef.current = true;
                     setFilterPaymentMethod(value);
                     // Apply filter immediately when payment method changes
                     setCurrentPage(1);
-                    setIsLoading(true);
-                    loadData(
-                      selectedMonth,
-                      selectedYear,
-                      searchTerm,
-                      filterStatus,
-                      value,
-                    ).finally(() => setIsLoading(false));
+                    qc.invalidateQueries({ queryKey: ["payments"] });;
                     const params = new URLSearchParams();
                     if (searchTerm) params.set("search", searchTerm);
                     if (filterStatus !== "all") params.set("status", filterStatus);
@@ -2317,18 +2099,9 @@ export default function PaymentsPage() {
                 <Select
                   value={filterClassId}
                   onValueChange={(value) => {
-                    filterChangeInProgressRef.current = true;
                     setFilterClassId(value);
                     setCurrentPage(1);
-                    setIsLoading(true);
-                    loadData(
-                      selectedMonth,
-                      selectedYear,
-                      searchTerm,
-                      filterStatus,
-                      filterPaymentMethod,
-                      value,
-                    ).finally(() => setIsLoading(false));
+                    qc.invalidateQueries({ queryKey: ["payments"] });;
                     const params = new URLSearchParams();
                     if (searchTerm) params.set("search", searchTerm);
                     if (filterStatus !== "all") params.set("status", filterStatus);

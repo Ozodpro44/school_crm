@@ -28,6 +28,7 @@ import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { getSettings, updateSettings, UpdateSettingsRequest, switchBranchMonth, getBranch } from "@/lib/api";
 import { useBranch } from "@/context/BranchContext";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
+import { PageHeader } from "@/components/PageHeader";
 import {
   Dialog,
   DialogContent,
@@ -250,10 +251,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t("settings")}</h1>
-          <p className="text-muted-foreground">{t("manageSystemSettings")}</p>
-        </div>
+        <PageHeader title={t("settings")} subtitle={t("manageSystemSettings")} />
         <Button
           onClick={handleSave}
           disabled={

@@ -769,7 +769,7 @@ export function Layout({ children }: LayoutProps) {
                 </div>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => router.push("/admin-profile")}
+                  onClick={() => router.push("/profile")}
                   className="rounded-md gap-2 cursor-pointer py-2"
                 >
                   <UserCog className="h-4 w-4 text-slate-400" />
@@ -850,7 +850,7 @@ export function Layout({ children }: LayoutProps) {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  onClick={() => router.push("/admin-profile")}
+                  onClick={() => router.push("/profile")}
                   className="rounded-md gap-2 cursor-pointer py-2"
                 >
                   <UserCog className="h-4 w-4 text-slate-400" />

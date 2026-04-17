@@ -5,10 +5,20 @@ import { RecentIncidents } from "@/components/dashboard/RecentIncidents";
 import { BranchOverview } from "@/components/dashboard/BranchOverview";
 import { ApiPerformanceChart } from "@/components/dashboard/ApiPerformanceChart";
 import { BackendConnectivity } from "@/components/dashboard/BackendConnectivity";
-import { Calendar, RefreshCw } from "lucide-react";
+import { Calendar, RefreshCw, FileText, BookOpen, Building2, CreditCard, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
+import { API_CONFIG } from "@/config/api";
+
+const QUICK_LINKS = [
+  { label: "Logs & Errors",    href: "/logs",           icon: FileText,   internal: true,  desc: "View application logs" },
+  { label: "Branches",         href: "/branches",       icon: Building2,  internal: true,  desc: "Manage school branches" },
+  { label: "Subscriptions",    href: "/subscriptions",  icon: CreditCard, internal: true,  desc: "Billing & subscriptions" },
+  { label: "Swagger API Docs", href: API_CONFIG.baseUrl.replace("/api", "") + "/api/docs/index.html", icon: BookOpen, internal: false, desc: "OpenAPI documentation" },
+];
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const currentTime = new Date().toLocaleString("en-US", {
     weekday: "long",
     year: "numeric",
@@ -51,6 +61,29 @@ export default function Dashboard() {
         </div>
 
         <BranchOverview />
+
+        {/* Quick links */}
+        <div>
+          <h2 className="text-lg font-semibold text-foreground mb-4">Quick Links</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {QUICK_LINKS.map(({ label, href, icon: Icon, internal, desc }) => (
+              <button
+                key={label}
+                onClick={() => internal ? navigate(href) : window.open(href, "_blank")}
+                className="flex items-center gap-3 p-4 rounded-lg border border-border bg-card hover:border-primary/40 hover:bg-accent/30 transition-colors text-left"
+              >
+                <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-4 h-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{label}</p>
+                  <p className="text-xs text-muted-foreground truncate">{desc}</p>
+                </div>
+                {!internal && <ExternalLink className="w-3 h-3 text-muted-foreground ml-auto flex-shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </DashboardLayout>
   );

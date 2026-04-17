@@ -33,6 +33,7 @@ import {
   useDeleteTeacherMutation,
 } from "@/hooks/queries";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function TeachersPage() {
   const { currentBranch } = useBranch();
@@ -292,14 +293,7 @@ export default function TeachersPage() {
     
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {t("teachers")}
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-1">
-              {t("manageFaculty")}
-            </p>
-          </div>
+          <PageHeader title={t("teachers")} subtitle={t("manageFaculty")} />
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>

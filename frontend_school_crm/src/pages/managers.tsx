@@ -21,13 +21,14 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentUser } from "@/lib/auth";
-import { listUsers, deleteUser as deleteUserAPI, listBranches, getAuthToken, updateUserPermissions } from "@/lib/api";
+import { listUsers, deleteUser as deleteUserAPI, listBranches, updateUserPermissions, apiRequest } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { User, Permission, Branch } from "@/types";
 import { Plus, Edit2, Trash2, Shield, UserCog, Lock, Loader2 } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
+import { PageHeader } from "@/components/PageHeader";
 import { getTranslation } from "@/lib/translations";
-import { updateUserPassword } from "@/lib/auth";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useBranch } from "@/context/BranchContext";
 
@@ -65,7 +66,9 @@ export default function ManagersPage() {
     email: "",
     password: "",
     branchId: "",
+    role: "manager" as "manager" | "branch_admin",
   });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const [permissions, setPermissions] = useState<Permission>({
     canViewStudents: true,
@@ -152,7 +155,6 @@ export default function ManagersPage() {
          setBranches(branch ? [branch] : []);
        }
      } catch (error) {
-       console.error("Failed to load managers:", error);
        toast({
          title: t("error"),
          description: t("failedToLoadManagers"),
@@ -181,71 +183,54 @@ export default function ManagersPage() {
         toast({ title: t("permissionsUpdatedSuccess") || "Permissions updated successfully", variant: "success" });
         await loadData();
       } catch (error) {
-        console.error("Failed to update permissions:", error);
         toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
       } finally {
         setIsSubmitting(false);
       }
     } else {
-      try {
-        if (!formData.fullName || !formData.email || !formData.password || !formData.branchId) {
-          toast({ title: "Error", description: "Please fill in all required fields including branch", variant: "destructive" });
-          setIsSubmitting(false);
-          return;
-        }
-        
-        // Create user with branchId
-        const userData = {
-          email: formData.email,
-          password: formData.password,
-          fullName: formData.fullName,
-          role: "manager",
-          branchId: formData.branchId,
-        };
-        
-        // Get auth token
-        const token = getAuthToken();
-        
-        if (!token) {
-          throw new Error('No authentication token found');
-        }
-        
-        // API call will handle adding to branch_managers table
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1'}/users`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify(userData),
-        });
-        
-        let responseData;
-        try {
-          responseData = await response.json();
-        } catch (e) {
-          console.error("Failed to parse response:", e);
-          throw new Error(`Server error: ${response.status} ${response.statusText}`);
-        }
-        
-        if (!response.ok) {
-          const errorMsg = responseData?.error || responseData?.message || `Server error: ${response.status}`;
-          console.error("Manager creation failed:", errorMsg, responseData);
-          throw new Error(errorMsg);
-        }
-        
-        toast({ title: t("success") || "Success", description: "Manager created successfully", variant: "success" });
-        await loadData();
-        } catch (error) {
-        console.error("Failed to create manager:", error);
-        toast({ title: "Error", description: "Failed to create manager", variant: "destructive" });
-        } finally {
-        setIsSubmitting(false);
-        }
-        }
+      // Inline validation
+      const errors: Record<string, string> = {};
+      if (!formData.fullName.trim()) errors.fullName = t("fullNameRequired") || "Full name is required";
+      if (!formData.email.trim()) {
+        errors.email = t("emailRequired") || "Email is required";
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        errors.email = t("invalidEmail") || "Invalid email format";
+      }
+      if (!formData.password) {
+        errors.password = t("passwordRequired") || "Password is required";
+      } else if (formData.password.length < 6) {
+        errors.password = t("passwordTooShort") || "Password must be at least 6 characters";
+      }
+      if (!formData.branchId) errors.branchId = t("branchRequired") || "Branch is required";
 
+      if (Object.keys(errors).length > 0) {
+        setFormErrors(errors);
+        setIsSubmitting(false);
+        return;
+      }
+      setFormErrors({});
+
+      try {
+        await apiRequest("/users", {
+          method: "POST",
+          body: JSON.stringify({
+            full_name: formData.fullName,
+            email: formData.email,
+            password: formData.password,
+            role: formData.role,
+            branchId: formData.branchId,
+          }),
+        });
+        toast({ title: t("success") || "Success", description: t("managerCreatedSuccess") || "Manager created successfully", variant: "success" });
+        await loadData();
         resetForm();
         setIsDialogOpen(false);
+      } catch (error) {
+        toast({ title: t("error") || "Error", description: (error as Error).message || t("failedToCreateManager") || "Failed to create manager", variant: "destructive" });
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
   };
 
   const handleEdit = (manager: User) => {
@@ -255,6 +240,7 @@ export default function ManagersPage() {
       email: manager.email,
       password: "",
       branchId: currentBranch?.id || localStorage.getItem("selectedBranchId") || "",
+      role: (manager.role as "manager" | "branch_admin") || "manager",
     });
     const perms = manager.permissions || getDefaultPermissions();
     setPermissions(perms);
@@ -271,7 +257,6 @@ export default function ManagersPage() {
         await loadData();
         toast({ title: t("deleted") || "Deleted", description: t("managerDeleted") || "Manager deleted", variant: "success" });
       } catch (error) {
-        console.error("Failed to delete manager:", error);
         toast({ title: "Error", description: "Failed to delete manager", variant: "destructive" });
       } finally {
         setIsDeleteLoading(false);
@@ -296,7 +281,6 @@ export default function ManagersPage() {
           variant: "success",
         });
       } catch (error) {
-        console.error("Failed to delete managers:", error);
         toast({ title: "Error", description: "Failed to delete managers", variant: "destructive" });
       } finally {
         setIsBulkDeleteLoading(false);
@@ -313,7 +297,7 @@ export default function ManagersPage() {
     setIsPasswordDialogOpen(true);
   };
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
@@ -326,16 +310,22 @@ export default function ManagersPage() {
       return;
     }
 
-    if (editingManager && updateUserPassword(editingManager.id, passwordData.newPassword)) {
+    if (!editingManager) return;
+
+    setIsSubmitting(true);
+    try {
+      await apiRequest(`/users/${editingManager.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ password: passwordData.newPassword }),
+      });
       toast({ title: t("success") || "Success", description: t("passwordUpdatedSuccess") || "Password updated successfully", variant: "success" });
       setIsPasswordDialogOpen(false);
-      setPasswordData({
-        newPassword: "",
-        confirmPassword: "",
-      });
+      setPasswordData({ newPassword: "", confirmPassword: "" });
       setEditingManager(null);
-    } else {
+    } catch {
       toast({ title: t("error") || "Error", description: t("passwordUpdateError") || "Failed to update password", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -345,7 +335,9 @@ export default function ManagersPage() {
       email: "",
       password: "",
       branchId: currentBranch?.id || "",
+      role: "manager",
     });
+    setFormErrors({});
     setPermissions(getDefaultPermissions());
     setOriginalPermissions(null);
     setEditingManager(null);
@@ -563,14 +555,7 @@ export default function ManagersPage() {
     
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {t("managers")}
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-1">
-              {t("manageManagersPermissions")}
-            </p>
-          </div>
+          <PageHeader title={t("managers")} subtitle={t("manageManagersPermissions")} />
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -595,12 +580,13 @@ export default function ManagersPage() {
                     <Input
                       id="fullName"
                       value={formData.fullName}
-                      onChange={(e) =>
-                        setFormData({ ...formData, fullName: e.target.value })
-                      }
-                      required
+                      onChange={(e) => {
+                        setFormData({ ...formData, fullName: e.target.value });
+                        if (formErrors.fullName) setFormErrors(prev => ({ ...prev, fullName: "" }));
+                      }}
                       disabled={!!editingManager}
                     />
+                    {formErrors.fullName && <p className="text-xs text-red-500">{formErrors.fullName}</p>}
                   </div>
 
                   <div className="space-y-2">
@@ -609,13 +595,14 @@ export default function ManagersPage() {
                       id="email"
                       type="email"
                       value={formData.email}
-                      onChange={(e) =>
-                        setFormData({ ...formData, email: e.target.value })
-                      }
-                      required
+                      onChange={(e) => {
+                        setFormData({ ...formData, email: e.target.value });
+                        if (formErrors.email) setFormErrors(prev => ({ ...prev, email: "" }));
+                      }}
                       disabled={!!editingManager}
                       autoComplete="off"
                     />
+                    {formErrors.email && <p className="text-xs text-red-500">{formErrors.email}</p>}
                   </div>
 
                   {!editingManager && (
@@ -625,12 +612,33 @@ export default function ManagersPage() {
                         id="password"
                         type="password"
                         value={formData.password}
-                        onChange={(e) =>
-                          setFormData({ ...formData, password: e.target.value })
-                        }
-                        required
+                        onChange={(e) => {
+                          setFormData({ ...formData, password: e.target.value });
+                          if (formErrors.password) setFormErrors(prev => ({ ...prev, password: "" }));
+                        }}
                         autoComplete="new-password"
                       />
+                      {formErrors.password && <p className="text-xs text-red-500">{formErrors.password}</p>}
+                    </div>
+                  )}
+
+                  {!editingManager && (
+                    <div className="space-y-2">
+                      <Label htmlFor="role">{t("role") || "Role"} *</Label>
+                      <Select
+                        value={formData.role}
+                        onValueChange={(value) =>
+                          setFormData({ ...formData, role: value as "manager" | "branch_admin" })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="manager">{t("manager") || "Manager"}</SelectItem>
+                          <SelectItem value="branch_admin">{t("branchAdmin") || "Branch Admin"}</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   )}
 
@@ -638,10 +646,10 @@ export default function ManagersPage() {
                     <Label htmlFor="branchId">{t("branch")} *</Label>
                     <Select
                       value={formData.branchId}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, branchId: value })
-                      }
-                      required
+                      onValueChange={(value) => {
+                        setFormData({ ...formData, branchId: value });
+                        if (formErrors.branchId) setFormErrors(prev => ({ ...prev, branchId: "" }));
+                      }}
                       disabled={!!editingManager}
                     >
                       <SelectTrigger>
@@ -655,6 +663,7 @@ export default function ManagersPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                    {formErrors.branchId && <p className="text-xs text-red-500">{formErrors.branchId}</p>}
                     {!editingManager && (
                       <p className="text-xs text-slate-500 dark:text-slate-400">
                         {t("managerBranchNote") || "Menejer faqat tayinlangan filialini boshqara oladi"}
@@ -869,12 +878,12 @@ export default function ManagersPage() {
               </table>
 
               {managers.length === 0 && (
-                <div className="text-center py-12">
-                  <UserCog className="w-12 h-12 mx-auto text-slate-400 mb-3" />
-                  <p className="text-slate-500 dark:text-slate-400">
-                    {t("noManagersYet")}
-                  </p>
-                </div>
+                <EmptyState
+                  icon={UserCog}
+                  title={t("noManagersYet") || "No managers yet"}
+                  description="Add your first manager to let them access and oversee a branch."
+                  action={{ label: t("addManager") || "Add Manager", onClick: () => setIsDialogOpen(true) }}
+                />
               )}
             </div>
             </CardContent>

@@ -50,6 +50,7 @@ func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &middleware.CustomClaims{
 			UserID: user.ID,
+			Role:   string(user.Role),
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject:   user.ID,
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
@@ -130,6 +131,7 @@ func Register(userService *service.UserService, subscriptionService *service.Sub
 		// Generate JWT token for the newly registered user
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &middleware.CustomClaims{
 			UserID: user.ID,
+			Role:   string(user.Role),
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject:   user.ID,
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),

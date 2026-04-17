@@ -11,6 +11,7 @@ import (
 
 type CustomClaims struct {
 	UserID string `json:"user_id"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -45,6 +46,7 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 
 		c.Set("user_id", claims.UserID)
 		c.Set("userID", claims.UserID) // Keep for backward compatibility
+		c.Set("role", claims.Role)
 
 		// Get branch ID from X-Branch-ID header (set by frontend on branch switch)
 		branchID := c.GetHeader("X-Branch-ID")

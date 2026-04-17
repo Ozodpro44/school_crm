@@ -33,6 +33,7 @@ import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { useSettings } from "@/hooks/use-settings";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { PageHeader } from "@/components/PageHeader";
 
 export default function SalariesPage() {
   const router = useRouter();
@@ -403,12 +404,7 @@ export default function SalariesPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex-1">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-            {t("salaries")}
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
-            {t("trackTeacherSalaries")}
-          </p>
+          <PageHeader title={t("salaries")} subtitle={t("trackTeacherSalaries")} />
         </div>
 
         {isAdmin && branchData && selectedMonth && (

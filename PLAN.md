@@ -335,7 +335,7 @@ Now I have the full picture. Let me compile the plan.
   Check all imports: grep -r "from.*lib/storage" src/pages/.
 
   ---
-  4.4 Environment Config Validation at Startup 🟠
+  4.4 Environment Config Validation at Startup ✅ DONE
 
   Backend already checks JWT_SECRET and DATABASE_URL. Extend to validate:
   - Warn clearly if REDIS_URL is missing (rate limiting and OTP won't work)
@@ -355,7 +355,7 @@ Now I have the full picture. Let me compile the plan.
   - SENTRY_DSN env var (optional, graceful when missing)
 
   ---
-  4.6 CI/CD Pipeline 🟡
+  4.6 CI/CD Pipeline ✅ DONE
 
   No GitHub Actions / CI pipeline exists. Add .github/workflows/ci.yml:
   on: [push, pull_request]
@@ -408,7 +408,7 @@ Now I have the full picture. Let me compile the plan.
   Then fix the resulting errors. Prevents a whole class of runtime bugs.
 
   ---
-  4.10 Database Backup Strategy 🟡
+  4.10 Database Backup Strategy ✅ DONE
 
   No backup configuration documented. Add to DEPLOY.md:
   - Railway managed PostgreSQL: enable automatic backups in dashboard
@@ -437,7 +437,7 @@ Now I have the full picture. Let me compile the plan.
   - Mark pages as "stale" with a timestamp ("Last updated 5 min ago")
 
   ---
-  5.3 Mobile Responsiveness Audit 🟠
+  5.3 Mobile Responsiveness Audit ✅ DONE
 
   All data tables (students, payments, salaries) are desktop-only layouts that overflow on
   mobile. Each table needs a mobile card view that collapses columns:

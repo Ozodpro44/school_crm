@@ -83,14 +83,12 @@ func listBranches(branchService *service.BranchService, userService *service.Use
 		}
 
 		uid := userIDRaw.(string)
-		user, err := userService.GetByID(c.Request.Context(), uid)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve user"})
-			return
-		}
-
-		var branches []models.Branch
-		if user.Role == models.RoleAdmin {
+		var (
+			branches []models.Branch
+			err      error
+		)
+		role := c.GetString("role")
+		if role == "admin" || role == "branch_admin" {
 			branches, err = branchService.GetByAdminID(c.Request.Context(), uid)
 		} else {
 			branches, err = userService.GetUserBranches(c.Request.Context(), uid)

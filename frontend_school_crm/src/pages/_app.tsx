@@ -14,6 +14,7 @@ import { validateConfig, hasFatalConfigError, type ConfigError } from "@/lib/con
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { queryClient } from "@/lib/query-client";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Run config validation once at module load (server + client).
 // Logs warnings to console; fatal errors are surfaced in the UI.
@@ -167,17 +168,19 @@ export default function App({ Component, pageProps }: AppProps) {
         <LanguageProvider>
           <BranchProvider>
             <OfflineBanner />
-            {isAuthPage ? (
-              <>
-                <Component {...pageProps} />
-                <Toaster />
-              </>
-            ) : (
-              <Layout>
-                <Component {...pageProps} />
-                <Toaster />
-              </Layout>
-            )}
+            <ErrorBoundary>
+              {isAuthPage ? (
+                <>
+                  <Component {...pageProps} />
+                  <Toaster />
+                </>
+              ) : (
+                <Layout>
+                  <Component {...pageProps} />
+                  <Toaster />
+                </Layout>
+              )}
+            </ErrorBoundary>
           </BranchProvider>
         </LanguageProvider>
       </ThemeProvider>

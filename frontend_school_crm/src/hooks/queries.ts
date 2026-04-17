@@ -46,8 +46,11 @@ import {
   getStudentsConsolidatedData,
   getPaymentsConsolidatedData,
   getNotifications,
+  getTeacherPortalData,
+  apiRequest,
   Teacher,
   Class,
+  type TeacherPortalData,
   type CreateTeacherRequest,
   type CreateClassRequest,
   type CreateBranchRequest,
@@ -384,5 +387,40 @@ export function useNotificationsQuery(
     enabled: !!branchId,
     refetchInterval: 60_000, // poll every 60 s for new notifications
     ...options,
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Teacher Portal
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function useTeacherPortalQuery(
+  options?: Partial<UseQueryOptions<TeacherPortalData>>
+) {
+  return useQuery<TeacherPortalData>({
+    queryKey: ["teacher-portal"],
+    queryFn: () => getTeacherPortalData(),
+    staleTime: 2 * 60_000, // 2 min — portal data is read-heavy
+    ...options,
+  });
+}
+
+export function useAttendanceMutation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      branchId: string;
+      classId: string;
+      date: string;
+      records: { studentId: string; status: string; note?: string }[];
+    }) =>
+      apiRequest("/attendance", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      // Invalidate portal so student payment statuses refresh if needed
+      qc.invalidateQueries({ queryKey: ["teacher-portal"] });
+    },
   });
 }

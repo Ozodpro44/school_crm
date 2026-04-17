@@ -58,6 +58,11 @@ export default function LoginPage() {
         localStorage.removeItem("selectedBranchId");
 
         if (response.user.role === "teacher") {
+          // Teachers don't go through BranchContext — set branchId directly so
+          // apiRequest can attach the X-Branch-ID header on subsequent calls.
+          if (response.user.branchId) {
+            localStorage.setItem("selectedBranchId", response.user.branchId);
+          }
           router.push("/teacher-portal");
         } else {
           let retries = 0;
@@ -139,8 +144,8 @@ export default function LoginPage() {
           <CardHeader className="pb-2 pt-6">
             <p className="text-center text-sm text-slate-500 dark:text-slate-400">
               {mode === "admin"
-                ? "Sign in to manage your school"
-                : "Sign in to access your teacher portal"}
+                ? t("adminLoginSubtitle") || "Sign in to manage your school"
+                : t("teacherLoginSubtitle") || "Sign in to access your teacher portal"}
             </p>
           </CardHeader>
           <CardContent className="pb-6">
@@ -169,16 +174,14 @@ export default function LoginPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="password">{t("password")}</Label>
-                  {mode === "admin" && (
-                    <button
-                      type="button"
-                      onClick={() => setForgotPasswordOpen(true)}
-                      className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium transition-colors"
-                      disabled={loading}
-                    >
-                      {t("forgotPassword")}
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setForgotPasswordOpen(true)}
+                    className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium transition-colors"
+                    disabled={loading}
+                  >
+                    {t("forgotPassword")}
+                  </button>
                 </div>
                 <div className="relative">
                   <Input
@@ -205,12 +208,7 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
-                className={cn(
-                  "w-full h-11 font-semibold",
-                  mode === "admin"
-                    ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-                    : "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
-                )}
+                className="w-full h-11 font-semibold bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
                 disabled={loading}
               >
                 {loading ? (
@@ -219,7 +217,7 @@ export default function LoginPage() {
                     {t("signingIn")}
                   </>
                 ) : (
-                  mode === "admin" ? t("signIn") : "Sign in as Teacher"
+                  t("signIn")
                 )}
               </Button>
             </form>

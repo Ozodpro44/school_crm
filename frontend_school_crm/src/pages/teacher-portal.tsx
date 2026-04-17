@@ -1,19 +1,25 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { useToast } from "@/hooks/use-toast";
 import { getCurrentUser } from "@/lib/auth";
 import {
-  getTeacherPortalData,
   apiRequest,
-  TeacherPortalData,
   TeacherPortalStudent,
 } from "@/lib/api";
+import { useTeacherPortalQuery, useAttendanceMutation } from "@/hooks/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -32,19 +38,23 @@ import {
   Clock,
   AlertCircle,
   GraduationCap,
+  UserCircle,
+  Edit2,
+  Lock,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/exportUtils";
 import { formatPhoneNumber, toTitleCase } from "@/lib/utils";
+import { EmptyState } from "@/components/EmptyState";
 
-type Tab = "classes" | "students" | "attendance" | "salary";
+type Tab = "classes" | "students" | "attendance" | "salary" | "profile";
 
 export default function TeacherPortalPage() {
   const language = useLanguage();
   const { toast } = useToast();
   const currentUser = getCurrentUser();
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [data, setData] = useState<TeacherPortalData | null>(null);
+  const { data, isLoading, refetch: refetchPortal } = useTeacherPortalQuery();
+  const attendanceMutation = useAttendanceMutation();
   const [activeTab, setActiveTab] = useState<Tab>("classes");
 
   // Student list filters
@@ -52,33 +62,24 @@ export default function TeacherPortalPage() {
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [search, setSearch] = useState("");
 
+  // Profile state
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [profileForm, setProfileForm] = useState({ fullName: "", phone: "" });
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
   // Attendance state
   const [attendanceClassId, setAttendanceClassId] = useState("");
   const [attendanceMap, setAttendanceMap] = useState<Record<string, "present" | "absent" | "late">>({});
-  const [isSavingAttendance, setIsSavingAttendance] = useState(false);
   const [attendanceNote, setAttendanceNote] = useState<Record<string, string>>({});
 
   const t = (key: string) => getTranslation(key, language);
 
-  useEffect(() => {
-    loadPortalData();
-  }, []);
-
-  const loadPortalData = async () => {
-    setIsLoading(true);
-    try {
-      const portalData = await getTeacherPortalData();
-      setData(portalData);
-
-      if (portalData.classes.length > 0) {
-        setAttendanceClassId(portalData.classes[0]!.id);
-      }
-    } catch (err) {
-      toast({ title: t("error"), description: t("failedToLoadData"), variant: "destructive" });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Auto-select first class for attendance when data loads
+  if (data?.classes?.length && !attendanceClassId) {
+    setAttendanceClassId(data.classes[0]!.id);
+  }
 
   const filteredStudents = (data?.students ?? []).filter((s) => {
     if (classFilter !== "all" && s.classId !== classFilter) return false;
@@ -100,30 +101,20 @@ export default function TeacherPortalPage() {
     const branchId = data?.teacher?.branchId;
     if (!branchId) return;
 
-    setIsSavingAttendance(true);
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      const records = studentsForAttendance.map((s) => ({
-        studentId: s.id,
-        status: attendanceMap[s.id] || "absent",
-        note: attendanceNote[s.id] || undefined,
-      }));
+    const today = new Date().toISOString().slice(0, 10);
+    const records = studentsForAttendance.map((s) => ({
+      studentId: s.id,
+      status: attendanceMap[s.id] || "absent",
+      note: attendanceNote[s.id] || undefined,
+    }));
 
-      await apiRequest("/attendance", {
-        method: "POST",
-        body: JSON.stringify({
-          branchId,
-          classId: attendanceClassId,
-          date: today,
-          records,
-        }),
-      });
-      toast({ title: t("attendanceSaved"), variant: "success" });
-    } catch {
-      toast({ title: t("error"), variant: "destructive" });
-    } finally {
-      setIsSavingAttendance(false);
-    }
+    attendanceMutation.mutate(
+      { branchId, classId: attendanceClassId, date: today, records },
+      {
+        onSuccess: () => toast({ title: t("attendanceSaved"), variant: "success" }),
+        onError: () => toast({ title: t("error"), variant: "destructive" }),
+      }
+    );
   };
 
   const getPaymentBadge = (status: string) => {
@@ -148,11 +139,66 @@ export default function TeacherPortalPage() {
     }
   };
 
+  const handleOpenEditProfile = () => {
+    setProfileForm({ fullName: data?.teacher?.fullName ?? "", phone: data?.teacher?.phone ?? "" });
+    setIsEditProfileOpen(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!currentUser || !data?.teacher) return;
+    setIsSavingProfile(true);
+    try {
+      await apiRequest(`/users/${currentUser.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ full_name: profileForm.fullName }),
+      });
+      // Sync localStorage so the sidebar name updates
+      const updated = { ...currentUser, fullName: profileForm.fullName };
+      localStorage.setItem("current_user", JSON.stringify(updated));
+      localStorage.setItem("school_auth_user", JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent("userProfileUpdated", { detail: updated }));
+      setIsEditProfileOpen(false);
+      await refetchPortal();
+      toast({ title: t("profileUpdated") || "Profile updated", variant: "default" });
+    } catch (error) {
+      toast({ title: t("error"), description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!currentUser) return;
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast({ title: t("error"), description: t("passwordMismatch") || "Passwords do not match", variant: "destructive" });
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      toast({ title: t("error"), description: t("passwordTooShort") || "Password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+    setIsSavingProfile(true);
+    try {
+      await apiRequest(`/users/${currentUser.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ current_password: passwordForm.currentPassword, password: passwordForm.newPassword }),
+      });
+      setIsChangePasswordOpen(false);
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      toast({ title: t("passwordUpdated") || "Password updated", variant: "default" });
+    } catch (error) {
+      toast({ title: t("error"), description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
     { key: "classes",    label: t("myClasses"),      icon: <BookOpen className="w-4 h-4" /> },
     { key: "students",   label: t("myStudents"),     icon: <Users className="w-4 h-4" /> },
     { key: "attendance", label: t("todayAttendance"), icon: <ClipboardList className="w-4 h-4" /> },
     { key: "salary",     label: t("mySalary"),       icon: <DollarSign className="w-4 h-4" /> },
+    { key: "profile",    label: t("myProfile") || "My Profile", icon: <UserCircle className="w-4 h-4" /> },
   ];
 
   if (isLoading) {
@@ -267,7 +313,11 @@ export default function TeacherPortalPage() {
       {activeTab === "classes" && (
         <div>
           {data.classes.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">{t("noData")}</div>
+            <EmptyState
+              icon={BookOpen}
+              title="No classes assigned"
+              description="You haven't been assigned to any classes yet. Contact your branch admin."
+            />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {data.classes.map((cls) => {
@@ -434,16 +484,18 @@ export default function TeacherPortalPage() {
             </div>
             <Button
               onClick={handleSaveAttendance}
-              disabled={isSavingAttendance || studentsForAttendance.length === 0}
+              disabled={attendanceMutation.isPending || studentsForAttendance.length === 0}
             >
-              {isSavingAttendance ? t("processing") : t("saveAttendance")}
+              {attendanceMutation.isPending ? t("processing") : t("saveAttendance")}
             </Button>
           </div>
 
           {studentsForAttendance.length === 0 ? (
-            <div className="text-center py-12 text-slate-500">
-              {data.classes.length === 0 ? t("noData") : t("noStudentsInClass")}
-            </div>
+            <EmptyState
+              icon={data.classes.length === 0 ? BookOpen : Users}
+              title={data.classes.length === 0 ? "No classes assigned" : "No students in this class"}
+              description={data.classes.length === 0 ? "You haven't been assigned to any classes yet." : "This class has no enrolled students."}
+            />
           ) : (
             <div className="space-y-2">
               {/* Legend */}
@@ -580,6 +632,121 @@ export default function TeacherPortalPage() {
               )}
             </CardContent>
           </Card>
+        </div>
+      )}
+
+      {/* Profile tab */}
+      {activeTab === "profile" && (
+        <div className="max-w-md space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <UserCircle className="w-5 h-5" />
+                {t("myProfile") || "My Profile"}
+              </CardTitle>
+              <Button variant="outline" size="sm" onClick={handleOpenEditProfile}>
+                <Edit2 className="w-4 h-4 mr-2" />
+                {t("edit") || "Edit"}
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <p className="text-sm text-slate-500">{t("fullName")}</p>
+                <p className="font-medium">{teacher.fullName}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">Email</p>
+                <p className="font-medium">{teacher.email}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-500">{t("phone")}</p>
+                <p className="font-medium">{formatPhoneNumber(teacher.phone)}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Lock className="w-4 h-4" />
+                {t("changePassword") || "Change Password"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Button variant="outline" onClick={() => setIsChangePasswordOpen(true)}>
+                {t("changePassword") || "Change Password"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Edit profile dialog */}
+          <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>{t("editProfile") || "Edit Profile"}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>{t("fullName")}</Label>
+                  <Input
+                    value={profileForm.fullName}
+                    onChange={(e) => setProfileForm(prev => ({ ...prev, fullName: e.target.value }))}
+                  />
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setIsEditProfileOpen(false)} disabled={isSavingProfile}>
+                    {t("cancel") || "Cancel"}
+                  </Button>
+                  <Button onClick={handleSaveProfile} disabled={isSavingProfile}>
+                    {isSavingProfile ? t("saving") || "Saving..." : t("save") || "Save"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Change password dialog */}
+          <Dialog open={isChangePasswordOpen} onOpenChange={setIsChangePasswordOpen}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>{t("changePassword") || "Change Password"}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>{t("currentPassword") || "Current Password"}</Label>
+                  <Input
+                    type="password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("newPassword") || "New Password"}</Label>
+                  <Input
+                    type="password"
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("confirmPassword") || "Confirm Password"}</Label>
+                  <Input
+                    type="password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  />
+                </div>
+                <div className="flex justify-end gap-3 pt-2">
+                  <Button variant="outline" onClick={() => setIsChangePasswordOpen(false)} disabled={isSavingProfile}>
+                    {t("cancel") || "Cancel"}
+                  </Button>
+                  <Button onClick={handleChangePassword} disabled={isSavingProfile}>
+                    {isSavingProfile ? t("saving") || "Saving..." : t("update") || "Update"}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
     </div>
