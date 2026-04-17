@@ -962,6 +962,7 @@ export function Layout({ children }: LayoutProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </SidebarProvider>
   );
 }
