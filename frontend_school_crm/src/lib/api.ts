@@ -36,6 +36,16 @@ import { Branch } from "@/types";
 // NEXT_PUBLIC_API_URL must be set in production. Fallback to localhost for local dev only.
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
+// Microservices return { items: T[] }; the monolith returned plain T[].
+// This helper handles both so callers don't have to.
+function unwrapItems<T>(response: T[] | { items: T[] } | unknown): T[] {
+  if (Array.isArray(response)) return response;
+  if (response && typeof response === "object" && Array.isArray((response as { items: T[] }).items)) {
+    return (response as { items: T[] }).items;
+  }
+  return [];
+}
+
 // ============================================================================
 // TYPES & INTERFACES
 // ============================================================================
@@ -551,8 +561,8 @@ export function logout(): void {
  */
 export async function listUsers(branchId?: string): Promise<User[]> {
   const endpoint = branchId ? `/users?branchId=${branchId}` : "/users";
-  const response = await apiRequest<User[]>(endpoint);
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(endpoint);
+  return unwrapItems<User>(response);
 }
 
 /**
@@ -667,7 +677,15 @@ export async function listStudents(
   if (filters?.status) query += `&status=${filters.status}`;
 
   const response = await apiRequest<any>(query);
-  return response || { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
+  if (!response) return { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
+  // student_service returns { items, total, page, limit }; monolith returned { data, ... }
+  const items: Student[] = Array.isArray(response.items) ? response.items
+    : Array.isArray(response.data) ? response.data
+    : Array.isArray(response) ? response : [];
+  const total = response.total ?? items.length;
+  const pg = response.page ?? 1;
+  const lim = response.limit ?? (limit ?? 10);
+  return { data: items, total, page: pg, limit: lim, totalPages: Math.ceil(total / lim) || 1 };
 }
 
 /**
@@ -940,10 +958,8 @@ export async function getClass(id: string): Promise<Class> {
  * List classes by branch
  */
 export async function listClasses(branchId: string): Promise<Class[]> {
-  const response = await apiRequest<Class[]>(
-    `/classes?branchId=${branchId}`
-  );
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(`/classes?branchId=${branchId}`);
+  return unwrapItems<Class>(response);
 }
 
 /**
@@ -1007,8 +1023,8 @@ export function invalidateBranchCache(id: string) {
  * List all branches
  */
 export async function listBranches(): Promise<Branch[]> {
-  const response = await apiRequest<Branch[]>("/branches");
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>("/branches");
+  return unwrapItems<Branch>(response);
 }
 
 /**
@@ -1052,10 +1068,8 @@ export async function getStudentPaymentHistory(
   branchId?: string
 ): Promise<Payment[]> {
   const query = branchId ? `?branchId=${branchId}` : "";
-  const response = await apiRequest<Payment[]>(
-    `/payments/student/${studentId}/history${query}`
-  );
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(`/payments/student/${studentId}/history${query}`);
+  return unwrapItems<Payment>(response);
 }
 
 // ============================================================================
@@ -1085,10 +1099,8 @@ export async function getTeacher(id: string): Promise<Teacher> {
  * List teachers by branch
  */
 export async function listTeachers(branchId: string): Promise<Teacher[]> {
-  const response = await apiRequest<Teacher[]>(
-    `/teachers?branchId=${branchId}`
-  );
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(`/teachers?branchId=${branchId}`);
+  return unwrapItems<Teacher>(response);
 }
 
 /**
@@ -1148,8 +1160,8 @@ export async function listSalaries(
   if (month) query += `&month=${month}`;
   if (year) query += `&year=${year}`;
   
-  const response = await apiRequest<Salary[]>(`/salaries?${query}`);
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(`/salaries?${query}`);
+  return unwrapItems<Salary>(response);
 }
 
 /**
@@ -1222,8 +1234,8 @@ export async function listExpenses(
   if (month) query += `&month=${month}`;
   if (year) query += `&year=${year}`;
   
-  const response = await apiRequest<Expense[]>(`/expenses?${query}`);
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(`/expenses?${query}`);
+  return unwrapItems<Expense>(response);
 }
 
 /**
