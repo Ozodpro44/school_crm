@@ -4,8 +4,8 @@
 CREATE SCHEMA IF NOT EXISTS teacher;
 CREATE OR REPLACE VIEW teacher.teachers AS SELECT * FROM public.teachers;
 CREATE OR REPLACE VIEW teacher.salaries AS SELECT * FROM public.salaries;
-GRANT USAGE  ON SCHEMA teacher               TO school_user;
-GRANT SELECT ON ALL TABLES IN SCHEMA teacher TO school_user;
+GRANT USAGE  ON SCHEMA teacher               TO CURRENT_USER;
+GRANT SELECT ON ALL TABLES IN SCHEMA teacher TO CURRENT_USER;
 
 -- ── finance schema ─────────────────────────────────────────────────────────────
 CREATE SCHEMA IF NOT EXISTS finance;
@@ -21,8 +21,8 @@ BEGIN
   END IF;
 END$$;
 
-GRANT USAGE  ON SCHEMA finance               TO school_user;
-GRANT SELECT ON ALL TABLES IN SCHEMA finance TO school_user;
+GRANT USAGE  ON SCHEMA finance               TO CURRENT_USER;
+GRANT SELECT ON ALL TABLES IN SCHEMA finance TO CURRENT_USER;
 
 -- ── notification schema ────────────────────────────────────────────────────────
 CREATE SCHEMA IF NOT EXISTS notification;
@@ -35,5 +35,5 @@ BEGIN
   END IF;
 END$$;
 
-GRANT USAGE  ON SCHEMA notification               TO school_user;
-GRANT SELECT ON ALL TABLES IN SCHEMA notification TO school_user;
+GRANT USAGE  ON SCHEMA notification               TO CURRENT_USER;
+GRANT SELECT ON ALL TABLES IN SCHEMA notification TO CURRENT_USER;
