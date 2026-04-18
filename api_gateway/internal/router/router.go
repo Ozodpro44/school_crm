@@ -127,6 +127,7 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		legacyAuth.Any("/payments/:id", gin.WrapH(proxy.Handler(paymentProxy)))
 		legacyAuth.Any("/payments/:id/*subaction", gin.WrapH(proxy.Handler(paymentProxy)))
 		legacyAuth.Any("/subscriptions", gin.WrapH(proxy.Handler(paymentProxy)))
+		legacyAuth.Any("/subscriptions/current", gin.WrapH(proxy.Handler(monolithProxy)))
 		legacyAuth.Any("/subscriptions/:id", gin.WrapH(proxy.Handler(paymentProxy)))
 		legacyAuth.Any("/subscriptions/:id/*subaction", gin.WrapH(proxy.Handler(paymentProxy)))
 
@@ -207,6 +208,10 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		paymentRoutes.Any("/payments/:id", gin.WrapH(proxy.Handler(paymentProxy)))
 		paymentRoutes.Any("/payments/:id/*subaction", gin.WrapH(proxy.Handler(paymentProxy)))
 		paymentRoutes.Any("/subscriptions", gin.WrapH(proxy.Handler(paymentProxy)))
+		// /subscriptions/current is a monolith route (gets the active subscription for the
+		// authenticated user). Register it as a static segment BEFORE the :id wildcard so
+		// gin's router resolves it first.
+		paymentRoutes.Any("/subscriptions/current", gin.WrapH(proxy.Handler(monolithProxy)))
 		// Note: /*action wildcard conflicts with the static /plans route registered above.
 		// Named param :id takes priority after static segments, so /plans still routes correctly.
 		paymentRoutes.Any("/subscriptions/:id", gin.WrapH(proxy.Handler(paymentProxy)))

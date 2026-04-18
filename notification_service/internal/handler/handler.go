@@ -28,7 +28,10 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 func (h *Handler) List(c *gin.Context) {
 	branchID := c.Query("branchId")
 	if branchID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	if branchID == "" {
+		c.JSON(http.StatusOK, gin.H{"items": []interface{}{}})
 		return
 	}
 	unreadOnly := c.Query("unread") == "true"
@@ -43,7 +46,12 @@ func (h *Handler) List(c *gin.Context) {
 func (h *Handler) UnreadCount(c *gin.Context) {
 	branchID := c.Query("branchId")
 	if branchID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	// No branchId yet (app init before branch selection) — return 0 so the
+	// notification bell initializes without an error toast.
+	if branchID == "" {
+		c.JSON(http.StatusOK, gin.H{"count": 0})
 		return
 	}
 	count, err := h.svc.UnreadCount(c.Request.Context(), branchID)

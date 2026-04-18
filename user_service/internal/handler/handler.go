@@ -223,12 +223,17 @@ type settingsResponse struct {
 func (h *Handler) GetSettings(c *gin.Context) {
 	branchIDStr := c.Query("branchId")
 	if branchIDStr == "" {
+		branchIDStr = c.GetHeader("X-Branch-ID")
+	}
+	if branchIDStr == "" {
 		if v, ok := c.Get("branch_id"); ok {
 			branchIDStr, _ = v.(string)
 		}
 	}
+	// No branchId at app init (admin hasn't selected a branch yet) — return
+	// a default response so the frontend initializes without an error toast.
 	if branchIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		c.JSON(http.StatusOK, settingsResponse{Currency: "UZS"})
 		return
 	}
 	b, err := h.branches.GetByID(c.Request.Context(), branchIDStr)
