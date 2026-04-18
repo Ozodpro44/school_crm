@@ -18,7 +18,8 @@ CREATE OR REPLACE VIEW payment.subscription_plans AS SELECT * FROM public.subscr
 CREATE OR REPLACE VIEW payment.subscription_payments AS SELECT * FROM public.subscription_payments;
 CREATE OR REPLACE VIEW payment.subscription_usage AS SELECT * FROM public.subscription_usage;
 
--- Grant the application role access to the payment schema
--- (replace school_user with your actual DB user if different)
-GRANT USAGE ON SCHEMA payment TO school_user;
-GRANT SELECT ON ALL TABLES IN SCHEMA payment TO school_user;
+-- Grant the application role access to the payment schema.
+-- Uses current_user so it works on Railway, local dev, and any other host
+-- without hardcoding a username.
+GRANT USAGE ON SCHEMA payment TO CURRENT_USER;
+GRANT SELECT ON ALL TABLES IN SCHEMA payment TO CURRENT_USER;

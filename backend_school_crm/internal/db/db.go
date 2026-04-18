@@ -107,10 +107,14 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 	defer m.Close()
 
 	// Dirty state means a previous migration failed part-way.
-	// Do not force-forward automatically, because it can skip required tables.
+	// Force the version back to the failed number minus one so the corrected
+	// migration file can be re-applied cleanly on the next m.Up() call.
 	version, dirty, err := m.Version()
 	if err == nil && dirty {
-		return fmt.Errorf("database is in dirty migration state at version %d; fix migration and run force manually", version)
+		log.Printf("[Database.RunMigrations] Dirty state detected at version %d — forcing back to %d to re-run", version, version-1)
+		if forceErr := m.Force(int(version) - 1); forceErr != nil {
+			return fmt.Errorf("database is dirty at version %d and auto-force failed: %w", version, forceErr)
+		}
 	}
 
 	// Run migrations up
