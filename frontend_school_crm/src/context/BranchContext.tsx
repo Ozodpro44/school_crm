@@ -33,23 +33,23 @@ export function BranchProvider({ children }: { children: ReactNode }) {
 
     try {
       setIsLoading(true);
-      const data = await listBranches();
-      
-      // Filter branches based on user role
       const user = getCurrentUser();
+
+      // Backend filters by X-User-ID header (injected by api_gateway).
+      // No client-side filtering needed — the backend only returns this user's branches.
+      const data = await listBranches();
       let filteredBranches = data;
-      
+
+      // Extra client-side guard for manager/branch_admin: only show their branch.
       if (user && (user.role === "manager" || user.role === "branch_admin")) {
-        // Managers and branch_admins can only see their assigned branches
         const allowedBranchIds = (user as any).branchIds || [];
         if (allowedBranchIds.length > 0) {
           filteredBranches = data.filter((b: Branch) => allowedBranchIds.includes(b.id));
         } else if (user.branchId) {
-          // Fallback to single branchId if branchIds not available
           filteredBranches = data.filter((b: Branch) => b.id === user.branchId);
         }
       }
-      
+
       setBranches(filteredBranches);
       
       // Restore selected branch from localStorage or use first branch

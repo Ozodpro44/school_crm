@@ -105,13 +105,20 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 // ── Branches ──────────────────────────────────────────────────────────────────
 
 func (h *Handler) ListBranches(c *gin.Context) {
-	adminID := c.Query("adminId")
+	// X-User-ID is injected by the api_gateway after JWT validation.
+	// Always filter by the authenticated user so each admin only sees their own branches.
+	// X-User-Role == "developer" or "super_admin" bypass the filter (see all branches).
+	userID := c.GetHeader("X-User-ID")
+	userRole := c.GetHeader("X-User-Role")
+
 	var (
 		branches []service.Branch
 		err      error
 	)
-	if adminID != "" {
-		branches, err = h.branches.GetByAdminID(c.Request.Context(), adminID)
+
+	isSuperRole := userRole == "developer" || userRole == "super_admin"
+	if userID != "" && !isSuperRole {
+		branches, err = h.branches.GetByAdminID(c.Request.Context(), userID)
 	} else {
 		branches, err = h.branches.GetAll(c.Request.Context())
 	}

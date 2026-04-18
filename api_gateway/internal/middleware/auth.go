@@ -49,6 +49,16 @@ func JWTAuth(jwtSecret string) gin.HandlerFunc {
 		c.Set("user_id", claims.UserID)
 		c.Set("role", claims.Role)
 		c.Set("branch_id", claims.BranchID)
+
+		// Forward verified identity to upstream services as trusted internal headers.
+		// Upstream services must NOT trust X-User-ID from external clients — only from
+		// the gateway (which has already validated the JWT).
+		c.Request.Header.Set("X-User-ID", claims.UserID)
+		c.Request.Header.Set("X-User-Role", claims.Role)
+		if claims.BranchID != "" {
+			c.Request.Header.Set("X-User-Branch-ID", claims.BranchID)
+		}
+
 		c.Next()
 	}
 }
