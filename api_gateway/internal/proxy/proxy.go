@@ -36,6 +36,19 @@ func New(target string) (*httputil.ReverseProxy, error) {
 		}
 	}
 
+	// Strip CORS headers from upstream responses so the api_gateway's own
+	// corsMiddleware is the single source of truth. Without this, ReverseProxy
+	// copies upstream CORS headers with Header.Add(), producing ", *" duplicates.
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		resp.Header.Del("Access-Control-Allow-Origin")
+		resp.Header.Del("Access-Control-Allow-Credentials")
+		resp.Header.Del("Access-Control-Allow-Headers")
+		resp.Header.Del("Access-Control-Allow-Methods")
+		resp.Header.Del("Access-Control-Expose-Headers")
+		resp.Header.Del("Access-Control-Max-Age")
+		return nil
+	}
+
 	return proxy, nil
 }
 
