@@ -58,19 +58,21 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       setLanguageState(savedLanguage);
     }
 
-    // Load settings from backend on mount and when branch changes
+    // Load settings from backend on mount and when branch changes.
+    // Always reads selectedBranchId from localStorage so the backend gets a
+    // branchId even when called before the BranchContext has fully hydrated.
     const loadSettings = async () => {
       try {
         // Only fetch settings if user is authenticated
         const user = getCurrentUser();
         if (!user) {
-          // User not logged in, use defaults and mark as initialized
           setSettings(DEFAULT_SETTINGS);
           setIsInitialized(true);
           return;
         }
 
-        const data = await getSettings();
+        const branchId = localStorage.getItem("selectedBranchId") ?? undefined;
+        const data = await getSettings(branchId);
         setSettings(data);
       } catch (error) {
         // Fallback to defaults if loading fails

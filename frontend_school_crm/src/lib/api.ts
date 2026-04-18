@@ -1567,11 +1567,15 @@ export interface AppNotification {
 }
 
 export async function getNotifications(limit = 20): Promise<AppNotification[]> {
-  return apiRequest<AppNotification[]>(`/notifications?limit=${limit}`);
+  const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
+  const q = branchId ? `?branchId=${branchId}&limit=${limit}` : `?limit=${limit}`;
+  return apiRequest<AppNotification[]>(`/notifications${q}`);
 }
 
 export async function getUnreadCount(): Promise<number> {
-  const data = await apiRequest<{ count: number }>("/notifications/count");
+  const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
+  const q = branchId ? `?branchId=${branchId}` : "";
+  const data = await apiRequest<{ count: number }>(`/notifications/count${q}`);
   return data.count;
 }
 
