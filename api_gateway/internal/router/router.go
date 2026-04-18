@@ -132,9 +132,13 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	paymentRoutes.Use(middleware.JWTAuth(cfg.JWTSecret))
 	{
 		paymentRoutes.Any("/payments", gin.WrapH(proxy.Handler(paymentProxy)))
-		paymentRoutes.Any("/payments/*action", gin.WrapH(proxy.Handler(paymentProxy)))
+		paymentRoutes.Any("/payments/:id", gin.WrapH(proxy.Handler(paymentProxy)))
+		paymentRoutes.Any("/payments/:id/*subaction", gin.WrapH(proxy.Handler(paymentProxy)))
 		paymentRoutes.Any("/subscriptions", gin.WrapH(proxy.Handler(paymentProxy)))
-		paymentRoutes.Any("/subscriptions/*action", gin.WrapH(proxy.Handler(paymentProxy)))
+		// Note: /*action wildcard conflicts with the static /plans route registered above.
+		// Named param :id takes priority after static segments, so /plans still routes correctly.
+		paymentRoutes.Any("/subscriptions/:id", gin.WrapH(proxy.Handler(paymentProxy)))
+		paymentRoutes.Any("/subscriptions/:id/*subaction", gin.WrapH(proxy.Handler(paymentProxy)))
 	}
 
 	// ── Users, branches, permissions, settings, audit-logs → user_service ────
@@ -142,10 +146,13 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	userRoutes.Use(middleware.JWTAuth(cfg.JWTSecret))
 	{
 		userRoutes.Any("/users", gin.WrapH(proxy.Handler(userProxy)))
-		userRoutes.Any("/users/*action", gin.WrapH(proxy.Handler(userProxy)))
+		userRoutes.Any("/users/:id", gin.WrapH(proxy.Handler(userProxy)))
+		userRoutes.Any("/users/:id/*subaction", gin.WrapH(proxy.Handler(userProxy)))
 		userRoutes.Any("/branches", gin.WrapH(proxy.Handler(userProxy)))
-		userRoutes.Any("/branches/*action", gin.WrapH(proxy.Handler(userProxy)))
-		userRoutes.Any("/permissions/*action", gin.WrapH(proxy.Handler(userProxy)))
+		userRoutes.Any("/branches/:id", gin.WrapH(proxy.Handler(userProxy)))
+		userRoutes.Any("/branches/:id/*subaction", gin.WrapH(proxy.Handler(userProxy)))
+		userRoutes.Any("/permissions/:id", gin.WrapH(proxy.Handler(userProxy)))
+		userRoutes.Any("/permissions/:id/*subaction", gin.WrapH(proxy.Handler(userProxy)))
 		userRoutes.Any("/settings", gin.WrapH(proxy.Handler(userProxy)))
 		userRoutes.Any("/audit-logs", gin.WrapH(proxy.Handler(userProxy)))
 	}
@@ -155,15 +162,20 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	studentRoutes.Use(middleware.JWTAuth(cfg.JWTSecret))
 	{
 		studentRoutes.Any("/students", gin.WrapH(proxy.Handler(studentProxy)))
-		studentRoutes.Any("/students/*action", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/students/:id", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/students/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
 		studentRoutes.Any("/classes", gin.WrapH(proxy.Handler(studentProxy)))
-		studentRoutes.Any("/classes/*action", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/classes/:id", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/classes/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
 		studentRoutes.Any("/attendance", gin.WrapH(proxy.Handler(studentProxy)))
-		studentRoutes.Any("/attendance/*action", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/attendance/:id", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/attendance/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
 		studentRoutes.Any("/schedule", gin.WrapH(proxy.Handler(studentProxy)))
-		studentRoutes.Any("/schedule/*action", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/schedule/:id", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/schedule/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
 		studentRoutes.Any("/assignments", gin.WrapH(proxy.Handler(studentProxy)))
-		studentRoutes.Any("/assignments/*action", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/assignments/:id", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/assignments/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
 	}
 
 	// ── Consolidated fan-out endpoints (P4.4) ─────────────────────────────────
@@ -190,9 +202,11 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	teacherRoutes.Use(middleware.JWTAuth(cfg.JWTSecret))
 	{
 		teacherRoutes.Any("/teachers", gin.WrapH(proxy.Handler(teacherProxy)))
-		teacherRoutes.Any("/teachers/*action", gin.WrapH(proxy.Handler(teacherProxy)))
+		teacherRoutes.Any("/teachers/:id", gin.WrapH(proxy.Handler(teacherProxy)))
+		teacherRoutes.Any("/teachers/:id/*subaction", gin.WrapH(proxy.Handler(teacherProxy)))
 		teacherRoutes.Any("/salaries", gin.WrapH(proxy.Handler(teacherProxy)))
-		teacherRoutes.Any("/salaries/*action", gin.WrapH(proxy.Handler(teacherProxy)))
+		teacherRoutes.Any("/salaries/:id", gin.WrapH(proxy.Handler(teacherProxy)))
+		teacherRoutes.Any("/salaries/:id/*subaction", gin.WrapH(proxy.Handler(teacherProxy)))
 	}
 
 	// ── Expenses + budgets → finance_service (P5.2) ──────────────────────────
@@ -200,7 +214,8 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	financeRoutes.Use(middleware.JWTAuth(cfg.JWTSecret))
 	{
 		financeRoutes.Any("/expenses", gin.WrapH(proxy.Handler(financeProxy)))
-		financeRoutes.Any("/expenses/*action", gin.WrapH(proxy.Handler(financeProxy)))
+		financeRoutes.Any("/expenses/:id", gin.WrapH(proxy.Handler(financeProxy)))
+		financeRoutes.Any("/expenses/:id/*subaction", gin.WrapH(proxy.Handler(financeProxy)))
 		financeRoutes.Any("/expense-budgets", gin.WrapH(proxy.Handler(financeProxy)))
 	}
 
@@ -209,7 +224,8 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	notifRoutes.Use(middleware.JWTAuth(cfg.JWTSecret))
 	{
 		notifRoutes.Any("/notifications", gin.WrapH(proxy.Handler(notifProxy)))
-		notifRoutes.Any("/notifications/*action", gin.WrapH(proxy.Handler(notifProxy)))
+		notifRoutes.Any("/notifications/:id", gin.WrapH(proxy.Handler(notifProxy)))
+		notifRoutes.Any("/notifications/:id/*subaction", gin.WrapH(proxy.Handler(notifProxy)))
 	}
 
 	// ── Developer auth (public) ───────────────────────────────────────────────
