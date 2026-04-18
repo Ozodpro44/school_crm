@@ -290,11 +290,12 @@ type PaymentStudent struct {
 }
 
 type StudentListResponse struct {
-	Items   []StudentList  `json:"items"`
-	Classes []ClassStudent `json:"classes"`
-	Total   int            `json:"total"`
-	Page    int            `json:"page"`
-	Limit   int            `json:"limit"`
+	Items      []StudentList  `json:"items"`
+	Classes    []ClassStudent `json:"classes"`
+	Total      int            `json:"total"`
+	Page       int            `json:"page"`
+	Limit      int            `json:"limit"`
+	NextCursor string         `json:"nextCursor,omitempty"` // keyset pagination cursor
 }
 
 type StudentInfo struct {
@@ -314,6 +315,7 @@ type PaymentListResponse struct {
 	Total      int               `json:"total"`
 	Page       int               `json:"page"`
 	Limit      int               `json:"limit"`
+	NextCursor string            `json:"nextCursor,omitempty"` // keyset pagination cursor
 }
 
 type PaymentSummary struct {

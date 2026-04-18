@@ -47,6 +47,8 @@ func TestStudentPaymentMethodFilterValues(t *testing.T) {
 		{"click", []string{"click", "card"}},
 		// empty returns nil
 		{"", nil},
+		// unknown non-empty method returns itself normalised
+		{"TRANSFER", []string{"transfer"}},
 	}
 
 	for _, tt := range tests {

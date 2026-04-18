@@ -78,6 +78,9 @@ func (s *BranchServer) DeleteBranch(ctx context.Context, req *pb.DeleteBranchReq
 	return &pb.DeleteBranchResponse{Success: true}, nil
 }
 
+// BranchModelToProtoExported is the exported version for testing.
+var BranchModelToProtoExported = branchModelToProto
+
 // branchModelToProto converts a models.Branch to *pb.Branch.
 func branchModelToProto(b models.Branch) *pb.Branch {
 	proto := &pb.Branch{

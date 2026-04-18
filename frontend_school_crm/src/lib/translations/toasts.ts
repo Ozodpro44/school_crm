@@ -472,4 +472,9 @@ export const toastTranslations: Partial<Translation> = {
   // Missing keys
   passwordUpdatedSuccess: { "uz-cyrl": "Парол муваффақиятли янгиланди", "uz-latn": "Parol muvaffaqiyatli yangilandi", en: "Password updated successfully" },
   passwordUpdateError: { "uz-cyrl": "Паролни янгилашда хатолик", "uz-latn": "Parolni yangilashda xatolik", en: "Failed to update password" },
+  managerCreatedSuccess: {
+    "uz-cyrl": "Менежер муваффақиятли қўшилди",
+    "uz-latn": "Menejer muvaffaqiyatli qo'shildi",
+    en: "Manager created successfully",
+  },
 };

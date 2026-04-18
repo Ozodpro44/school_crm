@@ -307,4 +307,33 @@ export const miscTranslations: Partial<Translation> = {
     "uz-latn": "Ushbu CRM tizimiga kirish uchun faol obuna talab qilinadi. Obunani yangilash yoki faollashtirish uchun maktab administratori bilan bog'laning.",
     en: "Access to this CRM requires an active subscription. Please contact your school administrator to renew or activate the subscription.",
   },
+
+  // Profile
+  myProfile: {
+    "uz-cyrl": "Менинг профилим",
+    "uz-latn": "Mening profilim",
+    en: "My Profile",
+  },
+  viewAndManageProfile: {
+    "uz-cyrl": "Профилингизни кўриш ва бошқариш",
+    "uz-latn": "Profilingizni ko'rish va boshqarish",
+    en: "View and manage your account",
+  },
+  memberSince: {
+    "uz-cyrl": "Аъзоликдан бери",
+    "uz-latn": "A'zolikdan beri",
+    en: "Member since",
+  },
+
+  // Roles
+  manager: {
+    "uz-cyrl": "Менежер",
+    "uz-latn": "Menejer",
+    en: "Manager",
+  },
+  branchAdmin: {
+    "uz-cyrl": "Филиал администратори",
+    "uz-latn": "Filial administratori",
+    en: "Branch Admin",
+  },
 };

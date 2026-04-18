@@ -12,6 +12,13 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
+// RegisterPaymentRoutes registers payment CRUD handlers on the monolith router.
+//
+// DEPRECATED (P3.6): As of Phase 3 (Strangler Fig), payment reads and writes
+// are routed by api_gateway to payment_service. These handlers remain as a
+// fallback until payment_service is fully stable and the gateway's routing is
+// confirmed in production (P5.5).
+// Do NOT add new features here — add them to payment_service instead.
 func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.PaymentService, branchService *service.BranchService, userService *service.UserService, financeService *service.FinanceService, notifService *service.NotificationService) {
 	payments := router.Group("/payments")
 	payments.POST("", middleware.PermissionChecker(userService, "canCreatePayments"), createPayment(paymentService, notifService))
@@ -381,6 +388,7 @@ func getPaymentsConsolidatedData(paymentService *service.PaymentService, branchS
 			BranchID:      branchID,
 			Page:          c.DefaultQuery("page", "1"),
 			Limit:         c.DefaultQuery("limit", "10"),
+			Cursor:        c.Query("cursor"),
 			Search:        c.Query("search"),
 			Status:        c.Query("status"),
 			PaymentMethod: c.Query("paymentMethod"),

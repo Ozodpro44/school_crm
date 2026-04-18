@@ -673,13 +673,13 @@ export function Layout({ children }: LayoutProps) {
   return (
     <SidebarProvider defaultOpen={true}>
       <div className="flex min-h-screen w-full overflow-x-hidden bg-slate-50 dark:bg-slate-950">
-        <MobileSidebarCloser />
 
         {/* ────────────────────────────────── SIDEBAR ── */}
+        {/* hidden on mobile — desktop only */}
         <Sidebar
           variant="inset"
           collapsible="icon"
-          className="border-slate-200 dark:border-slate-800"
+          className="hidden md:flex border-slate-200 dark:border-slate-800"
         >
           {/* Header */}
           <SidebarHeaderSection
@@ -862,17 +862,47 @@ export function Layout({ children }: LayoutProps) {
         <SidebarInset className="flex-1 flex flex-col min-w-0 bg-transparent">
 
           {/* Mobile top bar */}
-          <header className="md:hidden sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border-b border-white/20 dark:border-slate-800/20 px-4 h-14 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/20">
-                <Building2 className="w-4.5 h-4.5 text-white" />
+          <header className="md:hidden sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border-b border-white/20 dark:border-slate-800/20 px-4 h-14 flex items-center justify-between gap-3">
+            {/* Branch selector / name */}
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/20 flex-shrink-0">
+                <Building2 className="w-4 h-4 text-white" />
               </div>
-              <div className="flex flex-col">
-                <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate max-w-[140px] leading-tight">
-                  {branchDisplayName}
-                </span>
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-tight">Dashboard</span>
-              </div>
+              {user?.role === "admin" && branches.length > 1 ? (
+                <Select
+                  value={currentBranch?.id || "__none__"}
+                  onValueChange={(v) => v !== "__none__" && handleBranchChange(v)}
+                >
+                  <SelectTrigger className="h-8 border-none bg-transparent shadow-none focus:ring-0 px-0 gap-1 min-w-0 flex-1 text-left [&>span]:truncate">
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate leading-tight">
+                        <SelectValue placeholder={t("selectBranch")} />
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-tight">
+                        {t("branch") || "Branch"}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[...branches]
+                      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                      .map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="flex flex-col min-w-0">
+                  <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate max-w-[160px] leading-tight">
+                    {branchDisplayName}
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-tight">
+                    {t("branch") || "Branch"}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -978,7 +1008,6 @@ export function Layout({ children }: LayoutProps) {
                 </Link>
               );
             })}
-            <MobileMoreButton label={t("more") || "More"} />
           </div>
         </nav>
       </SidebarInset>

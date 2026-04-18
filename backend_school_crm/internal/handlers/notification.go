@@ -14,6 +14,7 @@ import (
 //	GET  /notifications/count    — unread count
 //	PUT  /notifications/read-all — mark all as read
 //	PUT  /notifications/:id/read — mark one as read
+// DEPRECATED (P5): Routed by api_gateway to notification_service. Kept as fallback until P5.5.
 func RegisterNotificationRoutes(router *gin.RouterGroup, notifService *service.NotificationService) {
 	g := router.Group("/notifications")
 	g.GET("", listNotifications(notifService))

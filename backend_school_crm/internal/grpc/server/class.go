@@ -77,6 +77,9 @@ func (s *ClassServer) DeleteClass(ctx context.Context, req *pb.DeleteClassReques
 }
 
 // classModelToProto converts a models.Class to *pb.Class.
+// ClassModelToProtoExported is the exported version for testing.
+var ClassModelToProtoExported = classModelToProto
+
 func classModelToProto(c models.Class) *pb.Class {
 	proto := &pb.Class{
 		Id:        c.ID,

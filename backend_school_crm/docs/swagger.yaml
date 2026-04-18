@@ -205,8 +205,8 @@ info:
   contact:
     email: support@school-crm.example
     name: School CRM Support
-  description: REST API for School CRM — manages students, payments, teachers, classes,
-    branches, and salaries.
+  description: Residual monolith — auth, subscriptions, Click.uz/Telegram payments,
+    messaging, reports, dev panel.
   license:
     name: Proprietary
   termsOfService: http://swagger.io/terms/
@@ -994,6 +994,169 @@ paths:
       summary: Health check
       tags:
       - system
+  /jobs:
+    post:
+      consumes:
+      - application/json
+      description: Enqueues a background job (e.g. report generation, bulk operations).
+        Returns a job ID for polling.
+      parameters:
+      - description: type, payload
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: job_id, status
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Submit async job
+      tags:
+      - jobs
+  /jobs/{id}:
+    get:
+      description: Polls the status and result of a background job by ID.
+      parameters:
+      - description: Job ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: id, status, result, created_at
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: job not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get job status
+      tags:
+      - jobs
+  /messages:
+    get:
+      description: Returns Telegram message log for the branch.
+      parameters:
+      - description: Branch ID
+        in: query
+        name: branchId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List message history
+      tags:
+      - messaging
+  /messages/send:
+    post:
+      consumes:
+      - application/json
+      description: Sends a Telegram message to a filtered group of students (bulk
+        or individual).
+      parameters:
+      - description: branch_id, text, filter (classId, status, paymentStatus)
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: sent, failed counts
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Send Telegram message
+      tags:
+      - messaging
+  /messages/student/{id}/telegram:
+    put:
+      consumes:
+      - application/json
+      description: Associates a Telegram chat ID with a student record so they receive
+        Telegram notifications.
+      parameters:
+      - description: Student UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: telegram_id
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Set student Telegram ID
+      tags:
+      - messaging
   /notifications:
     get:
       description: Returns unread notifications for the current user's branch.
@@ -1046,6 +1209,22 @@ paths:
       summary: Mark notifications as read
       tags:
       - notifications
+  /payment-types:
+    get:
+      description: Returns all active payment types (public — no auth required).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+      summary: List payment types
+      tags:
+      - payment-types
   /payments:
     get:
       description: Returns payments for a branch, with optional month/year/status
@@ -1873,6 +2052,71 @@ paths:
       summary: List subscription plans
       tags:
       - subscriptions
+  /teacher-portal/me:
+    get:
+      description: Returns the authenticated teacher's classes, upcoming sessions,
+        recent payments, and salary summary.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: classes, sessions, payments, salary
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: teacher profile not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get teacher portal data
+      tags:
+      - teacher-portal
+  /teacher-portal/me/link/{teacherId}:
+    put:
+      description: Associates the authenticated user account with an existing teacher
+        record (admin only).
+      parameters:
+      - description: Teacher UUID
+        in: path
+        name: teacherId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: linked
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: invalid teacher ID
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: insufficient permissions
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Link user to teacher profile
+      tags:
+      - teacher-portal
   /teachers:
     get:
       description: Returns all teachers for the given branch.

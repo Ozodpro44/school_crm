@@ -10,6 +10,7 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
+// DEPRECATED (P4): Routed by api_gateway to student_service. Kept as fallback until P5.5.
 func RegisterStudentRoutes(router *gin.RouterGroup, studentService *service.StudentService, userService *service.UserService, financeService *service.FinanceService, notifService *service.NotificationService) {
 	students := router.Group("/students")
 	students.POST("", middleware.PermissionChecker(userService, "canCreateStudents"), createStudent(studentService))
@@ -151,6 +152,7 @@ func getStudentsConsolidatedData(studentService *service.StudentService) gin.Han
 			BranchID:      branchID,
 			Page:          c.DefaultQuery("page", "1"),
 			Limit:         c.DefaultQuery("limit", "10"),
+			Cursor:        c.Query("cursor"),
 			Search:        c.Query("search"),
 			Status:        c.Query("status"),
 			ClassID:       c.Query("classId"),

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/school-crm/backend/internal/models"
 	grpcserver "github.com/school-crm/backend/internal/grpc/server"
+	"github.com/school-crm/backend/internal/models"
 )
 
 func TestStudentModelToProto(t *testing.T) {
@@ -71,5 +71,102 @@ func TestPaymentModelToProto(t *testing.T) {
 	}
 	if proto.CreatedBy != createdBy {
 		t.Errorf("expected CreatedBy %q, got %q", createdBy, proto.CreatedBy)
+	}
+}
+
+func TestBranchModelToProto(t *testing.T) {
+	now := time.Now().UTC()
+	adminID := "admin-1"
+	b := models.Branch{
+		ID:             "branch-1",
+		Name:           "Main Branch",
+		Address:        "123 Main St",
+		Phone:          "+998901234567",
+		MonthlyPayment: 750000,
+		Currency:       "UZS",
+		AdminID:        &adminID,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	proto := grpcserver.BranchModelToProtoExported(b)
+
+	if proto.Id != b.ID {
+		t.Errorf("expected ID %q, got %q", b.ID, proto.Id)
+	}
+	if proto.Name != b.Name {
+		t.Errorf("expected Name %q, got %q", b.Name, proto.Name)
+	}
+	if proto.MonthlyPayment != b.MonthlyPayment {
+		t.Errorf("expected MonthlyPayment %v, got %v", b.MonthlyPayment, proto.MonthlyPayment)
+	}
+	if proto.AdminId != adminID {
+		t.Errorf("expected AdminId %q, got %q", adminID, proto.AdminId)
+	}
+	if proto.Currency != b.Currency {
+		t.Errorf("expected Currency %q, got %q", b.Currency, proto.Currency)
+	}
+}
+
+func TestBranchModelToProto_NilAdminID(t *testing.T) {
+	now := time.Now().UTC()
+	b := models.Branch{
+		ID:        "branch-2",
+		Name:      "Branch No Admin",
+		AdminID:   nil,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	proto := grpcserver.BranchModelToProtoExported(b)
+
+	if proto.AdminId != "" {
+		t.Errorf("expected empty AdminId for nil pointer, got %q", proto.AdminId)
+	}
+}
+
+func TestClassModelToProto(t *testing.T) {
+	now := time.Now().UTC()
+	teacherID := "teacher-1"
+	c := models.Class{
+		ID:        "class-1",
+		Name:      "English A1",
+		BranchID:  "branch-1",
+		TeacherID: &teacherID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	proto := grpcserver.ClassModelToProtoExported(c)
+
+	if proto.Id != c.ID {
+		t.Errorf("expected ID %q, got %q", c.ID, proto.Id)
+	}
+	if proto.Name != c.Name {
+		t.Errorf("expected Name %q, got %q", c.Name, proto.Name)
+	}
+	if proto.BranchId != c.BranchID {
+		t.Errorf("expected BranchId %q, got %q", c.BranchID, proto.BranchId)
+	}
+	if proto.TeacherId != teacherID {
+		t.Errorf("expected TeacherId %q, got %q", teacherID, proto.TeacherId)
+	}
+}
+
+func TestClassModelToProto_NilTeacherID(t *testing.T) {
+	now := time.Now().UTC()
+	c := models.Class{
+		ID:        "class-2",
+		Name:      "Maths B2",
+		BranchID:  "branch-1",
+		TeacherID: nil,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	proto := grpcserver.ClassModelToProtoExported(c)
+
+	if proto.TeacherId != "" {
+		t.Errorf("expected empty TeacherId for nil pointer, got %q", proto.TeacherId)
 	}
 }

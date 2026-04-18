@@ -40,6 +40,9 @@ type PaymentFilterInput struct {
 	BranchID      string
 	Page          string
 	Limit         string
+	// Cursor is the created_at timestamp (RFC3339) of the last item from the previous page.
+	// When set, Page/offset is ignored and results start strictly before this timestamp.
+	Cursor        string
 	Search        string
 	Status        string
 	PaymentMethod string
@@ -645,6 +648,9 @@ func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in Paym
 		intLimit = 10
 	}
 
+	// Cursor pagination: when a cursor is supplied, ignore page/offset entirely.
+	// Cursor = created_at timestamp of the last item (ordering is DESC, so we use <).
+	useCursor := in.Cursor != ""
 	offset := (intPage - 1) * intLimit
 
 	branchID := in.BranchID
@@ -702,6 +708,13 @@ func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in Paym
 		argID++
 	}
 
+	// Cursor: return only payments created before this timestamp (keyset, order DESC)
+	if useCursor {
+		where += fmt.Sprintf(" AND p.created_at < $%d", argID)
+		args = append(args, in.Cursor)
+		argID++
+	}
+
 	// -------------------------
 	// count query
 	// -------------------------
@@ -738,9 +751,18 @@ func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in Paym
 		LEFT JOIN classes c ON c.id = s.class_id
 		` + where + `
 		ORDER BY p.created_at DESC
-		LIMIT $` + strconv.Itoa(argID) + ` OFFSET $` + strconv.Itoa(argID+1)
+		LIMIT $` + strconv.Itoa(argID) + func() string {
+		if useCursor {
+			return ""
+		}
+		return ` OFFSET $` + strconv.Itoa(argID+1)
+	}()
 
-	args = append(args, intLimit, offset)
+	if useCursor {
+		args = append(args, intLimit)
+	} else {
+		args = append(args, intLimit, offset)
+	}
 
 	rows, err := s.db.GetConn().QueryContext(ctx, dataQuery, args...)
 	if err != nil {
@@ -792,12 +814,19 @@ func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in Paym
 		students = append(students, si)
 	}
 
+	// Build next cursor from the last payment's created_at (keyset, order DESC)
+	var nextCursor string
+	if len(payments) == intLimit {
+		nextCursor = payments[len(payments)-1].CreatedAt.Format(time.RFC3339Nano)
+	}
+
 	return &models.PaymentListResponse{
-		Items:    payments,
-		Students: students,
-		Total:    total,
-		Page:     intPage,
-		Limit:    intLimit,
+		Items:      payments,
+		Students:   students,
+		Total:      total,
+		Page:       intPage,
+		Limit:      intLimit,
+		NextCursor: nextCursor,
 	}, nil
 }
 

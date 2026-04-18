@@ -862,6 +862,11 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Ushbu maydon kerak",
     en: "This field is required",
   },
+  branchRequired: {
+    "uz-cyrl": "Филиал танланиши шарт",
+    "uz-latn": "Filial tanlanishi shart",
+    en: "Branch is required",
+  },
   invalidEmail: {
     "uz-cyrl": "Электрон почта ноғич",
     "uz-latn": "Elektron pochta noghich",

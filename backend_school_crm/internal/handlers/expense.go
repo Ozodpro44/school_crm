@@ -11,6 +11,7 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
+// DEPRECATED (P5): Routed by api_gateway to finance_service. Kept as fallback until P5.5.
 func RegisterExpenseRoutes(router *gin.RouterGroup, expenseService *service.ExpenseService, branchService *service.BranchService, userService *service.UserService) {
 	expenses := router.Group("/expenses")
 	expenses.POST("", middleware.PermissionChecker(userService, "canCreateExpenses"), createExpense(expenseService))

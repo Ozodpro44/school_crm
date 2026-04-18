@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { Save, Globe, DollarSign, Building2, Calendar, ChevronRight, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { useSetLanguage } from "@/hooks/use-language";
@@ -240,8 +241,30 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-36" />
+            <Skeleton className="h-4 w-56" />
+          </div>
+          <Skeleton className="h-10 w-28" />
+        </div>
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="rounded-lg border">
+            <div className="p-6 border-b space-y-1">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-64" />
+            </div>
+            <div className="p-6 grid gap-4 sm:grid-cols-2">
+              {[...Array(4)].map((_, j) => (
+                <div key={j} className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }

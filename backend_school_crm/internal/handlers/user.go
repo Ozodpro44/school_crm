@@ -11,6 +11,7 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
+// DEPRECATED (P4): Routed by api_gateway to user_service. Kept as fallback until P5.5.
 func RegisterUserRoutes(router *gin.RouterGroup, userService *service.UserService) {
 	users := router.Group("/users")
 	users.GET("", listUsers(userService))

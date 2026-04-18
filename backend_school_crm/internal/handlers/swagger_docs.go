@@ -575,3 +575,125 @@ func swaggerMarkNotificationsRead() {}
 //	@Success      200  {object}  map[string]interface{}
 //	@Router       /health [get]
 func swaggerHealth() {}
+
+// ──────────────────────────────────────────────
+// Teacher Portal
+// ──────────────────────────────────────────────
+
+// swaggerGetTeacherPortal godoc
+//
+//	@Summary      Get teacher portal data
+//	@Description  Returns the authenticated teacher's classes, upcoming sessions, recent payments, and salary summary.
+//	@Tags         teacher-portal
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Success      200  {object}  map[string]interface{}  "classes, sessions, payments, salary"
+//	@Failure      401  {object}  map[string]string       "unauthorized"
+//	@Failure      404  {object}  map[string]string       "teacher profile not found"
+//	@Router       /teacher-portal/me [get]
+func swaggerGetTeacherPortal() {}
+
+// swaggerLinkTeacherUser godoc
+//
+//	@Summary      Link user to teacher profile
+//	@Description  Associates the authenticated user account with an existing teacher record (admin only).
+//	@Tags         teacher-portal
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        teacherId  path      string             true  "Teacher UUID"
+//	@Success      200        {object}  map[string]string  "linked"
+//	@Failure      400        {object}  map[string]string  "invalid teacher ID"
+//	@Failure      403        {object}  map[string]string  "insufficient permissions"
+//	@Router       /teacher-portal/me/link/{teacherId} [put]
+func swaggerLinkTeacherUser() {}
+
+// ──────────────────────────────────────────────
+// Messaging
+// ──────────────────────────────────────────────
+
+// swaggerListMessages godoc
+//
+//	@Summary      List message history
+//	@Description  Returns Telegram message log for the branch.
+//	@Tags         messaging
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        branchId  query  string  true  "Branch ID"
+//	@Success      200  {array}   map[string]interface{}
+//	@Failure      400  {object}  map[string]string
+//	@Router       /messages [get]
+func swaggerListMessages() {}
+
+// swaggerSendMessage godoc
+//
+//	@Summary      Send Telegram message
+//	@Description  Sends a Telegram message to a filtered group of students (bulk or individual).
+//	@Tags         messaging
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        body  body      map[string]interface{}  true  "branch_id, text, filter (classId, status, paymentStatus)"
+//	@Success      200   {object}  map[string]interface{}  "sent, failed counts"
+//	@Failure      400   {object}  map[string]string
+//	@Router       /messages/send [post]
+func swaggerSendMessage() {}
+
+// swaggerSetStudentTelegram godoc
+//
+//	@Summary      Set student Telegram ID
+//	@Description  Associates a Telegram chat ID with a student record so they receive Telegram notifications.
+//	@Tags         messaging
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id    path      string                 true  "Student UUID"
+//	@Param        body  body      map[string]interface{} true  "telegram_id"
+//	@Success      200   {object}  map[string]string
+//	@Failure      400   {object}  map[string]string
+//	@Router       /messages/student/{id}/telegram [put]
+func swaggerSetStudentTelegram() {}
+
+// ──────────────────────────────────────────────
+// Async Job Queue
+// ──────────────────────────────────────────────
+
+// swaggerSubmitJob godoc
+//
+//	@Summary      Submit async job
+//	@Description  Enqueues a background job (e.g. report generation, bulk operations). Returns a job ID for polling.
+//	@Tags         jobs
+//	@Accept       json
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        body  body      map[string]interface{}  true  "type, payload"
+//	@Success      202   {object}  map[string]interface{}  "job_id, status"
+//	@Failure      400   {object}  map[string]string
+//	@Router       /jobs [post]
+func swaggerSubmitJob() {}
+
+// swaggerGetJob godoc
+//
+//	@Summary      Get job status
+//	@Description  Polls the status and result of a background job by ID.
+//	@Tags         jobs
+//	@Produce      json
+//	@Security     BearerAuth
+//	@Param        id   path      string                 true  "Job ID"
+//	@Success      200  {object}  map[string]interface{}  "id, status, result, created_at"
+//	@Failure      404  {object}  map[string]string       "job not found"
+//	@Router       /jobs/{id} [get]
+func swaggerGetJob() {}
+
+// ──────────────────────────────────────────────
+// Payment Types (public)
+// ──────────────────────────────────────────────
+
+// swaggerListPaymentTypes godoc
+//
+//	@Summary      List payment types
+//	@Description  Returns all active payment types (public — no auth required).
+//	@Tags         payment-types
+//	@Produce      json
+//	@Success      200  {array}  map[string]interface{}
+//	@Router       /payment-types [get]
+func swaggerListPaymentTypes() {}

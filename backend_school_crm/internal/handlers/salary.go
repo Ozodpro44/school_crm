@@ -11,6 +11,7 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
+// DEPRECATED (P5): Routed by api_gateway to teacher_service. Kept as fallback until P5.5.
 func RegisterSalaryRoutes(router *gin.RouterGroup, salaryService *service.SalaryService, branchService *service.BranchService, userService *service.UserService) {
 	salaries := router.Group("/salaries")
 	salaries.POST("", middleware.PermissionChecker(userService, "canCreateSalaries"), createSalary(salaryService))

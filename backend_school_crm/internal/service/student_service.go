@@ -46,6 +46,9 @@ type StudentFilterInput struct {
 	BranchID      string
 	Page          string
 	Limit         string
+	// Cursor is the full_name of the last item from the previous page (keyset pagination).
+	// When set, Page/offset is ignored and results start after this cursor value.
+	Cursor        string
 	Search        string
 	Status        string
 	ClassID       string
@@ -244,6 +247,9 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 		intLimit = 10
 	}
 
+	// Cursor pagination: when a cursor is supplied, ignore page/offset entirely.
+	// Cursor = full_name of the last item on the previous page (ordered ASC).
+	useCursor := in.Cursor != ""
 	offset := (intPage - 1) * intLimit
 
 	currentTime := time.Now()
@@ -278,6 +284,13 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 			argID, argID,
 		)
 		args = append(args, "%"+search+"%")
+		argID++
+	}
+
+	// Cursor: return only students whose full_name > cursor (keyset)
+	if useCursor {
+		where += fmt.Sprintf(" AND s.full_name > $%d", argID)
+		args = append(args, in.Cursor)
 		argID++
 	}
 
@@ -369,10 +382,18 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 		) p ON true
 		` + where + `
 		ORDER BY s.full_name ASC
-		LIMIT $` + strconv.Itoa(argID+2) + `
-		OFFSET $` + strconv.Itoa(argID+3)
+		LIMIT $` + strconv.Itoa(argID+2) + func() string {
+		if useCursor {
+			return ""
+		}
+		return ` OFFSET $` + strconv.Itoa(argID+3)
+	}()
 
-	args = append(args, currentMonth, currentYear, intLimit, offset)
+	if useCursor {
+		args = append(args, currentMonth, currentYear, intLimit)
+	} else {
+		args = append(args, currentMonth, currentYear, intLimit, offset)
+	}
 
 	// -------------------------
 	// scan
@@ -456,12 +477,19 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 		classes = append(classes, classItem)
 	}
 
+	// Build next cursor from the last item's full_name (keyset pagination)
+	var nextCursor string
+	if len(students) == intLimit {
+		nextCursor = students[len(students)-1].FullName
+	}
+
 	return &models.StudentListResponse{
-		Items:   students,
-		Classes: classes,
-		Total:   total,
-		Page:    intPage,
-		Limit:   intLimit,
+		Items:      students,
+		Classes:    classes,
+		Total:      total,
+		Page:       intPage,
+		Limit:      intLimit,
+		NextCursor: nextCursor,
 	}, nil
 }
 

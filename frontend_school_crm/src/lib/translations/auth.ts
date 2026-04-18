@@ -161,6 +161,17 @@ export const authTranslations: Partial<Translation> = {
   signIn: { "uz-cyrl": "Кириш", "uz-latn": "Kirish", en: "Sign In" },
   signingIn: { "uz-cyrl": "Кирмоқда...", "uz-latn": "Kirmoqda...", en: "Signing In..." },
 
+  adminLoginSubtitle: {
+    "uz-cyrl": "Мактабингизни бошқариш учун киринг",
+    "uz-latn": "Maktabingizni boshqarish uchun kiring",
+    en: "Sign in to manage your school",
+  },
+  teacherLoginSubtitle: {
+    "uz-cyrl": "Ўқитувчи порталига кириш учун тизимга кириш",
+    "uz-latn": "O'qituvchi portaliga kirish uchun tizimga kiring",
+    en: "Sign in to access your teacher portal",
+  },
+
   accessDashboard: {
     "uz-cyrl": "Панелга кириш",
     "uz-latn": "Panelga kirish",
@@ -255,5 +266,10 @@ export const authTranslations: Partial<Translation> = {
     "uz-cyrl": "Пароллар мос келмайди",
     "uz-latn": "Parollar mos kelmaydi",
     en: "Passwords do not match",
+  },
+  passwordRequired: {
+    "uz-cyrl": "Парол киритилиши шарт",
+    "uz-latn": "Parol kiritilishi shart",
+    en: "Password is required",
   },
 };

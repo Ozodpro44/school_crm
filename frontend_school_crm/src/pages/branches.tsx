@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { Plus, Building2, MapPin, Phone, Edit, Trash2, Users, DollarSign, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { Badge } from "@/components/ui/badge";
@@ -268,11 +269,37 @@ export default function BranchesPage() {
 
   if (loading) {
     return (
-      
-        <div className="flex items-center justify-center h-96">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-36" />
         </div>
-      
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="rounded-lg border p-6 space-y-4">
+              <div className="flex justify-between items-start">
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-36" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+                <Skeleton className="h-8 w-8 rounded-full" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Skeleton className="h-8 w-20" />
+                <Skeleton className="h-8 w-20" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 

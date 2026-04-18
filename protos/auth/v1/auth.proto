@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package auth.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/school-crm/protos/auth/v1;authv1";
+
+// ── Messages ──────────────────────────────────────────────────────────────────
+
+message TokenClaims {
+  string user_id    = 1;
+  string email      = 2;
+  string role       = 3;
+  string branch_id  = 4; // primary branch (may be empty for admin)
+  google.protobuf.Timestamp expires_at = 5;
+}
+
+message AuthUser {
+  string user_id       = 1;
+  string email         = 2;
+  string full_name     = 3;
+  string role          = 4;
+  string branch_id     = 5;
+}
+
+// ── Requests / Responses ──────────────────────────────────────────────────────
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool        valid   = 1;
+  TokenClaims claims  = 2; // populated when valid = true
+  string      error   = 3; // populated when valid = false
+}
+
+message GetUserByIDRequest {
+  string user_id = 1;
+}
+
+message GetUserByIDResponse {
+  AuthUser user = 1;
+}
+
+message LoginRequest {
+  string email    = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string access_token  = 1;
+  string refresh_token = 2;
+  AuthUser user        = 3;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;
+}
+
+message LogoutRequest {
+  string access_token = 1;
+}
+
+message LogoutResponse {}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+
+service AuthService {
+  // Used by api_gateway to validate every inbound request.
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+  // Used by other services to fetch minimal user data by ID.
+  rpc GetUserByID(GetUserByIDRequest) returns (GetUserByIDResponse);
+
+  // Public auth flows (also exposed as REST via grpc-gateway).
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}

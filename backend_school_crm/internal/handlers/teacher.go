@@ -8,6 +8,7 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
+// DEPRECATED (P5): Routed by api_gateway to teacher_service. Kept as fallback until P5.5.
 func RegisterTeacherRoutes(router *gin.RouterGroup, teacherService *service.TeacherService, userService *service.UserService) {
 	teachers := router.Group("/teachers")
 	// Authenticated users can view and edit

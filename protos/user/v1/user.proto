@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+package user.v1;
+
+import "common/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/school-crm/protos/user/v1;userv1";
+
+// ── Messages ──────────────────────────────────────────────────────────────────
+
+message User {
+  string user_id    = 1;
+  string email      = 2;
+  string full_name  = 3;
+  string role       = 4;
+  string phone      = 5;
+  string avatar_url = 6;
+  string language   = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message Branch {
+  string branch_id        = 1;
+  string name             = 2;
+  string address          = 3;
+  string phone            = 4;
+  double monthly_payment  = 5;
+  string currency         = 6;
+  string admin_id         = 7;
+  google.protobuf.Timestamp created_at = 8;
+}
+
+message Permission {
+  string user_id            = 1;
+  bool   can_manage_students = 2;
+  bool   can_manage_payments = 3;
+  bool   can_manage_teachers = 4;
+  bool   can_manage_classes  = 5;
+  bool   can_view_reports    = 6;
+  bool   can_manage_expenses = 7;
+  bool   can_manage_salaries = 8;
+}
+
+// ── Requests / Responses ──────────────────────────────────────────────────────
+
+message GetUserRequest {
+  string user_id = 1;
+}
+message GetUserResponse {
+  User user = 1;
+}
+
+message GetBranchRequest {
+  string branch_id = 1;
+}
+message GetBranchResponse {
+  Branch branch = 1;
+}
+
+message ListUserBranchesRequest {
+  string user_id = 1;
+}
+message ListUserBranchesResponse {
+  repeated Branch branches = 1;
+}
+
+message CheckPermissionRequest {
+  string user_id = 1;
+  string action  = 2; // e.g. "manage_students"
+}
+message CheckPermissionResponse {
+  bool allowed = 1;
+}
+
+message GetCurrentFinancialMonthRequest {
+  string branch_id = 1;
+}
+message GetCurrentFinancialMonthResponse {
+  string month = 1; // "01"–"12"
+  int32  year  = 2;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+
+service UserService {
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc GetBranch(GetBranchRequest) returns (GetBranchResponse);
+  rpc ListUserBranches(ListUserBranchesRequest) returns (ListUserBranchesResponse);
+  rpc CheckPermission(CheckPermissionRequest) returns (CheckPermissionResponse);
+  rpc GetCurrentFinancialMonth(GetCurrentFinancialMonthRequest) returns (GetCurrentFinancialMonthResponse);
+}

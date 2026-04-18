@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package common.v1;
+
+option go_package = "github.com/school-crm/protos/common/v1;commonv1";
+
+// Pagination parameters for list requests.
+message PageRequest {
+  int32  page   = 1; // 1-based page number (legacy, use cursor when possible)
+  int32  limit  = 2; // items per page, max 100
+  string cursor = 3; // keyset cursor from previous response (overrides page)
+}
+
+// Pagination metadata included in list responses.
+message PageResponse {
+  int32  total       = 1;
+  int32  page        = 2;
+  int32  limit       = 3;
+  string next_cursor = 4; // empty string when no more pages
+}
+
+// Branch context forwarded by the gateway from the JWT/header.
+message BranchContext {
+  string branch_id = 1;
+  string user_id   = 2;
+  string role      = 3;
+}
+
+// Standard error detail (embedded in gRPC Status details).
+message ErrorDetail {
+  string code    = 1; // machine-readable error code, e.g. "validation_failed"
+  string message = 2;
+  string field   = 3; // optional — which field caused the error
+}

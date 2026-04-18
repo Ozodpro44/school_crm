@@ -71,7 +71,7 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*model
 	log.Printf("[UserService.Login] Authenticating user: %s", email)
 
 	user := &models.User{}
-	query := `SELECT id, email, password, role, full_name, branch_id, created_at, updated_at FROM users WHERE email = $1`
+	query := `SELECT id, email, password_hash, role, full_name, branch_id, created_at, updated_at FROM users WHERE email = $1`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.BranchID, &user.CreatedAt, &user.UpdatedAt,
@@ -95,6 +95,10 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*model
 	}
 
 	log.Printf("[UserService.Login] Password verified for %s", email)
+
+	// Stamp last_login_at (best-effort — don't fail login if this errors)
+	_, _ = s.db.GetConn().ExecContext(ctx,
+		`UPDATE users SET last_login_at = NOW() WHERE id = $1`, user.ID)
 
 	// Fetch branches for managers, branch admins, and admins
 	var branches []models.Branch
@@ -185,7 +189,7 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 	// Step 1: Insert the user row (branch_id is NULL until Step 3).
 	log.Printf("[UserService.Register] Step 1/6: inserting user %s", req.Email)
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO users (id, email, password, role, full_name, created_at, updated_at)
+		`INSERT INTO users (id, email, password_hash, role, full_name, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		userID, req.Email, string(hashedPassword), req.Role, req.FullName, now, now,
 	)
@@ -330,7 +334,7 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 
 func (s *UserService) GetByID(ctx context.Context, id string) (*models.User, error) {
 	user := &models.User{}
-	query := `SELECT id, email, password, role, full_name, created_at, updated_at FROM users WHERE id = $1`
+	query := `SELECT id, email, password_hash, role, full_name, created_at, updated_at FROM users WHERE id = $1`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.CreatedAt, &user.UpdatedAt,
@@ -359,7 +363,7 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*models.User, err
 
 func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
 	query := `
-		SELECT u.id, u.email, u.password, u.role, u.full_name, u.created_at, u.updated_at,
+		SELECT u.id, u.email, u.password_hash, u.role, u.full_name, u.created_at, u.updated_at,
 		       bm.branch_id
 		FROM users u
 		LEFT JOIN branch_managers bm ON bm.manager_id = u.id
@@ -420,10 +424,10 @@ func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
 func (s *UserService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.User, error) {
 	// Validate and sanitize input fields
 	allowedFields := map[string]bool{
-		"full_name":           true,
-		"email":               true,
-		"password":            true,
-		"current_password":    true,
+		"full_name":        true,
+		"email":            true,
+		"password_hash":    true,
+		"current_password": true,
 	}
 
 	query := `UPDATE users SET `
@@ -441,12 +445,13 @@ func (s *UserService) Update(ctx context.Context, id string, updates map[string]
 	}
 
 	if newPwd, exists := updates["password"]; exists {
+		delete(updates, "password") // callers use "password"; internally we store as "password_hash"
 		if pwdStr, ok := newPwd.(string); ok {
 			// If current_password is provided, verify it
 			if currentPassword != "" {
 				// Note: user.Password is cleared in GetByID, need to fetch separately
 				userRow := &models.User{}
-				userQuery := `SELECT password FROM users WHERE id = $1`
+				userQuery := `SELECT password_hash FROM users WHERE id = $1`
 				err := s.db.GetConn().QueryRowContext(ctx, userQuery, id).Scan(&userRow.Password)
 				if err != nil {
 					log.Printf("[UserService.Update] Failed to fetch current password: %v", err)
@@ -464,7 +469,7 @@ func (s *UserService) Update(ctx context.Context, id string, updates map[string]
 				log.Printf("[UserService.Update] Failed to hash password: %v", err)
 				return nil, errors.New("failed to update password")
 			}
-			updates["password"] = string(hashedPassword)
+			updates["password_hash"] = string(hashedPassword)
 		}
 	}
 
@@ -827,7 +832,7 @@ func (s *UserService) ResetPasswordWithToken(ctx context.Context, email, resetTo
 	}
 
 	// Update password in database
-	query := `UPDATE users SET password = $1, updated_at = $2 WHERE email = $3`
+	query := `UPDATE users SET password_hash = $1, updated_at = $2 WHERE email = $3`
 	_, err = s.db.GetConn().ExecContext(ctx, query, string(hashedPassword), utils.GetLocalTime(), email)
 	if err != nil {
 		log.Printf("[UserService.ResetPasswordWithToken] Failed to update password: %v", err)

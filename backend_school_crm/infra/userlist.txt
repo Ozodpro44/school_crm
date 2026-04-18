@@ -1,0 +1,8 @@
+# PgBouncer auth file — list of (username, md5-hashed-password) pairs.
+# Generate hash: echo -n "passwordusername" | md5sum  → prepend "md5"
+# Replace the placeholder hash below with the real one for school_user.
+#
+# Example (password = "school_password"):
+#   echo -n "school_passwordschool_user" | md5sum
+#
+"school_user" "md5REPLACE_WITH_REAL_HASH"

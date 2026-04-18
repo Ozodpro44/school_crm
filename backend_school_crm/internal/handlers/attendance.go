@@ -18,6 +18,7 @@ import (
 //	GET  /attendance?classId=&date=        — fetch records for a class on a date
 //	GET  /attendance/summary?classId=&year=&month= — monthly stats per student
 //	GET  /attendance/alerts?branchId=      — students with 3+ consecutive absences
+// DEPRECATED (P4): Routed by api_gateway to student_service. Kept as fallback until P5.5.
 func RegisterAttendanceRoutes(router *gin.RouterGroup, svc *service.AttendanceService, userService *service.UserService) {
 	g := router.Group("/attendance")
 	g.POST("", middleware.PermissionChecker(userService, "canCreatePayments"), saveAttendance(svc))

@@ -10,6 +10,7 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
+// DEPRECATED (P4): Routed by api_gateway to user_service. Kept as fallback until P5.5.
 func RegisterBranchRoutes(router *gin.RouterGroup, branchService *service.BranchService, userService *service.UserService, subService *service.SubscriptionService) {
 	branches := router.Group("/branches")
 	branches.POST("", createBranch(branchService, subService))

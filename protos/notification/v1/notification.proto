@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package notification.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/school-crm/protos/notification/v1;notificationv1";
+
+message Notification {
+  string notification_id = 1;
+  string user_id         = 2;
+  string title           = 3;
+  string body            = 4;
+  string type            = 5; // payment | system | alert
+  bool   is_read         = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+message SendNotificationRequest {
+  string user_id = 1;
+  string title   = 2;
+  string body    = 3;
+  string type    = 4;
+}
+message SendNotificationResponse {
+  string notification_id = 1;
+}
+
+message MarkReadRequest {
+  string user_id         = 1;
+  string notification_id = 2; // empty = mark all read
+}
+message MarkReadResponse {}
+
+service NotificationService {
+  rpc SendNotification(SendNotificationRequest) returns (SendNotificationResponse);
+  rpc MarkRead(MarkReadRequest) returns (MarkReadResponse);
+}
