@@ -18,6 +18,7 @@ func New(svc *service.NotificationService) *Handler {
 func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/notifications", h.List)
 	r.GET("/notifications/unread-count", h.UnreadCount)
+	r.GET("/notifications/count", h.UnreadCount) // alias used by frontend
 	r.POST("/notifications", h.Create)
 	r.PUT("/notifications/:id/read", h.MarkRead)
 	r.PUT("/notifications/read-all", h.MarkAllRead)
