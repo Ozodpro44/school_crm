@@ -96,7 +96,9 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		authPublic.POST("/reset-password", gin.WrapH(proxy.Handler(authProxy)))
 	}
 
-	// Legacy /api/auth/* aliases (same target)
+	// Legacy /api/* aliases — frontend built without /v1 in NEXT_PUBLIC_API_URL.
+	// These mirror every /api/v1/* group so the gateway works regardless of
+	// which prefix the frontend sends. Remove once NEXT_PUBLIC_API_URL is fixed.
 	authLegacy := r.Group("/api/auth")
 	{
 		authLegacy.POST("/login", gin.WrapH(proxy.Handler(authProxy)))
@@ -105,6 +107,76 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		authLegacy.POST("/verify-otp", gin.WrapH(proxy.Handler(authProxy)))
 		authLegacy.POST("/resend-otp", gin.WrapH(proxy.Handler(authProxy)))
 		authLegacy.POST("/reset-password", gin.WrapH(proxy.Handler(authProxy)))
+	}
+
+	legacyPublic := r.Group("/api")
+	legacyPublic.Use(middleware.RateLimiter(60, time.Minute))
+	{
+		legacyPublic.GET("/subscriptions/plans", gin.WrapH(proxy.Handler(paymentProxy)))
+		legacyPublic.Any("/payment-types/active", gin.WrapH(proxy.Handler(monolithProxy)))
+	}
+
+	legacyAuth := r.Group("/api")
+	legacyAuth.Use(middleware.JWTAuth(cfg.JWTSecret))
+	{
+		// auth
+		legacyAuth.POST("/auth/logout", gin.WrapH(proxy.Handler(authProxy)))
+
+		// payments & subscriptions
+		legacyAuth.Any("/payments", gin.WrapH(proxy.Handler(paymentProxy)))
+		legacyAuth.Any("/payments/:id", gin.WrapH(proxy.Handler(paymentProxy)))
+		legacyAuth.Any("/payments/:id/*subaction", gin.WrapH(proxy.Handler(paymentProxy)))
+		legacyAuth.Any("/subscriptions", gin.WrapH(proxy.Handler(paymentProxy)))
+		legacyAuth.Any("/subscriptions/:id", gin.WrapH(proxy.Handler(paymentProxy)))
+		legacyAuth.Any("/subscriptions/:id/*subaction", gin.WrapH(proxy.Handler(paymentProxy)))
+
+		// users / branches / permissions / settings / audit-logs
+		legacyAuth.Any("/users", gin.WrapH(proxy.Handler(userProxy)))
+		legacyAuth.Any("/users/:id", gin.WrapH(proxy.Handler(userProxy)))
+		legacyAuth.Any("/users/:id/*subaction", gin.WrapH(proxy.Handler(userProxy)))
+		legacyAuth.Any("/branches", gin.WrapH(proxy.Handler(userProxy)))
+		legacyAuth.Any("/branches/:id", gin.WrapH(proxy.Handler(userProxy)))
+		legacyAuth.Any("/branches/:id/*subaction", gin.WrapH(proxy.Handler(userProxy)))
+		legacyAuth.Any("/permissions/:id", gin.WrapH(proxy.Handler(userProxy)))
+		legacyAuth.Any("/permissions/:id/*subaction", gin.WrapH(proxy.Handler(userProxy)))
+		legacyAuth.Any("/settings", gin.WrapH(proxy.Handler(userProxy)))
+		legacyAuth.Any("/audit-logs", gin.WrapH(proxy.Handler(userProxy)))
+
+		// students / classes / attendance / schedule / assignments
+		legacyAuth.Any("/students", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/students/:id", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/students/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/classes", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/classes/:id", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/classes/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/attendance", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/attendance/:id", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/attendance/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/schedule", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/schedule/:id", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/schedule/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/assignments", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/assignments/:id", gin.WrapH(proxy.Handler(studentProxy)))
+		legacyAuth.Any("/assignments/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
+
+		// teachers / salaries
+		legacyAuth.Any("/teachers", gin.WrapH(proxy.Handler(teacherProxy)))
+		legacyAuth.Any("/teachers/:id", gin.WrapH(proxy.Handler(teacherProxy)))
+		legacyAuth.Any("/teachers/:id/*subaction", gin.WrapH(proxy.Handler(teacherProxy)))
+		legacyAuth.Any("/salaries", gin.WrapH(proxy.Handler(teacherProxy)))
+		legacyAuth.Any("/salaries/:id", gin.WrapH(proxy.Handler(teacherProxy)))
+		legacyAuth.Any("/salaries/:id/*subaction", gin.WrapH(proxy.Handler(teacherProxy)))
+
+		// expenses / budgets
+		legacyAuth.Any("/expenses", gin.WrapH(proxy.Handler(financeProxy)))
+		legacyAuth.Any("/expenses/:id", gin.WrapH(proxy.Handler(financeProxy)))
+		legacyAuth.Any("/expenses/:id/*subaction", gin.WrapH(proxy.Handler(financeProxy)))
+		legacyAuth.Any("/expense-budgets", gin.WrapH(proxy.Handler(financeProxy)))
+
+		// notifications
+		legacyAuth.Any("/notifications", gin.WrapH(proxy.Handler(notifProxy)))
+		legacyAuth.Any("/notifications/:id", gin.WrapH(proxy.Handler(notifProxy)))
+		legacyAuth.Any("/notifications/:id/*subaction", gin.WrapH(proxy.Handler(notifProxy)))
 	}
 
 	// Authenticated auth routes (logout requires a valid token)
