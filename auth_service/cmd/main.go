@@ -74,9 +74,10 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "auth_service"})
 	})
 
-	api := r.Group("/api/v1")
 	authHandler := handler.NewAuthHandler(authSvc, cfg.JWTSecret)
-	authHandler.Register(api)
+	authHandler.Register(r.Group("/api/v1"))
+	// Legacy prefix — api_gateway forwards /api/auth/* without rewriting to /api/v1/auth/*
+	authHandler.Register(r.Group("/api"))
 
 	httpSrv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", cfg.Port),
