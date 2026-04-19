@@ -403,8 +403,8 @@ func (s *PaymentService) BulkCreate(ctx context.Context, branchID, defaultMethod
 	var curMonth string
 	var curYear int
 	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT current_month, current_year FROM financial_months
-		 WHERE branch_id = $1 AND status = 'open'
+		`SELECT month, year FROM financial_months
+		 WHERE branch_id = $1 AND status = 'OPEN'
 		 ORDER BY created_at DESC LIMIT 1`, branchID,
 	).Scan(&curMonth, &curYear)
 	if err != nil {
@@ -577,8 +577,8 @@ func (s *PaymentService) ConsolidatedData(ctx context.Context, branchID, month, 
 		var curMonth string
 		var curYear int
 		err := s.db.Conn().QueryRowContext(ctx,
-			`SELECT current_month, current_year FROM financial_months
-			 WHERE branch_id = $1 AND status = 'open'
+			`SELECT month, year FROM financial_months
+			 WHERE branch_id = $1 AND status = 'OPEN'
 			 ORDER BY created_at DESC LIMIT 1`, branchID,
 		).Scan(&curMonth, &curYear)
 		if err != nil {
@@ -701,8 +701,8 @@ func (s *PaymentService) SearchStudents(ctx context.Context, f SearchStudentsFil
 	var curMonth string
 	var curYear int
 	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT current_month, current_year FROM financial_months
-		 WHERE branch_id = $1 AND status = 'open'
+		`SELECT month, year FROM financial_months
+		 WHERE branch_id = $1 AND status = 'OPEN'
 		 ORDER BY created_at DESC LIMIT 1`, f.BranchID,
 	).Scan(&curMonth, &curYear)
 	if err != nil {

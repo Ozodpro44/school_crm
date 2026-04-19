@@ -33,8 +33,8 @@ type User struct {
 }
 
 type FinancialMonth struct {
-	Month string `json:"month"`
-	Year  int    `json:"year"`
+	Month int `json:"month"`
+	Year  int `json:"year"`
 }
 
 type Branch struct {
@@ -245,8 +245,8 @@ func (s *BranchService) GetByID(ctx context.Context, id string) (*Branch, error)
 	// Attach current open financial month (best-effort — ignore if missing)
 	var fm FinancialMonth
 	if err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT current_month, current_year FROM financial_months
-		 WHERE branch_id = $1 AND status = 'open'
+		`SELECT month, year FROM financial_months
+		 WHERE branch_id = $1 AND status = 'OPEN'
 		 ORDER BY created_at DESC LIMIT 1`, id,
 	).Scan(&fm.Month, &fm.Year); err == nil {
 		b.CurrentFinancialMonth = &fm
@@ -341,6 +341,64 @@ func (s *BranchService) Delete(ctx context.Context, id string) error {
 	defer cancel()
 	_, err := s.db.Conn().ExecContext(ctx, "DELETE FROM branches WHERE id = $1", id)
 	return err
+}
+
+// SwitchMonth closes the current open financial month and opens the next one.
+// Mirrors the monolith's FinancialMonthService.CloseMonth logic.
+func (s *BranchService) SwitchMonth(ctx context.Context, branchID string) (*Branch, error) {
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var currentID string
+	var currentYear, currentMonth int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id, year, month FROM financial_months
+		 WHERE branch_id = $1 AND status = 'OPEN'
+		 ORDER BY opened_at DESC LIMIT 1`, branchID,
+	).Scan(&currentID, &currentYear, &currentMonth); err != nil {
+		return nil, fmt.Errorf("no open financial month for branch: %w", err)
+	}
+
+	now := time.Now().UTC()
+
+	// Close current month
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE financial_months SET status='CLOSED', closed_at=$1, updated_at=$1 WHERE id=$2`,
+		now, currentID); err != nil {
+		return nil, fmt.Errorf("close month: %w", err)
+	}
+
+	// Compute next month
+	nextMonth, nextYear := currentMonth+1, currentYear
+	if nextMonth > 12 {
+		nextMonth, nextYear = 1, nextYear+1
+	}
+
+	// Get branch monthly_payment for the new row
+	var paymentAmount float64
+	_ = tx.QueryRowContext(ctx, `SELECT monthly_payment FROM branches WHERE id=$1`, branchID).Scan(&paymentAmount)
+
+	nextID := uuid.New().String()
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO financial_months (id, branch_id, year, month, status, payment_amount, opened_at)
+		 VALUES ($1,$2,$3,$4,'OPEN',$5,$6)`,
+		nextID, branchID, nextYear, nextMonth, paymentAmount, now); err != nil {
+		return nil, fmt.Errorf("open next month: %w", err)
+	}
+
+	// Update branch current_financial_month_id if the column exists
+	_, _ = tx.ExecContext(ctx,
+		`UPDATE branches SET current_financial_month_id=$1, updated_at=$2 WHERE id=$3`,
+		nextID, now, branchID)
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, branchID)
 }
 
 // ── PermissionService ─────────────────────────────────────────────────────────

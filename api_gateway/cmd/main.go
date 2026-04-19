@@ -28,7 +28,9 @@ func main() {
 		if err := sentry.Init(sentry.ClientOptions{
 			Dsn:              cfg.SentryDSN,
 			Environment:      cfg.Environment,
-			TracesSampleRate: 0.1,
+			EnableTracing:    true,
+			TracesSampleRate: 0.2,
+			EnableLogs:       true,
 			AttachStacktrace: true,
 		}); err != nil {
 			slog.Warn("sentry init failed", "error", err)

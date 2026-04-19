@@ -39,6 +39,7 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/branches/:id", h.GetBranch)
 	r.PUT("/branches/:id", h.UpdateBranch)
 	r.DELETE("/branches/:id", h.DeleteBranch)
+	r.POST("/branches/:id/switch-month", h.SwitchMonth)
 
 	// Permissions
 	r.GET("/permissions/:userId", h.GetPermissions)
@@ -174,6 +175,15 @@ func (h *Handler) UpdateBranch(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
 			return
 		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, b)
+}
+
+func (h *Handler) SwitchMonth(c *gin.Context) {
+	b, err := h.branches.SwitchMonth(c.Request.Context(), c.Param("id"))
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
