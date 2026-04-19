@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/school-crm/api-gateway/internal/config"
+	"github.com/school-crm/api-gateway/internal/logger"
 	"github.com/school-crm/api-gateway/internal/router"
 )
 
@@ -19,16 +20,20 @@ func main() {
 	_ = godotenv.Load()
 
 	cfg := config.Load()
+	logger.Init(cfg.Environment)
+
 	if errs := cfg.Validate(); len(errs) > 0 {
 		for _, e := range errs {
-			log.Printf("CONFIG ERROR: %s", e)
+			slog.Error("config error", "error", e)
 		}
-		log.Fatal("startup aborted — fix configuration errors above")
+		slog.Error("startup aborted — fix configuration errors above")
+		os.Exit(1)
 	}
 
 	r, err := router.New(cfg)
 	if err != nil {
-		log.Fatalf("build router: %v", err)
+		slog.Error("build router", "error", err)
+		os.Exit(1)
 	}
 
 	srv := &http.Server{
@@ -40,10 +45,15 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("api_gateway listening on :%s  (monolith → %s, auth → %s)",
-			cfg.Port, cfg.MonolithURL, cfg.AuthServiceURL)
+		slog.Info("HTTP listening",
+			"port", cfg.Port,
+			"service", "api_gateway",
+			"monolith", cfg.MonolithURL,
+			"auth", cfg.AuthServiceURL,
+		)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %v", err)
+			slog.Error("listen failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -51,11 +61,11 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down api_gateway...")
+	slog.Info("shutting down", "service", "api_gateway")
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Printf("shutdown error: %v", err)
+		slog.Error("shutdown error", "error", err)
 	}
-	log.Println("api_gateway stopped")
+	slog.Info("stopped", "service", "api_gateway")
 }

@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,6 +16,7 @@ import (
 	"github.com/school-crm/user-service/internal/db"
 	usergrpc "github.com/school-crm/user-service/internal/grpc"
 	"github.com/school-crm/user-service/internal/handler"
+	"github.com/school-crm/user-service/internal/logger"
 	"github.com/school-crm/user-service/internal/service"
 )
 
@@ -23,40 +24,43 @@ func main() {
 	_ = godotenv.Load()
 
 	cfg := config.Load()
+	logger.Init(cfg.Environment)
+
 	if errs := cfg.Validate(); len(errs) > 0 {
 		for _, e := range errs {
-			log.Printf("CONFIG ERROR: %s", e)
+			slog.Error("config error", "error", e)
 		}
-		log.Fatal("startup aborted — fix configuration errors above")
+		slog.Error("startup aborted — fix configuration errors above")
+		os.Exit(1)
 	}
 
 	database, err := db.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("connect db: %v", err)
+		slog.Error("connect db", "error", err)
+		os.Exit(1)
 	}
 	defer database.Close()
+	slog.Info("database connected")
 
-	// ── Services ──────────────────────────────────────────────────────────────
 	userSvc := service.NewUserService(database)
 	branchSvc := service.NewBranchService(database)
 	permSvc := service.NewPermissionService(database)
 
-	// ── gRPC ──────────────────────────────────────────────────────────────────
 	grpcSrv := usergrpc.NewUserGRPCServer(userSvc, branchSvc, permSvc)
 	go func() {
-		log.Printf("user_service gRPC listening on :%s", cfg.GRPCPort)
+		slog.Info("gRPC listening", "port", cfg.GRPCPort)
 		if err := grpcSrv.Serve(":" + cfg.GRPCPort); err != nil {
-			log.Fatalf("grpc serve: %v", err)
+			slog.Error("grpc serve failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
-	// ── HTTP ──────────────────────────────────────────────────────────────────
 	if cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
-
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(logger.RequestLogger())
 	r.Use(corsMiddleware())
 
 	r.GET("/health", func(c *gin.Context) {
@@ -72,11 +76,11 @@ func main() {
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 	}
-
 	go func() {
-		log.Printf("user_service HTTP listening on :%s", cfg.Port)
+		slog.Info("HTTP listening", "port", cfg.Port, "service", "user_service")
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("http serve: %v", err)
+			slog.Error("http serve failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -84,15 +88,14 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down user_service...")
+	slog.Info("shutting down", "service", "user_service")
 	grpcSrv.GracefulStop()
-
 	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := httpSrv.Shutdown(shutCtx); err != nil {
-		log.Printf("http shutdown error: %v", err)
+		slog.Error("http shutdown error", "error", err)
 	}
-	log.Println("user_service stopped")
+	slog.Info("stopped", "service", "user_service")
 }
 
 func corsMiddleware() gin.HandlerFunc {

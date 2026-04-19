@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,6 +16,7 @@ import (
 	"github.com/school-crm/notification-service/internal/config"
 	"github.com/school-crm/notification-service/internal/db"
 	"github.com/school-crm/notification-service/internal/handler"
+	"github.com/school-crm/notification-service/internal/logger"
 	"github.com/school-crm/notification-service/internal/service"
 )
 
@@ -23,39 +24,44 @@ func main() {
 	_ = godotenv.Load()
 
 	cfg := config.Load()
+	logger.Init(cfg.Environment)
+
 	if errs := cfg.Validate(); len(errs) > 0 {
 		for _, e := range errs {
-			log.Printf("CONFIG ERROR: %s", e)
+			slog.Error("config error", "error", e)
 		}
-		log.Fatal("startup aborted — fix configuration errors above")
+		slog.Error("startup aborted — fix configuration errors above")
+		os.Exit(1)
 	}
 
 	database, err := db.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("connect db: %v", err)
+		slog.Error("connect db", "error", err)
+		os.Exit(1)
 	}
 	defer database.Close()
+	slog.Info("database connected")
 
 	opt, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {
-		log.Fatalf("parse redis url: %v", err)
+		slog.Error("parse redis url", "error", err)
+		os.Exit(1)
 	}
 	rdb := redis.NewClient(opt)
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
-		log.Fatalf("connect redis: %v", err)
+		slog.Error("connect redis", "error", err)
+		os.Exit(1)
 	}
 	defer rdb.Close()
+	slog.Info("redis connected")
 
 	svc := service.New(database, rdb)
 
-	// ── Background event consumer ─────────────────────────────────────────────
 	eventCtx, eventCancel := context.WithCancel(context.Background())
 	go func() {
-		log.Println("notification_service event consumer started")
+		slog.Info("event consumer started")
 		svc.ConsumeEvents(eventCtx)
 	}()
-
-	// ── Background purge (daily) ──────────────────────────────────────────────
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
@@ -66,9 +72,9 @@ func main() {
 			case <-ticker.C:
 				n, err := svc.PurgeOld(context.Background(), 30*24*time.Hour)
 				if err != nil {
-					log.Printf("notification purge error: %v", err)
+					slog.Error("notification purge failed", "error", err)
 				} else {
-					log.Printf("notification purge: deleted %d old read notifications", n)
+					slog.Info("notification purge complete", "deleted", n)
 				}
 			}
 		}
@@ -79,7 +85,9 @@ func main() {
 	}
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(logger.RequestLogger())
 	r.Use(corsMiddleware())
+
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "notification_service"})
 	})
@@ -92,9 +100,10 @@ func main() {
 		WriteTimeout: 30 * time.Second,
 	}
 	go func() {
-		log.Printf("notification_service HTTP listening on :%s", cfg.Port)
+		slog.Info("HTTP listening", "port", cfg.Port, "service", "notification_service")
 		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("http serve: %v", err)
+			slog.Error("http serve failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -102,12 +111,12 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("shutting down notification_service...")
+	slog.Info("shutting down", "service", "notification_service")
 	eventCancel()
 	shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(shutCtx)
-	log.Println("notification_service stopped")
+	slog.Info("stopped", "service", "notification_service")
 }
 
 func corsMiddleware() gin.HandlerFunc {
