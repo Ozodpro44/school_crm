@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"github.com/school-crm/teacher-service/internal/audit"
 	"github.com/school-crm/teacher-service/internal/db"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -464,4 +465,9 @@ func scanSalaries(rows *sql.Rows) ([]Salary, error) {
 		salaries = append(salaries, s)
 	}
 	return salaries, rows.Err()
+}
+
+// Audit writes a best-effort audit log entry.
+func (s *TeacherService) Audit(ctx context.Context, branchID, userID, action, resource, resourceID, description string) {
+	audit.Log(ctx, s.db.Conn(), branchID, userID, action, resource, resourceID, description)
 }

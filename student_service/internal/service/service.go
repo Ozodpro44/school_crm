@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/school-crm/student-service/internal/audit"
 	"github.com/school-crm/student-service/internal/db"
 )
 
@@ -621,7 +622,7 @@ type StudentWithPayment struct {
 	ClassName      string  `json:"className"`
 	MonthlyPayment float64 `json:"monthlyPayment"`
 	PaidAmount     float64 `json:"paidAmount"`
-	PaymentStatus  string  `json:"paymentStatus"` // paid | partial | none
+	Status         string  `json:"status"` // paid | partial | none
 	BranchID       string  `json:"branchId"`
 }
 
@@ -669,11 +670,11 @@ func (s *StudentService) SearchWithPayments(ctx context.Context, branchID, searc
 			sw.ClassID = classID.String
 		}
 		if sw.PaidAmount >= sw.MonthlyPayment && sw.PaidAmount > 0 {
-			sw.PaymentStatus = "paid"
+			sw.Status = "paid"
 		} else if sw.PaidAmount > 0 {
-			sw.PaymentStatus = "partial"
+			sw.Status = "partial"
 		} else {
-			sw.PaymentStatus = "none"
+			sw.Status = "none"
 		}
 		result = append(result, sw)
 	}
@@ -1361,4 +1362,9 @@ func (s *StudentNotesService) DeleteContactLog(ctx context.Context, branchID, en
 		return fmt.Errorf("contact log entry not found")
 	}
 	return nil
+}
+
+// Audit writes a best-effort audit log entry.
+func (s *StudentService) Audit(ctx context.Context, branchID, userID, action, resource, resourceID, description string) {
+	audit.Log(ctx, s.db.Conn(), branchID, userID, action, resource, resourceID, description)
 }

@@ -131,6 +131,7 @@ func (h *Handler) CreateStudent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.students.Audit(c.Request.Context(), body.BranchID, c.GetHeader("X-User-ID"), "create", "student", st.ID, "Student created: "+st.FullName)
 	c.JSON(http.StatusCreated, st)
 }
 
@@ -162,13 +163,19 @@ func (h *Handler) UpdateStudent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.students.Audit(c.Request.Context(), st.BranchID, c.GetHeader("X-User-ID"), "update", "student", st.ID, "Student updated: "+st.FullName)
 	c.JSON(http.StatusOK, st)
 }
 
 func (h *Handler) DeleteStudent(c *gin.Context) {
-	if err := h.students.Delete(c.Request.Context(), c.Param("id")); err != nil {
+	id := c.Param("id")
+	st, _ := h.students.GetByID(c.Request.Context(), id)
+	if err := h.students.Delete(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+	if st != nil {
+		h.students.Audit(c.Request.Context(), st.BranchID, c.GetHeader("X-User-ID"), "delete", "student", id, "Student deleted: "+st.FullName)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "student deleted"})
 }

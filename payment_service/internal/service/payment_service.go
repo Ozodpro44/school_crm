@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"github.com/school-crm/payment-service/internal/audit"
 	"github.com/school-crm/payment-service/internal/db"
 )
 
@@ -825,4 +826,9 @@ func (s *PaymentService) invalidateCache(branchID string) {
 	for iter.Next(ctx) {
 		_ = s.redis.Del(ctx, iter.Val())
 	}
+}
+
+// Audit writes an audit log entry. Best-effort — errors are only logged.
+func (s *PaymentService) Audit(ctx context.Context, branchID, userID, action, resource, resourceID, description string) {
+	audit.Log(ctx, s.db.Conn(), branchID, userID, action, resource, resourceID, description)
 }

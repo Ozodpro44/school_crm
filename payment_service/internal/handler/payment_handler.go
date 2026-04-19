@@ -77,6 +77,8 @@ func (h *PaymentHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.svc.Audit(c.Request.Context(), req.BranchID, createdBy, "create", "payment", payment.ID,
+		"Payment created: "+payment.InvoiceNumber)
 	c.JSON(http.StatusCreated, payment)
 }
 
@@ -113,19 +115,27 @@ func (h *PaymentHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.svc.Audit(c.Request.Context(), payment.BranchID, c.GetHeader("X-User-ID"), "update", "payment", payment.ID,
+		"Payment updated: "+payment.InvoiceNumber)
 	c.JSON(http.StatusOK, payment)
 }
 
 // Delete godoc
 // DELETE /api/v1/payments/:id
 func (h *PaymentHandler) Delete(c *gin.Context) {
-	if err := h.svc.Delete(c.Request.Context(), c.Param("id")); err != nil {
+	id := c.Param("id")
+	p, _ := h.svc.GetByID(c.Request.Context(), id)
+	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+	if p != nil {
+		h.svc.Audit(c.Request.Context(), p.BranchID, c.GetHeader("X-User-ID"), "delete", "payment", id,
+			"Payment deleted: "+p.InvoiceNumber)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "payment deleted"})
 }
