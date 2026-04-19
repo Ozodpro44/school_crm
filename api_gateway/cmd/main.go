@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/joho/godotenv"
 	"github.com/school-crm/api-gateway/internal/config"
 	"github.com/school-crm/api-gateway/internal/logger"
@@ -21,6 +22,21 @@ func main() {
 
 	cfg := config.Load()
 	logger.Init(cfg.Environment)
+
+	// ── Sentry (optional — skipped when DSN is not set) ───────────────────────
+	if cfg.SentryDSN != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              cfg.SentryDSN,
+			Environment:      cfg.Environment,
+			TracesSampleRate: 0.1,
+			AttachStacktrace: true,
+		}); err != nil {
+			slog.Warn("sentry init failed", "error", err)
+		} else {
+			defer sentry.Flush(3 * time.Second)
+			slog.Info("sentry initialized")
+		}
+	}
 
 	if errs := cfg.Validate(); len(errs) > 0 {
 		for _, e := range errs {

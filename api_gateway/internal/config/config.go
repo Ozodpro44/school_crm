@@ -7,6 +7,7 @@ type Config struct {
 	JWTSecret   string
 	Environment string
 	RedisURL    string
+	SentryDSN   string
 
 	// Upstream service addresses
 	MonolithURL        string // e.g. http://backend:8082
@@ -25,6 +26,7 @@ func Load() *Config {
 		JWTSecret:      os.Getenv("JWT_SECRET"),
 		Environment:    getEnv("ENVIRONMENT", "development"),
 		RedisURL:       os.Getenv("REDIS_URL"),
+		SentryDSN:      os.Getenv("SENTRY_DSN"),
 		MonolithURL:       getEnv("MONOLITH_URL", "http://backend:8082"),
 		AuthServiceURL:    getEnv("AUTH_SERVICE_URL", "http://auth_service:8081"),
 		PaymentServiceURL: getEnv("PAYMENT_SERVICE_URL", "http://payment_service:8083"),

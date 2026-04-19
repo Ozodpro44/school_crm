@@ -30,6 +30,7 @@ import (
 	"net/http"
 	"time"
 
+	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/api-gateway/internal/config"
 	"github.com/school-crm/api-gateway/internal/logger"
@@ -77,6 +78,7 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
 	r.Use(middleware.RequestID())
 	r.Use(logger.RequestLogger())
 	r.Use(corsMiddleware())
