@@ -19,12 +19,14 @@ func NewPaymentHandler(svc *service.PaymentService) *PaymentHandler {
 func (h *PaymentHandler) Register(r *gin.RouterGroup) {
 	r.GET("/payments", h.List)
 	r.POST("/payments", h.Create)
+	// Static sub-paths must be registered before /:id wildcard
+	r.POST("/payments/bulk", h.BulkCreate)
+	r.GET("/payments/summary", h.Summary)
+	r.GET("/payments/search/students", h.SearchStudents)
+	r.GET("/payments/student/:studentId/history", h.StudentHistory)
 	r.GET("/payments/:id", h.GetByID)
 	r.PUT("/payments/:id", h.Update)
 	r.DELETE("/payments/:id", h.Delete)
-	r.POST("/payments/bulk", h.BulkCreate)
-	r.GET("/payments/summary", h.Summary)
-	r.GET("/payments/student/:studentId/history", h.StudentHistory)
 
 	// Subscription endpoints (read-only; write path remains in monolith during P3)
 	r.GET("/subscriptions", h.ListSubscriptions)
@@ -173,6 +175,32 @@ func (h *PaymentHandler) StudentHistory(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": payments})
+}
+
+// SearchStudents godoc
+// GET /api/v1/payments/search/students?branchId=&search=&classId=&status=&paymentStatus=&limit=&offset=
+func (h *PaymentHandler) SearchStudents(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "200"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	resp, err := h.svc.SearchStudents(c.Request.Context(), service.SearchStudentsFilter{
+		BranchID:      branchID,
+		Search:        c.Query("search"),
+		ClassID:       c.Query("classId"),
+		StudentStatus: c.Query("status"),
+		PaymentStatus: c.Query("paymentStatus"),
+		Limit:         limit,
+		Offset:        offset,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // ListSubscriptions godoc

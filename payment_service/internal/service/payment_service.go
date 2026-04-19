@@ -552,6 +552,158 @@ func (s *PaymentService) ListSubscriptions(ctx context.Context, branchID, status
 	return subs, rows.Err()
 }
 
+// ── SearchStudents ────────────────────────────────────────────────────────────
+
+type StudentPaymentInfo struct {
+	ID             string  `json:"id"`
+	FullName       string  `json:"fullName"`
+	ClassID        string  `json:"classId"`
+	Phone          string  `json:"phone"`
+	MonthlyPayment float64 `json:"monthlyPayment"`
+	Status         string  `json:"status"`
+	AmountPaid     float64 `json:"amountPaid"`
+	PaymentStatus  string  `json:"paymentStatus"` // paid | partial | not_paid
+	Remaining      float64 `json:"remaining"`
+}
+
+type SearchStudentsFilter struct {
+	BranchID      string
+	Search        string
+	ClassID       string
+	StudentStatus string
+	PaymentStatus string
+	Limit         int
+	Offset        int
+}
+
+type SearchStudentsResponse struct {
+	Data   []StudentPaymentInfo `json:"data"`
+	Total  int                  `json:"total"`
+	Limit  int                  `json:"limit"`
+	Offset int                  `json:"offset"`
+}
+
+// SearchStudents returns students enriched with their payment status for the
+// branch's current financial month. Uses a single CTE to avoid N+1 queries.
+func (s *PaymentService) SearchStudents(ctx context.Context, f SearchStudentsFilter) (*SearchStudentsResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
+	defer cancel()
+
+	// Resolve current financial month for this branch.
+	var curMonth string
+	var curYear int
+	err := s.db.Conn().QueryRowContext(ctx,
+		`SELECT current_month, current_year FROM financial_months
+		 WHERE branch_id = $1 AND status = 'open'
+		 ORDER BY created_at DESC LIMIT 1`, f.BranchID,
+	).Scan(&curMonth, &curYear)
+	if err != nil {
+		now := time.Now()
+		curMonth = fmt.Sprintf("%02d", int(now.Month()))
+		curYear = now.Year()
+	}
+
+	if f.Limit <= 0 || f.Limit > 500 {
+		f.Limit = 200
+	}
+
+	where := "WHERE s.branch_id = $1"
+	args := []interface{}{f.BranchID}
+	n := 2
+
+	if f.Search != "" {
+		where += fmt.Sprintf(" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)", n, n)
+		args = append(args, "%"+f.Search+"%")
+		n++
+	}
+	if f.ClassID != "" {
+		where += fmt.Sprintf(" AND s.class_id = $%d", n)
+		args = append(args, f.ClassID)
+		n++
+	}
+	if f.StudentStatus != "" {
+		where += fmt.Sprintf(" AND s.status = $%d", n)
+		args = append(args, f.StudentStatus)
+		n++
+	}
+
+	// payment_status filter applied via HAVING after aggregation
+	monthN, yearN, limitN, offsetN := n, n+1, n+2, n+3
+	args = append(args, curMonth, curYear, f.Limit, f.Offset)
+
+	query := fmt.Sprintf(`
+		WITH pay_agg AS (
+			SELECT student_id,
+			       COALESCE(SUM(amount) FILTER (WHERE status IN ('paid','partial')), 0) AS amount_paid
+			FROM payments
+			WHERE branch_id = $1
+			  AND month = $%d
+			  AND year  = $%d
+			GROUP BY student_id
+		)
+		SELECT s.id, s.full_name, COALESCE(s.class_id::text,''),
+		       COALESCE(s.phone,''), s.monthly_payment, s.status,
+		       COALESCE(pa.amount_paid, 0) AS amount_paid,
+		       CASE
+		           WHEN COALESCE(pa.amount_paid, 0) >= s.monthly_payment AND s.monthly_payment > 0 THEN 'paid'
+		           WHEN COALESCE(pa.amount_paid, 0) > 0 THEN 'partial'
+		           ELSE 'not_paid'
+		       END AS payment_status,
+		       GREATEST(s.monthly_payment - COALESCE(pa.amount_paid, 0), 0) AS remaining
+		FROM students s
+		LEFT JOIN pay_agg pa ON pa.student_id = s.id
+		%s
+		ORDER BY s.full_name
+		LIMIT $%d OFFSET $%d`, monthN, yearN, where, limitN, offsetN)
+
+	// Count query (same filters, no pagination)
+	countArgs := args[:len(args)-2] // drop limit/offset
+	var total int
+	countQuery := fmt.Sprintf(`
+		WITH pay_agg AS (
+			SELECT student_id,
+			       COALESCE(SUM(amount) FILTER (WHERE status IN ('paid','partial')), 0) AS amount_paid
+			FROM payments
+			WHERE branch_id = $1
+			  AND month = $%d
+			  AND year  = $%d
+			GROUP BY student_id
+		)
+		SELECT COUNT(*) FROM students s
+		LEFT JOIN pay_agg pa ON pa.student_id = s.id
+		%s`, monthN, yearN, where)
+	if err := s.db.Conn().QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	data := make([]StudentPaymentInfo, 0)
+	for rows.Next() {
+		var sp StudentPaymentInfo
+		var classID string
+		if err := rows.Scan(&sp.ID, &sp.FullName, &classID, &sp.Phone,
+			&sp.MonthlyPayment, &sp.Status, &sp.AmountPaid, &sp.PaymentStatus, &sp.Remaining); err != nil {
+			return nil, err
+		}
+		sp.ClassID = classID
+		// Apply in-memory paymentStatus filter (avoids complex HAVING clause)
+		if f.PaymentStatus != "" && sp.PaymentStatus != f.PaymentStatus {
+			continue
+		}
+		data = append(data, sp)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &SearchStudentsResponse{Data: data, Total: total, Limit: f.Limit, Offset: f.Offset}, nil
+}
+
 // ── Cache helpers ─────────────────────────────────────────────────────────────
 
 func (s *PaymentService) invalidateCache(branchID string) {
