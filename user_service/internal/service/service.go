@@ -32,16 +32,22 @@ type User struct {
 	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
+type FinancialMonth struct {
+	Month string `json:"month"`
+	Year  int    `json:"year"`
+}
+
 type Branch struct {
-	ID             string     `json:"id"`
-	Name           string     `json:"name"`
-	Address        string     `json:"address"`
-	Phone          string     `json:"phone"`
-	MonthlyPayment float64    `json:"monthlyPayment"`
-	Currency       string     `json:"currency"`
-	AdminID        *string    `json:"adminId,omitempty"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
+	ID                    string          `json:"id"`
+	Name                  string          `json:"name"`
+	Address               string          `json:"address"`
+	Phone                 string          `json:"phone"`
+	MonthlyPayment        float64         `json:"monthlyPayment"`
+	Currency              string          `json:"currency"`
+	AdminID               *string         `json:"adminId,omitempty"`
+	CurrentFinancialMonth *FinancialMonth `json:"currentFinancialMonth,omitempty"`
+	CreatedAt             time.Time       `json:"createdAt"`
+	UpdatedAt             time.Time       `json:"updatedAt"`
 }
 
 type Permission struct {
@@ -232,7 +238,21 @@ func (s *BranchService) GetByID(ctx context.Context, id string) (*Branch, error)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return &b, err
+	if err != nil {
+		return nil, err
+	}
+
+	// Attach current open financial month (best-effort — ignore if missing)
+	var fm FinancialMonth
+	if err := s.db.Conn().QueryRowContext(ctx,
+		`SELECT current_month, current_year FROM financial_months
+		 WHERE branch_id = $1 AND status = 'open'
+		 ORDER BY created_at DESC LIMIT 1`, id,
+	).Scan(&fm.Month, &fm.Year); err == nil {
+		b.CurrentFinancialMonth = &fm
+	}
+
+	return &b, nil
 }
 
 func (s *BranchService) GetAll(ctx context.Context) ([]Branch, error) {
