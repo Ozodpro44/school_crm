@@ -66,9 +66,14 @@ func (s *TeacherService) GetAll(ctx context.Context, branchID string) ([]Teacher
 	defer cancel()
 
 	rows, err := s.db.Conn().QueryContext(ctx, `
-		SELECT id, full_name, COALESCE(subjects, '{}'), monthly_salary,
-		       phone, email, branch_id, user_id, joined_date, created_at, updated_at
-		FROM teachers WHERE branch_id = $1 ORDER BY full_name`, branchID)
+		SELECT t.id, t.full_name, t.monthly_salary,
+		       COALESCE(t.phone,''), COALESCE(t.email,''), t.branch_id,
+		       t.user_id, t.joined_date, t.created_at, t.updated_at,
+		       COALESCE(array_agg(ts.subject) FILTER (WHERE ts.subject IS NOT NULL), '{}')
+		FROM teachers t
+		LEFT JOIN teacher_subjects ts ON ts.teacher_id = t.id
+		WHERE t.branch_id = $1
+		GROUP BY t.id ORDER BY t.full_name`, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -77,8 +82,9 @@ func (s *TeacherService) GetAll(ctx context.Context, branchID string) ([]Teacher
 	var teachers []Teacher
 	for rows.Next() {
 		var t Teacher
-		if err := rows.Scan(&t.ID, &t.FullName, pq.Array(&t.Subjects), &t.MonthlySalary,
-			&t.Phone, &t.Email, &t.BranchID, &t.UserID, &t.JoinedDate, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		if err := rows.Scan(&t.ID, &t.FullName, &t.MonthlySalary,
+			&t.Phone, &t.Email, &t.BranchID, &t.UserID, &t.JoinedDate, &t.CreatedAt, &t.UpdatedAt,
+			pq.Array(&t.Subjects)); err != nil {
 			return nil, err
 		}
 		teachers = append(teachers, t)
@@ -92,11 +98,17 @@ func (s *TeacherService) GetByID(ctx context.Context, id string) (*Teacher, erro
 
 	var t Teacher
 	err := s.db.Conn().QueryRowContext(ctx, `
-		SELECT id, full_name, COALESCE(subjects, '{}'), monthly_salary,
-		       phone, email, branch_id, user_id, joined_date, created_at, updated_at
-		FROM teachers WHERE id = $1`, id,
-	).Scan(&t.ID, &t.FullName, pq.Array(&t.Subjects), &t.MonthlySalary,
-		&t.Phone, &t.Email, &t.BranchID, &t.UserID, &t.JoinedDate, &t.CreatedAt, &t.UpdatedAt)
+		SELECT t.id, t.full_name, t.monthly_salary,
+		       COALESCE(t.phone,''), COALESCE(t.email,''), t.branch_id,
+		       t.user_id, t.joined_date, t.created_at, t.updated_at,
+		       COALESCE(array_agg(ts.subject) FILTER (WHERE ts.subject IS NOT NULL), '{}')
+		FROM teachers t
+		LEFT JOIN teacher_subjects ts ON ts.teacher_id = t.id
+		WHERE t.id = $1
+		GROUP BY t.id`, id,
+	).Scan(&t.ID, &t.FullName, &t.MonthlySalary,
+		&t.Phone, &t.Email, &t.BranchID, &t.UserID, &t.JoinedDate, &t.CreatedAt, &t.UpdatedAt,
+		pq.Array(&t.Subjects))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -154,13 +166,25 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 	}
 
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO teachers (id, full_name, subjects, monthly_salary, phone, email, branch_id, user_id, joined_date, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-		t.ID, t.FullName, pq.Array(t.Subjects), t.MonthlySalary, t.Phone, t.Email,
+		INSERT INTO teachers (id, full_name, monthly_salary, phone, email, branch_id, user_id, joined_date, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+		t.ID, t.FullName, t.MonthlySalary, t.Phone, t.Email,
 		t.BranchID, t.UserID, t.JoinedDate, t.CreatedAt, t.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, subj := range t.Subjects {
+		if subj == "" {
+			continue
+		}
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO teacher_subjects (id, teacher_id, subject) VALUES (gen_random_uuid(), $1, $2)`,
+			t.ID, subj)
+		if err != nil {
+			return nil, fmt.Errorf("insert subject: %w", err)
+		}
 	}
 
 	return t, tx.Commit()
@@ -168,9 +192,27 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 
 func (s *TeacherService) Update(ctx context.Context, id string, fields map[string]interface{}) (*Teacher, error) {
 	allowed := map[string]bool{
-		"full_name": true, "subjects": true, "monthly_salary": true,
+		"full_name": true, "monthly_salary": true,
 		"phone": true, "email": true, "joined_date": true,
 	}
+
+	// Extract subjects separately — stored in teacher_subjects, not a column.
+	var newSubjects []string
+	hasSubjects := false
+	if rawSubjects, ok := fields["subjects"]; ok {
+		hasSubjects = true
+		switch v := rawSubjects.(type) {
+		case []string:
+			newSubjects = v
+		case []interface{}:
+			for _, s := range v {
+				if sv, ok := s.(string); ok {
+					newSubjects = append(newSubjects, sv)
+				}
+			}
+		}
+	}
+
 	parts := []string{}
 	args := []interface{}{}
 	n := 1
@@ -179,29 +221,51 @@ func (s *TeacherService) Update(ctx context.Context, id string, fields map[strin
 			continue
 		}
 		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
-		if k == "subjects" {
-			args = append(args, pq.Array(v))
-		} else {
-			args = append(args, v)
-		}
+		args = append(args, v)
 		n++
 	}
-	if len(parts) == 0 {
-		return s.GetByID(ctx, id)
-	}
-	parts = append(parts, fmt.Sprintf("updated_at = $%d", n))
-	args = append(args, time.Now().UTC())
-	n++
-	args = append(args, id)
 
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	_, err := s.db.Conn().ExecContext(ctx,
-		"UPDATE teachers SET "+strings.Join(parts, ", ")+" WHERE id = $"+fmt.Sprintf("%d", n), args...)
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = tx.Rollback() }()
+
+	if len(parts) > 0 {
+		parts = append(parts, fmt.Sprintf("updated_at = $%d", n))
+		args = append(args, time.Now().UTC())
+		n++
+		args = append(args, id)
+		_, err = tx.ExecContext(ctx,
+			"UPDATE teachers SET "+strings.Join(parts, ", ")+" WHERE id = $"+fmt.Sprintf("%d", n), args...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if hasSubjects {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM teacher_subjects WHERE teacher_id = $1`, id); err != nil {
+			return nil, err
+		}
+		for _, subj := range newSubjects {
+			if subj == "" {
+				continue
+			}
+			if _, err = tx.ExecContext(ctx,
+				`INSERT INTO teacher_subjects (id, teacher_id, subject) VALUES (gen_random_uuid(), $1, $2)`,
+				id, subj); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
 	return s.GetByID(ctx, id)
 }
 

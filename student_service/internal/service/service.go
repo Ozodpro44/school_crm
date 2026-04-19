@@ -393,20 +393,29 @@ func (s *ClassService) Delete(ctx context.Context, id string) error {
 
 // ── ConsolidatedData ──────────────────────────────────────────────────────────
 
+type StudentClassInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type StudentPaymentInfo struct {
+	Status string  `json:"status"`
+	Amount float64 `json:"amount"`
+}
+
 type StudentListItem struct {
-	ID             string  `json:"id"`
-	FullName       string  `json:"fullName"`
-	Phone          string  `json:"phone"`
-	ParentPhone    string  `json:"parentPhone"`
-	MonthlyPayment float64 `json:"monthlyPayment"`
-	Status         string  `json:"status"`
-	BranchID       string  `json:"branchId"`
-	ClassID        string  `json:"classId,omitempty"`
-	ClassName      string  `json:"className,omitempty"`
-	PaymentStatus  string  `json:"paymentStatus"`
-	PaymentAmount  float64 `json:"paymentAmount"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ID             string             `json:"id"`
+	FullName       string             `json:"fullName"`
+	Phone          string             `json:"phone"`
+	ParentPhone    string             `json:"parentPhone"`
+	MonthlyPayment float64            `json:"monthlyPayment"`
+	Status         string             `json:"status"`
+	BranchID       string             `json:"branchId"`
+	ClassID        string             `json:"classId,omitempty"`
+	Class          *StudentClassInfo  `json:"class,omitempty"`
+	Payment        *StudentPaymentInfo `json:"payment,omitempty"`
+	CreatedAt      time.Time          `json:"createdAt"`
+	UpdatedAt      time.Time          `json:"updatedAt"`
 }
 
 type ClassItem struct {
@@ -549,19 +558,22 @@ func (s *StudentService) ConsolidatedData(ctx context.Context, f ConsolidatedFil
 		var it StudentListItem
 		var classID sql.NullString
 		var className string
+		var paymentStatus string
+		var paymentAmount float64
 		if err := rows.Scan(
 			&it.ID, &it.FullName, &it.Phone, &it.ParentPhone,
 			&it.MonthlyPayment, &it.Status, &it.BranchID,
 			&it.CreatedAt, &it.UpdatedAt,
 			&classID, &className,
-			&it.PaymentStatus, &it.PaymentAmount,
+			&paymentStatus, &paymentAmount,
 		); err != nil {
 			return nil, err
 		}
-		if classID.Valid {
+		if classID.Valid && classID.String != "" {
 			it.ClassID = classID.String
-			it.ClassName = className
+			it.Class = &StudentClassInfo{ID: classID.String, Name: className}
 		}
+		it.Payment = &StudentPaymentInfo{Status: paymentStatus, Amount: paymentAmount}
 		items = append(items, it)
 	}
 	if err := rows.Err(); err != nil {
@@ -782,14 +794,27 @@ func (s *AttendanceService) GetByStudentMonth(ctx context.Context, studentID, mo
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	rows, err := s.db.Conn().QueryContext(ctx, `
-		SELECT id, branch_id, class_id, student_id, date::text,
-		       status, COALESCE(note,''), created_by, created_at
-		FROM attendance
-		WHERE student_id=$1
-		  AND EXTRACT(month FROM date)=$2
-		  AND EXTRACT(year  FROM date)=$3
-		ORDER BY date`, studentID, month, year)
+	var rows *sql.Rows
+	var err error
+
+	if month == "" || year == 0 {
+		// No filter: return all attendance for this student
+		rows, err = s.db.Conn().QueryContext(ctx, `
+			SELECT id, branch_id, class_id, student_id, date::text,
+			       status, COALESCE(note,''), created_by, created_at
+			FROM attendance
+			WHERE student_id=$1
+			ORDER BY date`, studentID)
+	} else {
+		rows, err = s.db.Conn().QueryContext(ctx, `
+			SELECT id, branch_id, class_id, student_id, date::text,
+			       status, COALESCE(note,''), created_by, created_at
+			FROM attendance
+			WHERE student_id=$1
+			  AND EXTRACT(month FROM date)=$2::int
+			  AND EXTRACT(year  FROM date)=$3
+			ORDER BY date`, studentID, month, year)
+	}
 	if err != nil {
 		return nil, err
 	}
