@@ -391,6 +391,283 @@ func (s *ClassService) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// ── ConsolidatedData ──────────────────────────────────────────────────────────
+
+type StudentListItem struct {
+	ID             string  `json:"id"`
+	FullName       string  `json:"fullName"`
+	Phone          string  `json:"phone"`
+	ParentPhone    string  `json:"parentPhone"`
+	MonthlyPayment float64 `json:"monthlyPayment"`
+	Status         string  `json:"status"`
+	BranchID       string  `json:"branchId"`
+	ClassID        string  `json:"classId,omitempty"`
+	ClassName      string  `json:"className,omitempty"`
+	PaymentStatus  string  `json:"paymentStatus"`
+	PaymentAmount  float64 `json:"paymentAmount"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
+}
+
+type ClassItem struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type ConsolidatedResponse struct {
+	Items      []StudentListItem `json:"items"`
+	Classes    []ClassItem       `json:"classes"`
+	Total      int               `json:"total"`
+	Page       int               `json:"page"`
+	Limit      int               `json:"limit"`
+	NextCursor string            `json:"nextCursor,omitempty"`
+}
+
+type ConsolidatedFilter struct {
+	BranchID      string
+	Page          string
+	Limit         string
+	Cursor        string
+	Search        string
+	Status        string
+	ClassID       string
+	PaymentStatus string
+	Month         string
+	Year          string
+}
+
+func (s *StudentService) ConsolidatedData(ctx context.Context, f ConsolidatedFilter) (*ConsolidatedResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
+	defer cancel()
+
+	page, _ := strconv.Atoi(f.Page)
+	if page < 1 {
+		page = 1
+	}
+	limit, _ := strconv.Atoi(f.Limit)
+	if limit < 1 || limit > 500 {
+		limit = 10
+	}
+
+	now := time.Now()
+	month := f.Month
+	if month == "" {
+		month = now.Format("01")
+	}
+	year := now.Year()
+	if y, err := strconv.Atoi(f.Year); err == nil && y > 0 {
+		year = y
+	}
+
+	useCursor := f.Cursor != ""
+	offset := (page - 1) * limit
+
+	where := "WHERE s.branch_id = $1"
+	args := []interface{}{f.BranchID}
+	n := 2
+
+	if f.Search != "" {
+		where += fmt.Sprintf(" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)", n, n)
+		args = append(args, "%"+f.Search+"%")
+		n++
+	}
+	if useCursor {
+		where += fmt.Sprintf(" AND s.full_name > $%d", n)
+		args = append(args, f.Cursor)
+		n++
+	}
+	if f.Status != "" {
+		where += fmt.Sprintf(" AND s.status = $%d", n)
+		args = append(args, f.Status)
+		n++
+	}
+	if f.ClassID != "" {
+		where += fmt.Sprintf(" AND s.class_id = $%d", n)
+		args = append(args, f.ClassID)
+		n++
+	}
+	if f.PaymentStatus != "" {
+		where += fmt.Sprintf(" AND COALESCE(p.status, 'unpaid') = $%d", n)
+		args = append(args, f.PaymentStatus)
+		n++
+	}
+
+	lateralJoin := `LEFT JOIN LATERAL (
+		SELECT COALESCE(SUM(amount), 0) AS total_amount,
+		       CASE
+		           WHEN COALESCE(SUM(amount), 0) >= s.monthly_payment THEN 'paid'
+		           WHEN COALESCE(SUM(amount), 0) > 0 THEN 'partial'
+		           ELSE 'unpaid'
+		       END AS status
+		FROM payments
+		WHERE student_id = s.id
+		  AND month = $` + strconv.Itoa(n) + `
+		  AND year = $` + strconv.Itoa(n+1) + `
+		  AND status IN ('paid', 'partial')
+	) p ON true`
+
+	countArgs := append([]interface{}{}, args...)
+	countArgs = append(countArgs, month, year)
+
+	var total int
+	if err := s.db.Conn().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM students s LEFT JOIN classes c ON c.id = s.class_id `+
+			lateralJoin+` `+where, countArgs...).Scan(&total); err != nil {
+		return nil, err
+	}
+
+	var pagingClause string
+	dataArgs := append([]interface{}{}, args...)
+	dataArgs = append(dataArgs, month, year)
+	if useCursor {
+		pagingClause = ` LIMIT $` + strconv.Itoa(n+2)
+		dataArgs = append(dataArgs, limit)
+	} else {
+		pagingClause = ` LIMIT $` + strconv.Itoa(n+2) + ` OFFSET $` + strconv.Itoa(n+3)
+		dataArgs = append(dataArgs, limit, offset)
+	}
+
+	rows, err := s.db.Conn().QueryContext(ctx, `
+		SELECT s.id, s.full_name,
+		       COALESCE(s.phone,''), COALESCE(s.parent_phone,''),
+		       s.monthly_payment, s.status, s.branch_id,
+		       s.created_at, s.updated_at,
+		       s.class_id, COALESCE(c.name,''),
+		       COALESCE(p.status,'unpaid'), COALESCE(p.total_amount,0)
+		FROM students s
+		LEFT JOIN classes c ON c.id = s.class_id
+		`+lateralJoin+`
+		`+where+`
+		ORDER BY s.full_name ASC`+pagingClause, dataArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]StudentListItem, 0)
+	for rows.Next() {
+		var it StudentListItem
+		var classID sql.NullString
+		var className string
+		if err := rows.Scan(
+			&it.ID, &it.FullName, &it.Phone, &it.ParentPhone,
+			&it.MonthlyPayment, &it.Status, &it.BranchID,
+			&it.CreatedAt, &it.UpdatedAt,
+			&classID, &className,
+			&it.PaymentStatus, &it.PaymentAmount,
+		); err != nil {
+			return nil, err
+		}
+		if classID.Valid {
+			it.ClassID = classID.String
+			it.ClassName = className
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	classRows, err := s.db.Conn().QueryContext(ctx,
+		`SELECT id, name FROM classes WHERE branch_id = $1 ORDER BY name`, f.BranchID)
+	if err != nil {
+		return nil, err
+	}
+	defer classRows.Close()
+
+	classes := make([]ClassItem, 0)
+	for classRows.Next() {
+		var ci ClassItem
+		if err := classRows.Scan(&ci.ID, &ci.Name); err != nil {
+			return nil, err
+		}
+		classes = append(classes, ci)
+	}
+
+	var nextCursor string
+	if len(items) == limit {
+		nextCursor = items[len(items)-1].FullName
+	}
+
+	return &ConsolidatedResponse{
+		Items:      items,
+		Classes:    classes,
+		Total:      total,
+		Page:       page,
+		Limit:      limit,
+		NextCursor: nextCursor,
+	}, nil
+}
+
+// ── SearchWithPayments ─────────────────────────────────────────────────────────
+
+type StudentWithPayment struct {
+	ID             string  `json:"id"`
+	FullName       string  `json:"fullName"`
+	Phone          string  `json:"phone"`
+	ClassID        string  `json:"classId"`
+	ClassName      string  `json:"className"`
+	MonthlyPayment float64 `json:"monthlyPayment"`
+	PaidAmount     float64 `json:"paidAmount"`
+	PaymentStatus  string  `json:"paymentStatus"` // paid | partial | none
+	BranchID       string  `json:"branchId"`
+}
+
+func (s *StudentService) SearchWithPayments(ctx context.Context, branchID, search, month string, year int) ([]StudentWithPayment, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	args := []interface{}{branchID}
+	n := 2
+	where := "WHERE s.branch_id = $1 AND s.status = 'active'"
+	if search != "" {
+		where += fmt.Sprintf(" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)", n, n)
+		args = append(args, "%"+search+"%")
+		n++
+	}
+	args = append(args, month, year)
+	monthN, yearN := n, n+1
+
+	query := fmt.Sprintf(`
+		SELECT s.id, s.full_name, COALESCE(s.phone,''), s.class_id,
+		       COALESCE(c.name,''), s.monthly_payment, s.branch_id,
+		       COALESCE(SUM(pay.amount) FILTER (WHERE pay.month=$%d AND pay.year=$%d AND pay.status IN ('paid','partial')), 0)
+		FROM students s
+		LEFT JOIN classes c ON c.id = s.class_id
+		LEFT JOIN payments pay ON pay.student_id = s.id
+		%s
+		GROUP BY s.id, s.full_name, s.phone, s.class_id, c.name, s.monthly_payment, s.branch_id
+		ORDER BY s.full_name LIMIT 100`, monthN, yearN, where)
+
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]StudentWithPayment, 0)
+	for rows.Next() {
+		var sw StudentWithPayment
+		var classID sql.NullString
+		if err := rows.Scan(&sw.ID, &sw.FullName, &sw.Phone, &classID,
+			&sw.ClassName, &sw.MonthlyPayment, &sw.BranchID, &sw.PaidAmount); err != nil {
+			return nil, err
+		}
+		if classID.Valid {
+			sw.ClassID = classID.String
+		}
+		if sw.PaidAmount >= sw.MonthlyPayment && sw.PaidAmount > 0 {
+			sw.PaymentStatus = "paid"
+		} else if sw.PaidAmount > 0 {
+			sw.PaymentStatus = "partial"
+		} else {
+			sw.PaymentStatus = "none"
+		}
+		result = append(result, sw)
+	}
+	return result, rows.Err()
+}
+
 // GetByTeacherID returns all classes assigned to a specific teacher.
 // Used by the gRPC GetTeacherClasses method (called by teacher_service).
 func (s *ClassService) GetByTeacherID(ctx context.Context, teacherID string) ([]Class, error) {

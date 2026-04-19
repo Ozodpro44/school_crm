@@ -36,7 +36,9 @@ func New(
 }
 
 func (h *Handler) Register(r *gin.RouterGroup) {
-	// Students
+	// Students — static sub-paths must be registered before :id wildcard
+	r.GET("/students/consolidated/data", h.ConsolidatedData)
+	r.GET("/students/search/with-payments", h.SearchWithPayments)
 	r.GET("/students", h.ListStudents)
 	r.POST("/students", h.CreateStudent)
 	r.GET("/students/:id", h.GetStudent)
@@ -458,6 +460,57 @@ func (h *Handler) StudentProgress(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, subs)
+}
+
+// ── Consolidated & Search ─────────────────────────────────────────────────────
+
+func (h *Handler) ConsolidatedData(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	result, err := h.students.ConsolidatedData(c.Request.Context(), service.ConsolidatedFilter{
+		BranchID:      branchID,
+		Page:          c.DefaultQuery("page", "1"),
+		Limit:         c.DefaultQuery("limit", "10"),
+		Cursor:        c.Query("cursor"),
+		Search:        c.Query("search"),
+		Status:        c.Query("status"),
+		ClassID:       c.Query("classId"),
+		PaymentStatus: c.Query("paymentStatus"),
+		Month:         c.Query("month"),
+		Year:          c.Query("year"),
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) SearchWithPayments(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	year := 0
+	if y := c.Query("year"); y != "" {
+		_, _ = fmt.Sscanf(y, "%d", &year)
+	}
+	result, err := h.students.SearchWithPayments(
+		c.Request.Context(),
+		branchID,
+		c.Query("search"),
+		c.Query("month"),
+		year,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to search students"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // ── Student Notes ─────────────────────────────────────────────────────────────
