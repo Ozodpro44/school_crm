@@ -784,7 +784,7 @@ export async function listPayments(
     search?: string;
     status?: string;
   }
-): Promise<Payment[] | { data: Payment[]; total: number; page: number; limit: number; totalPages: number }> {
+): Promise<Payment[] | { items?: Payment[]; data?: Payment[]; total: number; page: number; limit: number; totalPages?: number; nextCursor?: string }> {
   let query = "";
   if (filters?.branchId) query += `branchId=${filters.branchId}`;
   if (filters?.studentId)
@@ -796,7 +796,7 @@ export async function listPayments(
   if (filters?.search) query += `${query ? "&" : ""}search=${encodeURIComponent(filters.search)}`;
   if (filters?.status) query += `${query ? "&" : ""}status=${filters.status}`;
 
-  const response = await apiRequest<Payment[] | { data: Payment[]; total: number; page: number; limit: number; totalPages: number }>(
+  const response = await apiRequest<Payment[] | { items?: Payment[]; data?: Payment[]; total: number; page: number; limit: number; totalPages?: number; nextCursor?: string }>(
     `/payments${query ? "?" + query : ""}`
   );
   return Array.isArray(response) ? response : (response || []);

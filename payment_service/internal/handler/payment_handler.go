@@ -22,6 +22,7 @@ func (h *PaymentHandler) Register(r *gin.RouterGroup) {
 	// Static sub-paths must be registered before /:id wildcard
 	r.POST("/payments/bulk", h.BulkCreate)
 	r.GET("/payments/summary", h.Summary)
+	r.GET("/payments/consolidated/data", h.ConsolidatedData)
 	r.GET("/payments/search/students", h.SearchStudents)
 	r.GET("/payments/student/:studentId/history", h.StudentHistory)
 	r.GET("/payments/:id", h.GetByID)
@@ -175,6 +176,34 @@ func (h *PaymentHandler) StudentHistory(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": payments})
+}
+
+// ConsolidatedData godoc
+// GET /api/v1/payments/consolidated/data?branchId=&month=&year=&page=&limit=&search=&status=&paymentMethod=&classId=
+func (h *PaymentHandler) ConsolidatedData(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	resp, err := h.svc.ConsolidatedData(
+		c.Request.Context(),
+		branchID,
+		c.Query("month"),
+		c.Query("year"),
+		c.DefaultQuery("page", "1"),
+		c.DefaultQuery("limit", "10"),
+		c.Query("cursor"),
+		c.Query("search"),
+		c.Query("status"),
+		c.Query("paymentMethod"),
+		c.Query("classId"),
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // SearchStudents godoc

@@ -209,7 +209,7 @@ export default function ClassDetailsPage() {
         });
         const paymentsList = Array.isArray(paymentsResponse)
           ? paymentsResponse
-          : paymentsResponse?.data || [];
+          : paymentsResponse?.items || paymentsResponse?.data || [];
         setPayments(paymentsList);
 
         if (classDataFetched.teacherId) {

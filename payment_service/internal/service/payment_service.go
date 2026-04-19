@@ -552,6 +552,114 @@ func (s *PaymentService) ListSubscriptions(ctx context.Context, branchID, status
 	return subs, rows.Err()
 }
 
+// ── ConsolidatedData ──────────────────────────────────────────────────────────
+
+type Indicators struct {
+	TotalPaid   float64            `json:"totalPaid"`
+	TotalUnpaid float64            `json:"totalUnpaid"`
+	ByMethod    map[string]float64 `json:"byMethod"`
+}
+
+type ConsolidatedPaymentResponse struct {
+	Items      []Payment    `json:"items"`
+	Students   []StudentInfo `json:"students"`
+	Indicators Indicators   `json:"indicators"`
+	Total      int          `json:"total"`
+	Page       int          `json:"page"`
+	Limit      int          `json:"limit"`
+	NextCursor string       `json:"nextCursor,omitempty"`
+}
+
+// ConsolidatedData returns paginated payments + summary indicators for a period.
+// If month/year are not supplied, defaults to the branch's open financial month.
+func (s *PaymentService) ConsolidatedData(ctx context.Context, branchID, month, year, page, limit, cursor, search, status, paymentMethod, classID string) (*ConsolidatedPaymentResponse, error) {
+	if month == "" || year == "" {
+		var curMonth string
+		var curYear int
+		err := s.db.Conn().QueryRowContext(ctx,
+			`SELECT current_month, current_year FROM financial_months
+			 WHERE branch_id = $1 AND status = 'open'
+			 ORDER BY created_at DESC LIMIT 1`, branchID,
+		).Scan(&curMonth, &curYear)
+		if err != nil {
+			now := time.Now()
+			curMonth = fmt.Sprintf("%02d", int(now.Month()))
+			curYear = now.Year()
+		}
+		if month == "" {
+			month = curMonth
+		}
+		if year == "" {
+			year = fmt.Sprintf("%d", curYear)
+		}
+	}
+
+	listResult, err := s.List(ctx, ListFilter{
+		BranchID:      branchID,
+		Month:         month,
+		Year:          year,
+		Page:          page,
+		Limit:         limit,
+		Cursor:        cursor,
+		Search:        search,
+		Status:        status,
+		PaymentMethod: paymentMethod,
+		ClassID:       classID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	yearInt, _ := strconv.Atoi(year)
+	ind := Indicators{
+		ByMethod: map[string]float64{"click": 0, "cash": 0, "bank": 0, "terminal": 0},
+	}
+
+	ctxS, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	rows, err := s.db.Conn().QueryContext(ctxS, `
+		SELECT payment_method,
+		       COALESCE(SUM(amount) FILTER (WHERE status IN ('paid','partial')), 0)
+		FROM payments
+		WHERE branch_id = $1 AND month = $2 AND year = $3
+		GROUP BY payment_method`, branchID, month, yearInt)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var method string
+			var amt float64
+			if err := rows.Scan(&method, &amt); err == nil {
+				ind.TotalPaid += amt
+				ind.ByMethod[method] += amt
+			}
+		}
+	}
+
+	_ = s.db.Conn().QueryRowContext(ctxS, `
+		SELECT COALESCE(SUM(s.monthly_payment - COALESCE(pa.paid,0)), 0)
+		FROM students s
+		LEFT JOIN (
+			SELECT student_id, SUM(amount) AS paid
+			FROM payments
+			WHERE branch_id=$1 AND month=$2 AND year=$3 AND status IN ('paid','partial')
+			GROUP BY student_id
+		) pa ON pa.student_id=s.id
+		WHERE s.branch_id=$1 AND s.status='active'
+		  AND COALESCE(pa.paid,0) < s.monthly_payment`, branchID, month, yearInt,
+	).Scan(&ind.TotalUnpaid)
+
+	return &ConsolidatedPaymentResponse{
+		Items:      listResult.Items,
+		Students:   listResult.Students,
+		Indicators: ind,
+		Total:      listResult.Total,
+		Page:       listResult.Page,
+		Limit:      listResult.Limit,
+		NextCursor: listResult.NextCursor,
+	}, nil
+}
+
 // ── SearchStudents ────────────────────────────────────────────────────────────
 
 type StudentPaymentInfo struct {
