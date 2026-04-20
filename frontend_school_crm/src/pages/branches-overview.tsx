@@ -227,8 +227,8 @@ export default function BranchesOverviewPage() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatCurrency(v)} width={100} />
+                <XAxis dataKey="name" tick={{ fontSize: "11px" }} />
+                <YAxis tick={{ fontSize: "11px" }} tickFormatter={(v) => formatCurrency(v)} width={100} />
                 <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar
@@ -349,8 +349,8 @@ export default function BranchesOverviewPage() {
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <XAxis dataKey="name" tick={{ fontSize: "11px" }} />
+                <YAxis tick={{ fontSize: "11px" }} allowDecimals={false} />
                 <Tooltip />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar

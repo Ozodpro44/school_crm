@@ -301,7 +301,7 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
         </ScrollArea>
         {notifications.length > 0 && (
           <div className="p-2 bg-slate-50/50 dark:bg-slate-800/20 border-t border-slate-100/50 dark:border-slate-800/50 text-center">
-             <Link href="/notifications" className="text-[10px] font-bold text-slate-400 hover:text-indigo-500 uppercase tracking-widest transition-colors">
+             <Link href="/notifications" prefetch={false} className="text-[10px] font-bold text-slate-400 hover:text-indigo-500 uppercase tracking-widest transition-colors">
                View History
              </Link>
           </div>

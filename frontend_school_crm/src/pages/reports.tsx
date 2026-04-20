@@ -259,8 +259,8 @@ export default function ReportsPage() {
       }
 
       const startYear = parseInt(paymentYear) || new Date().getFullYear();
-      const startDate = new Date(startYear, parseInt(paymentMonth) - 1, 1).toISOString();
-      const endDate   = new Date(startYear, parseInt(paymentMonth), 0, 23, 59, 59).toISOString();
+      const startDate = new Date(Date.UTC(startYear, parseInt(paymentMonth) - 1, 1)).toISOString();
+      const endDate   = new Date(Date.UTC(startYear, parseInt(paymentMonth), 0, 23, 59, 59)).toISOString();
 
       const result = await runReportJob("payment_report", {
         branchId,
@@ -337,8 +337,8 @@ export default function ReportsPage() {
 
       // Convert month/year to dates
       const startYear = parseInt(paymentYear) || new Date().getFullYear();
-      const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
-      const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
+      const startDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth) - 1, 1));
+      const endDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth), 0));
 
       const newStartDate = startDateObj.toISOString().split("T")[0]!;
       const newEndDate = endDateObj.toISOString().split("T")[0]!;
@@ -481,8 +481,8 @@ export default function ReportsPage() {
 
       // Convert month/year to dates
       const startYear = parseInt(paymentYear) || new Date().getFullYear();
-      const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
-      const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
+      const startDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth) - 1, 1));
+      const endDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth), 0));
 
       const newStartDate = startDateObj.toISOString().split("T")[0]!;
       const newEndDate = endDateObj.toISOString().split("T")[0]!;
@@ -548,8 +548,8 @@ export default function ReportsPage() {
 
       // Convert month/year to dates
       const startYear = parseInt(paymentYear) || new Date().getFullYear();
-      const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
-      const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
+      const startDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth) - 1, 1));
+      const endDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth), 0));
 
       const newStartDate = startDateObj.toISOString().split("T")[0]!;
       const newEndDate = endDateObj.toISOString().split("T")[0]!;
