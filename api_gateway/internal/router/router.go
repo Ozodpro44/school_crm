@@ -116,7 +116,7 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	legacyPublic := r.Group("/api")
 	legacyPublic.Use(middleware.RateLimiter(60, time.Minute))
 	{
-		legacyPublic.GET("/subscriptions/plans", gin.WrapH(proxy.Handler(paymentProxy)))
+		legacyPublic.GET("/subscriptions/plans", gin.WrapH(proxy.Handler(monolithProxy)))
 		legacyPublic.Any("/payment-types/active", gin.WrapH(proxy.Handler(monolithProxy)))
 	}
 
@@ -195,8 +195,8 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	publicAPI := r.Group("/api/v1")
 	publicAPI.Use(middleware.RateLimiter(60, time.Minute))
 	{
-		// /subscriptions/plans → payment_service (P3.5)
-		publicAPI.GET("/subscriptions/plans", gin.WrapH(proxy.Handler(paymentProxy)))
+		// /subscriptions/plans → monolith (plans managed by monolith subscription system)
+		publicAPI.GET("/subscriptions/plans", gin.WrapH(proxy.Handler(monolithProxy)))
 		// payment-types stays on monolith until finance_service is extracted (P5)
 		publicAPI.Any("/payment-types/active", gin.WrapH(proxy.Handler(monolithProxy)))
 	}

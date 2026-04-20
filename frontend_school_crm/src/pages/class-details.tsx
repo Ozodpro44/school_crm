@@ -200,11 +200,16 @@ export default function ClassDetailsPage() {
         const branch = await getBranch(branchId);
         setBranchData(branch);
 
-        // Load payments from API - fetch all payments without month filter
-        // to ensure payment status is calculated correctly across all months
+        // Load only current-month payments — enough to compute payment badges
+        const currentMonth = branch.currentFinancialMonth?.month
+          ? String(branch.currentFinancialMonth.month).padStart(2, "0")
+          : String(new Date().getMonth() + 1).padStart(2, "0");
+        const currentYear = branch.currentFinancialMonth?.year || new Date().getFullYear();
         const paymentsResponse = await apiListPayments({
           branchId,
-          limit: 10000,
+          month: currentMonth,
+          year: currentYear,
+          limit: 500,
           page: 1,
         });
         const paymentsList = Array.isArray(paymentsResponse)

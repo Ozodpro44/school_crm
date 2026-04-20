@@ -126,6 +126,7 @@ export interface Class {
   teacherId?: string;
   studentIds: string[];
   branchId: string;
+  studentCount: number;
   createdAt: string;
   updatedAt: string;
 }

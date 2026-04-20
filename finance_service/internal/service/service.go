@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,10 +34,11 @@ type Expense struct {
 }
 
 type ExpenseListResponse struct {
-	Items []Expense `json:"items"`
-	Total int       `json:"total"`
-	Page  int       `json:"page"`
-	Limit int       `json:"limit"`
+	Items      []Expense       `json:"items"`
+	Indicators *ExpenseSummary `json:"indicators,omitempty"`
+	Total      int             `json:"total"`
+	Page       int             `json:"page"`
+	Limit      int             `json:"limit"`
 }
 
 type ExpenseSummary struct {
@@ -167,6 +169,52 @@ func (s *ExpenseService) Summary(ctx context.Context, branchID, month, year stri
 		summary.TotalAmount += amt
 	}
 	return summary, rows.Err()
+}
+
+// ConsolidatedData returns paginated expenses + summary for the branch's current financial month.
+// Falls back to the calendar month when no open financial_months row exists.
+func (s *ExpenseService) ConsolidatedData(ctx context.Context, branchID, month, year, search, category, paymentMethod, page, limit string) (*ExpenseListResponse, error) {
+	if month == "" || year == "" {
+		var curMonth string
+		var curYear int
+		err := s.db.Read().QueryRowContext(ctx,
+			`SELECT month, year FROM financial_months
+			 WHERE branch_id = $1 AND status = 'OPEN'
+			 ORDER BY opened_at DESC LIMIT 1`, branchID,
+		).Scan(&curMonth, &curYear)
+		if err != nil {
+			now := time.Now()
+			curMonth = fmt.Sprintf("%d", int(now.Month()))
+			curYear = now.Year()
+		}
+		if month == "" {
+			month = curMonth
+		}
+		if year == "" {
+			year = fmt.Sprintf("%d", curYear)
+		}
+	}
+
+	pageInt, _ := strconv.Atoi(page)
+	limitInt, _ := strconv.Atoi(limit)
+
+	list, err := s.List(ctx, ListFilter{
+		BranchID:      branchID,
+		Month:         month,
+		Year:          year,
+		Search:        search,
+		Category:      category,
+		PaymentMethod: paymentMethod,
+		Page:          pageInt,
+		Limit:         limitInt,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	summary, _ := s.Summary(ctx, branchID, month, year)
+	list.Indicators = summary
+	return list, nil
 }
 
 func (s *ExpenseService) GetByID(ctx context.Context, id string) (*Expense, error) {

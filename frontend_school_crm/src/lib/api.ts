@@ -183,6 +183,7 @@ export interface Class {
   teacherId?: string;
   studentIds: string[];
   branchId: string;
+  studentCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -1581,7 +1582,8 @@ export interface AppNotification {
 export async function getNotifications(limit = 20): Promise<AppNotification[]> {
   const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
   const q = branchId ? `?branchId=${branchId}&limit=${limit}` : `?limit=${limit}`;
-  return apiRequest<AppNotification[]>(`/notifications${q}`);
+  const response = await apiRequest<unknown>(`/notifications${q}`);
+  return unwrapItems<AppNotification>(response);
 }
 
 export async function getUnreadCount(): Promise<number> {

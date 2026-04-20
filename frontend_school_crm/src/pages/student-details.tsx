@@ -47,7 +47,6 @@ import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { formatPhoneNumber, toTitleCase, formatDate } from "@/lib/utils";
 import {
   getStudent,
-  listPayments,
   listClasses,
   getStudentPaymentHistory,
   getBranch,
@@ -114,7 +113,6 @@ export default function StudentDetailsPage() {
   const canEditStudents = hasPermission("canEditStudents");
   const canDeleteStudents = hasPermission("canDeleteStudents");
   const currentUser = getCurrentUser();
-  const isAdmin = currentUser?.role === "admin" || currentUser?.role === "branch_admin";
 
   const t = (key: string) => getTranslation(key, language);
 
@@ -162,17 +160,9 @@ export default function StudentDetailsPage() {
         setBranchData(branch);
       }
 
-      // Payments
-      if (isAdmin) {
-        const paymentsData = await getStudentPaymentHistory(studentData.id, branchId || undefined);
-        setPayments(paymentsData);
-      } else if (branchId) {
-        const paymentsResponse = await listPayments({ branchId, limit: 10000 });
-        const paymentsData = Array.isArray(paymentsResponse)
-          ? paymentsResponse
-          : paymentsResponse?.data || [];
-        setPayments(paymentsData.filter((p: Payment) => p.studentId === studentData.id));
-      }
+      // Payments — use per-student history endpoint regardless of role
+      const paymentsData = await getStudentPaymentHistory(studentData.id, branchId || undefined).catch(() => []);
+      setPayments(paymentsData);
 
       // Attendance
       const attendance = await getStudentAttendanceRecords(studentData.id).catch(() => []);

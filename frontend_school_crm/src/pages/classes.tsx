@@ -48,6 +48,7 @@ export default function ClassesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [studentsLoaded, setStudentsLoaded] = useState(false);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -100,12 +101,13 @@ export default function ClassesPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId");
       if (branchId) {
-        const classList = await listClasses(branchId);
+        const [classList, teachersList] = await Promise.all([
+          listClasses(branchId),
+          listTeachers(branchId),
+        ]);
         setClasses(classList);
-        const teachersList = await listTeachers(branchId);
         setTeachers(teachersList);
-        const studentsResponse = await listStudents(branchId, 1, 10000);
-        setStudents(studentsResponse.data || []);
+        // Students are loaded lazily when the unassigned panel is opened
       } else {
         setStudents([]);
       }
@@ -118,6 +120,18 @@ export default function ClassesPage() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadUnassignedStudents = async () => {
+    const branchId = localStorage.getItem("selectedBranchId");
+    if (!branchId) return;
+    try {
+      const resp = await listStudents(branchId, 1, 500, { status: "active" });
+      setStudents(resp.data || []);
+      setStudentsLoaded(true);
+    } catch {
+      // ignore
     }
   };
 
@@ -573,8 +587,7 @@ export default function ClassesPage() {
                     <SelectContent>
                       {classes.map((classData) => (
                         <SelectItem key={classData.id} value={classData.id}>
-                          {classData.name} (
-                          {getClassStudents(classData.id).length} students)
+                          {classData.name} ({classData.studentCount || 0} students)
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -793,11 +806,11 @@ export default function ClassesPage() {
               <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
                 <Users className="w-3 h-3 sm:w-4 sm:h-4" />
                 <span className="hidden sm:inline">
-                  {students.filter((s) => filteredClasses.some((c) => c.id === s.classId)).length}{" "}
+                  {filteredClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0)}{" "}
                   {t("assignedStudents")}
                 </span>
                 <span className="sm:hidden">
-                  {students.filter((s) => filteredClasses.some((c) => c.id === s.classId)).length}
+                  {filteredClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0)}
                 </span>
               </Badge>
             </div>
@@ -806,7 +819,6 @@ export default function ClassesPage() {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {filteredClasses.map((classData) => {
-              const classStudents = getClassStudents(classData.id);
               return (
                 <Card
                   key={classData.id}
@@ -869,7 +881,7 @@ export default function ClassesPage() {
                         {t("students")}
                       </span>
                       <Badge variant="secondary" className="text-xs">
-                        {classStudents.length}
+                        {classData.studentCount || 0}
                       </Badge>
                     </div>
                     {draggedStudent && draggedStudentIds.length > 0 && (
@@ -898,7 +910,13 @@ export default function ClassesPage() {
         </CardContent>
       </Card>
 
-      {unassignedStudents.length > 0 && (
+      {/* Unassigned students — loaded on demand */}
+      {!studentsLoaded && (
+        <Button variant="outline" onClick={loadUnassignedStudents} className="w-full">
+          {t("showUnassignedStudents") || "Show unassigned students"}
+        </Button>
+      )}
+      {studentsLoaded && unassignedStudents.length > 0 && (
         <Card className="border-orange-200 dark:border-orange-800">
           <CardHeader className="p-4 sm:p-6">
             <CardTitle className="text-base sm:text-lg text-orange-600 dark:text-orange-400">

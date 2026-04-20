@@ -43,12 +43,13 @@ type StudentListResponse struct {
 }
 
 type Class struct {
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	TeacherID *string    `json:"teacherId,omitempty"`
-	BranchID  string     `json:"branchId"`
-	CreatedAt time.Time  `json:"createdAt"`
-	UpdatedAt time.Time  `json:"updatedAt"`
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	TeacherID    *string    `json:"teacherId,omitempty"`
+	BranchID     string     `json:"branchId"`
+	StudentCount int        `json:"studentCount"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
 }
 
 type Attendance struct {
@@ -292,9 +293,14 @@ func (s *ClassService) GetAll(ctx context.Context, branchID string) ([]Class, er
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	rows, err := s.db.Conn().QueryContext(ctx,
-		`SELECT id, name, teacher_id, branch_id, created_at, updated_at
-		 FROM classes WHERE branch_id = $1 ORDER BY name`, branchID)
+	rows, err := s.db.Conn().QueryContext(ctx, `
+		SELECT c.id, c.name, c.teacher_id, c.branch_id,
+		       COUNT(s.id) FILTER (WHERE s.status = 'active') AS student_count,
+		       c.created_at, c.updated_at
+		FROM classes c
+		LEFT JOIN students s ON s.class_id = c.id
+		WHERE c.branch_id = $1
+		GROUP BY c.id ORDER BY c.name`, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +309,7 @@ func (s *ClassService) GetAll(ctx context.Context, branchID string) ([]Class, er
 	var classes []Class
 	for rows.Next() {
 		var c Class
-		if err := rows.Scan(&c.ID, &c.Name, &c.TeacherID, &c.BranchID, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.TeacherID, &c.BranchID, &c.StudentCount, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		classes = append(classes, c)

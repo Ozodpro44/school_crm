@@ -21,14 +21,40 @@ func New(expenses *service.ExpenseService, budgets *service.BudgetService) *Hand
 func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/expenses", h.ListExpenses)
 	r.POST("/expenses", h.CreateExpense)
+	// Static sub-paths must come before /:id
+	r.GET("/expenses/consolidated/data", h.ConsolidatedData)
+	r.GET("/expenses/summary", h.ExpenseSummary)
 	r.GET("/expenses/:id", h.GetExpense)
 	r.PUT("/expenses/:id", h.UpdateExpense)
 	r.DELETE("/expenses/:id", h.DeleteExpense)
-	r.GET("/expenses/summary", h.ExpenseSummary)
 
 	r.GET("/expense-budgets", h.ListBudgets)
 	r.PUT("/expense-budgets", h.UpsertBudget)
 	r.DELETE("/expense-budgets", h.DeleteBudget)
+}
+
+func (h *Handler) ConsolidatedData(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	resp, err := h.expenses.ConsolidatedData(
+		c.Request.Context(),
+		branchID,
+		c.Query("month"),
+		c.Query("year"),
+		c.Query("search"),
+		c.Query("category"),
+		c.Query("paymentMethod"),
+		c.DefaultQuery("page", "1"),
+		c.DefaultQuery("limit", "10"),
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *Handler) ListExpenses(c *gin.Context) {
