@@ -146,36 +146,26 @@ export default function StudentDetailsPage() {
       if (!studentData) return;
       setStudent(studentData);
 
-      // Class name
+      // All remaining calls are independent — run in parallel
+      const [classesData, branch, payments, attendance, notes, contactLog] = await Promise.all([
+        branchId ? listClasses(branchId) : Promise.resolve([]),
+        branchId ? getBranch(branchId) : Promise.resolve(null),
+        getStudentPaymentHistory(studentData.id, branchId || undefined).catch(() => []),
+        getStudentAttendanceRecords(studentData.id).catch(() => []),
+        branchId ? listStudentNotes(studentData.id, branchId).catch(() => []) : Promise.resolve([]),
+        branchId ? listContactLog(studentData.id, branchId).catch(() => []) : Promise.resolve([]),
+      ]);
+
+      setClasses(classesData as any[]);
       if (branchId && studentData.classId) {
-        const classesData = await listClasses(branchId);
-        setClasses(classesData);
-        const classData = classesData.find((c: any) => c.id === studentData.classId);
+        const classData = (classesData as any[]).find((c) => c.id === studentData.classId);
         setClassName(classData?.name || "—");
       }
-
-      // Branch data
-      if (branchId) {
-        const branch = await getBranch(branchId);
-        setBranchData(branch);
-      }
-
-      // Payments — use per-student history endpoint regardless of role
-      const paymentsData = await getStudentPaymentHistory(studentData.id, branchId || undefined).catch(() => []);
-      setPayments(paymentsData);
-
-      // Attendance
-      const attendance = await getStudentAttendanceRecords(studentData.id).catch(() => []);
-      setAttendanceRecords(attendance || []);
-
-      // Notes
-      if (branchId) {
-        const notesData = await listStudentNotes(studentData.id, branchId).catch(() => []);
-        setNotes(notesData || []);
-
-        const contactData = await listContactLog(studentData.id, branchId).catch(() => []);
-        setContactLogEntries(contactData || []);
-      }
+      if (branch) setBranchData(branch as any);
+      setPayments(payments as any[]);
+      setAttendanceRecords((attendance as any[]) || []);
+      setNotes((notes as any[]) || []);
+      setContactLogEntries((contactLog as any[]) || []);
     } catch (error) {
       console.error("Failed to load student details:", error);
       toast({ title: t("error"), description: t("failedToLoadStudentDetails"), variant: "destructive" });

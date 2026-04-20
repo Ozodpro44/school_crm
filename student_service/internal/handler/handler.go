@@ -88,11 +88,17 @@ func (h *Handler) ListStudents(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
 		return
 	}
+	classID := c.Query("classId")
+	noClass := classID == "unassigned"
+	if noClass {
+		classID = ""
+	}
 	resp, err := h.students.List(c.Request.Context(), service.ListFilter{
 		BranchID: branchID,
 		Search:   c.Query("search"),
 		Status:   c.Query("status"),
-		ClassID:  c.Query("classId"),
+		ClassID:  classID,
+		NoClass:  noClass,
 		Page:     c.Query("page"),
 		Limit:    c.Query("limit"),
 		Cursor:   c.Query("cursor"),

@@ -175,43 +175,36 @@ export default function ClassDetailsPage() {
       const branchId = localStorage.getItem("selectedBranchId");
       if (!branchId) return;
 
-      // Load class from API
-      const classList = await apiListClasses(branchId);
+      // Run independent requests in parallel
+      const [classList, teachersList, branch] = await Promise.all([
+        apiListClasses(branchId),
+        apiListTeachers(branchId),
+        getBranch(branchId),
+      ]);
+
       const classDataFetched = classList.find((c) => c.id === id);
 
       if (classDataFetched) {
         setClassData(classDataFetched);
         setAllClasses(classList);
-
-        // Load students from API (fetch all with large limit)
-        const studentsResponse = await apiListStudents(branchId, 1, 10000);
-        const allStudents = studentsResponse.data || [];
-        setStudents(allStudents);
-        const studentsInClass = allStudents.filter(
-          (s) => s.classId === classDataFetched.id,
-        );
-        setClassStudents(studentsInClass);
-
-        // Load teachers from API
-        const teachersList = await apiListTeachers(branchId);
         setTeachers(teachersList);
-
-        // Load branch data to get current financial month
-        const branch = await getBranch(branchId);
         setBranchData(branch);
 
-        // Load only current-month payments — enough to compute payment badges
         const currentMonth = branch.currentFinancialMonth?.month
           ? String(branch.currentFinancialMonth.month).padStart(2, "0")
           : String(new Date().getMonth() + 1).padStart(2, "0");
         const currentYear = branch.currentFinancialMonth?.year || new Date().getFullYear();
-        const paymentsResponse = await apiListPayments({
-          branchId,
-          month: currentMonth,
-          year: currentYear,
-          limit: 500,
-          page: 1,
-        });
+
+        // Fetch only students in this class + payments in parallel
+        const [studentsResponse, paymentsResponse] = await Promise.all([
+          apiListStudents(branchId, 1, 300, { classId: classDataFetched.id }),
+          apiListPayments({ branchId, month: currentMonth, year: currentYear, limit: 500, page: 1 }),
+        ]);
+
+        const classStudentsList = studentsResponse.data || [];
+        setStudents(classStudentsList);
+        setClassStudents(classStudentsList);
+
         const paymentsList = Array.isArray(paymentsResponse)
           ? paymentsResponse
           : paymentsResponse?.items || paymentsResponse?.data || [];

@@ -83,6 +83,7 @@ type ListFilter struct {
 	Search        string
 	Status        string
 	ClassID       string
+	NoClass       bool   // when true: WHERE class_id IS NULL
 	Page          string
 	Limit         string
 	Cursor        string // keyset cursor on full_name
@@ -110,7 +111,9 @@ func (s *StudentService) List(ctx context.Context, f ListFilter) (*StudentListRe
 	if f.Status != "" {
 		where += fmt.Sprintf(" AND s.status = $%d", n); args = append(args, f.Status); n++
 	}
-	if f.ClassID != "" {
+	if f.NoClass {
+		where += " AND s.class_id IS NULL"
+	} else if f.ClassID != "" {
 		where += fmt.Sprintf(" AND s.class_id = $%d", n); args = append(args, f.ClassID); n++
 	}
 	if f.Search != "" {

@@ -107,7 +107,7 @@ export default function ClassesPage() {
         ]);
         setClasses(classList);
         setTeachers(teachersList);
-        // Students are loaded lazily when the unassigned panel is opened
+        loadUnassignedStudents(branchId);
       } else {
         setStudents([]);
       }
@@ -123,11 +123,9 @@ export default function ClassesPage() {
     }
   };
 
-  const loadUnassignedStudents = async () => {
-    const branchId = localStorage.getItem("selectedBranchId");
-    if (!branchId) return;
+  const loadUnassignedStudents = async (branchId: string) => {
     try {
-      const resp = await listStudents(branchId, 1, 500, { status: "active" });
+      const resp = await listStudents(branchId, 1, 500, { status: "active", classId: "unassigned" } as any);
       setStudents(resp.data || []);
       setStudentsLoaded(true);
     } catch {
@@ -910,12 +908,6 @@ export default function ClassesPage() {
         </CardContent>
       </Card>
 
-      {/* Unassigned students — loaded on demand */}
-      {!studentsLoaded && (
-        <Button variant="outline" onClick={loadUnassignedStudents} className="w-full">
-          {t("showUnassignedStudents") || "Show unassigned students"}
-        </Button>
-      )}
       {studentsLoaded && unassignedStudents.length > 0 && (
         <Card className="border-orange-200 dark:border-orange-800">
           <CardHeader className="p-4 sm:p-6">
