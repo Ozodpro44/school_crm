@@ -119,17 +119,26 @@ func (s *UserService) GetAll(ctx context.Context, branchID string) ([]User, erro
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	where := ""
-	args := []interface{}{}
+	// When filtering by branch: return users whose branch_id matches
+	// OR managers linked via the branch_managers junction table.
+	var query string
+	var args []interface{}
 	if branchID != "" {
-		where = " WHERE branch_id = $1"
-		args = append(args, branchID)
+		query = `
+			SELECT DISTINCT u.id, u.email, u.full_name, u.role, u.branch_id, u.phone, u.avatar_url,
+			       COALESCE(u.language, 'en'), u.created_at, u.updated_at
+			FROM users u
+			LEFT JOIN branch_managers bm ON bm.manager_id = u.id
+			WHERE u.branch_id = $1 OR bm.branch_id = $1
+			ORDER BY u.full_name`
+		args = []interface{}{branchID}
+	} else {
+		query = `SELECT id, email, full_name, role, branch_id, phone, avatar_url,
+			        COALESCE(language, 'en'), created_at, updated_at
+			 FROM users ORDER BY full_name`
 	}
 
-	rows, err := s.db.Conn().QueryContext(ctx,
-		`SELECT id, email, full_name, role, branch_id, phone, avatar_url,
-		        COALESCE(language, 'en'), created_at, updated_at
-		 FROM users`+where+` ORDER BY full_name`, args...)
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
