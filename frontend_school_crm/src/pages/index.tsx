@@ -21,6 +21,8 @@ import {
   UserMinus,
 } from "lucide-react";
 import { FinancialChart } from "@/components/FinancialChart";
+import { StatCard } from "@/components/StatCard";
+import { PaymentMethodBreakdown } from "@/components/PaymentMethodBreakdown";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -443,210 +445,67 @@ export default function HomePage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <Card
-          className="border-l-4 border-l-indigo-500 hover:shadow-lg transition-all duration-300 animate-slide-up"
-          style={{ animationDelay: "0.1s" }}
-        >
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              {t("students")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {stats.activeStudents}
-            </div>
-            <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {stats.totalStudents} {t("totalEnrolled")}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="border-l-4 border-l-purple-500 hover:shadow-lg transition-all duration-300 animate-slide-up"
-          style={{ animationDelay: "0.2s" }}
-        >
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <GraduationCap className="w-4 h-4" />
-              {t("teachers")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {stats.totalTeachers}
-            </div>
-            <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("activeTeachers") || "Faol o'qituvchilar"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="border-l-4 border-l-green-500 hover:shadow-lg transition-all duration-300 animate-slide-up"
-          style={{ animationDelay: "0.3s" }}
-        >
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <Wallet className="w-4 h-4" />
-              {t("totalIncome")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl md:text-3xl font-bold text-green-600 dark:text-green-400">
-              {formatCurrency(stats.totalIncome)}
-            </div>
-            <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("fromStudentPayments")}
-            </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">
-              {t("ushbuOyUchun") || "Ushbu oy uchun"}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className="border-l-4 border-l-blue-500 hover:shadow-lg transition-all duration-300 animate-slide-up"
-          style={{ animationDelay: "0.4s" }}
-        >
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" />
-              {t("netProfit")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl md:text-3xl font-bold ${
-                stats.profit >= 0
-                  ? "text-green-600 dark:text-green-400"
-                  : "text-red-600 dark:text-red-400"
-              }`}
-            >
-              {formatCurrency(stats.profit)}
-            </div>
-            <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("incomeMinusExpenses")}
-            </p>
-          </CardContent>
-        </Card>
+        <StatCard
+          icon={Users}
+          tone="indigo"
+          label={t("students")}
+          value={stats.activeStudents}
+          hint={`${stats.totalStudents} ${t("totalEnrolled")}`}
+        />
+        <StatCard
+          icon={GraduationCap}
+          tone="purple"
+          label={t("teachers")}
+          value={stats.totalTeachers}
+          hint={t("activeTeachers") || "Faol o'qituvchilar"}
+        />
+        <StatCard
+          icon={Wallet}
+          tone="green"
+          label={t("totalIncome")}
+          value={formatCurrency(stats.totalIncome)}
+          hint={t("ushbuOyUchun") || "Ushbu oy uchun"}
+        />
+        <StatCard
+          icon={TrendingUp}
+          tone={stats.profit >= 0 ? "green" : "red"}
+          label={t("netProfit")}
+          value={formatCurrency(stats.profit)}
+          hint={t("incomeMinusExpenses")}
+        />
       </div>
 
-      <div
-       className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 animate-fade-in"
-       style={{ animationDelay: "0.5s" }}
-      >
-       <Card className="hover:shadow-lg transition-shadow">
-         <CardHeader>
-           <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-             <DollarSign className="w-5 h-5 text-green-500" />
-             {t("cashPayments")}
-           </CardTitle>
-         </CardHeader>
-         <CardContent>
-           <div className="space-y-2">
-             <div className="flex items-center justify-between">
-               <p className="text-sm text-slate-600 dark:text-slate-400">{t("income")}</p>
-               <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                 {formatCurrency(stats.cashIncome)}
-               </div>
-             </div>
-             <div className="flex items-center justify-between">
-               <p className="text-sm text-slate-600 dark:text-slate-400">{t("expenses")}</p>
-               <div className="text-lg font-bold text-red-600 dark:text-red-400">
-                 {formatCurrency(stats.cashExpenses)}
-               </div>
-             </div>
-             <div className="border-t pt-2 flex items-center justify-between">
-               <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t("profit")}</p>
-               <div
-                 className={`text-lg font-bold ${
-                   stats.cashProfit >= 0
-                     ? "text-green-600 dark:text-green-400"
-                     : "text-red-600 dark:text-red-400"
-                 }`}
-               >
-                 {formatCurrency(stats.cashProfit)}
-               </div>
-             </div>
-           </div>
-         </CardContent>
-       </Card>
-
-       <Card className="hover:shadow-lg transition-shadow">
-         <CardHeader>
-           <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-             <CreditCard className="w-5 h-5 text-blue-500" />
-             {t("cardPayments")}
-           </CardTitle>
-         </CardHeader>
-         <CardContent>
-           <div className="space-y-2">
-             <div className="flex items-center justify-between">
-               <p className="text-sm text-slate-600 dark:text-slate-400">{t("income")}</p>
-               <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                 {formatCurrency(stats.cardIncome)}
-               </div>
-             </div>
-             <div className="flex items-center justify-between">
-               <p className="text-sm text-slate-600 dark:text-slate-400">{t("expenses")}</p>
-               <div className="text-lg font-bold text-red-600 dark:text-red-400">
-                 {formatCurrency(stats.cardExpenses)}
-               </div>
-             </div>
-             <div className="border-t pt-2 flex items-center justify-between">
-               <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t("profit")}</p>
-               <div
-                 className={`text-lg font-bold ${
-                   stats.cardProfit >= 0
-                     ? "text-green-600 dark:text-green-400"
-                     : "text-red-600 dark:text-red-400"
-                 }`}
-               >
-                 {formatCurrency(stats.cardProfit)}
-               </div>
-             </div>
-           </div>
-         </CardContent>
-       </Card>
-
-       <Card className="hover:shadow-lg transition-shadow">
-         <CardHeader>
-           <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-             <Building2 className="w-5 h-5 text-cyan-500" />
-             {t("bankPayments")}
-           </CardTitle>
-         </CardHeader>
-         <CardContent>
-           <div className="space-y-2">
-             <div className="flex items-center justify-between">
-               <p className="text-sm text-slate-600 dark:text-slate-400">{t("income")}</p>
-               <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                 {formatCurrency(stats.bankIncome)}
-               </div>
-             </div>
-             <div className="flex items-center justify-between">
-               <p className="text-sm text-slate-600 dark:text-slate-400">{t("expenses")}</p>
-               <div className="text-lg font-bold text-red-600 dark:text-red-400">
-                 {formatCurrency(stats.bankExpenses)}
-               </div>
-             </div>
-             <div className="border-t pt-2 flex items-center justify-between">
-               <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t("profit")}</p>
-               <div
-                 className={`text-lg font-bold ${
-                   stats.bankProfit >= 0
-                     ? "text-green-600 dark:text-green-400"
-                     : "text-red-600 dark:text-red-400"
-                 }`}
-               >
-                 {formatCurrency(stats.bankProfit)}
-               </div>
-             </div>
-           </div>
-         </CardContent>
-       </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        <PaymentMethodBreakdown
+          icon={DollarSign}
+          iconColor="text-green-500"
+          title={t("cashPayments")}
+          income={stats.cashIncome}
+          expenses={stats.cashExpenses}
+          profit={stats.cashProfit}
+          labels={{ income: t("income"), expenses: t("expenses"), profit: t("profit") }}
+          format={formatCurrency}
+        />
+        <PaymentMethodBreakdown
+          icon={CreditCard}
+          iconColor="text-blue-500"
+          title={t("cardPayments")}
+          income={stats.cardIncome}
+          expenses={stats.cardExpenses}
+          profit={stats.cardProfit}
+          labels={{ income: t("income"), expenses: t("expenses"), profit: t("profit") }}
+          format={formatCurrency}
+        />
+        <PaymentMethodBreakdown
+          icon={Building2}
+          iconColor="text-cyan-500"
+          title={t("bankPayments")}
+          income={stats.bankIncome}
+          expenses={stats.bankExpenses}
+          profit={stats.bankProfit}
+          labels={{ income: t("income"), expenses: t("expenses"), profit: t("profit") }}
+          format={formatCurrency}
+        />
       </div>
 
       <div

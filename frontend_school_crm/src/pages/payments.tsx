@@ -46,6 +46,8 @@ import {
   DollarSign,
 } from "lucide-react";
 import { DataTable, Column } from "@/components/DataTable";
+import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
+import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
   createPayment as apiCreatePayment,
@@ -1184,14 +1186,20 @@ export default function PaymentsPage() {
     {
       key: "student",
       header: t("student"),
-      render: (p) => (
-        <div>
-          <p className="font-medium text-slate-900 dark:text-slate-100">
-            {toTitleCase(getStudentName(p.studentId))}
-          </p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">{getClassName(p.studentId)}</p>
-        </div>
-      ),
+      render: (p) => {
+        const name = getStudentName(p.studentId);
+        return (
+          <div className="flex items-center gap-3">
+            <InitialsAvatar name={name} size="md" />
+            <div className="min-w-0">
+              <p className="font-medium text-slate-900 dark:text-slate-100 truncate">
+                {toTitleCase(name)}
+              </p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{getClassName(p.studentId)}</p>
+            </div>
+          </div>
+        );
+      },
     },
     {
       key: "period",
@@ -1221,9 +1229,10 @@ export default function PaymentsPage() {
       key: "status",
       header: t("status"),
       render: (p) => (
-        <Badge className={getStatusColor(getEffectivePaymentStatus(p))}>
-          {getPaymentStatusLabel(getEffectivePaymentStatus(p))}
-        </Badge>
+        <PaymentStatusBadge
+          status={getEffectivePaymentStatus(p)}
+          label={getPaymentStatusLabel(getEffectivePaymentStatus(p))}
+        />
       ),
     },
     {
@@ -2234,9 +2243,10 @@ export default function PaymentsPage() {
                     <span className="font-semibold text-slate-900 dark:text-slate-100">
                       {formatCurrency(p.amount)}
                     </span>
-                    <Badge className={getStatusColor(getEffectivePaymentStatus(p))}>
-                      {getPaymentStatusLabel(getEffectivePaymentStatus(p))}
-                    </Badge>
+                    <PaymentStatusBadge
+                      status={getEffectivePaymentStatus(p)}
+                      label={getPaymentStatusLabel(getEffectivePaymentStatus(p))}
+                    />
                   </div>
                 </div>
                 <div className="flex items-center justify-between">

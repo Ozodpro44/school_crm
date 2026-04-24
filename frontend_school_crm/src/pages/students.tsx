@@ -57,6 +57,8 @@ import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useSettings } from "@/hooks/use-settings";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, Column } from "@/components/DataTable";
+import { InitialsAvatar } from "@/components/InitialsAvatar";
+import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
 
 export default function StudentsPage() {
   const router = useRouter();
@@ -685,14 +687,6 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     }
   };
 
-  const getPaymentStatusColor = (paymentStatus: string) => {
-    return paymentStatus === "paid"
-      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-      : paymentStatus === "partial"
-      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-      : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
-  };
-
   // ── Column definitions ──────────────────────────────────────────────────────
   const columns: Column<Student>[] = [
     {
@@ -700,15 +694,18 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       header: t("fullName"),
       render: (student) => (
         <div
-          className="cursor-pointer hover:opacity-70 transition-opacity"
+          className="flex items-center gap-3 cursor-pointer group"
           onClick={() => router.push(`/student-details?id=${student.id}&from=students`)}
         >
-          <p className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
-            {toTitleCase(student.fullName)}
-          </p>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            {formatPhoneNumber(student.phone)}
-          </p>
+          <InitialsAvatar name={student.fullName} size="md" />
+          <div className="min-w-0">
+            <p className="font-medium text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:underline truncate">
+              {toTitleCase(student.fullName)}
+            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {formatPhoneNumber(student.phone)}
+            </p>
+          </div>
         </div>
       ),
     },
@@ -756,11 +753,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       header: t("payment"),
       render: (student) => {
         const paymentStatus = student.payment?.status || "unpaid";
-        return (
-          <Badge className={getPaymentStatusColor(paymentStatus)}>
-            {t(paymentStatus)}
-          </Badge>
-        );
+        return <PaymentStatusBadge status={paymentStatus} label={t(paymentStatus)} />;
       },
     },
     {
@@ -1117,7 +1110,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     setSearchTerm("");
                   }
                 }}
-                onKeyPress={handleSearchKeyPress}
+                onKeyDown={handleSearchKeyPress}
                 className="pl-10 w-full"
               />
             </div>
@@ -1274,9 +1267,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     </div>
                     <div className="flex justify-between items-center text-sm gap-2">
                       <span className="text-slate-600 dark:text-slate-400">{t("payment")}:</span>
-                      <Badge className={getPaymentStatusColor(paymentStatus)}>
-                        {t(paymentStatus)}
-                      </Badge>
+                      <PaymentStatusBadge status={paymentStatus} label={t(paymentStatus)} />
                     </div>
                   </div>
 

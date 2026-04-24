@@ -31,6 +31,7 @@ import {
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, Column } from "@/components/DataTable";
+import { InitialsAvatar } from "@/components/InitialsAvatar";
 
 export default function TeachersPage() {
   const { currentBranch } = useBranch();
@@ -196,13 +197,16 @@ export default function TeachersPage() {
       key: "name",
       header: t("fullName"),
       render: (teacher) => (
-        <div>
-          <p className="font-medium text-slate-900 dark:text-slate-100">{teacher.fullName}</p>
-          <div className="flex items-center gap-1 mt-0.5">
-            <BookOpen className="w-3 h-3 text-slate-400" />
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {getAssignedClasses(teacher.assignedClasses).join(", ") || t("noClassesYet")}
-            </p>
+        <div className="flex items-center gap-3">
+          <InitialsAvatar name={teacher.fullName} size="md" />
+          <div className="min-w-0">
+            <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{teacher.fullName}</p>
+            <div className="flex items-center gap-1 mt-0.5">
+              <BookOpen className="w-3 h-3 text-slate-400" />
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                {getAssignedClasses(teacher.assignedClasses).join(", ") || t("noClassesYet")}
+              </p>
+            </div>
           </div>
         </div>
       ),
@@ -389,6 +393,7 @@ export default function TeachersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-3 flex-1 min-w-0">
                     <Checkbox checked={isSelected} onCheckedChange={onToggle} className="mt-1 flex-shrink-0" />
+                    <InitialsAvatar name={teacher.fullName} size="md" className="mt-0.5" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{teacher.fullName}</p>
                       <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{teacher.email}</p>

@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
+import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -834,10 +836,11 @@ export default function ClassDetailsPage() {
                         checked={isSelected(student.id)}
                         onCheckedChange={() => toggleSelect(student.id)}
                       />
+                      <InitialsAvatar name={student.fullName} size="md" className="flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p
-                            className="font-medium text-slate-900 dark:text-slate-100 text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                            className="font-medium text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
                               router.push(
@@ -847,18 +850,10 @@ export default function ClassDetailsPage() {
                           >
                             {toTitleCase(student.fullName)}
                           </p>
-                          {hasCurrentMonthPayment(student.id) ? (
-                            <div className="flex items-center gap-1">
-                              <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
-                              <span className="text-xs text-green-600 dark:text-green-400">
-                                {t("paid")}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-red-500 dark:text-red-400">✗ {t("unpaid") || "To'lanmadi"}</span>
-                            </div>
-                          )}
+                          <PaymentStatusBadge
+                            status={hasCurrentMonthPayment(student.id) ? "paid" : "unpaid"}
+                            label={hasCurrentMonthPayment(student.id) ? t("paid") : t("unpaid") || "To'lanmadi"}
+                          />
                         </div>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
                           {formatPhoneNumber(student.phone) || "—"} •{" "}
