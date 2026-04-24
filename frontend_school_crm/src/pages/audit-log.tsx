@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,14 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getAuditLogs, type AuditLogEntry } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import {
-  Shield,
-  ChevronLeft,
-  ChevronRight,
-  Search,
-  Filter,
-  RotateCcw,
-} from "lucide-react";
+import { Shield, Search, Filter, RotateCcw } from "lucide-react";
+import { DataTable, Column } from "@/components/DataTable";
 
 const RESOURCES = [
   "payment",
@@ -49,6 +42,17 @@ const RESOURCE_COLORS: Record<string, string> = {
   class:    "bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400",
   branch:   "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400",
   user:     "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400",
+};
+
+const formatTime = (iso: string) => {
+  const d = new Date(iso);
+  return d.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 };
 
 export default function AuditLogPage() {
@@ -109,16 +113,63 @@ export default function AuditLogPage() {
     setPage(1);
   };
 
-  const formatTime = (iso: string) => {
-    const d = new Date(iso);
-    return d.toLocaleString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  const columns: Column<AuditLogEntry>[] = [
+    {
+      key: "createdAt",
+      header: "Time",
+      cellClassName: "text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap w-40",
+      render: (entry) => formatTime(entry.createdAt),
+    },
+    {
+      key: "userName",
+      header: "User",
+      render: (entry) => (
+        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+          {entry.userName || <span className="text-slate-400 italic">Unknown</span>}
+        </span>
+      ),
+    },
+    {
+      key: "action",
+      header: "Action",
+      cellClassName: "w-24",
+      render: (entry) => (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${ACTION_COLORS[entry.action] ?? ""}`}>
+          {entry.action}
+        </span>
+      ),
+    },
+    {
+      key: "resource",
+      header: "Resource",
+      cellClassName: "w-28",
+      render: (entry) => (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${RESOURCE_COLORS[entry.resource] ?? "bg-slate-100 text-slate-600"}`}>
+          {entry.resource}
+        </span>
+      ),
+    },
+    {
+      key: "description",
+      header: "Description",
+      cellClassName: "text-sm text-slate-700 dark:text-slate-300 max-w-xs truncate",
+      render: (entry) => entry.description,
+    },
+    {
+      key: "resourceId",
+      header: "Resource ID",
+      cellClassName: "w-40",
+      hideOnMobile: true,
+      render: (entry) =>
+        entry.resourceId ? (
+          <code className="text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded font-mono">
+            {entry.resourceId.slice(0, 8)}…
+          </code>
+        ) : (
+          <span className="text-slate-300 dark:text-slate-600">—</span>
+        ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -216,167 +267,44 @@ export default function AuditLogPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {/* Desktop table */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-40">
-                    Time
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    User
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-24">
-                    Action
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-28">
-                    Resource
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    Description
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-40">
-                    Resource ID
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  [...Array(8)].map((_, i) => (
-                    <tr key={i} className="border-b border-slate-50 dark:border-slate-800/50">
-                      {[...Array(6)].map((_, j) => (
-                        <td key={j} className="px-4 py-3">
-                          <Skeleton className="h-4 w-full" />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                ) : filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                      <Shield className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">No audit entries found</p>
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((entry) => (
-                    <tr
-                      key={entry.id}
-                      className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors"
-                    >
-                      <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                        {formatTime(entry.createdAt)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                          {entry.userName || <span className="text-slate-400 italic">Unknown</span>}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${ACTION_COLORS[entry.action] ?? ""}`}>
-                          {entry.action}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${RESOURCE_COLORS[entry.resource] ?? "bg-slate-100 text-slate-600"}`}>
-                          {entry.resource}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-700 dark:text-slate-300 max-w-xs truncate">
-                        {entry.description}
-                      </td>
-                      <td className="px-4 py-3">
-                        {entry.resourceId ? (
-                          <code className="text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded font-mono">
-                            {entry.resourceId.slice(0, 8)}…
-                          </code>
-                        ) : (
-                          <span className="text-slate-300 dark:text-slate-600">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile card list */}
-          <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
-            {loading ? (
-              [...Array(5)].map((_, i) => (
-                <div key={i} className="p-4 space-y-2">
-                  <Skeleton className="h-3 w-24" />
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
+          <DataTable<AuditLogEntry>
+            columns={columns}
+            data={filtered}
+            loading={loading}
+            skeletonRows={8}
+            emptyIcon={Shield}
+            emptyTitle="No audit entries found"
+            pagination={{ page, limit: LIMIT, total }}
+            onPageChange={setPage}
+            renderCard={(entry) => (
+              <div className="p-4 space-y-1.5 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${ACTION_COLORS[entry.action] ?? ""}`}>
+                    {entry.action}
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    {formatTime(entry.createdAt)}
+                  </span>
                 </div>
-              ))
-            ) : filtered.length === 0 ? (
-              <div className="py-12 text-center text-slate-400">
-                <Shield className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No audit entries found</p>
+                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                  {entry.description}
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${RESOURCE_COLORS[entry.resource] ?? ""}`}>
+                    {entry.resource}
+                  </span>
+                  {entry.userName && (
+                    <span className="text-xs text-slate-500">{entry.userName}</span>
+                  )}
+                  {entry.resourceId && (
+                    <code className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded font-mono">
+                      {entry.resourceId.slice(0, 8)}…
+                    </code>
+                  )}
+                </div>
               </div>
-            ) : (
-              filtered.map((entry) => (
-                <div key={entry.id} className="p-4 space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${ACTION_COLORS[entry.action] ?? ""}`}>
-                      {entry.action}
-                    </span>
-                    <span className="text-[11px] text-slate-400">
-                      {formatTime(entry.createdAt)}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                    {entry.description}
-                  </p>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${RESOURCE_COLORS[entry.resource] ?? ""}`}>
-                      {entry.resource}
-                    </span>
-                    {entry.userName && (
-                      <span className="text-xs text-slate-500">{entry.userName}</span>
-                    )}
-                    {entry.resourceId && (
-                      <code className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded font-mono">
-                        {entry.resourceId.slice(0, 8)}…
-                      </code>
-                    )}
-                  </div>
-                </div>
-              ))
             )}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 dark:border-slate-800">
-              <span className="text-xs text-slate-500">
-                Page {page} of {totalPages}
-              </span>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1 || loading}
-                  className="h-7 w-7 p-0"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages || loading}
-                  className="h-7 w-7 p-0"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          />
         </CardContent>
       </Card>
     </div>

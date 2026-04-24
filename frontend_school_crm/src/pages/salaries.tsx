@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,12 +16,12 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
+import { FormDialog } from "@/components/FormDialog";
+import { Field } from "@/components/Field";
 import { Salary, PaymentStatus, Teacher, PaymentMethod, Branch } from "@/types";
-import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, Loader2 } from "lucide-react";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { listSalaries, getBranch, listTeachers, createSalary, updateSalary, deleteSalary } from "@/lib/api";
@@ -31,13 +30,12 @@ import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
-import { useSettings } from "@/hooks/use-settings";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 import { PageHeader } from "@/components/PageHeader";
+import { DataTable, Column } from "@/components/DataTable";
 
 export default function SalariesPage() {
   const router = useRouter();
-  const { settings } = useSettings();
   const [isLoading, setIsLoading] = useState(true);
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -72,12 +70,6 @@ export default function SalariesPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<number>(0);
 
-  const isMonthVisible = (month: string, year: number): boolean => {
-    // The backend API handles filtering of archived months per branch
-    // So we allow all months here and let the backend handle visibility
-    return true;
-  };
-
   const [formData, setFormData] = useState({
     teacherId: "",
     amount: "",
@@ -89,7 +81,6 @@ export default function SalariesPage() {
   });
 
   useEffect(() => {
-    // Set currentPage from URL query params
     if (router.isReady) {
       const page = router.query.page ? parseInt(router.query.page as string, 10) : 1;
       setCurrentPage(Math.max(1, page));
@@ -110,7 +101,6 @@ export default function SalariesPage() {
     const handleBranchChange = async () => {
       setIsLoading(true);
       setCurrentPage(1);
-      // Reset selectedMonth to force reload from new branch
       setSelectedMonth("");
       loadData().finally(() => setIsLoading(false));
     };
@@ -135,16 +125,13 @@ export default function SalariesPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId") || "";
 
-      // Load branch data to get current month
       if (branchId) {
         const branch = await getBranch(branchId);
         setBranchData(branch);
 
-        // Use financial month data if available, otherwise fall back to current date
         const currentMonth = branch.currentFinancialMonth?.month?.toString().padStart(2, '0') || String(new Date().getMonth() + 1).padStart(2, '0');
         const currentYear = branch.currentFinancialMonth?.year || new Date().getFullYear();
 
-        // Set selected month to branch's current month if not already set and not provided
         const targetMonth = month || selectedMonth || currentMonth;
         const targetYear = year || selectedYear || currentYear;
 
@@ -153,7 +140,6 @@ export default function SalariesPage() {
           setSelectedYear(currentYear);
         }
 
-        // Fetch salaries and teachers from API
         const [data, teacherList] = await Promise.all([
           listSalaries(branchId, targetMonth, targetYear),
           listTeachers(branchId),
@@ -258,7 +244,6 @@ export default function SalariesPage() {
   };
 
   const resetForm = () => {
-    // Use branch's current financial month, fallback to current date
     const defaultMonth = branchData?.currentFinancialMonth?.month?.toString().padStart(2, '0') || getDefaultMonth();
     const defaultYear = branchData?.currentFinancialMonth?.year?.toString() || getDefaultYear();
 
@@ -282,14 +267,10 @@ export default function SalariesPage() {
   const filteredSalaries = salaries.filter((salary) => {
     const teacherName = getTeacherName(salary.teacherId);
     const matchesSearch = searchMatchesCrossScript(teacherName, searchTerm);
-
-    const matchesStatus =
-      filterStatus === "all" || salary.status === filterStatus;
-
+    const matchesStatus = filterStatus === "all" || salary.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
-  const totalPages = Math.ceil(filteredSalaries.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedSalaries = filteredSalaries.slice(startIndex, startIndex + itemsPerPage);
 
@@ -299,8 +280,6 @@ export default function SalariesPage() {
         return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
       case "partial":
         return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
-      case "partial":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
       default:
         return "";
     }
@@ -347,60 +326,118 @@ export default function SalariesPage() {
     return t(monthNames[index] ? monthNames[index].toLowerCase() : "unknown") || monthNames[index] || "Unknown";
   };
 
-  if (isLoading) {
-    return (
-
-      <div className="space-y-6">
-        {/* Header Skeleton */}
-        <div className="space-y-2">
-          <Skeleton className="h-10 w-48" />
-          <Skeleton className="h-4 w-64" />
+  // ── Column definitions ────────────────────────────────────────────────────────
+  const columns: Column<Salary>[] = [
+    {
+      key: "teacher",
+      header: t("teacher"),
+      render: (salary) => (
+        <p className="font-medium text-slate-900 dark:text-slate-100">
+          {getTeacherName(salary.teacherId)}
+        </p>
+      ),
+    },
+    {
+      key: "period",
+      header: t("period"),
+      hideOnMobile: true,
+      render: (salary) => (
+        <span className="text-slate-900 dark:text-slate-100">
+          {getMonthName(salary.month)} {salary.year}
+        </span>
+      ),
+    },
+    {
+      key: "amount",
+      header: t("amount"),
+      render: (salary) => (
+        <span className="text-slate-900 dark:text-slate-100">
+          {formatCurrency(salary.amount)}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: t("status"),
+      render: (salary) => (
+        <Badge className={getStatusColor(salary.status)}>
+          {salary.status === "partial" ? t("partialPaid") : t(salary.status)}
+        </Badge>
+      ),
+    },
+    {
+      key: "paymentMethod",
+      header: t("paymentMethod"),
+      hideOnMobile: true,
+      render: (salary) => (
+        <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
+          {getPaymentMethodIcon(salary.paymentMethod)}
+          <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
+          <span className="ml-1 font-medium">{formatCurrency(salary.amount)}</span>
+        </Badge>
+      ),
+    },
+    {
+      key: "paidDate",
+      header: t("paidDate"),
+      hideOnMobile: true,
+      render: (salary) => (
+        <span className="text-slate-900 dark:text-slate-100">
+          {salary.paidDate
+            ? new Date(salary.paidDate).toLocaleDateString('en-GB').replace(/\//g, ".")
+            : "-"}
+        </span>
+      ),
+    },
+    {
+      key: "createdBy",
+      header: t("whoAddedSalaries"),
+      hideOnMobile: true,
+      render: (salary) => (
+        <span className="text-sm text-slate-900 dark:text-slate-100">{salary.createdBy || "-"}</span>
+      ),
+    },
+    {
+      key: "actions",
+      header: t("actions"),
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (salary) => (
+        <div className="flex items-center justify-end gap-2">
+          {salary.status === "partial" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-green-600"
+              onClick={() => handleMarkPaid(salary.id)}
+            >
+              {t("markPaid")}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleEdit(salary)}
+            disabled={!canEditSalaries}
+            title={canEditSalaries ? "" : "No permission"}
+          >
+            <Edit2 className="w-4 h-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => handleDelete(salary.id)}
+            disabled={!canDeleteSalaries}
+            title={canDeleteSalaries ? "" : "No permission"}
+          >
+            <Trash2 className="w-4 h-4 text-red-200" />
+          </Button>
         </div>
-
-        {/* Stats Cards Skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-3">
-                <Skeleton className="h-4 w-24" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-20 mb-2" />
-                <Skeleton className="h-3 w-32" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Action Button Skeleton */}
-        <Skeleton className="h-10 w-32" />
-
-        {/* Search and Filter Skeleton */}
-        <div className="flex gap-4 flex-col sm:flex-row">
-          <Skeleton className="h-10 w-full sm:flex-1" />
-          <Skeleton className="h-10 w-40" />
-        </div>
-
-        {/* Table Skeleton */}
-        <Card>
-          <CardContent className="space-y-4 pt-6">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center gap-4 py-4 border-b">
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-8 w-20" />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-    );
-  }
+      ),
+    },
+  ];
 
   return (
-
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex-1">
@@ -420,179 +457,149 @@ export default function SalariesPage() {
         )}
 
         <div className="flex-1 flex justify-end">
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-                onClick={() => resetForm()}
-                disabled={!canCreateSalaries}
-                title={!canCreateSalaries ? t("noPermission") || "No permission to create salaries" : ""}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {t("recordSalaryPayment")}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingSalaryId ? t("edit") || "Edit" : t("recordSalaryPayment")}
-                </DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="teacherId">{t("teacher")} *</Label>
-                    <Select
-                      value={formData.teacherId}
-                      onValueChange={(value) => {
-                        const teacher = teachers.find((t) => t.id === value);
-                        setFormData({
-                          ...formData,
-                          teacherId: value,
-                          amount: teacher?.monthlySalary.toString() || "",
-                        });
-                      }}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("selectTeacher")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {teachers.map((teacher) => (
-                          <SelectItem key={teacher.id} value={teacher.id}>
-                            {teacher.fullName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+          <Button
+            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+            onClick={() => { resetForm(); setIsDialogOpen(true); }}
+            disabled={!canCreateSalaries}
+            title={!canCreateSalaries ? t("noPermission") || "No permission to create salaries" : ""}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            {t("recordSalaryPayment")}
+          </Button>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="amount">{t("amount")} *</Label>
-                    <Input
-                      id="amount"
-                      type="text"
-                      value={formatNumberWithSpaces(formData.amount)}
-                      onChange={(e) =>
-                        setFormData({ ...formData, amount: removeNumberFormatting(e.target.value) })
-                      }
-                      required
-                      placeholder="0"
-                      step="500"
-                    />
-                  </div>
+          <FormDialog
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+            title={editingSalaryId ? t("edit") || "Edit" : t("recordSalaryPayment")}
+            onSubmit={handleSubmit}
+            submitLabel={editingSalaryId ? t("update") : t("recordSalaryPayment")}
+            submittingLabel={t("recording")}
+            isPending={isSubmitting}
+            maxWidth="max-w-2xl"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="teacherId">{t("teacher")} *</Label>
+                <Select
+                  value={formData.teacherId}
+                  onValueChange={(value) => {
+                    const teacher = teachers.find((t) => t.id === value);
+                    setFormData({
+                      ...formData,
+                      teacherId: value,
+                      amount: teacher?.monthlySalary.toString() || "",
+                    });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("selectTeacher")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teachers.map((teacher) => (
+                      <SelectItem key={teacher.id} value={teacher.id}>
+                        {teacher.fullName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="status">{t("paymentStatusLabel")} *</Label>
-                    <Select
-                      value={formData.status}
-                      onValueChange={(value: PaymentStatus) =>
-                        setFormData({ ...formData, status: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="paid">{t("paid")}</SelectItem>
-                        <SelectItem value="partial">{t("partialPaid")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <Field
+                id="amount"
+                label={`${t("amount")} *`}
+                type="text"
+                value={formatNumberWithSpaces(formData.amount)}
+                placeholder="0"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({ ...formData, amount: removeNumberFormatting(e.target.value) })
+                }
+              />
 
-                  <div className="space-y-2">
-                    <Label htmlFor="month">{t("month")} *</Label>
-                    <Select
-                      value={formData.month}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, month: value })
-                      }
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("selectMonth")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {months.map((month) => (
-                          <SelectItem key={month} value={month}>
-                            {getMonthName(month)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="status">{t("paymentStatusLabel")} *</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value: PaymentStatus) =>
+                    setFormData({ ...formData, status: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="paid">{t("paid")}</SelectItem>
+                    <SelectItem value="partial">{t("partialPaid")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="year">{t("year")} *</Label>
-                    <Input
-                      id="year"
-                      type="number"
-                      value={formData.year}
-                      onChange={(e) =>
-                        setFormData({ ...formData, year: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="month">{t("month")} *</Label>
+                <Select
+                  value={formData.month}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, month: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("selectMonth")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map((month) => (
+                      <SelectItem key={month} value={month}>
+                        {getMonthName(month)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="paymentMethod">{t("paymentMethodLabel")} *</Label>
-                    <Select
-                      value={formData.paymentMethod}
-                      onValueChange={(value: PaymentMethod) =>
-                        setFormData({ ...formData, paymentMethod: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="card">{t("card")}</SelectItem>
-                        <SelectItem value="cash">{t("cash")}</SelectItem>
-                        <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <Field
+                id="year"
+                label={`${t("year")} *`}
+                type="number"
+                value={formData.year}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({ ...formData, year: e.target.value })
+                }
+              />
 
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="notes">{t("description")}</Label>
-                    <Textarea
-                      id="notes"
-                      value={formData.notes}
-                      onChange={(e) =>
-                        setFormData({ ...formData, notes: e.target.value })
-                      }
-                      placeholder={t("notesPlaceholder")}
-                    />
-                  </div>
-                </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="paymentMethod">{t("paymentMethodLabel")} *</Label>
+                <Select
+                  value={formData.paymentMethod}
+                  onValueChange={(value: PaymentMethod) =>
+                    setFormData({ ...formData, paymentMethod: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="card">{t("card")}</SelectItem>
+                    <SelectItem value="cash">{t("cash")}</SelectItem>
+                    <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                    disabled={isSubmitting}
-                  >
-                    {t("cancel")}
-                  </Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
-                        {t("recording")}
-                      </>
-                    ) : (
-                      t("recordSalaryPayment")
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+              <Field
+                id="notes"
+                label={t("description")}
+                as="textarea"
+                value={formData.notes}
+                placeholder={t("notesPlaceholder")}
+                className="md:col-span-2"
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setFormData({ ...formData, notes: e.target.value })
+                }
+              />
+            </div>
+          </FormDialog>
         </div>
       </div>
 
+      {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="border-l-4 border-l-green-500">
           <CardHeader className="pb-3">
@@ -646,249 +653,101 @@ export default function SalariesPage() {
         </Card>
       </div>
 
+      {/* Search and filter */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+          <Input
+            placeholder={t("searchSalaries")}
+            value={searchTerm}
+            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+            className="pl-10"
+          />
+        </div>
+        <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setCurrentPage(1); }}>
+          <SelectTrigger className="w-full sm:w-[180px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allStatus")}</SelectItem>
+            <SelectItem value="paid">{t("paid")}</SelectItem>
+            <SelectItem value="partial">{t("partialPaid")}</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Table */}
       <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-              <Input
-                placeholder={t("searchSalaries")}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("allStatus")}</SelectItem>
-                <SelectItem value="paid">{t("paid")}</SelectItem>
-                <SelectItem value="partial">{t("partialPaid")}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {/* Desktop table */}
-          <div className="hidden md:overflow-x-auto md:block">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("teacher")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("period")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("amount")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("status")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("paymentMethod")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("paidDate")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("whoAddedSalaries")}
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("actions")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedSalaries.map((salary) => (
-                  <tr
-                    key={salary.id}
-                    className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50"
-                  >
-                    <td className="py-3 px-4">
-                      <p className="font-medium text-slate-900 dark:text-slate-100">
-                        {getTeacherName(salary.teacherId)}
-                      </p>
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+        <CardContent className="p-0">
+          <DataTable
+            columns={columns}
+            data={paginatedSalaries}
+            loading={isLoading}
+            emptyTitle={t("noSalaryRecordsFound")}
+            pagination={{
+              page: currentPage,
+              limit: itemsPerPage,
+              total: filteredSalaries.length,
+            }}
+            onPageChange={(page) => {
+              setCurrentPage(page);
+              router.push(`/salaries?page=${page}`, undefined, { shallow: true });
+            }}
+            renderCard={(salary) => (
+              <div
+                key={salary.id}
+                className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-900 dark:text-slate-100">
+                      {getTeacherName(salary.teacherId)}
+                    </p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
                       {getMonthName(salary.month)} {salary.year}
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="font-semibold text-slate-900 dark:text-slate-100">
                       {formatCurrency(salary.amount)}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge className={getStatusColor(salary.status)}>
-                        {salary.status === "partial" ? t("partialPaid") : t(salary.status)}
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
-                        {getPaymentMethodIcon(salary.paymentMethod)}
-                        <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
-                        <span className="ml-1 font-medium">{formatCurrency(salary.amount)}</span>
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      {salary.paidDate
-                        ? new Date(salary.paidDate).toLocaleDateString('en-GB').replace(/\//g, ".")
-                        : "-"}
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      <span className="text-sm">{salary.createdBy || "-"}</span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center justify-end gap-2">
-                        {salary.status === "partial" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-green-600"
-                            onClick={() => handleMarkPaid(salary.id)}
-                          >
-                            {t("markPaid")}
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEdit(salary)}
-                          disabled={!canEditSalaries}
-                          title={canEditSalaries ? "" : "No permission"}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleDelete(salary.id)}
-                          disabled={!canDeleteSalaries}
-                          title={canDeleteSalaries ? "" : "No permission"}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-200" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {filteredSalaries.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-slate-500 dark:text-slate-400">
-                  {t("noSalaryRecordsFound")}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Mobile card view */}
-          <div className="md:hidden space-y-3">
-            {filteredSalaries.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-slate-500 dark:text-slate-400">{t("noSalaryRecordsFound")}</p>
-              </div>
-            ) : (
-              paginatedSalaries.map((salary) => (
-                <div
-                  key={salary.id}
-                  className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-slate-900 dark:text-slate-100">
-                        {getTeacherName(salary.teacherId)}
-                      </p>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
-                        {getMonthName(salary.month)} {salary.year}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="font-semibold text-slate-900 dark:text-slate-100">
-                        {formatCurrency(salary.amount)}
+                    </span>
+                    <Badge className={getStatusColor(salary.status)}>
+                      {salary.status === "partial" ? t("partialPaid") : t(salary.status)}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
+                      {getPaymentMethodIcon(salary.paymentMethod)}
+                      <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
+                    </Badge>
+                    {salary.paidDate && (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        {new Date(salary.paidDate).toLocaleDateString("en-GB").replace(/\//g, ".")}
                       </span>
-                      <Badge className={getStatusColor(salary.status)}>
-                        {salary.status === "partial" ? t("partialPaid") : t(salary.status)}
-                      </Badge>
-                    </div>
+                    )}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
-                        {getPaymentMethodIcon(salary.paymentMethod)}
-                        <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
-                      </Badge>
-                      {salary.paidDate && (
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {new Date(salary.paidDate).toLocaleDateString("en-GB").replace(/\//g, ".")}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {salary.status === "partial" && (
-                        <Button size="sm" variant="outline" className="text-green-600 h-7 text-xs px-2" onClick={() => handleMarkPaid(salary.id)}>
-                          {t("markPaid")}
-                        </Button>
-                      )}
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(salary)} disabled={!canEditSalaries}>
-                        <Edit2 className="w-3.5 h-3.5" />
+                  <div className="flex items-center gap-1">
+                    {salary.status === "partial" && (
+                      <Button size="sm" variant="outline" className="text-green-600 h-7 text-xs px-2" onClick={() => handleMarkPaid(salary.id)}>
+                        {t("markPaid")}
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(salary.id)} disabled={!canDeleteSalaries}>
-                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                      </Button>
-                    </div>
+                    )}
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(salary)} disabled={!canEditSalaries}>
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(salary.id)} disabled={!canDeleteSalaries}>
+                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    </Button>
                   </div>
-                  {salary.createdBy && (
-                    <p className="text-xs text-slate-400 dark:text-slate-500">{t("whoAddedSalaries")}: {salary.createdBy}</p>
-                  )}
                 </div>
-              ))
-            )}
-          </div>
-
-            {/* Pagination */}
-            {filteredSalaries.length > 0 && (
-              <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
-                <div className="text-sm text-slate-600 dark:text-slate-400">
-                  {t("showing")} {startIndex + 1} – {Math.min(startIndex + itemsPerPage, filteredSalaries.length)} {t("of")} {filteredSalaries.length}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.push(`/salaries?page=${Math.max(1, currentPage - 1)}`)}
-                    disabled={currentPage === 1}
-                  >
-                    <ChevronLeft className="w-4 h-4 mr-1" />
-                    {t("previous")}
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => router.push(`/salaries?page=${page}`)}
-                      >
-                        {page}
-                      </Button>
-                    ))}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.push(`/salaries?page=${Math.min(totalPages, currentPage + 1)}`)}
-                    disabled={currentPage === totalPages}
-                  >
-                    {t("next")}
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </div>
+                {salary.createdBy && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500">{t("whoAddedSalaries")}: {salary.createdBy}</p>
+                )}
               </div>
             )}
+          />
         </CardContent>
       </Card>
 
@@ -929,6 +788,5 @@ export default function SalariesPage() {
         </DialogContent>
       </Dialog>
     </div>
-
   );
 }
