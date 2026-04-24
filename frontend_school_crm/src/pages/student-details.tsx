@@ -63,8 +63,37 @@ import {
   StudentNote,
   ContactLogEntry,
 } from "@/lib/api";
+import { InitialsAvatar } from "@/components/InitialsAvatar";
+import { PaymentTrendChart } from "@/components/PaymentTrendChart";
+import { AttendanceDonut } from "@/components/AttendanceDonut";
 
 type Tab = "overview" | "payments" | "attendance" | "notes" | "contact";
+
+// Short 3-letter month labels pulled from translations, or numeric fallbacks.
+const MONTH_LABELS_SHORT = (t: (k: string) => string): Record<number, string> => {
+  const keys = [
+    "jan", "feb", "mar", "apr", "may", "jun",
+    "jul", "aug", "sep", "oct", "nov", "dec",
+  ];
+  const out: Record<number, string> = {};
+  keys.forEach((k, i) => {
+    const translated = t(k);
+    out[i + 1] = translated && translated !== k ? translated : String(i + 1);
+  });
+  return out;
+};
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className="w-2.5 h-2.5 rounded-full inline-block"
+        style={{ backgroundColor: color }}
+      />
+      <span>{label}</span>
+    </span>
+  );
+}
 
 export default function StudentDetailsPage() {
   const router = useRouter();
@@ -436,6 +465,7 @@ export default function StudentDetailsPage() {
           <Button variant="ghost" size="icon" onClick={() => router.push(backRoute)}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
+          <InitialsAvatar name={student.fullName} size="lg" />
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
               {toTitleCase(student.fullName)}
@@ -589,31 +619,59 @@ export default function StudentDetailsPage() {
             </CardContent>
           </Card>
 
-          {attendanceStats.total > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2"><ClipboardList className="w-5 h-5" />{t("attendanceSummary")}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">{t("attendanceRate")}</span>
-                  <span className="font-semibold text-blue-600">{attendanceRate}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">{t("present")}</span>
-                  <span className="font-semibold text-green-600">{attendanceStats.present}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">{t("absent")}</span>
-                  <span className="font-semibold text-red-600">{attendanceStats.absent}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-slate-600 dark:text-slate-400">{t("late")}</span>
-                  <span className="font-semibold text-orange-500">{attendanceStats.late}</span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><ClipboardList className="w-5 h-5" />{t("attendanceSummary")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AttendanceDonut
+                stats={{
+                  present: attendanceStats.present,
+                  absent: attendanceStats.absent,
+                  late: attendanceStats.late,
+                }}
+                labels={{
+                  present: t("present"),
+                  absent: t("absent"),
+                  late: t("late"),
+                }}
+                size={140}
+                className="justify-center"
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2">
+                  <DollarSign className="w-5 h-5" />
+                  {t("paymentHistory")}
+                </span>
+                <span className="text-xs font-normal text-slate-500">
+                  {t("last6Months") || "Last 6 months"}
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PaymentTrendChart
+                payments={payments as any[]}
+                targetAmount={student.monthlyPayment}
+                monthLabels={MONTH_LABELS_SHORT(t)}
+              />
+              <div className="flex items-center gap-4 mt-3 text-xs text-slate-500 flex-wrap">
+                <LegendDot color="#10b981" label={t("paid")} />
+                <LegendDot color="#f59e0b" label={t("partial")} />
+                <LegendDot color="#e2e8f0" label={t("unpaid") || "Unpaid"} />
+                <span className="ml-auto">
+                  {t("monthlyPayment")}:{" "}
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    {formatCurrency(student.monthlyPayment)}
+                  </span>
+                </span>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
