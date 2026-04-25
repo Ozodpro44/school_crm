@@ -101,10 +101,10 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div className="flex flex-col items-center gap-2 mb-2">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-lg">
+          <div className="w-14 h-14 rounded-2xl bg-brand-square flex items-center justify-center shadow-lg">
             <GraduationCap className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+          <h1 className="text-2xl font-bold text-brand-gradient">
             School CRM
           </h1>
         </div>
@@ -208,7 +208,7 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
-                className="w-full h-11 font-semibold bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                className="w-full h-11 font-semibold bg-brand hover:bg-brand-hover"
                 disabled={loading}
               >
                 {loading ? (

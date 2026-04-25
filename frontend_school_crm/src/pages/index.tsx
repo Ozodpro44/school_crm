@@ -378,70 +378,27 @@ export default function HomePage() {
     }
   };
 
-  if (isLoading || !isMounted) {
+  // Block render only until the component mounts (avoids SSR/CSR mismatch).
+  // The actual data loading state is now passed down via `loading` props on
+  // each widget (StatCard, RecentActivityFeed) so the layout doesn't shift.
+  if (!isMounted) {
     return (
       <div className="space-y-6 md:space-y-8">
-        {/* Header Skeleton */}
         <div className="space-y-2">
           <Skeleton className="h-10 w-64" />
           <Skeleton className="h-4 w-96" />
         </div>
-
-        {/* Stats Cards Skeleton */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           {[...Array(4)].map((_, i) => (
             <Card key={i}>
-              <CardHeader className="pb-3">
-                <Skeleton className="h-4 w-24" />
-              </CardHeader>
-              <CardContent>
+              <CardContent className="p-5">
+                <Skeleton className="h-3 w-24 mb-3" />
                 <Skeleton className="h-8 w-20 mb-2" />
                 <Skeleton className="h-3 w-32" />
               </CardContent>
             </Card>
           ))}
         </div>
-
-        {/* Info Cards Skeleton */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-          {[...Array(2)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-5 w-40" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-20 w-full" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Chart Skeleton */}
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-64" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-64 w-full" />
-          </CardContent>
-        </Card>
-
-        {/* Summary Skeleton */}
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-40" />
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="space-y-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-6 w-32" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </div>
     );
   }
@@ -449,7 +406,7 @@ export default function HomePage() {
   return (
     <div className="space-y-6 md:space-y-8">
       <div className="animate-fade-in">
-        <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+        <h1 className="text-3xl md:text-4xl font-bold text-brand-gradient">
           {t("dashboard")}
         </h1>
         <p className="text-slate-600 dark:text-slate-400 mt-2 text-sm md:text-base">
@@ -464,6 +421,7 @@ export default function HomePage() {
           label={t("students")}
           value={stats.activeStudents}
           hint={`${stats.totalStudents} ${t("totalEnrolled")}`}
+          loading={isLoading}
         />
         <StatCard
           icon={GraduationCap}
@@ -471,6 +429,7 @@ export default function HomePage() {
           label={t("teachers")}
           value={stats.totalTeachers}
           hint={t("activeTeachers") || "Faol o'qituvchilar"}
+          loading={isLoading}
         />
         <StatCard
           icon={Wallet}
@@ -478,6 +437,7 @@ export default function HomePage() {
           label={t("totalIncome")}
           value={formatCurrency(stats.totalIncome)}
           hint={t("ushbuOyUchun") || "Ushbu oy uchun"}
+          loading={isLoading}
         />
         <StatCard
           icon={TrendingUp}
@@ -485,6 +445,7 @@ export default function HomePage() {
           label={t("netProfit")}
           value={formatCurrency(stats.profit)}
           hint={t("incomeMinusExpenses")}
+          loading={isLoading}
         />
       </div>
 

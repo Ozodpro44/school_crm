@@ -92,10 +92,10 @@ export default function RegisterPage() {
       <div className="min-h-screen bg-blue-50 dark:bg-slate-950 flex items-center justify-center p-4">
         <Card className="w-full max-w-md shadow-2xl">
           <CardContent className="pt-10 pb-10 flex flex-col items-center gap-4 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-lg">
+            <div className="w-16 h-16 rounded-2xl bg-brand-square flex items-center justify-center shadow-lg">
               <PartyPopper className="w-9 h-9 text-white" />
             </div>
-            <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            <h2 className="text-2xl font-bold text-brand-gradient">
               Welcome to {schoolName}!
             </h2>
             <p className="text-gray-600 dark:text-gray-400">
@@ -115,11 +115,11 @@ export default function RegisterPage() {
       <Card className="w-full max-w-md shadow-2xl">
         <CardHeader className="space-y-4">
           <div className="flex justify-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-lg">
+            <div className="w-16 h-16 rounded-2xl bg-brand-square flex items-center justify-center shadow-lg">
               <GraduationCap className="w-10 h-10 text-white" />
             </div>
           </div>
-          <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+          <CardTitle className="text-3xl font-bold text-center text-brand-gradient">
             Create Account
           </CardTitle>
           <CardDescription className="text-center text-base">
@@ -236,7 +236,7 @@ export default function RegisterPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full h-11 text-base font-semibold bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+              className="w-full h-11 text-base font-semibold bg-brand hover:bg-brand-hover"
             >
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {loading ? "Creating Account..." : "Create Account"}

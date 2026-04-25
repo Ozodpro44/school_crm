@@ -693,7 +693,7 @@ export default function ClassesPage() {
           >
             <DialogTrigger asChild>
               <Button
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 w-full sm:w-auto"
+                className="bg-brand hover:bg-brand-hover w-full sm:w-auto"
                 onClick={() => resetForm()}
                 disabled={!canCreateClasses}
                 title={!canCreateClasses ? t("noPermission") || "No permission to create classes" : ""}

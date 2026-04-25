@@ -560,7 +560,7 @@ export default function ManagersPage() {
         <PageHeader title={t("managers")} subtitle={t("manageManagersPermissions")} />
 
         <Button
-          className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+          className="bg-brand hover:bg-brand-hover"
           onClick={() => { resetForm(); setIsDialogOpen(true); }}
         >
           <Plus className="w-4 h-4 mr-2" />

@@ -12,7 +12,7 @@ Quick Legend
 
 | # | Task | Status | Notes |
 |---|------|--------|-------|
-| 1.1 | Brand color tokens (`--primary`, semantic `success`/`warning`/`info`) | ⬜ | Still using default shadcn palette; inline gradient `from-indigo-600 to-purple-600` scattered in 6+ places |
+| 1.1 | Brand color tokens (`--primary`, semantic `success`/`warning`/`info`) | 🟡 | 21 gradient strings consolidated into `.bg-brand` / `.hover:bg-brand-hover` / `.bg-brand-square` / `.text-brand-gradient` utilities in `globals.css`. Semantic success/warning/info tokens still pending. |
 | 1.2 | Typography scale (display / heading / body / caption) | ⬜ | Arbitrary sizes (`text-[10px]`, `text-3xl`) in use |
 | 1.3 | Spacing rhythm (standardize table / card / form padding to 4-unit grid) | ⬜ | `p-4 sm:p-6`, `px-4 py-3`, `pt-4 pb-4` all mixed |
 | 1.4 | Border-radius token consistency | ⬜ | `rounded-lg` vs `rounded-xl` mixed |
@@ -65,7 +65,7 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 | 5.1 | **Dashboard** | | |
 | 5.1.a | Top stat cards → `StatCard` | ✅ | 4 cards × ~20 lines each → 5-line calls |
 | 5.1.b | Payment method cards → `PaymentMethodBreakdown` | ✅ | |
-| 5.1.c | Dashboard skeleton loading via `StatCard loading` prop | ⬜ | Big `if (isLoading)` block still exists |
+| 5.1.c | Dashboard skeleton loading via `StatCard loading` prop | ✅ | 67-line `if (isLoading)` block collapsed; only `!isMounted` early-return remains. `loading={isLoading}` flows into all StatCards in place. |
 | 5.1.d | Recent activity feed (last 5 `audit_logs`) | ✅ | `RecentActivityFeed.tsx`, wired into dashboard |
 | 5.1.e | Overdue payments widget | 🟡 | Already in pending-payments card (debtorsCount) |
 | 5.2 | **Payments page** | | |
@@ -95,7 +95,7 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 |---|------|--------|-------|
 | 6.1 | Every page uses `PageSkeleton` on initial load | 🟡 | Most list pages now delegate loading to DataTable; full-page skeletons (dashboard, reports, student-details) still hand-rolled |
 | 6.2 | Per-section `ErrorBoundary` instead of one at the app root | ✅ | `SectionErrorBoundary.tsx` built; wraps dashboard chart + recent activity, student-details charts |
-| 6.3 | Every empty list renders `<EmptyState>` with contextual CTA | 🟡 | DataTable handles its own empty state well; charts/non-list screens still show "No data" plain text |
+| 6.3 | Every empty list renders `<EmptyState>` with contextual CTA | 🟡 | DataTable handles its own empty state well; reports page no-data block now uses `<EmptyState>`. Other ad-hoc "No data" strings in chart screens still pending. |
 
 ---
 
@@ -131,7 +131,8 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 ## Remaining Highest-Impact Items
 
 1. **7.2** Split payments.tsx (still ~2440 lines → extract `QuickPayModal` / `BulkPayModal` / `PaymentForm`)
-2. **5.1.c** Dashboard top-level loading skeleton via `StatCard.loading` (collapse the big `if (isLoading)` block)
-3. **1.1–1.4** Design system tokenization (brand colors, typography scale, spacing rhythm, radius)
-4. **4.5** Standardize remaining toast variants
-5. **6.3** Empty states for non-list screens (charts, reports)
+2. **1.2** Typography scale tokens (display/heading/body/caption)
+3. **1.3** Spacing rhythm — pick one of `p-4 sm:p-6` / `px-4 py-3` / `pt-4 pb-4` and standardize
+4. **1.4** Border-radius consistency (`rounded-lg` vs `rounded-xl`)
+5. **4.5** Standardize remaining 37 toast calls (consider a `useNotify` shorthand)
+6. **6.3** Empty states for remaining ad-hoc "No data" strings on chart/report screens

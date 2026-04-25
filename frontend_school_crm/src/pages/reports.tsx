@@ -33,6 +33,7 @@ import {
 } from "@/lib/api";
 import { Payment, Salary, Branch } from "@/types";
 import { Download, FileText, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Loader2, TrendingUp, TrendingDown, DollarSign, Users, Printer, FileDown } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -1091,7 +1092,7 @@ export default function ReportsPage() {
                 onClick={handleExportPDF}
                 disabled={reportData.length === 0}
                 title={t("exportPDF") || "Export PDF"}
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                className="bg-brand hover:bg-brand-hover"
               >
                 <Printer className="w-4 h-4 mr-2" />
                 {t("printPDF") || "Print / PDF"}
@@ -1588,12 +1589,11 @@ export default function ReportsPage() {
               )}
 
               {reportData.length === 0 && (
-                <div className="text-center py-12">
-                  <AlertCircle className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-4" />
-                  <p className="text-slate-500 dark:text-slate-400">
-                    {t("noDataFound")}
-                  </p>
-                </div>
+                <EmptyState
+                  icon={FileText}
+                  title={t("noDataFound") || "No data found"}
+                  description={t("generateReportFirst") || "Adjust filters or pick a different period to see results."}
+                />
               )}
             </div>
 

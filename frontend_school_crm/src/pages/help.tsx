@@ -26,7 +26,7 @@ export default function HelpPage() {
     
       <div className="space-y-8">
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold text-brand-gradient">
             {t("help") || "Help"} & {t("documentation") || "Documentation"}
           </h1>
           <p className="text-slate-600 dark:text-slate-400 mt-2">

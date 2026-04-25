@@ -1009,7 +1009,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           </Dialog>
 
           <Button
-            className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+            className="w-full sm:w-auto bg-brand hover:bg-brand-hover"
             onClick={handleOpenDialog}
             disabled={!canCreateStudents}
             title={!canCreateStudents ? t("noPermission") : ""}
