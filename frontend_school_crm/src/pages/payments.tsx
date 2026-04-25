@@ -48,6 +48,7 @@ import {
 import { DataTable, Column } from "@/components/DataTable";
 import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
 import { InitialsAvatar } from "@/components/InitialsAvatar";
+import { StatCard } from "@/components/StatCard";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
   createPayment as apiCreatePayment,
@@ -1935,96 +1936,51 @@ export default function PaymentsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
-        <Card className="border-l-4 border-l-green-500">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <CheckCircle className="w-4 h-4" />
-              {t("totalIncome")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-base sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400 truncate">
-              {formatCurrency(totalIncome)}
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("fromPaidFees")}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-orange-500">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4" />
-              {t("pendingPayments")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-base sm:text-xl lg:text-2xl font-bold text-orange-600 dark:text-orange-400 truncate">
-              {formatCurrency(totalPending)}
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("unpaidFees")} {t("thisMonth")}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <CreditCard className="w-4 h-4" />
-              {t("click")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
-              {formatCurrency(totalByMethod.click)}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <Banknote className="w-4 h-4" />
-              {t("cash")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
-              {formatCurrency(totalByMethod.cash)}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <Printer className="w-4 h-4" />
-              {t("terminal")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
-              {formatCurrency(totalByMethod.terminal)}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
-              <Building2 className="w-4 h-4" />
-              {t("bank")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-base sm:text-xl lg:text-2xl font-bold text-slate-900 dark:text-slate-100 truncate">
-              {formatCurrency(totalByMethod.bank)}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <StatCard
+          icon={CheckCircle}
+          tone="green"
+          label={t("totalIncome")}
+          value={formatCurrency(totalIncome)}
+          hint={t("fromPaidFees")}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          icon={AlertCircle}
+          tone="orange"
+          label={t("pendingPayments")}
+          value={formatCurrency(totalPending)}
+          hint={`${t("unpaidFees")} ${t("thisMonth")}`}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          icon={CreditCard}
+          tone="blue"
+          label={t("click")}
+          value={formatCurrency(totalByMethod.click)}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          icon={Banknote}
+          tone="indigo"
+          label={t("cash")}
+          value={formatCurrency(totalByMethod.cash)}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          icon={Printer}
+          tone="slate"
+          label={t("terminal")}
+          value={formatCurrency(totalByMethod.terminal)}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          icon={Building2}
+          tone="purple"
+          label={t("bank")}
+          value={formatCurrency(totalByMethod.bank)}
+          loading={isLoading && !indicators}
+        />
       </div>
 
       <Card>
@@ -2082,7 +2038,7 @@ export default function PaymentsPage() {
             </div>
 
             <div className="space-y-3">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <Select
                   value={filterStatus}
                   onValueChange={(value) => {

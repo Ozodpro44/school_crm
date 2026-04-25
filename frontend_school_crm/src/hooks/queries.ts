@@ -58,6 +58,23 @@ import {
 import type { Branch } from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Per-domain stale times.
+// Tuned by how often each domain mutates in practice.
+// ─────────────────────────────────────────────────────────────────────────────
+const STALE = {
+  /** ~Never changes on its own — only via admin action. */
+  REFERENCE: 5 * 60_000,    // teachers, classes, branches
+  /** Edited frequently, but a 1-min stale window is acceptable. */
+  TRANSACTIONAL: 60_000,    // students, payments, expenses, salaries
+  /** Read-heavy dashboards / reports. */
+  REPORT: 2 * 60_000,
+  /** Notifications / live data — short. */
+  LIVE: 30_000,
+  /** Settings rarely change. */
+  SETTINGS: 10 * 60_000,
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Teachers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -69,6 +86,7 @@ export function useTeachersQuery(
     queryKey: ["teachers", branchId],
     queryFn: () => listTeachers(branchId!),
     enabled: !!branchId,
+    staleTime: STALE.REFERENCE,
     ...options,
   });
 }
@@ -116,6 +134,7 @@ export function useClassesQuery(
     queryKey: ["classes", branchId],
     queryFn: () => listClasses(branchId!),
     enabled: !!branchId,
+    staleTime: STALE.REFERENCE,
     ...options,
   });
 }
@@ -160,6 +179,7 @@ export function useBranchesQuery(options?: Partial<UseQueryOptions<Branch[]>>) {
   return useQuery<Branch[]>({
     queryKey: ["branches"],
     queryFn: listBranches,
+    staleTime: STALE.REFERENCE,
     ...options,
   });
 }
@@ -172,6 +192,7 @@ export function useBranchQuery(
     queryKey: ["branch", id],
     queryFn: () => getBranch(id!),
     enabled: !!id,
+    staleTime: STALE.REFERENCE,
     ...options,
   });
 }
@@ -221,6 +242,7 @@ export function useSalariesQuery(
     queryKey: ["salaries", branchId, params],
     queryFn: () => listSalaries(branchId!, params?.month, params?.year),
     enabled: !!branchId,
+    staleTime: STALE.TRANSACTIONAL,
     ...options,
   });
 }
@@ -268,6 +290,7 @@ export function useExpensesQuery(
     queryKey: ["expenses", branchId, params],
     queryFn: () => listExpenses(branchId!, params?.month, params?.year),
     enabled: !!branchId,
+    staleTime: STALE.TRANSACTIONAL,
     ...options,
   });
 }
@@ -324,6 +347,7 @@ export function useStudentsConsolidatedQuery(
     queryKey: ["students", branchId, page, limit, filters],
     queryFn: () => getStudentsConsolidatedData(branchId!, page, limit, filters),
     enabled: !!branchId,
+    staleTime: STALE.TRANSACTIONAL,
     placeholderData: (prev: unknown) => prev, // keep previous data visible during refetch
     ...options,
   });
@@ -351,6 +375,7 @@ export function usePaymentsConsolidatedQuery(
     queryKey: ["payments", branchId, page, limit, filters],
     queryFn: () => getPaymentsConsolidatedData(branchId!, page, limit, filters),
     enabled: !!branchId,
+    staleTime: STALE.TRANSACTIONAL,
     placeholderData: (prev: unknown) => prev,
     ...options,
   });
@@ -368,7 +393,7 @@ export function useSettingsQuery(
     queryKey: ["settings", branchId],
     queryFn: () => getSettings(branchId ?? undefined),
     enabled: !!branchId,
-    staleTime: 10 * 60_000, // settings rarely change — 10 min stale time
+    staleTime: STALE.SETTINGS,
     ...options,
   });
 }
@@ -385,6 +410,7 @@ export function useNotificationsQuery(
     queryKey: ["notifications", branchId],
     queryFn: () => getNotifications(),
     enabled: !!branchId,
+    staleTime: STALE.LIVE,
     refetchInterval: 60_000, // poll every 60 s for new notifications
     ...options,
   });

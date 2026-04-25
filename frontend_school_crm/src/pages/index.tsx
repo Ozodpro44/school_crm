@@ -23,6 +23,9 @@ import {
 import { FinancialChart } from "@/components/FinancialChart";
 import { StatCard } from "@/components/StatCard";
 import { PaymentMethodBreakdown } from "@/components/PaymentMethodBreakdown";
+import { RecentActivityFeed } from "@/components/RecentActivityFeed";
+import { useQuery } from "@tanstack/react-query";
+import { getAuditLogs } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -64,6 +67,15 @@ export default function HomePage() {
   const [chartData, setChartData] = useState<
     Array<{ label: string; income: number; expenses: number }>
   >([]);
+
+  // Recent activity (audit log) — last 5 entries
+  const { data: auditLogData, isLoading: isAuditLoading } = useQuery({
+    queryKey: ["dashboard-recent-activity"],
+    queryFn: () => getAuditLogs({ page: 1, limit: 5 }),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const recentActivity = auditLogData?.data ?? [];
 
   useEffect(() => {
     setIsMounted(true);
@@ -508,61 +520,65 @@ export default function HomePage() {
         />
       </div>
 
-      <div
-        className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 animate-fade-in"
-        style={{ animationDelay: "0.60s" }}
-      >
-        <Card className="hover:shadow-lg transition-shadow">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        {/* Pending payments */}
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-              <AlertCircle className="w-5 h-5 text-orange-500" />
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
+              <AlertCircle className="w-4 h-4 text-orange-500" />
               {t("pendingPayments")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 md:p-4 bg-orange-50 dark:bg-orange-950/30 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm md:text-base text-slate-900 dark:text-slate-100">
-                    {t("studentDebtors")}
-                  </p>
-                  <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400">
-                    {t("pendingStudentPayments")}
-                  </p>
-                </div>
-                <div className="text-2xl md:text-3xl font-bold text-orange-600 dark:text-orange-400">
-                  {stats.debtorsCount}
-                </div>
+            <div className="flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-950/30 rounded-lg">
+              <div>
+                <p className="font-medium text-sm text-slate-900 dark:text-slate-100">
+                  {t("studentDebtors")}
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  {t("pendingStudentPayments")}
+                </p>
+              </div>
+              <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">
+                {stats.debtorsCount}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-lg transition-shadow">
+        {/* Pending salaries */}
+        <Card className="hover:shadow-md transition-shadow">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-              <Wallet className="w-5 h-5 text-blue-500" />
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
+              <Wallet className="w-4 h-4 text-blue-500" />
               {t("pendingExpenses")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 md:p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-                <div>
-                  <p className="font-medium text-sm md:text-base text-slate-900 dark:text-slate-100">
-                    {t("pendingSalaries")}
-                  </p>
-                  <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400">
-                    {t("teacherSalaryPaymentsDue")}
-                  </p>
-                </div>
-                <div className="text-2xl md:text-3xl font-bold text-blue-600 dark:text-blue-400">
-                  {stats.unpaidSalariesCount}
-                </div>
+            <div className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
+              <div>
+                <p className="font-medium text-sm text-slate-900 dark:text-slate-100">
+                  {t("pendingSalaries")}
+                </p>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  {t("teacherSalaryPaymentsDue")}
+                </p>
+              </div>
+              <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
+                {stats.unpaidSalariesCount}
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Recent activity feed (NEW) */}
+        <RecentActivityFeed
+          entries={recentActivity}
+          loading={isAuditLoading}
+          title={t("recentActivity") || "Recent activity"}
+          emptyLabel={t("noRecentActivity") || "No recent activity yet"}
+          limit={5}
+        />
       </div>
 
       {/* ── KPI Row ─────────────────────────────────────────────────────────── */}

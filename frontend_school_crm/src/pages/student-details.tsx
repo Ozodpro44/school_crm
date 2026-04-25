@@ -66,6 +66,7 @@ import {
 import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { PaymentTrendChart } from "@/components/PaymentTrendChart";
 import { AttendanceDonut } from "@/components/AttendanceDonut";
+import { PageBreadcrumbs } from "@/components/PageBreadcrumbs";
 
 type Tab = "overview" | "payments" | "attendance" | "notes" | "contact";
 
@@ -459,6 +460,21 @@ export default function StudentDetailsPage() {
 
   return (
     <div className="space-y-6">
+      <PageBreadcrumbs
+        items={
+          from === "class"
+            ? [
+                { label: t("classes"), href: "/classes" },
+                { label: className || t("class"), href: backRoute },
+                { label: toTitleCase(student.fullName) },
+              ]
+            : [
+                { label: t("students"), href: "/students" },
+                { label: toTitleCase(student.fullName) },
+              ]
+        }
+      />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">

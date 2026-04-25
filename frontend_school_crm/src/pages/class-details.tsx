@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
 import { InitialsAvatar } from "@/components/InitialsAvatar";
+import { PageBreadcrumbs } from "@/components/PageBreadcrumbs";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -616,6 +617,13 @@ export default function ClassDetailsPage() {
 
   return (
     <div className="space-y-6">
+      <PageBreadcrumbs
+        items={[
+          { label: t("classes"), href: "/classes" },
+          { label: classData.name },
+        ]}
+      />
+
       <div className="flex items-center gap-4">
         <Button
           variant="ghost"
