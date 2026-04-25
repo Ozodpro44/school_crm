@@ -67,6 +67,7 @@ import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { PaymentTrendChart } from "@/components/PaymentTrendChart";
 import { AttendanceDonut } from "@/components/AttendanceDonut";
 import { PageBreadcrumbs } from "@/components/PageBreadcrumbs";
+import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 
 type Tab = "overview" | "payments" | "attendance" | "notes" | "contact";
 
@@ -640,20 +641,22 @@ export default function StudentDetailsPage() {
               <CardTitle className="flex items-center gap-2"><ClipboardList className="w-5 h-5" />{t("attendanceSummary")}</CardTitle>
             </CardHeader>
             <CardContent>
-              <AttendanceDonut
-                stats={{
-                  present: attendanceStats.present,
-                  absent: attendanceStats.absent,
-                  late: attendanceStats.late,
-                }}
-                labels={{
-                  present: t("present"),
-                  absent: t("absent"),
-                  late: t("late"),
-                }}
-                size={140}
-                className="justify-center"
-              />
+              <SectionErrorBoundary label={t("attendanceSummary")}>
+                <AttendanceDonut
+                  stats={{
+                    present: attendanceStats.present,
+                    absent: attendanceStats.absent,
+                    late: attendanceStats.late,
+                  }}
+                  labels={{
+                    present: t("present"),
+                    absent: t("absent"),
+                    late: t("late"),
+                  }}
+                  size={140}
+                  className="justify-center"
+                />
+              </SectionErrorBoundary>
             </CardContent>
           </Card>
 
@@ -670,11 +673,13 @@ export default function StudentDetailsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <PaymentTrendChart
-                payments={payments as any[]}
-                targetAmount={student.monthlyPayment}
-                monthLabels={MONTH_LABELS_SHORT(t)}
-              />
+              <SectionErrorBoundary label={t("paymentHistory")}>
+                <PaymentTrendChart
+                  payments={payments as any[]}
+                  targetAmount={student.monthlyPayment}
+                  monthLabels={MONTH_LABELS_SHORT(t)}
+                />
+              </SectionErrorBoundary>
               <div className="flex items-center gap-4 mt-3 text-xs text-slate-500 flex-wrap">
                 <LegendDot color="#10b981" label={t("paid")} />
                 <LegendDot color="#f59e0b" label={t("partial")} />

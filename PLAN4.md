@@ -25,7 +25,7 @@ Quick Legend
 |---|------|--------|-------|
 | 2.1 | Sidebar active state + mobile swipe-to-close + z-index | ⬜ | |
 | 2.2 | `PageHeader` enforced on every page (with Actions slot) | 🟡 | Used on ~7 pages; a few still roll their own `<h1>` |
-| 2.3 | Breadcrumbs on all detail pages (student-details, class-details, teacher-portal) | 🟡 | `PageBreadcrumbs.tsx` built, added to student-details + class-details. teacher-portal pending. |
+| 2.3 | Breadcrumbs on all detail pages (student-details, class-details, teacher-portal) | ✅ | `PageBreadcrumbs.tsx` added to student-details + class-details. teacher-portal is the teacher's own home — N/A. |
 
 ---
 
@@ -76,7 +76,7 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 | 5.3 | **Students page** | | |
 | 5.3.a | Unified `PaymentStatusBadge` | ✅ | |
 | 5.3.b | `InitialsAvatar` next to name | ✅ | |
-| 5.3.c | "Bulk change class" dialog needs search input | ⬜ | |
+| 5.3.c | "Bulk change class" dialog needs search input | ✅ | Custom searchable list with autofocus and "no classes found" empty state |
 | 5.4 | **Student details** | | |
 | 5.4.a | `AttendanceDonut` in Overview tab | ✅ | With empty-state + legend + center % |
 | 5.4.b | `PaymentTrendChart` (6-month history, target-colored bars) | ✅ | Green ≥ target, amber partial, slate none |
@@ -94,7 +94,7 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | 6.1 | Every page uses `PageSkeleton` on initial load | 🟡 | Most list pages now delegate loading to DataTable; full-page skeletons (dashboard, reports, student-details) still hand-rolled |
-| 6.2 | Per-section `ErrorBoundary` instead of one at the app root | ⬜ | |
+| 6.2 | Per-section `ErrorBoundary` instead of one at the app root | ✅ | `SectionErrorBoundary.tsx` built; wraps dashboard chart + recent activity, student-details charts |
 | 6.3 | Every empty list renders `<EmptyState>` with contextual CTA | 🟡 | DataTable handles its own empty state well; charts/non-list screens still show "No data" plain text |
 
 ---
@@ -124,16 +124,14 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 | `AttendanceDonut.tsx` | Donut with center % + legend | student-details Overview |
 | `RecentActivityFeed.tsx` | Recent audit log entries with avatar + action icon + relative time | dashboard |
 | `PageBreadcrumbs.tsx` | Crumb trail for nested pages | student-details, class-details |
+| `SectionErrorBoundary.tsx` | Per-section error boundary (compact, doesn't take over the page) | dashboard chart + recent activity, student-details charts |
 
 ---
 
 ## Remaining Highest-Impact Items
 
 1. **7.2** Split payments.tsx (still ~2440 lines → extract `QuickPayModal` / `BulkPayModal` / `PaymentForm`)
-2. **5.3.c** "Bulk change class" dialog needs a search input
-3. **2.3** Breadcrumbs on teacher-portal (other detail pages now done)
-4. **6.2** Per-section ErrorBoundary
-5. **5.1.c** Dashboard top-level loading skeleton via `StatCard.loading` (collapse the big `if (isLoading)` block)
-6. **1.1–1.4** Design system tokenization (brand colors, typography scale, spacing rhythm, radius)
-7. **4.5** Standardize remaining toast variants
-8. **6.3** Empty states for non-list screens
+2. **5.1.c** Dashboard top-level loading skeleton via `StatCard.loading` (collapse the big `if (isLoading)` block)
+3. **1.1–1.4** Design system tokenization (brand colors, typography scale, spacing rhythm, radius)
+4. **4.5** Standardize remaining toast variants
+5. **6.3** Empty states for non-list screens (charts, reports)

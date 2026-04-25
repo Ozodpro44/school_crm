@@ -24,6 +24,7 @@ import { FinancialChart } from "@/components/FinancialChart";
 import { StatCard } from "@/components/StatCard";
 import { PaymentMethodBreakdown } from "@/components/PaymentMethodBreakdown";
 import { RecentActivityFeed } from "@/components/RecentActivityFeed";
+import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 import { useQuery } from "@tanstack/react-query";
 import { getAuditLogs } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
@@ -571,14 +572,16 @@ export default function HomePage() {
           </CardContent>
         </Card>
 
-        {/* Recent activity feed (NEW) */}
-        <RecentActivityFeed
-          entries={recentActivity}
-          loading={isAuditLoading}
-          title={t("recentActivity") || "Recent activity"}
-          emptyLabel={t("noRecentActivity") || "No recent activity yet"}
-          limit={5}
-        />
+        {/* Recent activity feed */}
+        <SectionErrorBoundary label={t("recentActivity") || "Recent activity"}>
+          <RecentActivityFeed
+            entries={recentActivity}
+            loading={isAuditLoading}
+            title={t("recentActivity") || "Recent activity"}
+            emptyLabel={t("noRecentActivity") || "No recent activity yet"}
+            limit={5}
+          />
+        </SectionErrorBoundary>
       </div>
 
       {/* ── KPI Row ─────────────────────────────────────────────────────────── */}
@@ -766,7 +769,9 @@ export default function HomePage() {
           </div>
         </CardHeader>
         <CardContent className="px-2 md:px-6">
-          <FinancialChart data={chartData} />
+          <SectionErrorBoundary label={t("financialOverview") || "Chart"}>
+            <FinancialChart data={chartData} />
+          </SectionErrorBoundary>
         </CardContent>
       </Card>
 

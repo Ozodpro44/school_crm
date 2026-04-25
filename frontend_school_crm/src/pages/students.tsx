@@ -80,6 +80,7 @@ export default function StudentsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isBulkChangeClassOpen, setIsBulkChangeClassOpen] = useState(false);
   const [bulkChangeClassId, setBulkChangeClassId] = useState<string>("");
+  const [bulkChangeClassSearch, setBulkChangeClassSearch] = useState<string>("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteStudentId, setDeleteStudentId] = useState<string | null>(null);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
@@ -806,54 +807,85 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
             {t("changeClass") || "Sinfni o'zgartirish"}
           </Button>
         </DialogTrigger>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Change Class for Selected Students</DialogTitle>
+        <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <DialogTitle className="text-base">{t("changeClass") || "Change class"}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="bulkChangeClassId">{t("selectClass")} *</Label>
-              <Select
-                value={bulkChangeClassId}
-                onValueChange={setBulkChangeClassId}
-                required
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t("selectClass")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+          <div className="p-4 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder={t("searchClasses") || "Search classes…"}
+                value={bulkChangeClassSearch}
+                onChange={(e) => setBulkChangeClassSearch(e.target.value)}
+                className="pl-9"
+                autoFocus
+              />
             </div>
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-              <p className="text-sm text-blue-900 dark:text-blue-100">
-                {selectedIds.size} students will be moved to the selected class
-              </p>
+
+            <div className="max-h-64 overflow-y-auto space-y-1 -mr-2 pr-2">
+              {(() => {
+                const term = bulkChangeClassSearch.toLowerCase();
+                const filtered = classes.filter((c: any) =>
+                  c.name.toLowerCase().includes(term)
+                );
+                if (filtered.length === 0) {
+                  return (
+                    <p className="text-sm text-slate-400 text-center py-6">
+                      {t("noClassesFound") || "No classes found"}
+                    </p>
+                  );
+                }
+                return filtered.map((cls: any) => {
+                  const selected = bulkChangeClassId === cls.id;
+                  return (
+                    <button
+                      key={cls.id}
+                      type="button"
+                      onClick={() => setBulkChangeClassId(cls.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-md text-sm text-left transition-colors ${
+                        selected
+                          ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-medium"
+                          : "hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300"
+                      }`}
+                    >
+                      <span>{cls.name}</span>
+                      {selected && (
+                        <span className="text-xs text-indigo-600 dark:text-indigo-400">✓</span>
+                      )}
+                    </button>
+                  );
+                });
+              })()}
             </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setIsBulkChangeClassOpen(false);
-                  setBulkChangeClassId("");
-                }}
-              >
-                {t("cancel")}
-              </Button>
-              <Button
-                onClick={handleBulkChangeClass}
-                disabled={!bulkChangeClassId}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                {t("change") || "Change Class"}
-              </Button>
-            </div>
+          </div>
+
+          <div className="px-6 py-3 bg-blue-50 dark:bg-blue-900/20 border-y border-blue-100 dark:border-blue-900/50">
+            <p className="text-sm text-blue-900 dark:text-blue-100">
+              <span className="font-semibold">{selectedIds.size}</span>{" "}
+              {t("studentsWillBeMoved") || "students will be moved"}
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 px-6 py-4 bg-slate-50/50 dark:bg-slate-900/50">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsBulkChangeClassOpen(false);
+                setBulkChangeClassId("");
+                setBulkChangeClassSearch("");
+              }}
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={handleBulkChangeClass}
+              disabled={!bulkChangeClassId}
+            >
+              {t("change") || "Change class"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
