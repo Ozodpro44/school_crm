@@ -52,7 +52,7 @@ Shared components: `src/components/FormDialog.tsx`, `src/components/Field.tsx`
 | 4.2 | `<Field>` component (Label + Input/Textarea + inline error) | ✅ | |
 | 4.3 | Migrate all create/edit dialogs | ✅ | teachers, students, payments, managers, expenses, salaries |
 | 4.4 | Single validation pattern (keep existing `formErrors` state — no `react-hook-form` migration) | ✅ | |
-| 4.5 | Standardize toast variants (`success` / `destructive` + always include description) | 🟡 | Most pages consistent; a couple of places still pass bare `title` |
+| 4.5 | Standardize toast variants (`success` / `destructive` + always include description) | 🟡 | New `useNotify()` hook in `hooks/use-notify.ts` exposes `notify.success/.error/.warning/.info` for new code. 37 existing inline `toast({ title… })` calls remain — migrate opportunistically. |
 
 ---
 
@@ -104,7 +104,7 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | 7.1 | React Query `staleTime` per domain (classes/teachers 5 min, notifications 30 s, payments/students 60 s) | ✅ | `STALE` constants in `hooks/queries.ts` applied to all hooks |
-| 7.2 | Code-split large pages — extract `QuickPayModal` / `BulkPayModal` / `PaymentForm` from `payments.tsx` | ⬜ | payments.tsx is still 2443 lines |
+| 7.2 | Code-split large pages — extract `QuickPayModal` / `BulkPayModal` / `PaymentForm` from `payments.tsx` | 🟡 | `PosReceiptDialog` extracted (−104 lines, payments.tsx now 2305). BulkPaymentDialog and main PaymentForm pending. |
 | 7.3 | `next/image` for any user-uploaded avatars/logos | ⬜ | Not needed until avatars upgrade beyond initials |
 
 ---
@@ -125,14 +125,16 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 | `RecentActivityFeed.tsx` | Recent audit log entries with avatar + action icon + relative time | dashboard |
 | `PageBreadcrumbs.tsx` | Crumb trail for nested pages | student-details, class-details |
 | `SectionErrorBoundary.tsx` | Per-section error boundary (compact, doesn't take over the page) | dashboard chart + recent activity, student-details charts |
+| `PosReceiptDialog.tsx` | Print-friendly receipt preview, extracted from payments.tsx | payments |
+| `hooks/use-notify.ts` | Typed shorthand `notify.success/.error/.warning/.info(title, desc?)` | (available for new code) |
 
 ---
 
 ## Remaining Highest-Impact Items
 
-1. **7.2** Split payments.tsx (still ~2440 lines → extract `QuickPayModal` / `BulkPayModal` / `PaymentForm`)
+1. **7.2 (rest)** payments.tsx is still 2305 lines. Next extractions: `BulkPaymentDialog` (~275 lines), main `PaymentForm` inside the create/edit FormDialog (~340 lines).
 2. **1.2** Typography scale tokens (display/heading/body/caption)
 3. **1.3** Spacing rhythm — pick one of `p-4 sm:p-6` / `px-4 py-3` / `pt-4 pb-4` and standardize
 4. **1.4** Border-radius consistency (`rounded-lg` vs `rounded-xl`)
-5. **4.5** Standardize remaining 37 toast calls (consider a `useNotify` shorthand)
-6. **6.3** Empty states for remaining ad-hoc "No data" strings on chart/report screens
+5. **4.5 (migration)** Migrate 37 `toast({title…})` calls to `useNotify().*`
+6. **6.3** Empty states for remaining ad-hoc "No data" strings on chart screens

@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import * as api from "@/lib/api";
 import { Payment, Salary } from "@/lib/api";
-import { getCurrentUser } from "@/lib/auth";
 import {
   Users,
   GraduationCap,
@@ -284,7 +283,7 @@ export default function HomePage() {
           const date = new Date(currentYear, currentMonth - i, 1);
           const monthIndex = date.getMonth();
           const monthYear = date.getFullYear();
-          const monthStr = (months[monthIndex] ?? "").substring(0, 3);
+
           const monthNum = monthIndex + 1; // 1-12
 
           const monthPayments = paymentsData.filter(

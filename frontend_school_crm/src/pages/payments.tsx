@@ -49,6 +49,7 @@ import { DataTable, Column } from "@/components/DataTable";
 import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
 import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { StatCard } from "@/components/StatCard";
+import { PosReceiptDialog } from "@/components/PosReceiptDialog";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
   createPayment as apiCreatePayment,
@@ -2246,120 +2247,15 @@ export default function PaymentsPage() {
       </Card>
 
       {/* POS Terminal Receipt Preview Dialog */}
-      <Dialog
-        open={posPreviewData !== null}
-        onOpenChange={(open) => !open && setPosPreviewData(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t("printReceipt") || "Print Receipt"}</DialogTitle>
-          </DialogHeader>
-          {posPreviewData && (
-            <div className="space-y-4">
-              {/* Receipt Preview */}
-              <div className="bg-white dark:bg-slate-950 border-2 border-dashed border-slate-300 dark:border-slate-700 p-4 font-mono text-sm leading-relaxed print:border-0 print:bg-white print:text-black">
-                {/* Header */}
-                <div className="text-center border-b border-dashed border-slate-300 dark:border-slate-700 print:border-slate-300 pb-2 mb-2">
-                  <p className="font-bold text-lg print:text-base">
-                    {t("receipt") || "RECEIPT"}
-                  </p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 print:text-black print:text-opacity-70">
-                    {branchData?.name || "Branch"}
-                  </p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 print:text-black print:text-opacity-70">
-                    {new Date().toLocaleDateString("en-GB").replace(/\//g, ".")}
-                  </p>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 print:text-black print:text-opacity-70">
-                    {new Date().toLocaleTimeString()}
-                  </p>
-                </div>
-
-                {/* Student Info */}
-                <div className="border-b border-dashed border-slate-300 dark:border-slate-700 print:border-slate-300 pb-2 mb-2">
-                  <p className="print:text-black">
-                    <span className="font-semibold">
-                      {t("student") || "Student"}:
-                    </span>{" "}
-                    {posPreviewData.student.fullName}
-                  </p>
-                  <p className="print:text-black">
-                    <span className="font-semibold">
-                      {t("class") || "Class"}:
-                    </span>{" "}
-                    {posPreviewData.className}
-                  </p>
-                </div>
-
-                {/* Payment Details */}
-                <div className="border-b border-dashed border-slate-300 dark:border-slate-700 print:border-slate-300 pb-2 mb-2">
-                  <p className="print:text-black">
-                    <span className="font-semibold">
-                      {t("period") || "Period"}:
-                    </span>{" "}
-                    {getMonthName(posPreviewData.payment.month)}{" "}
-                    {posPreviewData.payment.year}
-                  </p>
-                  <p className="print:text-black">
-                    <span className="font-semibold">
-                      {t("status") || "Status"}:
-                    </span>{" "}
-                    {getPaymentStatusLabel(posPreviewData.payment.status)}
-                  </p>
-                </div>
-
-                {/* Amount */}
-                <div className="border-b border-dashed border-slate-300 dark:border-slate-700 print:border-slate-300 pb-2 mb-2">
-                  <div className="flex justify-between print:text-black">
-                    <span className="font-semibold">
-                      {t("amount") || "Amount"}:
-                    </span>
-                    <span className="font-bold">
-                      {formatCurrency(posPreviewData.payment.amount)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Payment Method */}
-                <div className="border-b border-dashed border-slate-300 dark:border-slate-700 print:border-slate-300 pb-2 mb-2">
-                  <p className="print:text-black">
-                    <span className="font-semibold">
-                      {t("method") || "Method"}:
-                    </span>{" "}
-                    {getPaymentMethodLabel(
-                      posPreviewData.payment.paymentMethod,
-                    )}
-                  </p>
-                </div>
-
-                {/* Footer */}
-                <div className="text-center text-xs text-slate-600 dark:text-slate-400 print:text-black print:text-opacity-70 mt-4">
-                  <p>{t("thankYouForPayment")}</p>
-                  <p>{t("pleaseKeepReceipt")}</p>
-                </div>
-              </div>
-
-              {/* Action Buttons - Hidden in print */}
-              <div className="flex gap-2 print:hidden">
-                <Button
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setPosPreviewData(null)}
-                >
-                  {t("cancel")}
-                </Button>
-                <Button
-                  className="flex-1 bg-blue-600 hover:bg-blue-700"
-                  onClick={() => {
-                    window.print();
-                  }}
-                >
-                  <Printer className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <PosReceiptDialog
+        data={posPreviewData}
+        onClose={() => setPosPreviewData(null)}
+        branchName={branchData?.name}
+        t={t}
+        formatMonth={(m) => getMonthName(String(m))}
+        formatMethod={getPaymentMethodLabel}
+        formatStatus={getPaymentStatusLabel}
+      />
 
       {/* Delete Confirmation Dialog */}
       <Dialog

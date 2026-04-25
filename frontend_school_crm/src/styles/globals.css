@@ -163,6 +163,46 @@
   .bg-brand-square {
     background-image: linear-gradient(to bottom right, rgb(79 70 229), rgb(147 51 234));
   }
+
+  /* ─── Typography scale ─────────────────────────────────────────────────
+     Semantic type ramps that wrap the most common Tailwind classes used
+     across the app. Use these instead of inline `text-3xl font-bold …`
+     so design changes stay in one place.
+     ───────────────────────────────────────────────────────────────────── */
+  .text-display {
+    font-size: 1.875rem;          /* text-3xl */
+    line-height: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+  @media (min-width: 768px) {
+    .text-display {
+      font-size: 2.25rem;          /* md:text-4xl */
+      line-height: 2.5rem;
+    }
+  }
+  .text-heading {
+    font-size: 1.125rem;          /* text-lg */
+    line-height: 1.5rem;
+    font-weight: 600;
+  }
+  .text-body {
+    font-size: 0.875rem;          /* text-sm */
+    line-height: 1.25rem;
+  }
+  .text-caption {
+    font-size: 0.75rem;           /* text-xs */
+    line-height: 1rem;
+    font-weight: 500;
+  }
+  /* Uppercase micro-label, e.g. card-section eyebrows. */
+  .text-overline {
+    font-size: 0.625rem;          /* 10px */
+    line-height: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
   .text-brand-gradient {
     background-image: linear-gradient(to right, rgb(79 70 229), rgb(147 51 234));
     -webkit-background-clip: text;
