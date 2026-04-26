@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -68,6 +68,15 @@ export default function HomePage() {
     Array<{ label: string; income: number; expenses: number }>
   >([]);
 
+  // Cache raw transactions so toggling daily/monthly doesn't lose the data
+  // (the previous implementation called generateChartData() with no args from
+  // the chartView effect, which produced empty bars in daily mode).
+  const rawDataRef = useRef<{ payments: Payment[]; salaries: Salary[]; expenses: any[] }>({
+    payments: [],
+    salaries: [],
+    expenses: [],
+  });
+
   // Recent activity (audit log) — last 5 entries
   const { data: auditLogData, isLoading: isAuditLoading } = useQuery({
     queryKey: ["dashboard-recent-activity"],
@@ -87,10 +96,8 @@ export default function HomePage() {
 
     const handleRouteChange = (url: string) => {
       if (url === "/" || url.startsWith("/?")) {
-        setIsLoading(true);
-        Promise.all([calculateStats(), generateChartData()]).then(() => {
-          setIsLoading(false);
-        });
+        // Silent refresh — keep previous values visible to avoid blinking.
+        Promise.all([calculateStats(), generateChartData()]);
       }
     };
 
@@ -119,71 +126,41 @@ export default function HomePage() {
       return;
     }
 
-    // Clear old stats to show loading state immediately
-    setStats({
-      totalStudents: 0,
-      activeStudents: 0,
-      totalTeachers: 0,
-      totalIncome: 0,
-      totalExpenses: 0,
-      profit: 0,
-      debtorsCount: 0,
-      unpaidSalariesCount: 0,
-      cashIncome: 0,
-      cashExpenses: 0,
-      cashProfit: 0,
-      cardIncome: 0,
-      cardExpenses: 0,
-      cardProfit: 0,
-      bankIncome: 0,
-      bankExpenses: 0,
-      bankProfit: 0,
-      collectionRate: 0,
-      churnedStudents: 0,
-      prevChurnedStudents: 0,
-      salaryPayoutPct: 0,
-      unpaidByClass: [],
-      topDebtors: [],
-    });
-    setChartData([]);
-
+    // NOTE: We intentionally do NOT reset stats/chartData here on refetch.
+    // The previous values stay visible while the next request is in flight,
+    // which prevents the "UZS 0" / blank-card flash on focus/branch-change/storage events.
     await Promise.all([calculateStats(), generateChartData()]);
   };
 
   useEffect(() => {
     if (!isMounted) return;
 
+    // Initial load — show full skeleton.
     setIsLoading(true);
     performLoadData().finally(() => setIsLoading(false));
 
-    // Listen for storage changes (when data is updated in other components)
-    const handleStorageChange = () => {
-      setIsLoading(true);
-      performLoadData().finally(() => setIsLoading(false));
+    // Background refetches: refresh data silently. Don't toggle isLoading,
+    // so StatCards keep showing the previous numbers instead of blinking
+    // back to skeleton placeholders.
+    const refreshSilently = () => {
+      performLoadData();
     };
 
-    window.addEventListener("storage", handleStorageChange);
-
-    // Listen for branch change events
+    // Branch change is the one event that DOES warrant a fresh skeleton —
+    // the previous numbers are no longer relevant.
     const handleBranchChange = () => {
       setIsLoading(true);
       performLoadData().finally(() => setIsLoading(false));
     };
 
+    window.addEventListener("storage", refreshSilently);
     window.addEventListener("branchChange", handleBranchChange);
-
-    // Refresh when page regains focus
-    const handleFocus = () => {
-      setIsLoading(true);
-      performLoadData().finally(() => setIsLoading(false));
-    };
-
-    window.addEventListener("focus", handleFocus);
+    window.addEventListener("focus", refreshSilently);
 
     return () => {
-      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("storage", refreshSilently);
       window.removeEventListener("branchChange", handleBranchChange);
-      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("focus", refreshSilently);
     };
   }, [isMounted]);
 
@@ -215,10 +192,18 @@ export default function HomePage() {
     expenses?: any[],
   ) => {
     try {
-      // Use provided data (from getDashboardData) - don't fetch independently
-      const paymentsData = payments || [];
-      const salariesData = salaries || [];
-      const expensesData = expenses || [];
+      // If caller passed fresh data, cache it. Otherwise fall back to the
+      // cached data so the chartView toggle effect can re-aggregate.
+      if (payments || salaries || expenses) {
+        rawDataRef.current = {
+          payments: payments ?? rawDataRef.current.payments,
+          salaries: salaries ?? rawDataRef.current.salaries,
+          expenses: expenses ?? rawDataRef.current.expenses,
+        };
+      }
+      const paymentsData = rawDataRef.current.payments;
+      const salariesData = rawDataRef.current.salaries;
+      const expensesData = rawDataRef.current.expenses;
 
       if (chartView === "daily") {
         // Daily view: show last 14 days

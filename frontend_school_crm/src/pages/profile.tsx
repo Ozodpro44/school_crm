@@ -119,8 +119,8 @@ export default function ProfilePage() {
   }, [router]);
 
   const handleLogout = () => {
+    // logout() performs a hard navigation to /login.
     logout();
-    router.push("/login");
   };
 
   const openEditModal = () => {

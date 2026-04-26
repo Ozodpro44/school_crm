@@ -210,10 +210,18 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
 
 
 export function logout(): void {
+  if (typeof window === "undefined") return;
+  // Clear ALL auth + branch state so a fresh login starts clean.
   localStorage.removeItem(AUTH_KEY);
   localStorage.removeItem("school_auth_user");
   localStorage.removeItem("current_user");
   localStorage.removeItem("auth_token");
+  localStorage.removeItem("selectedBranchId");
+  localStorage.removeItem("token");
+  localStorage.removeItem("lastSyncAt");
+  // Hard navigation guarantees React Query caches and component state
+  // are dropped — preventing leakage of the previous user's data.
+  window.location.href = "/login";
 }
 
 export function getCurrentUser(): User | null {

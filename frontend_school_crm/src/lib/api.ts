@@ -383,24 +383,23 @@ export async function apiRequest<T>(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.error || `API Error: ${response.status}`;
-      
-      // Check for invalid token error and logout if needed (only 401, not 403)
-      const isInvalidToken =
-        (errorMessage.toLowerCase().includes("invalid token") ||
-          errorMessage.toLowerCase().includes("unauthorized") ||
-          errorMessage.toLowerCase().includes("user not found")) &&
-        response.status === 401;
-      
-      if (isInvalidToken) {
-        // Clear auth data from localStorage
-        if (typeof window !== "undefined") {
+
+      // Auto-logout on ANY 401 from a protected endpoint.
+      // (Public auth endpoints — /auth/login, /auth/register, /auth/forgot-password,
+      // /auth/reset-password, /auth/verify-otp, /auth/resend-otp — return 401 for
+      // bad credentials and we must NOT redirect away from the login page in that case.)
+      if (response.status === 401 && typeof window !== "undefined") {
+        const isAuthEndpoint = endpoint.startsWith("/auth/");
+        const onPublicPage =
+          window.location.pathname.startsWith("/login") ||
+          window.location.pathname.startsWith("/register") ||
+          window.location.pathname.startsWith("/forgot-password");
+
+        if (!isAuthEndpoint && !onPublicPage) {
           localStorage.removeItem("auth_token");
           localStorage.removeItem("school_auth_user");
           localStorage.removeItem("current_user");
           localStorage.removeItem("selectedBranchId");
-        }
-        // Redirect to login
-        if (typeof window !== "undefined") {
           window.location.href = "/login";
         }
       }

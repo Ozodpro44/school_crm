@@ -595,8 +595,9 @@ export function Layout({ children }: LayoutProps) {
 
   const handleLogout = () => {
     clearBranches();
+    // logout() now performs a hard navigation to /login itself
+    // (drops React Query cache + component state).
     logout();
-    router.push("/login");
   };
 
   const setLanguage = useSetLanguage();
