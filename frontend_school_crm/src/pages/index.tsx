@@ -405,7 +405,7 @@ export default function HomePage() {
   return (
     <div className="space-y-6 md:space-y-8">
       <div className="animate-fade-in">
-        <h1 className="text-3xl md:text-4xl font-bold text-brand-gradient">
+        <h1 className="text-display text-brand-gradient">
           {t("dashboard")}
         </h1>
         <p className="text-slate-600 dark:text-slate-400 mt-2 text-sm md:text-base">
