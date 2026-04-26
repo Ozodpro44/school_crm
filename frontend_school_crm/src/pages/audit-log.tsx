@@ -175,7 +175,7 @@ export default function AuditLogPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-brand-gradient flex items-center gap-3">
+        <h1 className="text-display text-brand-gradient flex items-center gap-3">
           <Shield className="w-8 h-8 text-indigo-600" />
           {t("auditLog") || "Audit Log"}
         </h1>

@@ -13,7 +13,7 @@ Quick Legend
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | 1.1 | Brand color tokens (`--primary`, semantic `success`/`warning`/`info`) | 🟡 | 21 gradient strings consolidated into `.bg-brand` / `.hover:bg-brand-hover` / `.bg-brand-square` / `.text-brand-gradient` utilities in `globals.css`. Semantic success/warning/info tokens still pending. |
-| 1.2 | Typography scale (display / heading / body / caption) | 🟡 | `.text-display`, `.text-heading`, `.text-body`, `.text-caption`, `.text-overline` utilities added to `globals.css`. Dashboard h1 migrated. Other pages can adopt opportunistically. |
+| 1.2 | Typography scale (display / heading / body / caption) | 🟡 | `.text-display`, `.text-heading`, `.text-body`, `.text-caption`, `.text-overline` utilities in `globals.css`. **9 page h1s** migrated (dashboard, branches, branches-overview, audit-log, profile, class-details, reports, teacher-portal, assignments, messaging, attendance). Card titles still use raw classes. |
 | 1.3 | Spacing rhythm (standardize table / card / form padding to 4-unit grid) | ⬜ | `p-4 sm:p-6`, `px-4 py-3`, `pt-4 pb-4` all mixed |
 | 1.4 | Border-radius token consistency | ⬜ | `rounded-lg` vs `rounded-xl` mixed |
 
@@ -52,7 +52,7 @@ Shared components: `src/components/FormDialog.tsx`, `src/components/Field.tsx`
 | 4.2 | `<Field>` component (Label + Input/Textarea + inline error) | ✅ | |
 | 4.3 | Migrate all create/edit dialogs | ✅ | teachers, students, payments, managers, expenses, salaries |
 | 4.4 | Single validation pattern (keep existing `formErrors` state — no `react-hook-form` migration) | ✅ | |
-| 4.5 | Standardize toast variants (`success` / `destructive` + always include description) | 🟡 | New `useNotify()` hook in `hooks/use-notify.ts` exposes `notify.success/.error/.warning/.info` for new code. 37 existing inline `toast({ title… })` calls remain — migrate opportunistically. |
+| 4.5 | Standardize toast variants (`success` / `destructive` + always include description) | 🟡 | `useNotify()` hook ready. **teachers.tsx fully migrated** (12 calls). 25 toasts remain across other pages. |
 
 ---
 

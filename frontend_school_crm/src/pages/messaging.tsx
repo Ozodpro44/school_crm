@@ -158,7 +158,7 @@ export default function MessagingPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
+        <h1 className="text-display text-slate-900 dark:text-slate-100">
           {t("messaging")}
         </h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1">

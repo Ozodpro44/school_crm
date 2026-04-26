@@ -49,6 +49,7 @@ import {
 } from "@/hooks/queries";
 import { useBranch } from "@/context/BranchContext";
 import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -128,6 +129,7 @@ export default function StudentsPage() {
   const classes: any[] = classesData || studentsData?.classes || [];
   const language = useLanguage();
   const { toast } = useToast();
+  const notify = useNotify();
   const {
     selectedIds,
     toggleSelect,

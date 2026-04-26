@@ -484,7 +484,7 @@ export default function StudentDetailsPage() {
           </Button>
           <InitialsAvatar name={student.fullName} size="lg" />
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
+            <h1 className="text-display text-slate-900 dark:text-slate-100">
               {toTitleCase(student.fullName)}
             </h1>
             <div className="flex items-center gap-2 mt-1">

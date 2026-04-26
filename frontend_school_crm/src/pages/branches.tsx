@@ -365,7 +365,7 @@ export default function BranchesPage() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
          <div>
-           <h1 className="text-3xl font-bold tracking-tight">{t("branches")}</h1>
+           <h1 className="text-display">{t("branches")}</h1>
            <p className="text-muted-foreground">
              {t("manageBranches")}
            </p>

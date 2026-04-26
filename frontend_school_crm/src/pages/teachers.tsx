@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Teacher } from "@/types";
 import { Plus, Search, Edit2, Trash2, BookOpen, Loader2, Users } from "lucide-react";
 import { hasPermission } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -50,7 +50,7 @@ export default function TeachersPage() {
   const [deletingTeacherId, setDeletingTeacherId] = useState<string | null>(null);
 
   const language = useLanguage();
-  const { toast } = useToast();
+  const notify = useNotify();
   const t = (key: string) => getTranslation(key, language);
 
   const {
@@ -114,7 +114,7 @@ export default function TeachersPage() {
 
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
     if (!(editingTeacher ? canEditTeachers : canCreateTeachers)) {
-      toast({ title: t("permissionDenied"), variant: "destructive" });
+      notify.error(t("permissionDenied"));
       return;
     }
     if (!branchId) return;
@@ -131,24 +131,24 @@ export default function TeachersPage() {
     if (editingTeacher) {
       updateMutation.mutate({ id: editingTeacher.id, data: payload }, {
         onSuccess: () => {
-          toast({ title: t("success"), description: t("teacherUpdatedSuccess"), variant: "success" });
+          notify.success(t("success"), t("teacherUpdatedSuccess"));
           resetForm(); setIsDialogOpen(false);
         },
-        onError: () => toast({ title: t("error"), description: t("failedToUpdateTeacher"), variant: "destructive" }),
+        onError: () => notify.error(t("error"), t("failedToUpdateTeacher")),
       });
     } else {
       createMutation.mutate({ ...payload, password: formData.password, branchId }, {
         onSuccess: () => {
-          toast({ title: t("success"), description: t("teacherAddedSuccess"), variant: "success" });
+          notify.success(t("success"), t("teacherAddedSuccess"));
           resetForm(); setIsDialogOpen(false);
         },
-        onError: () => toast({ title: t("error"), description: t("failedToCreateTeacher"), variant: "destructive" }),
+        onError: () => notify.error(t("error"), t("failedToCreateTeacher")),
       });
     }
   };
 
   const handleEdit = (teacher: Teacher) => {
-    if (!canEditTeachers) { toast({ title: t("permissionDenied"), variant: "destructive" }); return; }
+    if (!canEditTeachers) { notify.error(t("permissionDenied")); return; }
     setEditingTeacher(teacher);
     setFormData({
       fullName: teacher.fullName,
@@ -162,25 +162,25 @@ export default function TeachersPage() {
   };
 
   const handleDelete = (id: string) => {
-    if (!canDeleteTeachers) { toast({ title: t("permissionDenied"), variant: "destructive" }); return; }
+    if (!canDeleteTeachers) { notify.error(t("permissionDenied")); return; }
     if (!confirm(t("confirmDelete"))) return;
     setDeletingTeacherId(id);
     deleteMutation.mutate(id, {
-      onSuccess: () => { toast({ title: t("deleted"), description: t("teacherDeleted"), variant: "success" }); setDeletingTeacherId(null); },
-      onError: () => { toast({ title: t("error"), description: t("failedToDeleteTeacher"), variant: "destructive" }); setDeletingTeacherId(null); },
+      onSuccess: () => { notify.success(t("deleted"), t("teacherDeleted")); setDeletingTeacherId(null); },
+      onError: () => { notify.error(t("error"), t("failedToDeleteTeacher")); setDeletingTeacherId(null); },
     });
   };
 
   const handleBulkDelete = async () => {
-    if (!canDeleteTeachers) { toast({ title: t("permissionDenied"), variant: "destructive" }); return; }
+    if (!canDeleteTeachers) { notify.error(t("permissionDenied")); return; }
     const ids = getSelectedIds();
     if (!ids.length || !confirm(`Delete ${ids.length} teachers?`)) return;
     try {
       await Promise.all(ids.map((id) => deleteMutation.mutateAsync(id)));
       clearSelection();
-      toast({ title: t("deleted"), description: `${ids.length} teachers deleted`, variant: "success" });
+      notify.success(t("deleted"), `${ids.length} teachers deleted`);
     } catch {
-      toast({ title: t("error"), description: t("failedToDeleteTeachers"), variant: "destructive" });
+      notify.error(t("error"), t("failedToDeleteTeachers"));
     }
   };
 
