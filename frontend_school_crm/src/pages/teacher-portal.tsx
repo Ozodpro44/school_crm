@@ -607,7 +607,7 @@ export default function TeacherPortalPage() {
           {/* Contact info card */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">{t("basicInformation")}</CardTitle>
+              <CardTitle>{t("basicInformation")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>

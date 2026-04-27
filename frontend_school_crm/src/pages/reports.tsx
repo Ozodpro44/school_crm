@@ -1173,8 +1173,8 @@ export default function ReportsPage() {
 
             {/* Break-even analysis */}
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">{t("breakEvenAnalysis") || "Break-Even Analysis"}</CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle>{t("breakEvenAnalysis") || "Break-Even Analysis"}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-4">
@@ -1201,8 +1201,8 @@ export default function ReportsPage() {
 
             {/* 6-month expected vs actual chart */}
             <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">{t("sixMonthTrend") || "6-Month Trend: Expected vs Actual"}</CardTitle>
+              <CardHeader className="pb-2">
+                <CardTitle>{t("sixMonthTrend") || "6-Month Trend: Expected vs Actual"}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>

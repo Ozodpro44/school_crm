@@ -10,7 +10,7 @@ import {
   listTeachers,
   ScheduleSlot,
 } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/select";
 import { Plus, Trash2, Calendar, Clock, BookOpen } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
-import { formatPhoneNumber } from "@/lib/utils";
 
 const DAYS = [
   { num: 1, key: "monday" },

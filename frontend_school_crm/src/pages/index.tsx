@@ -609,7 +609,7 @@ export default function HomePage() {
         {/* Top Debtors */}
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+            <CardTitle className="flex items-center gap-2">
               <TrendingDown className="w-5 h-5 text-red-500" />
               {t("topDebtors") || "Top Debtors"}
             </CardTitle>
@@ -647,7 +647,7 @@ export default function HomePage() {
         {/* Unpaid by Class */}
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+            <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5 text-orange-500" />
               {t("unpaidByClass") || "Debtors by Class"}
             </CardTitle>
@@ -683,7 +683,7 @@ export default function HomePage() {
         style={{ animationDelay: "0.70s" }}
       >
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-indigo-900 dark:text-indigo-100 text-base md:text-lg">
+          <CardTitle className="text-indigo-900 dark:text-indigo-100">
             {chartView === "daily"
               ? t("dailyFourteenDays")
               : t("financialOverviewLastSixMonths")}
@@ -725,7 +725,7 @@ export default function HomePage() {
         style={{ animationDelay: "0.7s" }}
       >
         <CardHeader>
-          <CardTitle className="text-indigo-900 dark:text-indigo-100 text-base md:text-lg">
+          <CardTitle className="text-indigo-900 dark:text-indigo-100">
             {t("quickStatsSummary")}
           </CardTitle>
         </CardHeader>

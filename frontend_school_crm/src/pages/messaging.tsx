@@ -193,7 +193,7 @@ export default function MessagingPage() {
           <div className="lg:col-span-2 space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">{t("composeMessage")}</CardTitle>
+                <CardTitle>{t("composeMessage")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Templates */}
@@ -243,7 +243,7 @@ export default function MessagingPage() {
           <div className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">{t("recipientFilter")}</CardTitle>
+                <CardTitle>{t("recipientFilter")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
@@ -290,7 +290,7 @@ export default function MessagingPage() {
           ) : (
             history.map((entry) => (
               <Card key={entry.id}>
-                <CardContent className="pt-4 pb-4">
+                <CardContent className="py-4">
                   <div className="flex justify-between items-start gap-4">
                     <div className="flex-1">
                       <p className="text-slate-900 dark:text-slate-100">{entry.message}</p>

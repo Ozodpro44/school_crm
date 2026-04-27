@@ -244,7 +244,7 @@ export default function AssignmentsPage() {
 
             return (
               <Card key={assignment.id} className={overdue && assignment.submittedCount === 0 ? "border-red-200 dark:border-red-800" : ""}>
-                <CardContent className="pt-4 pb-4">
+                <CardContent className="py-4">
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">

@@ -763,14 +763,14 @@ export default function ClassesPage() {
                   }`}
                   onClick={() => openClassDetails(classData)}
                 >
-                  <CardHeader className="pb-3 p-3 sm:p-6">
+                  <CardHeader className="pb-2 p-3 sm:p-6">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                         <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
                           <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <CardTitle className="text-base sm:text-xl truncate">
+                          <CardTitle className="truncate">
                             {classData.name}
                           </CardTitle>
                           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 truncate">
@@ -843,7 +843,7 @@ export default function ClassesPage() {
       {studentsLoaded && unassignedStudents.length > 0 && (
         <Card className="border-orange-200 dark:border-orange-800">
           <CardHeader className="p-4 sm:p-6">
-            <CardTitle className="text-base sm:text-lg text-orange-600 dark:text-orange-400">
+            <CardTitle className="text-orange-600 dark:text-orange-400">
               {t("unassignedStudents")} ({unassignedStudents.length})
             </CardTitle>
           </CardHeader>

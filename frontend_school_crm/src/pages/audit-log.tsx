@@ -186,7 +186,7 @@ export default function AuditLogPage() {
 
       {/* Filters */}
       <Card>
-        <CardContent className="pt-4 pb-4">
+        <CardContent className="py-4">
           <div className="flex flex-wrap gap-3 items-end">
             {/* Search */}
             <div className="relative flex-1 min-w-[180px]">
@@ -253,9 +253,9 @@ export default function AuditLogPage() {
 
       {/* Table */}
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-semibold">
+            <CardTitle>
               {loading ? (
                 <Skeleton className="h-4 w-32" />
               ) : (

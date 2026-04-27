@@ -508,7 +508,7 @@ export default function ClassDetailsPage() {
         {/* Stats Cards Skeleton */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <Card className="border-l-4 border-l-blue-500">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <Skeleton className="w-1/3 h-5 rounded" />
             </CardHeader>
             <CardContent>
@@ -516,7 +516,7 @@ export default function ClassDetailsPage() {
             </CardContent>
           </Card>
           <Card className="border-l-4 border-l-green-500">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <Skeleton className="w-1/3 h-5 rounded" />
             </CardHeader>
             <CardContent>
@@ -622,7 +622,7 @@ export default function ClassDetailsPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <Card className="border-l-4 border-l-blue-500">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
                 <Users className="w-4 h-4" />
                 {t("studentCount")}
@@ -637,7 +637,7 @@ export default function ClassDetailsPage() {
 
           {classStudents.length > 0 && (
             <Card className="border-l-4 border-l-green-500">
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
                   <Check className="w-4 h-4" />
                   {t("paid")}

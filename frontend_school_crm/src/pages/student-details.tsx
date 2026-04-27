@@ -820,7 +820,7 @@ export default function StudentDetailsPage() {
           ) : (
             notes.map((note) => (
               <Card key={note.id}>
-                <CardContent className="pt-4 pb-4">
+                <CardContent className="py-4">
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1">
                       <p className="text-slate-900 dark:text-slate-100 whitespace-pre-wrap">{note.content}</p>
@@ -860,7 +860,7 @@ export default function StudentDetailsPage() {
           {showAddContact && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">{t("addContact")}</CardTitle>
+                <CardTitle>{t("addContact")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -931,7 +931,7 @@ export default function StudentDetailsPage() {
           ) : (
             contactLogEntries.map((entry) => (
               <Card key={entry.id}>
-                <CardContent className="pt-4 pb-4">
+                <CardContent className="py-4">
                   <div className="flex justify-between items-start gap-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">

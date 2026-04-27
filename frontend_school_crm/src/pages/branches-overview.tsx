@@ -98,7 +98,7 @@ export default function BranchesOverviewPage() {
 
       {/* Period selector */}
       <Card>
-        <CardContent className="pt-4 pb-4">
+        <CardContent className="py-4">
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
@@ -211,8 +211,8 @@ export default function BranchesOverviewPage() {
 
       {/* Revenue by branch bar chart */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">
+        <CardHeader className="pb-2">
+          <CardTitle>
             {t("revenueByBranch") || "Revenue by Branch"}
           </CardTitle>
         </CardHeader>
@@ -243,8 +243,8 @@ export default function BranchesOverviewPage() {
 
       {/* Branch details table */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">
+        <CardHeader className="pb-2">
+          <CardTitle>
             {t("branchComparison") || "Branch Comparison"}
           </CardTitle>
         </CardHeader>
@@ -338,8 +338,8 @@ export default function BranchesOverviewPage() {
       {/* Student count by branch chart */}
       {!loading && chartData.length > 0 && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">
+          <CardHeader className="pb-2">
+            <CardTitle>
               {t("studentCountByBranch") || "Active Students by Branch"}
             </CardTitle>
           </CardHeader>

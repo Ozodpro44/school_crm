@@ -42,7 +42,7 @@ export function RecentActivityFeed({
 
   return (
     <Card className={cn("h-full flex flex-col", className)}>
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
           <Activity className="w-4 h-4 text-indigo-500" />
           {title}

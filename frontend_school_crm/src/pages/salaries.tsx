@@ -598,7 +598,7 @@ export default function SalariesPage() {
       {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="border-l-4 border-l-green-500">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <Wallet className="w-4 h-4" />
               {t("totalPaid")}
@@ -615,7 +615,7 @@ export default function SalariesPage() {
         </Card>
 
         <Card className="border-l-4 border-l-orange-500">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
               {t("pendingLabel")}
@@ -632,7 +632,7 @@ export default function SalariesPage() {
         </Card>
 
         <Card className="border-l-4 border-l-blue-500">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <CheckCircle className="w-4 h-4" />
               {t("totalRecords")}

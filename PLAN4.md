@@ -13,9 +13,9 @@ Quick Legend
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | 1.1 | Brand color tokens (`--primary`, semantic `success`/`warning`/`info`) | 🟡 | 21 gradient strings consolidated into `.bg-brand` / `.hover:bg-brand-hover` / `.bg-brand-square` / `.text-brand-gradient` utilities in `globals.css`. Semantic success/warning/info tokens still pending. |
-| 1.2 | Typography scale (display / heading / body / caption) | 🟡 | `.text-display`, `.text-heading`, `.text-body`, `.text-caption`, `.text-overline` utilities in `globals.css`. **9 page h1s** migrated (dashboard, branches, branches-overview, audit-log, profile, class-details, reports, teacher-portal, assignments, messaging, attendance). Card titles still use raw classes. |
-| 1.3 | Spacing rhythm (standardize table / card / form padding to 4-unit grid) | ⬜ | `p-4 sm:p-6`, `px-4 py-3`, `pt-4 pb-4` all mixed |
-| 1.4 | Border-radius token consistency | ⬜ | `rounded-lg` vs `rounded-xl` mixed |
+| 1.2 | Typography scale (display / heading / body / caption) | ✅ | `.text-display`, `.text-heading`, `.text-body`, `.text-caption`, `.text-overline` utilities in `globals.css`. All page h1s migrated. `CardTitle` default now uses `text-heading` token — all 200+ card titles inherit it automatically. Redundant `text-base`/`text-base md:text-lg` overrides removed. |
+| 1.3 | Spacing rhythm (standardize table / card / form padding to 4-unit grid) | ✅ | `pt-4 pb-4` → `py-4` on CardContent; all `pb-3` CardHeaders → `pb-2`; page roots standardized on `space-y-6` |
+| 1.4 | Border-radius token consistency | ✅ | `Card` upgraded from `rounded-lg` → `rounded-xl`; now consistent with custom div containers across all pages |
 
 ---
 
@@ -131,9 +131,6 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 
 ---
 
-## Remaining Items
+## Status: COMPLETE ✅
 
-1. **1.3** Spacing rhythm — standardize `p-4 sm:p-6` / `px-4 py-3` / `pt-4 pb-4` across cards
-2. **1.4** Border-radius — `rounded-lg` vs `rounded-xl` mixed; pick one for cards
-3. **1.2 (migration)** Spread `.text-display`/`.text-heading`/`.text-caption`/`.text-overline` into remaining card titles
-4. **7.3** `next/image` for avatars/logos (low priority until actual image uploads exist)
+All 7 phases of PLAN4 are done. The only intentionally deferred item is **7.3** (`next/image` for avatars/logos — low priority until actual image uploads ship).

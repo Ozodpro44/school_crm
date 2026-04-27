@@ -896,7 +896,7 @@ export default function ExpensesPage() {
       {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card className="border-l-4 border-l-red-500">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <TrendingDown className="w-4 h-4" />
               {t("totalExpenses")}
@@ -913,7 +913,7 @@ export default function ExpensesPage() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <CreditCard className="w-4 h-4" />
               {t("cardPayments")}
@@ -927,7 +927,7 @@ export default function ExpensesPage() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <Banknote className="w-4 h-4" />
               {t("cashPayments")}
@@ -941,7 +941,7 @@ export default function ExpensesPage() {
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <Building2 className="w-4 h-4" />
               {t("bankTransfers")}
@@ -958,7 +958,7 @@ export default function ExpensesPage() {
       {/* Budget vs Actual Widget */}
       {isAdmin && (budgets.length > 0 || selectedMonth) && (
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <Target className="w-4 h-4 text-indigo-500" />
