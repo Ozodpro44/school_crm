@@ -15,6 +15,7 @@ import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { Shield, Search, Filter, RotateCcw } from "lucide-react";
 import { DataTable, Column } from "@/components/DataTable";
+import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
 
 const RESOURCES = [
   "payment",
@@ -188,71 +189,43 @@ export default function AuditLogPage() {
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardContent className="py-4">
-          <div className="flex flex-wrap gap-3 items-end">
-            {/* Search */}
-            <div className="relative flex-1 min-w-[180px]">
-              <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder={t("search") || "Search…"}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 h-9"
-              />
-            </div>
-
-            {/* Resource filter */}
-            <Select value={resource} onValueChange={setResource}>
-              <SelectTrigger className="h-9 w-40">
-                <Filter className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-                <SelectValue placeholder={t("resource") || "Resource"} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("allResources") || "All resources"}</SelectItem>
-                {RESOURCES.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {resourceLabel(r)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Date from */}
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">{t("from") || "From"}</span>
-              <Input
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className="h-9 w-36 text-sm"
-              />
-            </div>
-
-            {/* Date to */}
-            <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">{t("to") || "To"}</span>
-              <Input
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className="h-9 w-36 text-sm"
-              />
-            </div>
-
-            {/* Reset */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReset}
-              className="h-9 gap-1.5"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              {t("reset") || "Reset"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <FilterBar>
+        <FilterSearch
+          value={search}
+          onChange={setSearch}
+          placeholder={t("search") || "Search…"}
+        />
+        <Select value={resource} onValueChange={setResource}>
+          <SelectTrigger className={filterSelectClass("w-44")}>
+            <SelectValue placeholder={t("resource") || "Resource"} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allResources") || "All resources"}</SelectItem>
+            {RESOURCES.map((r) => (
+              <SelectItem key={r} value={r}>{resourceLabel(r)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-400 whitespace-nowrap">{t("from") || "From"}</span>
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="h-9 w-36 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-slate-400 whitespace-nowrap">{t("to") || "To"}</span>
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="h-9 w-36 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+        </div>
+        <FilterReset onClick={handleReset} show={resource !== "all" || !!from || !!to || !!search} label={t("reset") || "Reset"} />
+      </FilterBar>
 
       {/* Table */}
       <Card>

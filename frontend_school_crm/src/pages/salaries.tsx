@@ -33,6 +33,7 @@ import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, Column } from "@/components/DataTable";
+import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
 
 export default function SalariesPage() {
   const router = useRouter();
@@ -650,18 +651,14 @@ export default function SalariesPage() {
       </div>
 
       {/* Search and filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-          <Input
-            placeholder={t("searchSalaries")}
-            value={searchTerm}
-            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-            className="pl-10"
-          />
-        </div>
+      <FilterBar>
+        <FilterSearch
+          value={searchTerm}
+          onChange={(v) => { setSearchTerm(v); setCurrentPage(1); }}
+          placeholder={t("searchSalaries")}
+        />
         <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setCurrentPage(1); }}>
-          <SelectTrigger className="w-full sm:w-[180px]">
+          <SelectTrigger className={filterSelectClass("w-40")}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -670,7 +667,8 @@ export default function SalariesPage() {
             <SelectItem value="partial">{t("partialPaid")}</SelectItem>
           </SelectContent>
         </Select>
-      </div>
+        <FilterReset onClick={() => { setSearchTerm(""); setFilterStatus("all"); setCurrentPage(1); }} show={searchTerm !== "" || filterStatus !== "all"} label={t("reset") || "Reset"} />
+      </FilterBar>
 
       {/* Table */}
       <Card>

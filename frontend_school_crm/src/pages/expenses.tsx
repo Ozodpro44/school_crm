@@ -62,6 +62,7 @@ import { DialogFooter } from "@/components/ui/dialog";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { DataTable, Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
 
 export default function ExpensesPage() {
   const router = useRouter();
@@ -1090,78 +1091,46 @@ export default function ExpensesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Search and Filters */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-            <Input
-              placeholder={t("searchExpenses")}
-              value={searchInput}
-              onChange={(e) => {
-                const value = e.target.value;
-                setSearchInput(value);
-                if (value === "" && searchTerm !== "") {
-                  handleClearSearch();
-                }
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleSearch();
-                }
-              }}
-              className="pl-10"
-            />
-          </div>
-          <Button
-            onClick={handleSearch}
-            className="bg-blue-600 hover:bg-blue-700"
-            size="sm"
-          >
-            {t("search") || "Search"}
-          </Button>
-          {searchInput && (
-            <Button
-              onClick={handleClearSearch}
-              variant="outline"
-              size="sm"
-            >
-              {t("clear") || "Clear"}
-            </Button>
-          )}
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <Select value={filterCategory} onValueChange={handleCategoryChange}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder={t("allCategories")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("allCategories")}</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category} value={category}>
-                  {t(getCategoryTranslationKey(category))}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={filterPaymentMethod}
-            onValueChange={handlePaymentMethodChange}
-          >
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <SelectValue placeholder={t("allMethods")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("allMethods")}</SelectItem>
-              <SelectItem value="cash">{t("cash")}</SelectItem>
-              <SelectItem value="click">Click</SelectItem>
-              <SelectItem value="terminal">{t("terminal") || "Terminal"}</SelectItem>
-              <SelectItem value="card">{t("card")}</SelectItem>
-              <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      {/* Filter bar */}
+      <FilterBar>
+        <FilterSearch
+          value={searchInput}
+          onChange={(v) => { setSearchInput(v); if (v === "" && searchTerm !== "") handleClearSearch(); }}
+          onSearch={handleSearch}
+          placeholder={t("searchExpenses")}
+        />
+        <Select value={filterCategory} onValueChange={handleCategoryChange}>
+          <SelectTrigger className={filterSelectClass("w-44")}>
+            <SelectValue placeholder={t("allCategories")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allCategories")}</SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category} value={category}>
+                {t(getCategoryTranslationKey(category))}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filterPaymentMethod} onValueChange={handlePaymentMethodChange}>
+          <SelectTrigger className={filterSelectClass("w-36")}>
+            <SelectValue placeholder={t("allMethods")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allMethods")}</SelectItem>
+            <SelectItem value="cash">{t("cash")}</SelectItem>
+            <SelectItem value="click">Click</SelectItem>
+            <SelectItem value="terminal">{t("terminal") || "Terminal"}</SelectItem>
+            <SelectItem value="card">{t("card")}</SelectItem>
+            <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <FilterReset
+          onClick={handleClearSearch}
+          show={searchInput !== "" || filterCategory !== "all" || filterPaymentMethod !== "all"}
+          label={t("reset") || "Reset"}
+        />
+      </FilterBar>
 
       {/* Table */}
       <Card>

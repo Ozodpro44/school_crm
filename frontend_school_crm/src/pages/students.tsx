@@ -57,6 +57,7 @@ import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useSettings } from "@/hooks/use-settings";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, Column } from "@/components/DataTable";
+import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
 import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
 
@@ -1044,88 +1045,53 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
         </div>
       </div>
 
-      {/* Search + filter bar — outside the Card */}
-      <div className="flex flex-col gap-3">
-        <div className="w-full">
-          <div className="flex gap-2">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-              <Input
-                placeholder={t("searchStudents")}
-                value={searchInput}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSearchInput(value);
-                  if (value === "") {
-                    setSearchTerm("");
-                  }
-                }}
-                onKeyDown={handleSearchKeyPress}
-                className="pl-10 w-full"
-              />
-            </div>
-            <Button
-              onClick={handleSearch}
-              className="bg-blue-600 hover:bg-blue-700"
-              size="sm"
-            >
-              {t("search") || "Search"}
-            </Button>
-            {searchInput && (
-              <Button
-                onClick={handleClearSearch}
-                variant="outline"
-                size="sm"
-              >
-                {t("clear") || "Clear"}
-              </Button>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <Select value={filterClass} onValueChange={setFilterClass}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder={t("allClasses")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("allClasses")}</SelectItem>
-              {classes.map((cls) => (
-                <SelectItem key={cls.id} value={cls.id}>
-                  {cls.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder={t("allStatus")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("allStatus")}</SelectItem>
-              <SelectItem value="active">{t("active")}</SelectItem>
-              <SelectItem value="suspended">{t("suspended")}</SelectItem>
-              <SelectItem value="left">{t("left")}</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select
-            value={filterPaymentStatus}
-            onValueChange={setFilterPaymentStatus}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder={t("paymentStatus")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("allPayments")}</SelectItem>
-              <SelectItem value="paid">{t("paid")}</SelectItem>
-              <SelectItem value="partial">{t("partial")}</SelectItem>
-              <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      {/* Filter bar */}
+      <FilterBar>
+        <FilterSearch
+          value={searchInput}
+          onChange={(v) => { setSearchInput(v); if (v === "") setSearchTerm(""); }}
+          onSearch={handleSearch}
+          placeholder={t("searchStudents")}
+        />
+        <Select value={filterClass} onValueChange={setFilterClass}>
+          <SelectTrigger className={filterSelectClass("w-40")}>
+            <SelectValue placeholder={t("allClasses")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allClasses")}</SelectItem>
+            {classes.map((cls) => (
+              <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className={filterSelectClass("w-36")}>
+            <SelectValue placeholder={t("allStatus")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allStatus")}</SelectItem>
+            <SelectItem value="active">{t("active")}</SelectItem>
+            <SelectItem value="suspended">{t("suspended")}</SelectItem>
+            <SelectItem value="left">{t("left")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterPaymentStatus} onValueChange={setFilterPaymentStatus}>
+          <SelectTrigger className={filterSelectClass("w-40")}>
+            <SelectValue placeholder={t("paymentStatus")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allPayments")}</SelectItem>
+            <SelectItem value="paid">{t("paid")}</SelectItem>
+            <SelectItem value="partial">{t("partial")}</SelectItem>
+            <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <FilterReset
+          onClick={handleClearSearch}
+          show={searchInput !== "" || filterClass !== "all" || filterStatus !== "all" || filterPaymentStatus !== "all"}
+          label={t("reset") || "Reset"}
+        />
+      </FilterBar>
 
       {/* Table */}
       <Card>

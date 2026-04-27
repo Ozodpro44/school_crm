@@ -32,6 +32,7 @@ import { searchMatchesCrossScript } from "@/lib/transliterate";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, Column } from "@/components/DataTable";
 import { InitialsAvatar } from "@/components/InitialsAvatar";
+import { FilterBar, FilterSearch } from "@/components/FilterBar";
 
 export default function TeachersPage() {
   const { currentBranch } = useBranch();
@@ -343,15 +344,13 @@ export default function TeachersPage() {
       </div>
 
       {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-        <Input
-          placeholder={t("searchTeachers")}
+      <FilterBar>
+        <FilterSearch
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
+          onChange={setSearchTerm}
+          placeholder={t("searchTeachers")}
         />
-      </div>
+      </FilterBar>
 
       {/* Table */}
       <Card>

@@ -49,6 +49,7 @@ import { BulkPaymentDialog } from "@/components/BulkPaymentDialog";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { deletePayment as apiDeletePayment } from "@/lib/api";
 import { PaymentFormDialog } from "@/components/PaymentFormDialog";
+import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
 import { usePaymentsConsolidatedQuery, useBranchQuery, useClassesQuery } from "@/hooks/queries";
 import { useBranch } from "@/context/BranchContext";
 import MonthYearSelector from "@/components/MonthYearSelector";
@@ -696,179 +697,97 @@ export default function PaymentsPage() {
         />
       </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3">
-            <div className="w-full">
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <Input
-                    placeholder={t("searchPayments")}
-                    value={searchInput}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setSearchInput(value);
-                      // Auto-clear search when input is empty
-                      if (value === "" && searchTerm !== "") {
-                        // Mark filter change in progress to prevent duplicate API calls
-                        setCurrentPage(1);
-                        setSearchTerm("");
-                        qc.invalidateQueries({ queryKey: ["payments"] });;
-                        // Update URL to clear search
-                        const params = new URLSearchParams();
-                        if (filterStatus !== "all") params.set("status", filterStatus);
-                        if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
-                        params.set("month", selectedMonth);
-                        params.set("year", selectedYear.toString());
-                        params.set("page", "1");
-                        params.set("limit", itemsPerPage.toString());
-                        router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
-                      }
-                    }}
-                    onKeyPress={handleSearchKeyPress}
-                    className="pl-10 w-full"
-                  />
-                </div>
-                <Button
-                  type="button"
-                  onClick={handleSearch}
-                  className="bg-blue-600 hover:bg-blue-700"
-                  size="sm"
-                >
-                  {t("search") || "Search"}
-                </Button>
-                {searchInput && (
-                  <Button
-                    onClick={handleClearSearch}
-                    variant="outline"
-                    size="sm"
-                  >
-                    {t("clear") || "Clear"}
-                  </Button>
-                )}
-              </div>
-            </div>
+      <FilterBar>
+        <FilterSearch
+          value={searchInput}
+          onChange={(v) => {
+            setSearchInput(v);
+            if (v === "" && searchTerm !== "") {
+              setCurrentPage(1); setSearchTerm("");
+              qc.invalidateQueries({ queryKey: ["payments"] });
+              const params = new URLSearchParams();
+              if (filterStatus !== "all") params.set("status", filterStatus);
+              if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+              params.set("month", selectedMonth); params.set("year", selectedYear.toString());
+              params.set("page", "1"); params.set("limit", itemsPerPage.toString());
+              router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+            }
+          }}
+          onSearch={handleSearch}
+          placeholder={t("searchPayments")}
+        />
+        <Select value={filterStatus} onValueChange={(value) => {
+          setFilterStatus(value); setCurrentPage(1);
+          qc.invalidateQueries({ queryKey: ["payments"] });
+          const params = new URLSearchParams();
+          if (searchTerm) params.set("search", searchTerm);
+          if (value !== "all") params.set("status", value);
+          if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+          params.set("month", selectedMonth); params.set("year", selectedYear.toString());
+          params.set("page", "1"); params.set("limit", itemsPerPage.toString());
+          router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+        }}>
+          <SelectTrigger className={filterSelectClass("w-36")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allStatus")}</SelectItem>
+            <SelectItem value="paid">{t("paid")}</SelectItem>
+            <SelectItem value="partial">{t("partial")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterPaymentMethod} onValueChange={(value) => {
+          setFilterPaymentMethod(value); setCurrentPage(1);
+          qc.invalidateQueries({ queryKey: ["payments"] });
+          const params = new URLSearchParams();
+          if (searchTerm) params.set("search", searchTerm);
+          if (filterStatus !== "all") params.set("status", filterStatus);
+          if (value !== "all") params.set("paymentMethod", value);
+          params.set("month", selectedMonth); params.set("year", selectedYear.toString());
+          params.set("page", "1"); params.set("limit", itemsPerPage.toString());
+          router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+        }}>
+          <SelectTrigger className={filterSelectClass("w-36")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allPaymentMethods")}</SelectItem>
+            <SelectItem value="cash">{t("cash")}</SelectItem>
+            <SelectItem value="click">{t("click")}</SelectItem>
+            <SelectItem value="bank">{t("bank")}</SelectItem>
+            <SelectItem value="terminal">{t("terminal")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterClassId} onValueChange={(value) => {
+          setFilterClassId(value); setCurrentPage(1);
+          qc.invalidateQueries({ queryKey: ["payments"] });
+          const params = new URLSearchParams();
+          if (searchTerm) params.set("search", searchTerm);
+          if (filterStatus !== "all") params.set("status", filterStatus);
+          if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
+          if (value !== "all") params.set("classId", value);
+          params.set("month", selectedMonth); params.set("year", selectedYear.toString());
+          params.set("page", "1"); params.set("limit", itemsPerPage.toString());
+          router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+        }}>
+          <SelectTrigger className={filterSelectClass("w-40")}>
+            <SelectValue placeholder={t("allClasses")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allClasses")}</SelectItem>
+            {classes.map((cls) => (
+              <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <FilterReset
+          onClick={() => { setSearchInput(""); setSearchTerm(""); setFilterStatus("all"); setFilterPaymentMethod("all"); setFilterClassId("all"); setCurrentPage(1); qc.invalidateQueries({ queryKey: ["payments"] }); }}
+          show={searchInput !== "" || filterStatus !== "all" || filterPaymentMethod !== "all" || filterClassId !== "all"}
+          label={t("reset") || "Reset"}
+        />
+      </FilterBar>
 
-            <div className="space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                <Select
-                  value={filterStatus}
-                  onValueChange={(value) => {
-                    // Mark filter change in progress to prevent duplicate API calls
-                    setFilterStatus(value);
-                    // Apply filter immediately when status changes
-                    setCurrentPage(1);
-                    qc.invalidateQueries({ queryKey: ["payments"] });;
-                    const params = new URLSearchParams();
-                    if (searchTerm) params.set("search", searchTerm);
-                    if (value !== "all") params.set("status", value);
-                    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
-                    params.set("month", selectedMonth);
-                    params.set("year", selectedYear.toString());
-                    params.set("page", "1");
-                    params.set("limit", itemsPerPage.toString());
-                    router.push(`/payments?${params.toString()}`, undefined, {
-                      shallow: true,
-                    });
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("allStatus")}</SelectItem>
-                    <SelectItem value="paid">{t("paid")}</SelectItem>
-                    <SelectItem value="partial">{t("partial")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={filterPaymentMethod}
-                  onValueChange={(value) => {
-                    // Mark filter change in progress to prevent duplicate API calls
-                    setFilterPaymentMethod(value);
-                    // Apply filter immediately when payment method changes
-                    setCurrentPage(1);
-                    qc.invalidateQueries({ queryKey: ["payments"] });;
-                    const params = new URLSearchParams();
-                    if (searchTerm) params.set("search", searchTerm);
-                    if (filterStatus !== "all") params.set("status", filterStatus);
-                    if (value !== "all") params.set("paymentMethod", value);
-                    params.set("month", selectedMonth);
-                    params.set("year", selectedYear.toString());
-                    params.set("page", "1");
-                    params.set("limit", itemsPerPage.toString());
-                    router.push(`/payments?${params.toString()}`, undefined, {
-                      shallow: true,
-                    });
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("allPaymentMethods")}</SelectItem>
-                    <SelectItem value="cash">{t("cash")}</SelectItem>
-                    <SelectItem value="click">{t("click")}</SelectItem>
-                    <SelectItem value="bank">{t("bank")}</SelectItem>
-                    <SelectItem value="terminal">{t("terminal")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={filterClassId}
-                  onValueChange={(value) => {
-                    setFilterClassId(value);
-                    setCurrentPage(1);
-                    qc.invalidateQueries({ queryKey: ["payments"] });;
-                    const params = new URLSearchParams();
-                    if (searchTerm) params.set("search", searchTerm);
-                    if (filterStatus !== "all") params.set("status", filterStatus);
-                    if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
-                    if (value !== "all") params.set("classId", value);
-                    params.set("month", selectedMonth);
-                    params.set("year", selectedYear.toString());
-                    params.set("page", "1");
-                    params.set("limit", itemsPerPage.toString());
-                    router.push(`/payments?${params.toString()}`, undefined, {
-                      shallow: true,
-                    });
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={t("allClasses")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t("allClasses")}</SelectItem>
-                    {classes.map((cls) => (
-                      <SelectItem key={cls.id} value={cls.id}>
-                        {cls.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={itemsPerPage.toString()}
-                  onValueChange={(val) => {
-                    const limit = parseInt(val);
-                    setItemsPerPage(limit);
-                    setCurrentPage(1);
-                    // The useEffect for pagination changes will handle URL update and data load
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10 {t("perPage")}</SelectItem>
-                    <SelectItem value="20">20 {t("perPage")}</SelectItem>
-                    <SelectItem value="50">50 {t("perPage")}</SelectItem>
-                    <SelectItem value="100">100 {t("perPage")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-        </CardHeader>
+      <Card>
         <CardContent className="p-0">
           <DataTable
             columns={paymentColumns}
