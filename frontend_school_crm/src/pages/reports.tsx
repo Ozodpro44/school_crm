@@ -47,6 +47,7 @@ type ReportType = "payment" | "salary" | "debtors" | "income" | "expenses" | "fo
 export default function ReportsPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const [reportType, setReportType] = useState<ReportType>("payment");
   const [classId, setClassId] = useState("all");
   const [paymentMonth, setPaymentMonth] = useState("");
@@ -200,7 +201,7 @@ export default function ReportsPage() {
   };
 
   const generateReport = async () => {
-    setIsLoading(true);
+    setIsFetching(true);
     try {
       switch (reportType) {
         case "payment":
@@ -243,7 +244,7 @@ export default function ReportsPage() {
           break;
       }
     } finally {
-      setIsLoading(false);
+      setIsFetching(false);
     }
   };
 
@@ -827,9 +828,9 @@ export default function ReportsPage() {
     return (
       <div className="flex flex-col items-center justify-center h-96 space-y-4">
         <AlertCircle className="w-16 h-16 text-red-500" />
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">403 – Ruxsat yo'q</h2>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("forbidden") || "Access denied"}</h2>
         <p className="text-slate-600 dark:text-slate-400 text-center max-w-md">
-          Hisobotlar bo'limiga kirish huquqingiz yo'q.
+          {t("noPermissionReports") || "You don't have permission to view reports."}
         </p>
       </div>
     );
@@ -842,16 +843,17 @@ export default function ReportsPage() {
           {t("reports") || "Reports"}
         </h1>
         <p className="text-slate-600 dark:text-slate-400 mt-1">
-          {t("reportsSubtitle") || "Moslashtirilgan sana oralig'i bilan batafsil hisobotlar yarating"}
+          {t("reportsSubtitle") || t("generateDetailedReports") || "Generate detailed reports with custom date ranges"}
         </p>
       </div>
 
       {/* Filters */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
             {t("reportFilters")}
+            {isFetching && <Loader2 className="w-4 h-4 animate-spin text-indigo-500 ml-auto" />}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">

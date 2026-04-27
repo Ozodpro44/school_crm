@@ -29,6 +29,7 @@ import {
   Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EmptyState } from "@/components/EmptyState";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -191,8 +192,8 @@ export default function AttendancePage() {
       const res = await saveAttendance({ branchId, classId: selectedClassId, date: selectedDate, records });
       notify.success(t("attendanceSaved"), `${res.saved} ${t("students").toLowerCase()}`);
       if (activeTab === "summary") loadSummary();
-    } catch {
-      notify.error(t("error"));
+    } catch (err) {
+      notify.error(t("error"), err instanceof Error ? err.message : t("errorOccurred"));
     } finally {
       setSaving(false);
     }
@@ -302,13 +303,13 @@ export default function AttendancePage() {
         {activeTab === "mark" && (
           <div className="space-y-4">
             {!selectedClassId ? (
-              <EmptyState icon={<Users className="w-12 h-12 text-slate-300" />} text={t("selectClassAndDate")} />
+              <EmptyState icon={Users} title={t("selectClassAndDate") || "Select a class and date"} />
             ) : loadingAttendance ? (
               <div className="space-y-2">
                 {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
               </div>
             ) : students.length === 0 ? (
-              <EmptyState icon={<Users className="w-12 h-12 text-slate-300" />} text={t("noStudentsInClass")} />
+              <EmptyState icon={Users} title={t("noStudentsInClass") || "No students in this class"} />
             ) : (
               <>
                 {/* Stats row */}
@@ -413,9 +414,9 @@ export default function AttendancePage() {
         {activeTab === "summary" && (
           <div className="space-y-4">
             {!selectedClassId ? (
-              <EmptyState icon={<Users className="w-12 h-12 text-slate-300" />} text={t("selectClassAndDate")} />
+              <EmptyState icon={Users} title={t("selectClassAndDate") || "Select a class and date"} />
             ) : monthSummary.length === 0 ? (
-              <EmptyState icon={<BarChart3 className="w-12 h-12 text-slate-300" />} text={t("noStudentsInClass")} />
+              <EmptyState icon={BarChart3} title={t("noStudentsInClass") || "No students in this class"} />
             ) : (
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                 <div className="overflow-x-auto">
@@ -530,15 +531,6 @@ export default function AttendancePage() {
 }
 
 // ─── Small reusable pieces ────────────────────────────────────────────────────
-
-function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
-      {icon}
-      <p className="text-sm text-slate-500 dark:text-slate-400">{text}</p>
-    </div>
-  );
-}
 
 function StatCard({
   count, label, colorClass, icon,

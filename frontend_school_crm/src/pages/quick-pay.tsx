@@ -280,7 +280,7 @@ function QRScanTab({
       setScanning(true);
       scanLoop(stream);
     } catch {
-      setError("Camera permission denied");
+      setError(t("cameraPermissionDenied") || "Camera permission denied");
     }
   };
 
@@ -405,9 +405,15 @@ function QRScanTab({
       </div>
 
       {error && (
-        <div className="flex items-center gap-2 text-red-500 text-sm bg-red-50 dark:bg-red-950 p-3 rounded-lg">
+        <div className="flex items-center gap-3 text-red-500 text-sm bg-red-50 dark:bg-red-950 p-3 rounded-lg">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
+          <span className="flex-1">{error}</span>
+          <button
+            onClick={startCamera}
+            className="text-xs font-semibold text-red-600 hover:text-red-700 underline underline-offset-2 flex-shrink-0"
+          >
+            {t("tryAgain") || "Try again"}
+          </button>
         </div>
       )}
 
@@ -435,7 +441,7 @@ function QRScanTab({
           </div>
           {student.paymentStatus === "paid" ? (
             <Badge className="w-full justify-center py-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 border-0">
-              <CheckCircle2 className="w-4 h-4 mr-2" /> Paid
+              <CheckCircle2 className="w-4 h-4 mr-2" /> {t("paid")}
             </Badge>
           ) : (
             <Button
@@ -670,7 +676,7 @@ export default function QuickPayPage() {
                 <SelectValue placeholder={t("classes")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("classes")} (all)</SelectItem>
+                <SelectItem value="all">{t("allClasses") || t("classes")}</SelectItem>
                 {classes.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -682,11 +688,11 @@ export default function QuickPayPage() {
           <div className="flex gap-3 text-sm">
             <div className="flex items-center gap-1.5 bg-red-50 dark:bg-red-950 px-3 py-1.5 rounded-lg">
               <AlertCircle className="w-3.5 h-3.5 text-red-500" />
-              <span className="font-semibold text-red-700 dark:text-red-300">{unpaidCount} unpaid</span>
+              <span className="font-semibold text-red-700 dark:text-red-300">{unpaidCount} {t("unpaid")}</span>
             </div>
             <div className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950 px-3 py-1.5 rounded-lg">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="font-semibold text-emerald-700 dark:text-emerald-300">{paidCount} paid</span>
+              <span className="font-semibold text-emerald-700 dark:text-emerald-300">{paidCount} {t("paid")}</span>
             </div>
           </div>
         )}
@@ -743,7 +749,7 @@ export default function QuickPayPage() {
                   onClick={selected.size === unpaid.length ? clearAll : selectAll}
                   className="text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
                 >
-                  {selected.size === unpaid.length ? "Deselect all" : "Select all"}
+                  {selected.size === unpaid.length ? (t("deselectAll") || "Deselect all") : (t("selectAll") || "Select all")}
                 </button>
                 {selected.size > 0 && (
                   <span className="text-sm text-slate-500">

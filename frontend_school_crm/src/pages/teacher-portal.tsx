@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { useNotify } from "@/hooks/use-notify";
@@ -49,8 +50,15 @@ import { EmptyState } from "@/components/EmptyState";
 type Tab = "classes" | "students" | "attendance" | "salary" | "profile";
 
 export default function TeacherPortalPage() {
+  const router = useRouter();
   const language = useLanguage();
   const currentUser = getCurrentUser();
+
+  useEffect(() => {
+    if (currentUser && currentUser.role !== "teacher") {
+      router.replace("/");
+    }
+  }, [currentUser, router]);
 
   const { data, isLoading, refetch: refetchPortal } = useTeacherPortalQuery();
   const attendanceMutation = useAttendanceMutation();
@@ -493,8 +501,8 @@ export default function TeacherPortalPage() {
           {studentsForAttendance.length === 0 ? (
             <EmptyState
               icon={data.classes.length === 0 ? BookOpen : Users}
-              title={data.classes.length === 0 ? "No classes assigned" : "No students in this class"}
-              description={data.classes.length === 0 ? "You haven't been assigned to any classes yet." : "This class has no enrolled students."}
+              title={data.classes.length === 0 ? (t("noClassesAssigned") || "No classes assigned") : (!attendanceClassId ? (t("selectClass") || "Select a class") : (t("noStudentsInClass") || "No students in this class"))}
+              description={data.classes.length === 0 ? (t("noClassesAssignedDesc") || "You haven't been assigned to any classes yet.") : (!attendanceClassId ? (t("selectClassToMark") || "Select a class above to mark attendance.") : undefined)}
             />
           ) : (
             <div className="space-y-2">

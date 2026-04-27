@@ -113,51 +113,54 @@ export default function AuditLogPage() {
     setPage(1);
   };
 
+  const actionLabel = (a: string) => t(a as any) || a.charAt(0).toUpperCase() + a.slice(1);
+  const resourceLabel = (r: string) => t(r as any) || r.charAt(0).toUpperCase() + r.slice(1);
+
   const columns: Column<AuditLogEntry>[] = [
     {
       key: "createdAt",
-      header: "Time",
+      header: t("auditTime") || "Time",
       cellClassName: "text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap w-40",
       render: (entry) => formatTime(entry.createdAt),
     },
     {
       key: "userName",
-      header: "User",
+      header: t("auditUser") || "User",
       render: (entry) => (
         <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-          {entry.userName || <span className="text-slate-400 italic">Unknown</span>}
+          {entry.userName || <span className="text-slate-400 italic">{t("unknown") || "Unknown"}</span>}
         </span>
       ),
     },
     {
       key: "action",
-      header: "Action",
+      header: t("action") || "Action",
       cellClassName: "w-24",
       render: (entry) => (
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${ACTION_COLORS[entry.action] ?? ""}`}>
-          {entry.action}
+          {actionLabel(entry.action)}
         </span>
       ),
     },
     {
       key: "resource",
-      header: "Resource",
+      header: t("resource") || "Resource",
       cellClassName: "w-28",
       render: (entry) => (
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${RESOURCE_COLORS[entry.resource] ?? "bg-slate-100 text-slate-600"}`}>
-          {entry.resource}
+          {resourceLabel(entry.resource)}
         </span>
       ),
     },
     {
       key: "description",
-      header: "Description",
+      header: t("description") || "Description",
       cellClassName: "text-sm text-slate-700 dark:text-slate-300 max-w-xs truncate",
       render: (entry) => entry.description,
     },
     {
       key: "resourceId",
-      header: "Resource ID",
+      header: t("resourceId") || "Resource ID",
       cellClassName: "w-40",
       hideOnMobile: true,
       render: (entry) =>
@@ -201,15 +204,15 @@ export default function AuditLogPage() {
 
             {/* Resource filter */}
             <Select value={resource} onValueChange={setResource}>
-              <SelectTrigger className="h-9 w-36">
+              <SelectTrigger className="h-9 w-40">
                 <Filter className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-                <SelectValue placeholder="Resource" />
+                <SelectValue placeholder={t("resource") || "Resource"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All resources</SelectItem>
+                <SelectItem value="all">{t("allResources") || "All resources"}</SelectItem>
                 {RESOURCES.map((r) => (
                   <SelectItem key={r} value={r}>
-                    {r.charAt(0).toUpperCase() + r.slice(1)}
+                    {resourceLabel(r)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -217,7 +220,7 @@ export default function AuditLogPage() {
 
             {/* Date from */}
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">From</span>
+              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">{t("from") || "From"}</span>
               <Input
                 type="date"
                 value={from}
@@ -228,7 +231,7 @@ export default function AuditLogPage() {
 
             {/* Date to */}
             <div className="flex flex-col gap-1">
-              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">To</span>
+              <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">{t("to") || "To"}</span>
               <Input
                 type="date"
                 value={to}
@@ -245,7 +248,7 @@ export default function AuditLogPage() {
               className="h-9 gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              Reset
+              {t("reset") || "Reset"}
             </Button>
           </div>
         </CardContent>
@@ -260,7 +263,7 @@ export default function AuditLogPage() {
                 <Skeleton className="h-4 w-32" />
               ) : (
                 <span>
-                  {total.toLocaleString()} {total === 1 ? "entry" : "entries"}
+                  {total.toLocaleString()} {total === 1 ? (t("entry") || "entry") : (t("entries") || "entries")}
                 </span>
               )}
             </CardTitle>
@@ -273,14 +276,14 @@ export default function AuditLogPage() {
             loading={loading}
             skeletonRows={8}
             emptyIcon={Shield}
-            emptyTitle="No audit entries found"
+            emptyTitle={t("noAuditEntries") || "No audit entries found"}
             pagination={{ page, limit: LIMIT, total }}
             onPageChange={setPage}
             renderCard={(entry) => (
               <div className="p-4 space-y-1.5 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center justify-between">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${ACTION_COLORS[entry.action] ?? ""}`}>
-                    {entry.action}
+                    {actionLabel(entry.action)}
                   </span>
                   <span className="text-[11px] text-slate-400">
                     {formatTime(entry.createdAt)}
@@ -291,7 +294,7 @@ export default function AuditLogPage() {
                 </p>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${RESOURCE_COLORS[entry.resource] ?? ""}`}>
-                    {entry.resource}
+                    {resourceLabel(entry.resource)}
                   </span>
                   {entry.userName && (
                     <span className="text-xs text-slate-500">{entry.userName}</span>

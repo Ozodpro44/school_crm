@@ -611,68 +611,100 @@ export function Layout({ children }: LayoutProps) {
 
   const t = (key: string) => getTranslation(key, language);
 
+  const isTeacher = user?.role === "teacher";
+
+  // Redirect teacher away from admin pages
+  if (user && isTeacher && router.pathname === "/") {
+    router.replace("/teacher-portal");
+    return null;
+  }
   if (!user && router.pathname !== "/login") return null;
   if (router.pathname === "/login") return <>{children}</>;
 
   // ── Navigation structure ────────────────────────────────────────────────────
 
-  const navigationGroups = [
-    {
-      title: t("main") || "Main",
-      items: [
-        { name: t("dashboard"), href: "/", icon: LayoutDashboard, show: true },
-        { name: t("students"), href: "/students", icon: Users, show: true },
-        { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: true },
-        { name: t("classes"), href: "/classes", icon: BookOpen, show: true },
-        { name: t("attendance") || "Attendance", href: "/attendance", icon: ClipboardList, show: user?.role !== "teacher" },
-        { name: t("teacherPortal") || "Teacher Portal", href: "/teacher-portal", icon: PortalIcon, show: user?.role === "teacher" },
-        { name: t("timetable") || "Schedule", href: "/schedule", icon: Calendar, show: true },
-        { name: t("assignments") || "Assignments", href: "/assignments", icon: ClipboardCheck, show: true },
-        { name: t("messaging") || "Messaging", href: "/messaging", icon: MessageSquare, show: user?.role !== "teacher" },
-      ],
-    },
-    {
-      title: t("finance") || "Finance",
-      items: [
-        { name: t("payments"), href: "/payments", icon: DollarSign, show: user?.role !== "teacher" },
-        { name: t("quickPayment") || "Quick Pay", href: "/quick-pay", icon: Zap, show: user?.role !== "teacher" },
-        { name: t("salaries"), href: "/salaries", icon: Wallet, show: user?.role !== "teacher" },
-        { name: t("expenses"), href: "/expenses", icon: TrendingDown, show: user?.role !== "teacher" },
-      ],
-    },
-    {
-      title: t("administration") || "Admin",
-      items: [
-        { name: t("reports"), href: "/reports", icon: FileText, show: hasPermission("canViewReports") },
-        { name: t("branchesOverview") || "Multi-Branch Overview", href: "/branches-overview", icon: BarChart2, show: user?.role === "admin" },
-        { name: t("auditLog") || "Audit Log", href: "/audit-log", icon: Shield, show: user?.role === "admin" },
-        { name: t("branches"), href: "/branches", icon: Building2, show: user?.role === "admin" },
-        { name: t("managers"), href: "/managers", icon: UserCog, show: user?.role === "admin" || user?.role === "branch_admin" },
-        { name: t("settings"), href: "/settings", icon: Settings, show: user?.role === "admin" },
-      ],
-    },
-    {
-      title: t("support") || "Support",
-      items: [
-        { name: t("help"), href: "/help", icon: HelpCircle, show: true },
-      ],
-    },
-  ];
+  const navigationGroups = isTeacher
+    ? [
+        {
+          title: t("teacherPortal") || "Teacher",
+          items: [
+            { name: t("teacherPortal") || "Teacher Portal", href: "/teacher-portal", icon: PortalIcon, show: true },
+            { name: t("timetable") || "Schedule", href: "/schedule", icon: Calendar, show: true },
+            { name: t("assignments") || "Assignments", href: "/assignments", icon: ClipboardCheck, show: true },
+            { name: t("help"), href: "/help", icon: HelpCircle, show: true },
+          ],
+        },
+      ]
+    : [
+        {
+          title: t("main") || "Main",
+          items: [
+            { name: t("dashboard"), href: "/", icon: LayoutDashboard, show: true },
+            { name: t("students"), href: "/students", icon: Users, show: true },
+            { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: true },
+            { name: t("classes"), href: "/classes", icon: BookOpen, show: true },
+            { name: t("attendance") || "Attendance", href: "/attendance", icon: ClipboardList, show: true },
+            { name: t("timetable") || "Schedule", href: "/schedule", icon: Calendar, show: true },
+            { name: t("assignments") || "Assignments", href: "/assignments", icon: ClipboardCheck, show: true },
+            { name: t("messaging") || "Messaging", href: "/messaging", icon: MessageSquare, show: true },
+          ],
+        },
+        {
+          title: t("finance") || "Finance",
+          items: [
+            { name: t("payments"), href: "/payments", icon: DollarSign, show: true },
+            { name: t("quickPayment") || "Quick Pay", href: "/quick-pay", icon: Zap, show: true },
+            { name: t("salaries"), href: "/salaries", icon: Wallet, show: true },
+            { name: t("expenses"), href: "/expenses", icon: TrendingDown, show: true },
+          ],
+        },
+        {
+          title: t("administration") || "Admin",
+          items: [
+            { name: t("reports"), href: "/reports", icon: FileText, show: hasPermission("canViewReports") },
+            { name: t("branchesOverview") || "Multi-Branch Overview", href: "/branches-overview", icon: BarChart2, show: user?.role === "admin" },
+            { name: t("auditLog") || "Audit Log", href: "/audit-log", icon: Shield, show: user?.role === "admin" },
+            { name: t("branches"), href: "/branches", icon: Building2, show: user?.role === "admin" },
+            { name: t("managers"), href: "/managers", icon: UserCog, show: user?.role === "admin" || user?.role === "branch_admin" },
+            { name: t("settings"), href: "/settings", icon: Settings, show: user?.role === "admin" },
+          ],
+        },
+        {
+          title: t("support") || "Support",
+          items: [
+            { name: t("help"), href: "/help", icon: HelpCircle, show: true },
+          ],
+        },
+      ];
 
-  // Bottom nav — 4 primary pages always visible on mobile
-  const bottomNavItems = [
-    { name: t("dashboard"), href: "/", icon: LayoutDashboard },
-    { name: t("students"), href: "/students", icon: Users },
-    { name: t("payments"), href: "/payments", icon: DollarSign },
-    { name: t("classes"), href: "/classes", icon: BookOpen },
-  ];
+  // Bottom nav — role-aware
+  const bottomNavItems = isTeacher
+    ? [
+        { name: t("teacherPortal") || "Portal", href: "/teacher-portal", icon: PortalIcon },
+        { name: t("timetable") || "Schedule", href: "/schedule", icon: Calendar },
+        { name: t("assignments") || "Tasks", href: "/assignments", icon: ClipboardCheck },
+        { name: t("help"), href: "/help", icon: HelpCircle },
+      ]
+    : [
+        { name: t("dashboard"), href: "/", icon: LayoutDashboard },
+        { name: t("students"), href: "/students", icon: Users },
+        { name: t("payments"), href: "/payments", icon: DollarSign },
+        { name: t("classes"), href: "/classes", icon: BookOpen },
+      ];
 
   const branchDisplayName = currentBranch?.name || t("schoolName") || "School";
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
+  const savedOpen = typeof window !== "undefined"
+    ? localStorage.getItem("sidebarOpen") !== "false"
+    : true;
+
   return (
-    <SidebarProvider defaultOpen={true}>
+    <SidebarProvider
+      defaultOpen={savedOpen}
+      onOpenChange={(open) => localStorage.setItem("sidebarOpen", String(open))}
+    >
       <div className="flex min-h-screen w-full overflow-x-hidden bg-slate-50 dark:bg-slate-950">
 
         {/* ────────────────────────────────── SIDEBAR ── */}
@@ -827,7 +859,7 @@ export function Layout({ children }: LayoutProps) {
                 </div>
                 <div className="flex items-center justify-between px-2 py-1.5 mb-1 border-t border-slate-100 dark:border-slate-800">
                   <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Theme
+                    {t("theme") || "Theme"}
                   </span>
                   <ThemeSwitch />
                 </div>

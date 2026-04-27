@@ -1951,6 +1951,35 @@ export const commonTranslations: Partial<Translation> = {
   offlineBannerDesc: { "uz-cyrl": "Уланиш тикланганча ўзгаришлар сақланмайди", "uz-latn": "Ulanish tiklanguncha o'zgarishlar saqlanmaydi", en: "Changes may not be saved until connection is restored" },
   connectionRestored: { "uz-cyrl": "Интернет тикланди", "uz-latn": "Internet tiklandi", en: "Connection restored" },
   retryConnection: { "uz-cyrl": "Қайта уриниш", "uz-latn": "Qayta urinish", en: "Retry" },
+
+  // Generic UI
+  from:             { "uz-cyrl": "Дан",               "uz-latn": "Dan",             en: "From" },
+  to:               { "uz-cyrl": "Гача",              "uz-latn": "Gacha",           en: "To" },
+  reset:            { "uz-cyrl": "Тозалаш",           "uz-latn": "Tozalash",        en: "Reset" },
+  entry:            { "uz-cyrl": "Ёзув",              "uz-latn": "Yozuv",           en: "entry" },
+  entries:          { "uz-cyrl": "Ёзувлар",           "uz-latn": "Yozuvlar",        en: "entries" },
+  unknown:          { "uz-cyrl": "Номаълум",          "uz-latn": "Noma'lum",        en: "Unknown" },
+
+  // Audit log (new keys only — create/update/description/resource already exist above)
+  auditTime:        { "uz-cyrl": "Вақт",             "uz-latn": "Vaqt",             en: "Time" },
+  auditUser:        { "uz-cyrl": "Фойдаланувчи",     "uz-latn": "Foydalanuvchi",    en: "User" },
+  resourceId:       { "uz-cyrl": "Ресурс ID",         "uz-latn": "Resurs ID",        en: "Resource ID" },
+  noAuditEntries:   { "uz-cyrl": "Ёзувлар топилмади","uz-latn": "Yozuvlar topilmadi", en: "No audit entries found" },
+  allResources:     { "uz-cyrl": "Барча ресурслар",   "uz-latn": "Barcha resurslar", en: "All resources" },
+
+  // Quick-pay (new keys — selectAll already exists above)
+  cameraPermissionDenied: { "uz-cyrl": "Камера рухсати рад этилди", "uz-latn": "Kamera ruxsati rad etildi", en: "Camera permission denied" },
+  deselectAll:      { "uz-cyrl": "Барчасини бекор қилиш", "uz-latn": "Barchasini bekor qilish", en: "Deselect all" },
+  tryAgain:         { "uz-cyrl": "Қайта уриниш",      "uz-latn": "Qayta urinish",    en: "Try again" },
+
+  // Reports
+  noPermissionReports: { "uz-cyrl": "Ҳисоботларга кириш рухсати йўқ", "uz-latn": "Hisobotlarga kirish ruxsati yo'q", en: "You don't have permission to view reports" },
+  forbidden:        { "uz-cyrl": "Рухсат йўқ",        "uz-latn": "Ruxsat yo'q",      en: "Access denied" },
+
+  // Teacher portal
+  noClassesAssigned:    { "uz-cyrl": "Синфлар белгиланмаган", "uz-latn": "Sinflar belgilanmagan", en: "No classes assigned" },
+  noClassesAssignedDesc:{ "uz-cyrl": "Сизга ҳали ҳеч қандай синф белгиланмаган", "uz-latn": "Sizga hali hech qanday sinf belgilanmagan", en: "You haven't been assigned to any classes yet" },
+  selectClassToMark:    { "uz-cyrl": "Давоматни белгилаш учун синф танланг", "uz-latn": "Davomatni belgilash uchun sinf tanlang", en: "Select a class above to mark attendance" },
   };
 
 
