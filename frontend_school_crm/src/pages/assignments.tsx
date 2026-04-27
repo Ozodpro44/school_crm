@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { getCurrentUser } from "@/lib/auth";
 import {
   listAssignments,
@@ -49,7 +49,6 @@ import { formatCurrency } from "@/lib/exportUtils";
 
 export default function AssignmentsPage() {
   const language = useLanguage();
-  const { toast } = useToast();
   const currentUser = getCurrentUser();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -70,6 +69,7 @@ export default function AssignmentsPage() {
   });
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   useEffect(() => {
     loadData();
@@ -93,7 +93,7 @@ export default function AssignmentsPage() {
         setForm((f) => ({ ...f, classId: classesData[0]!.id }));
       }
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     } finally {
       setIsLoading(false);
     }
@@ -112,7 +112,7 @@ export default function AssignmentsPage() {
       const subs = await getAssignmentSubmissions(assignmentId);
       setSubmissions((prev) => ({ ...prev, [assignmentId]: subs }));
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     } finally {
       setLoadingSubmissions(null);
     }
@@ -132,7 +132,7 @@ export default function AssignmentsPage() {
         [assignmentId]: (prev[assignmentId] ?? []).map((s) => (s.id === subId ? updated : s)),
       }));
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     }
   };
 
@@ -150,10 +150,10 @@ export default function AssignmentsPage() {
         dueDate: form.dueDate,
       });
       setAssignments([a, ...assignments]);
-      toast({ title: t("success"), variant: "success" });
+      notify.success(t("success"));
       setDialogOpen(false);
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     } finally {
       setIsSaving(false);
     }
@@ -166,7 +166,7 @@ export default function AssignmentsPage() {
       await deleteAssignment(id, branchId);
       setAssignments(assignments.filter((a) => a.id !== id));
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     }
   };
 

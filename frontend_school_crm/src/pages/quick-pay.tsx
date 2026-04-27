@@ -9,7 +9,7 @@ import {
   type Class,
 } from "@/lib/api";
 import { useBranch } from "@/context/BranchContext";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -254,6 +254,7 @@ function QRScanTab({
   t: (k: string) => string;
   onPaid: (receipt: ReceiptData) => void;
 }) {
+  const notify = useNotify();
   const videoRef   = useRef<HTMLVideoElement>(null);
   const streamRef  = useRef<MediaStream | null>(null);
   const [scanning, setScanning]   = useState(false);
@@ -261,7 +262,6 @@ function QRScanTab({
   const [student, setStudent]     = useState<StudentPaymentInfo | null>(null);
   const [paying, setPaying]       = useState(false);
   const [error, setError]         = useState("");
-  const { toast } = useToast();
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -336,7 +336,7 @@ function QRScanTab({
         paymentMethod: payMethod,
       }]);
       const r = res.results[0]!;
-      if (r.error) { toast({ title: r.error, variant: "destructive" }); return; }
+      if (r.error) { notify.error(r.error); return; }
       onPaid({
         studentName: student.fullName,
         amount: student.remaining,
@@ -350,7 +350,7 @@ function QRScanTab({
       setStudent(null);
       setManualId("");
     } catch (e: any) {
-      toast({ title: e.message, variant: "destructive" });
+      notify.error(e.message);
     } finally {
       setPaying(false);
     }
@@ -457,9 +457,9 @@ function QRScanTab({
 
 export default function QuickPayPage() {
   const language = useLanguage();
+  const notify = useNotify();
   const t = (k: string) => getTranslation(k, language);
   const { currentBranch } = useBranch();
-  const { toast } = useToast();
 
   const [tab, setTab]                     = useState<TabId>("collect");
   const [payMethod, setPayMethod]         = useState<PayMethod>("cash");
@@ -548,13 +548,13 @@ export default function QuickPayPage() {
         paymentMethod: payMethod,
       }]);
       const r = res.results[0]!;
-      if (r.error) { toast({ title: r.error, variant: "destructive" }); return; }
+      if (r.error) { notify.error(r.error); return; }
       setReceipt(makeReceipt(student, r));
       setStudents((prev) =>
         prev.map((s) => s.id === student.id ? { ...s, paymentStatus: "paid", amountPaid: s.monthlyPayment, remaining: 0 } : s)
       );
     } catch (e: any) {
-      toast({ title: e.message, variant: "destructive" });
+      notify.error(e.message);
     } finally {
       setPayingId(null);
     }
@@ -572,10 +572,7 @@ export default function QuickPayPage() {
         paymentMethod: payMethod,
       }));
       const res = await bulkPay(branchId, payMethod, entries);
-      toast({
-        title: t("paymentSuccess"),
-        description: `${res.succeeded} / ${targets.length} ${t("students").toLowerCase()}`,
-      });
+      notify.warning(t("paymentSuccess"), `${res.succeeded} / ${targets.length} ${t("students").toLowerCase()}`);
       // Update local state
       const paidIds = new Set(res.results.filter((r) => r.payment).map((r) => r.studentId));
       setStudents((prev) =>
@@ -591,7 +588,7 @@ export default function QuickPayPage() {
         setReceipt(makeReceipt(s, first));
       }
     } catch (e: any) {
-      toast({ title: e.message, variant: "destructive" });
+      notify.error(e.message);
     } finally {
       setBulkPaying(false);
     }

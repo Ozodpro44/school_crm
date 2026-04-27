@@ -39,14 +39,13 @@ import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { printReport, downloadCSV, type PrintColumn } from "@/lib/printExport";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 type ReportType = "payment" | "salary" | "debtors" | "income" | "expenses" | "forecast";
 
 export default function ReportsPage() {
   const router = useRouter();
-  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [reportType, setReportType] = useState<ReportType>("payment");
   const [classId, setClassId] = useState("all");
@@ -69,6 +68,7 @@ export default function ReportsPage() {
   const [forecastData, setForecastData] = useState<ForecastData | null>(null);
   const language = useLanguage();
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
   const canViewReports = hasPermission("canViewReports");
   const currentUser = getCurrentUser();
 
@@ -251,11 +251,7 @@ export default function ReportsPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId");
       if (!branchId) {
-        toast({
-          title: t("error"),
-          description: t("noBranchSelected") || t("error"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("noBranchSelected"));
         return;
       }
 
@@ -315,11 +311,7 @@ export default function ReportsPage() {
       setTotalPages(response.totalPages);
     } catch (error) {
       console.error("Failed to generate payment report:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToGeneratePaymentReport"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToGeneratePaymentReport"));
       setReportData([]);
     }
   };
@@ -328,11 +320,7 @@ export default function ReportsPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId");
       if (!branchId) {
-        toast({
-          title: t("error"),
-          description: t("noBranchSelected") || t("error"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("noBranchSelected"));
         return;
       }
 
@@ -388,11 +376,7 @@ export default function ReportsPage() {
       setReportData(data);
     } catch (error) {
       console.error("Failed to generate salary report:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToGenerateSalaryReport"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToGenerateSalaryReport"));
       setReportData([]);
     }
   };
@@ -401,11 +385,7 @@ export default function ReportsPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId");
       if (!branchId) {
-        toast({
-          title: t("error"),
-          description: t("noBranchSelected") || t("error"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("noBranchSelected"));
         return;
       }
 
@@ -458,11 +438,7 @@ export default function ReportsPage() {
       setReportData(data);
     } catch (error) {
       console.error("Failed to generate debtors report:", error);
-      toast({
-        title: t("error"),
-        description: "Failed to generate debtors report",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "Failed to generate debtors report");
       setReportData([]);
     }
   };
@@ -471,11 +447,7 @@ export default function ReportsPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId");
       if (!branchId) {
-        toast({
-          title: t("error"),
-          description: t("noBranchSelected") || t("error"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("noBranchSelected"));
         setReportData([]);
         return;
       }
@@ -526,11 +498,7 @@ export default function ReportsPage() {
       setReportData(data);
     } catch (error) {
       console.error("Failed to generate expenses report:", error);
-      toast({
-        title: t("error"),
-        description: "Failed to generate expenses report",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "Failed to generate expenses report");
       setReportData([]);
     }
   };
@@ -539,11 +507,7 @@ export default function ReportsPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId");
       if (!branchId) {
-        toast({
-          title: t("error"),
-          description: t("noBranchSelected") || t("error"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("noBranchSelected"));
         return;
       }
 
@@ -611,11 +575,7 @@ export default function ReportsPage() {
       });
     } catch (error) {
       console.error("Failed to generate income report:", error);
-      toast({
-        title: t("error"),
-        description: "Failed to generate income report",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "Failed to generate income report");
       setReportData([]);
     }
   };
@@ -624,7 +584,7 @@ export default function ReportsPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId");
       if (!branchId) {
-        toast({ title: t("error"), description: t("noBranchSelected") || t("error"), variant: "destructive" });
+        notify.error(t("error"), t("noBranchSelected"));
         return;
       }
       const now = new Date();
@@ -634,18 +594,14 @@ export default function ReportsPage() {
       setForecastData(data);
     } catch (error) {
       console.error("Failed to load forecast data:", error);
-      toast({ title: t("error"), description: "Failed to load forecast data", variant: "destructive" });
+      notify.error(t("error"), "Failed to load forecast data");
       setForecastData(null);
     }
   };
 
   const downloadReport = async () => {
     if (reportData.length === 0) {
-      toast({
-        title: t("noDataFound"),
-        description: t("generateReportFirst") || t("noDataFound"),
-        variant: "destructive",
-      });
+      notify.error(t("noDataFound"), t("generateReportFirst"));
       return;
     }
 
@@ -733,17 +689,9 @@ export default function ReportsPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast({
-        title: t("success"),
-        description: t("reportDownloaded") || t("downloadReport"),
-        variant: "success",
-      });
+      notify.success(t("success"), t("reportDownloaded"));
     } catch {
-      toast({
-        title: t("error"),
-        description: t("failedToDownloadReport") || t("error"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToDownloadReport"));
     } finally {
       setIsDownloading(false);
     }

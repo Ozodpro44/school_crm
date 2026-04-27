@@ -25,7 +25,7 @@ import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, B
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { listSalaries, getBranch, listTeachers, createSalary, updateSalary, deleteSalary } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -50,7 +50,6 @@ export default function SalariesPage() {
   const itemsPerPage = 10;
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const language = useLanguage();
-  const { toast } = useToast();
   const canCreateSalaries = hasPermission("canCreateSalaries");
   const canEditSalaries = hasPermission("canEditSalaries");
   const canDeleteSalaries = hasPermission("canDeleteSalaries");
@@ -114,6 +113,7 @@ export default function SalariesPage() {
   }, [selectedMonth, selectedYear]);
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   const handleMonthChange = (month: string, year: number) => {
     setSelectedMonth(month);
@@ -149,11 +149,7 @@ export default function SalariesPage() {
       }
     } catch (error) {
       console.error("Failed to load salaries:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadSalaries"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToLoadSalaries"));
     }
   };
 
@@ -190,10 +186,10 @@ export default function SalariesPage() {
       resetForm();
       await loadData();
       setIsDialogOpen(false);
-      toast({ title: t("success"), variant: "success" });
+      notify.success(t("success"));
     } catch (error) {
       console.error("Failed to save salary:", error);
-      toast({ title: t("error"), description: t("failedToSaveSalary"), variant: "destructive" });
+      notify.error(t("error"), t("failedToSaveSalary"));
     } finally {
       setIsSubmitting(false);
     }
@@ -203,9 +199,9 @@ export default function SalariesPage() {
     try {
       await updateSalary(id, { status: "paid", paidDate: new Date().toISOString() });
       await loadData();
-      toast({ title: t("success") || "Success", description: "Salary marked as paid", variant: "success" });
+      notify.success(t("success"), "Salary marked as paid");
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     }
   };
 
@@ -233,9 +229,9 @@ export default function SalariesPage() {
       try {
         await deleteSalary(deleteConfirmId);
         await loadData();
-        toast({ title: t("deleted") || "Deleted", description: t("salaryRecordDeleted"), variant: "success" });
+        notify.success(t("deleted"), t("salaryRecordDeleted"));
       } catch (error) {
-        toast({ title: "Error", description: "Failed to delete salary", variant: "destructive" });
+        notify.error("Error", "Failed to delete salary");
       } finally {
         setIsDeleteLoading(false);
         setDeleteConfirmId(null);

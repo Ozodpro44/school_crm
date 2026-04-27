@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import {
   listSchedule,
   upsertScheduleSlot,
@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Trash2, Calendar, Clock, BookOpen } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import { formatPhoneNumber } from "@/lib/utils";
 
 const DAYS = [
@@ -51,7 +52,6 @@ const DAY_COLORS = [
 
 export default function SchedulePage() {
   const language = useLanguage();
-  const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(true);
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
@@ -71,6 +71,7 @@ export default function SchedulePage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   useEffect(() => {
     loadData();
@@ -96,7 +97,7 @@ export default function SchedulePage() {
         setForm((f) => ({ ...f, classId: classesData[0]!.id }));
       }
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     } finally {
       setIsLoading(false);
     }
@@ -136,10 +137,10 @@ export default function SchedulePage() {
         );
         return idx >= 0 ? prev.map((s, i) => (i === idx ? slot : s)) : [...prev, slot];
       });
-      toast({ title: t("success"), variant: "success" });
+      notify.success(t("success"));
       setDialogOpen(false);
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     } finally {
       setIsSaving(false);
     }
@@ -152,7 +153,7 @@ export default function SchedulePage() {
       await deleteScheduleSlot(slot.id, branchId);
       setSlots((prev) => prev.filter((s) => s.id !== slot.id));
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     }
   };
 
@@ -282,15 +283,15 @@ export default function SchedulePage() {
         })}
       </div>
 
-      {/* Empty state */}
       {filteredSlots.length === 0 && !isLoading && (
         <Card>
-          <CardContent className="py-12 text-center text-slate-500">
-            <Calendar className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-            <p>{t("noData")}</p>
-            <Button className="mt-4" onClick={openAdd}>
-              <Plus className="w-4 h-4 mr-2" />{t("addSlot")}
-            </Button>
+          <CardContent className="pt-2">
+            <EmptyState
+              icon={Calendar}
+              title={t("noData") || "No schedule slots"}
+              description={t("addSlotHint") || "Add a time slot to build out your weekly schedule."}
+              action={{ label: t("addSlot") || "Add Slot", onClick: openAdd }}
+            />
           </CardContent>
         </Card>
       )}

@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { hasPermission } from "@/lib/auth";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -92,7 +92,6 @@ export default function ClassDetailsPage() {
     isLoading: false,
   });
   const language = useLanguage();
-  const { toast } = useToast();
   const canEditStudents = hasPermission("canEditStudents");
   const canEditClasses = hasPermission("canEditClasses");
   const canDeleteClasses = hasPermission("canDeleteClasses");
@@ -108,6 +107,7 @@ export default function ClassDetailsPage() {
   } = useMultiSelect<Student>();
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   const getCurrentMonthPaymentStatus = (studentId: string): string => {
     // Use branch's current month, fall back to system month
@@ -232,11 +232,7 @@ export default function ClassDetailsPage() {
 
   const handleRemoveStudent = (studentId: string) => {
     if (!canEditStudents) {
-      toast({
-        title: t("error"),
-        description: "You don't have permission to update students.",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "You don't have permission to update students.");
       return;
     }
 
@@ -252,18 +248,10 @@ export default function ClassDetailsPage() {
             classId: null as unknown as string,
           });
           await loadData();
-          toast({
-            title: t("success"),
-            description: t("studentRemovedFromClass"),
-            variant: "success",
-          });
+          notify.success(t("success"), t("studentRemovedFromClass"));
         } catch (error) {
           console.error("Failed to remove student:", error);
-          toast({
-            title: t("error"),
-            description: t("failedToRemoveStudentFromClass"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToRemoveStudentFromClass"));
         }
         setConfirmDialog({ ...confirmDialog, isOpen: false });
       },
@@ -276,20 +264,12 @@ export default function ClassDetailsPage() {
   const handleSwitchStudents = () => {
     const ids = getSelectedIds();
     if (ids.length === 0 || !targetClassId || !classData) {
-      toast({
-        title: t("error"),
-        description: "Please select students and a target class",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "Please select students and a target class");
       return;
     }
 
     if (!canEditStudents) {
-      toast({
-        title: t("error"),
-        description: "You don't have permission to update students.",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "You don't have permission to update students.");
       return;
     }
 
@@ -315,18 +295,10 @@ export default function ClassDetailsPage() {
           clearSelection();
           setTargetClassId("");
           await loadData();
-          toast({
-            title: t("success"),
-            description: t("studentsSwitchedSuccess"),
-            variant: "success",
-          });
+          notify.success(t("success"), t("studentsSwitchedSuccess"));
         } catch (error) {
           console.error("Failed to switch students:", error);
-          toast({
-            title: t("error"),
-            description: t("failedToSwitchStudents"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToSwitchStudents"));
         } finally {
           setConfirmDialog({ ...confirmDialog, isOpen: false, isLoading: false });
         }
@@ -340,20 +312,12 @@ export default function ClassDetailsPage() {
   const handleDeleteMultipleStudents = () => {
     const ids = getSelectedIds();
     if (ids.length === 0) {
-      toast({
-        title: t("error"),
-        description: "Please select students to delete",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "Please select students to delete");
       return;
     }
 
     if (!canEditStudents) {
-      toast({
-        title: t("error"),
-        description: "You don't have permission to update students.",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "You don't have permission to update students.");
       return;
     }
 
@@ -374,18 +338,10 @@ export default function ClassDetailsPage() {
           );
           clearSelection();
           await loadData();
-          toast({
-            title: t("success"),
-            description: t("studentsRemovedFromClass"),
-            variant: "success",
-          });
+          notify.success(t("success"), t("studentsRemovedFromClass"));
         } catch (error) {
           console.error("Failed to remove students:", error);
-          toast({
-            title: t("error"),
-            description: t("failedToRemoveStudentsFromClass"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToRemoveStudentsFromClass"));
         }
         setConfirmDialog({ ...confirmDialog, isOpen: false });
       },
@@ -442,11 +398,7 @@ export default function ClassDetailsPage() {
 
   const handleEdit = () => {
     if (!canEditClasses) {
-      toast({
-        title: t("error"),
-        description: "You don't have permission to edit classes.",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "You don't have permission to edit classes.");
       return;
     }
     if (classData) {
@@ -460,11 +412,7 @@ export default function ClassDetailsPage() {
 
   const handleSaveEdit = async () => {
     if (!classData || !editFormData.name.trim()) {
-      toast({
-        title: t("error"),
-        description: "Class name is required",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "Class name is required");
       return;
     }
 
@@ -476,28 +424,16 @@ export default function ClassDetailsPage() {
 
       await loadData();
       setIsEditModalOpen(false);
-      toast({
-        title: t("success"),
-        description: "Class updated successfully",
-        variant: "success",
-      });
+      notify.success(t("success"), "Class updated successfully");
     } catch (error) {
       console.error("Failed to update class:", error);
-      toast({
-        title: t("error"),
-        description: "Failed to update class",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "Failed to update class");
     }
   };
 
   const handleDelete = () => {
     if (!canDeleteClasses) {
-      toast({
-        title: t("error"),
-        description: "You don't have permission to delete classes.",
-        variant: "destructive",
-      });
+      notify.error(t("error"), "You don't have permission to delete classes.");
       return;
     }
 
@@ -510,20 +446,11 @@ export default function ClassDetailsPage() {
       onConfirm: async () => {
         try {
           await apiDeleteClass(classData!.id);
-          toast({
-            title: t("success"),
-            description:
-              t("classDeletedSuccessfully") || "Class deleted successfully",
-            variant: "success",
-          });
+          notify.success(t("success"), t("classDeletedSuccessfully"));
           router.push("/classes");
         } catch (error) {
           console.error("Failed to delete class:", error);
-          toast({
-            title: t("error"),
-            description: "Failed to delete class",
-            variant: "destructive",
-          });
+          notify.error(t("error"), "Failed to delete class");
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         }
       },

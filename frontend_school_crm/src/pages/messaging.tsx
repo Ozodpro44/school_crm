@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import {
   listMessageHistory,
   sendMassMessage,
@@ -33,7 +33,6 @@ const TEMPLATES = [
 
 export default function MessagingPage() {
   const language = useLanguage();
-  const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(true);
   const [history, setHistory] = useState<MessageLogEntry[]>([]);
@@ -47,6 +46,7 @@ export default function MessagingPage() {
   const [activeTab, setActiveTab] = useState<"compose" | "history">("compose");
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   useEffect(() => {
     loadData();
@@ -64,7 +64,7 @@ export default function MessagingPage() {
       setHistory(historyData);
       setClasses(classesData);
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     } finally {
       setIsLoading(false);
     }
@@ -93,16 +93,12 @@ export default function MessagingPage() {
       });
 
       setHistory([result, ...history]);
-      toast({
-        title: t("messageSent"),
-        description: `${result.recipientsCount} recipients, ${result.deliveredCount} delivered`,
-        variant: "success",
-      });
+      notify.success(t("messageSent"), `${result.recipientsCount} recipients, ${result.deliveredCount} delivered`);
       setMessage("");
       setSelectedTemplate("");
       setActiveTab("history");
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     } finally {
       setIsSending(false);
     }

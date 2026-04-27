@@ -1,10 +1,9 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -21,12 +20,9 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { FormDialog } from "@/components/FormDialog";
-import { Field } from "@/components/Field";
 import {
   Payment,
   PaymentStatus,
-  StudentPaymentMethod,
   Student,
   Class,
 } from "@/types";
@@ -51,29 +47,20 @@ import { StatCard } from "@/components/StatCard";
 import { PosReceiptDialog } from "@/components/PosReceiptDialog";
 import { BulkPaymentDialog } from "@/components/BulkPaymentDialog";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
-import {
-  createPayment as apiCreatePayment,
-  updatePayment as apiUpdatePayment,
-  deletePayment as apiDeletePayment,
-  searchStudentsWithPayments,
-} from "@/lib/api";
-import { Branch } from "@/types";
+import { deletePayment as apiDeletePayment } from "@/lib/api";
+import { PaymentFormDialog } from "@/components/PaymentFormDialog";
 import { usePaymentsConsolidatedQuery, useBranchQuery, useClassesQuery } from "@/hooks/queries";
 import { useBranch } from "@/context/BranchContext";
 import MonthYearSelector from "@/components/MonthYearSelector";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { formatNumberWithSpaces, removeNumberFormatting, toTitleCase } from "@/lib/utils";
-import { useSettings } from "@/hooks/use-settings";
-import { formatDateTimeInTashkent } from "@/lib/timezone";
-import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { toTitleCase } from "@/lib/utils";
 import { PageHeader } from "@/components/PageHeader";
 
 export default function PaymentsPage() {
   const router = useRouter();
-  const { settings } = useSettings();
   const { currentBranch } = useBranch();
   const branchId = currentBranch?.id || null;
   const qc = useQueryClient();
@@ -84,7 +71,6 @@ export default function PaymentsPage() {
   const [consolidatedPaymentMap, setConsolidatedPaymentMap] = useState<
     Map<string, string[]>
   >(new Map());
-  const [students, setStudents] = useState<Student[]>([]);
   const [studentInfoMap, setStudentInfoMap] = useState<
     Map<
       string,
@@ -104,7 +90,7 @@ export default function PaymentsPage() {
   const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("all");
   const [filterClassId, setFilterClassId] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editPayment, setEditPayment] = useState<Payment | null>(null);
   const getDefaultMonth = () => {
     const month = new Date().getMonth() + 1;
     return month.toString().padStart(2, "0");
@@ -120,47 +106,7 @@ export default function PaymentsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalPayments, setTotalPayments] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
 
-  const [formData, setFormData] = useState({
-    studentId: "",
-    amount: "",
-    month: getDefaultMonth(),
-    year: getDefaultYear().toString(),
-    status: "partial" as PaymentStatus,
-    paymentMethod: "cash" as StudentPaymentMethod,
-    notes: "",
-  });
-  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
-  const [paymentSummary, setPaymentSummary] = useState<{
-    paidTotal: number;
-    remaining: number;
-    status: "paid" | "partial" | "none";
-  } | null>(null);
-  const [studentSearchTerm, setStudentSearchTerm] = useState("");
-  const [showStudentDropdown, setShowStudentDropdown] = useState(false);
-  const [filteredStudentsForModal, setFilteredStudentsForModal] = useState<
-    Array<{
-      id: string;
-      fullName: string;
-      phone: string;
-      classId: string;
-      className: string;
-      monthlyPayment: number;
-      paidAmount: number;
-      status: "paid" | "partial" | "none";
-      branchId: string;
-    }>
-  >([]);
-  const [selectedStudentInfo, setSelectedStudentInfo] = useState<{
-    id: string;
-    fullName: string;
-    phone: string;
-    classId: string;
-    className: string;
-    monthlyPayment: number;
-  } | null>(null);
-  const [isSearchingStudents, setIsSearchingStudents] = useState(false);
   const [posPreviewData, setPosPreviewData] = useState<{
     payment: Payment;
     student: Student;
@@ -188,10 +134,8 @@ export default function PaymentsPage() {
     };
   } | null>(null);
 
-  const [formSubmitted, setFormSubmitted] = useState(false);
-
   const language = useLanguage();
-  const { toast } = useToast();
+  const notify = useNotify();
   const t = (key: string) => getTranslation(key, language);
 
   // Get permissions once per component lifecycle
@@ -204,12 +148,6 @@ export default function PaymentsPage() {
   const canDeletePayments = useMemo(() => hasPermission("canDeletePayments"), []);
   const isAdmin =
     currentUser?.role === "admin" || currentUser?.role === "branch_admin";
-
-  const isMonthVisible = (month: string, year: number): boolean => {
-    // The backend API handles filtering of archived months per branch
-    // So we allow all months here and let the backend handle visibility
-    return true;
-  };
 
   // ── React Query data fetching ──────────────────────────────────────────
 
@@ -289,13 +227,11 @@ export default function PaymentsPage() {
     const paymentIndicators = paymentsQueryData?.indicators || null;
 
     setTotalPayments(paymentsQueryData?.total || 0);
-    setTotalPages(Math.ceil((paymentsQueryData?.total || 0) / itemsPerPage));
     setOriginalPayments(paymentsList);
     setPayments(paymentsList);
     setIndicators(paymentIndicators);
     setClasses(classesList);
     setConsolidatedPaymentMap(new Map());
-    setStudents([]);
 
     const studentMap = new Map<string, { fullName: string; phone: string; classId: string; className: string; monthlyPayment: number }>();
     studentsList.forEach((s: any) => {
@@ -311,228 +247,18 @@ export default function PaymentsPage() {
     setCurrentPage(1);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormSubmitted(true);
-    setIsSubmitting(true);
-    const user = getCurrentUser();
-    if (!user) {
-      setIsSubmitting(false);
-      return;
-    }
-
-    const invoiceNumber = `INV-${Date.now()}`;
-
-    const monthlyPaymentValue = (() => {
-      // Use selectedStudentInfo which is set when a student is selected
-      if (selectedStudentInfo && selectedStudentInfo.id === formData.studentId) {
-        return selectedStudentInfo.monthlyPayment || 0;
-      }
-      // Fallback to searching in filteredStudentsForModal
-      const student = filteredStudentsForModal.find(
-        (s) => s.id === formData.studentId,
-      );
-      return student?.monthlyPayment || 0;
-    })();
-
-    const newAmount = parseFloat(formData.amount);
-
-    if (editingPaymentId) {
-      // Update existing payment
-      const existingPayment = payments.find((p) => p.id === editingPaymentId);
-      if (existingPayment) {
-        const targetMonth = formData.month;
-        const targetYear = parseInt(formData.year);
-
-        // Calculate total excluding this payment to check if new amount exceeds remaining
-        const paidTotalExcludingCurrent = payments
-          .filter(
-            (p) =>
-              p.studentId === formData.studentId &&
-              p.month === targetMonth &&
-              p.year === targetYear &&
-              p.id !== editingPaymentId,
-          )
-          .reduce((sum, p) => sum + p.amount, 0);
-
-        // Allow if: existing other payments + new amount <= monthly payment
-        if (paidTotalExcludingCurrent + newAmount > monthlyPaymentValue) {
-          toast({
-            title: t("error"),
-            description: `Amount exceeds remaining balance. Remaining: ${formatCurrency(
-              monthlyPaymentValue - paidTotalExcludingCurrent,
-            )}`,
-            variant: "destructive",
-          });
-          setIsSubmitting(false);
-          return;
-        }
-      }
-
-      // Update via backend API
-      try {
-        await apiUpdatePayment(editingPaymentId, {
-          amount: newAmount,
-          status: formData.status as PaymentStatus,
-          paymentMethod: formData.paymentMethod,
-          notes: formData.notes || undefined,
-          paidDate: new Date().toISOString(), // Set paidDate for both "paid" and "partial"
-        });
-        setEditingPaymentId(null);
-
-        toast({
-          title: t("paymentUpdated") || "Payment Updated",
-          description:
-            t("paymentUpdatedDescription") ||
-            "Payment has been updated successfully",
-          variant: "default",
-        });
-      } catch (error) {
-        console.error("Failed to update payment:", error);
-        toast({
-          title: t("error"),
-          description: t("failedToUpdatePayment"),
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-    } else {
-      // Create new payment
-      // Use backend payments instead of localStorage
-      const periodPaidTotal = payments
-        .filter(
-          (p) =>
-            p.studentId === formData.studentId &&
-            p.month === formData.month &&
-            p.year === parseInt(formData.year),
-        )
-        .reduce((sum, p) => sum + p.amount, 0);
-
-      // Allow if: existing payments + new amount <= monthly payment
-      if (periodPaidTotal + newAmount > monthlyPaymentValue) {
-        toast({
-          title: t("error"),
-          description: `Amount exceeds remaining balance. Remaining: ${formatCurrency(
-            monthlyPaymentValue - periodPaidTotal,
-          )}`,
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Determine final status: if total will equal monthly payment, mark as "paid"
-      const totalAfterPayment = periodPaidTotal + newAmount;
-      const finalStatus =
-        totalAfterPayment >= monthlyPaymentValue ? "paid" : "partial";
-
-      // Create via backend API
-      try {
-        const student = filteredStudentsForModal.find(
-          (s) => s.id === formData.studentId,
-        );
-
-        // Create the new payment
-        await apiCreatePayment({
-          studentId: formData.studentId,
-          amount: newAmount,
-          month: formData.month,
-          year: parseInt(formData.year),
-          status: finalStatus as PaymentStatus,
-          paymentMethod: formData.paymentMethod,
-          invoiceNumber,
-          notes: formData.notes || undefined,
-          paidDate: new Date().toISOString(), // Set paidDate for both "paid" and "partial"
-          branchId: student?.branchId || branchId || user.branchId || "",
-        });
-
-        // If this payment completes the month, update all related partial payments to "paid"
-        if (finalStatus === "paid") {
-          const relatedPartialPayments = payments.filter(
-            (p) =>
-              p.studentId === formData.studentId &&
-              p.month === formData.month &&
-              p.year === parseInt(formData.year) &&
-              p.status === "partial",
-          );
-
-          // Update all partial payments to paid
-          for (const payment of relatedPartialPayments) {
-            try {
-              await apiUpdatePayment(payment.id, { status: "paid" });
-            } catch (error) {
-              console.error(`Failed to update payment ${payment.id}:`, error);
-            }
-          }
-        }
-
-        toast({
-          title: t("paymentCreated") || "Payment Created",
-          description:
-            t("paymentCreatedDescription") ||
-            "Payment has been created successfully",
-          variant: "default",
-        });
-      } catch (error) {
-        console.error("Failed to create payment:", error);
-        toast({
-          title: t("error"),
-          description: "Failed to create payment",
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-    }
-
-    resetForm();
-    setEditingPaymentId(null);
-    qc.invalidateQueries({ queryKey: ["payments"] });
-    setIsDialogOpen(false);
-    setIsSubmitting(false);
-  };
-
   const handleEdit = (payment: Payment) => {
-    // Check if this is a consolidated payment using the map
     const consolidatedIds = consolidatedPaymentMap.get(payment.id);
-
     if (consolidatedIds && consolidatedIds.length > 0) {
-      // For consolidated payments, edit the first individual partial payment
-      const paymentToEdit = originalPayments.find(
-        (p) => p.id === consolidatedIds[0],
-      );
-
+      const paymentToEdit = originalPayments.find((p) => p.id === consolidatedIds[0]);
       if (paymentToEdit) {
-        setEditingPaymentId(paymentToEdit.id);
-        setFormData({
-          studentId: paymentToEdit.studentId,
-          amount: paymentToEdit.amount.toString(),
-          month: paymentToEdit.month,
-          year: paymentToEdit.year.toString(),
-          status: paymentToEdit.status,
-          paymentMethod: paymentToEdit.paymentMethod,
-          notes: paymentToEdit.notes || "",
-        });
+        setEditPayment(paymentToEdit);
         setIsDialogOpen(true);
         return;
       }
     }
-
-    // For non-consolidated payments, use the payment directly or find its original
-    const originalPayment =
-      originalPayments.find((p) => p.id === payment.id) || payment;
-
-    setEditingPaymentId(originalPayment.id);
-    setFormData({
-      studentId: originalPayment.studentId,
-      amount: originalPayment.amount.toString(),
-      month: originalPayment.month,
-      year: originalPayment.year.toString(),
-      status: originalPayment.status,
-      paymentMethod: originalPayment.paymentMethod,
-      notes: originalPayment.notes || "",
-    });
+    const resolved = originalPayments.find((p) => p.id === payment.id) || payment;
+    setEditPayment(resolved);
     setIsDialogOpen(true);
   };
 
@@ -554,289 +280,23 @@ export default function PaymentsPage() {
     try {
       await apiDeletePayment(id);
       qc.invalidateQueries({ queryKey: ["payments"] });
-      toast({ title: t("paymentDeleted"), variant: "success" });
+      notify.success(t("paymentDeleted"));
     } catch (error) {
       console.error("Failed to delete payment:", error);
 
       // Check if payment still exists in state
       const paymentExists = payments.some((p) => p.id === id);
       if (!paymentExists) {
-        toast({
-          title: t("info"),
-          description: "Payment was already removed",
-          variant: "default",
-        });
+        notify.warning(t("info"), "Payment was already removed");
         qc.invalidateQueries({ queryKey: ["payments"] });
       } else {
-        toast({
-          title: t("error"),
-          description: "Failed to delete payment",
-          variant: "destructive",
-        });
+        notify.error(t("error"), "Failed to delete payment");
       }
     } finally {
       setProcessingPaymentId(null);
       setDeleteConfirmDialog({ isOpen: false, paymentId: null });
     }
   };
-
-  const resetForm = () => {
-    // Use branch's current financial month, fallback to current date
-    const defaultMonth =
-      branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
-      getDefaultMonth();
-    const defaultYear =
-      branchData?.currentFinancialMonth?.year?.toString() ||
-      getDefaultYear().toString();
-
-    setFormData({
-      studentId: "",
-      amount: "",
-      month: defaultMonth,
-      year: defaultYear,
-      status: "partial",
-      paymentMethod: "cash",
-      notes: "",
-    });
-    setSelectedStudentInfo(null);
-    setStudentSearchTerm("");
-    setPaymentSummary(null);
-    setFormSubmitted(false);
-  };
-
-  const recomputePaymentStatus = (
-    studentId: string,
-    month: string,
-    year: number,
-  ) => {
-    // This function is kept for compatibility but no longer modifies individual payment statuses
-    // Each payment record maintains its own status based on what was recorded
-    // Aggregated status is calculated on-the-fly for display purposes in student pages
-    return;
-  };
-
-  // Close student dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-student-search-container]")) {
-        setShowStudentDropdown(false);
-      }
-    };
-
-    if (showStudentDropdown) {
-      document.addEventListener("click", handleClickOutside);
-      return () => document.removeEventListener("click", handleClickOutside);
-    }
-  }, [showStudentDropdown]);
-
-  useEffect(() => {
-    // recompute payment summary when student / month / year changes in modal
-    // Only update when modal is open (check by formData.studentId)
-    const { studentId, month, year } = formData;
-    if (!studentId || !month) {
-      setPaymentSummary(null);
-      return;
-    }
-
-    // Get student info from selected info first, then search results
-    let monthly = 0;
-    if (selectedStudentInfo?.id === studentId) {
-      monthly = selectedStudentInfo.monthlyPayment;
-    } else {
-      const student = filteredStudentsForModal.find((s) => s.id === studentId);
-      monthly = student?.monthlyPayment || 0;
-    }
-
-    // Use backend payments instead of localStorage
-    // When editing, exclude the current payment from the total so remaining is calculated correctly
-    const paidTotal = payments
-      .filter(
-        (p) =>
-          p.studentId === studentId &&
-          p.month === month &&
-          p.year === parseInt(year) &&
-          p.id !== editingPaymentId, // Exclude the payment being edited
-      )
-      .reduce((sum, p) => sum + p.amount, 0);
-
-    // When editing, don't override the amount - keep the original payment amount
-    if (editingPaymentId) {
-      // Just update the summary for display, don't change form amount
-      const remaining = parseFloat((monthly - paidTotal).toFixed(2));
-      if (paidTotal >= monthly) {
-        setPaymentSummary({ paidTotal, remaining: 0, status: "paid" });
-      } else if (paidTotal > 0) {
-        setPaymentSummary({ paidTotal, remaining, status: "partial" });
-      } else {
-        setPaymentSummary({ paidTotal: 0, remaining: monthly, status: "none" });
-      }
-      return;
-    }
-
-    // For new payments, auto-fill amount as before
-    // Always use "partial" status for individual payments - the overall status is calculated separately
-    if (paidTotal >= monthly) {
-      setPaymentSummary({ paidTotal, remaining: 0, status: "paid" });
-      setFormData((prev) => ({
-        ...prev,
-        amount: monthly.toString(),
-        status: "partial",
-      }));
-    } else if (paidTotal > 0) {
-      const remaining = parseFloat((monthly - paidTotal).toFixed(2));
-      setPaymentSummary({ paidTotal, remaining, status: "partial" });
-      setFormData((prev) => ({
-        ...prev,
-        amount: remaining.toString(),
-        status: "partial",
-      }));
-    } else {
-      setPaymentSummary({ paidTotal: 0, remaining: monthly, status: "none" });
-      setFormData((prev) => ({
-        ...prev,
-        amount: monthly.toString(),
-        status: "partial",
-      }));
-    }
-    // Only depend on modal form data and selected student info, not all payments
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.studentId, formData.month, formData.year, selectedStudentInfo, editingPaymentId]);
-
-  const getStudentName = (studentId: string) => {
-    // First check selected student from modal
-    if (selectedStudentInfo?.id === studentId) {
-      return selectedStudentInfo.fullName;
-    }
-
-    // Then try consolidated data (loaded with payments)
-    const studentInfo = studentInfoMap.get(studentId);
-    if (studentInfo?.fullName) return studentInfo.fullName;
-
-    // Fall back to filtered students from search
-    const student = filteredStudentsForModal.find((s) => s.id === studentId);
-    if (student?.fullName) return student.fullName;
-
-    // If student not found, return Unknown
-    return "Unknown";
-  };
-
-  const getClassName = (studentId: string) => {
-    // First check selected student from modal
-    if (selectedStudentInfo?.id === studentId) {
-      return selectedStudentInfo.className;
-    }
-
-    // Then try consolidated data (loaded with payments)
-    const studentInfo = studentInfoMap.get(studentId);
-    if (studentInfo?.className) return studentInfo.className;
-
-    // Fall back to filtered students from search
-    const student = filteredStudentsForModal.find((s) => s.id === studentId);
-    if (student?.className) return student.className;
-
-    // If not found, return N/A
-    return "N/A";
-  };
-
-  const getFilteredStudentsForPayment = () => {
-    // Return the filtered students from search endpoint, default to empty array
-    return filteredStudentsForModal || [];
-  };
-
-  // Handle student search in payment modal
-  useEffect(() => {
-    const handleStudentSearch = async () => {
-      const selectedBranchId = branchId;
-      if (!selectedBranchId || !studentSearchTerm.trim()) {
-        setFilteredStudentsForModal([]);
-        return;
-      }
-
-      setIsSearchingStudents(true);
-      try {
-        const results = await searchStudentsWithPayments(
-          selectedBranchId,
-          studentSearchTerm,
-          formData.month,
-          formData.year,
-        );
-        setFilteredStudentsForModal(results || []);
-      } catch (error) {
-        console.error("Failed to search students:", error);
-        setFilteredStudentsForModal([]);
-      } finally {
-        setIsSearchingStudents(false);
-      }
-    };
-
-    const timer = setTimeout(() => {
-      handleStudentSearch();
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [studentSearchTerm, formData.month, formData.year]);
-
-  // Update payment summary when month/year changes while a student is selected in the modal
-  useEffect(() => {
-    // Only run when modal is open and a student is selected
-    if (!isDialogOpen || !formData.studentId || !selectedStudentInfo) return;
-
-    const handleMonthChange = async () => {
-      const selectedBranchId = branchId;
-      if (!selectedBranchId) return;
-
-      try {
-        const results = await searchStudentsWithPayments(
-          selectedBranchId,
-          selectedStudentInfo.fullName,
-          formData.month,
-          formData.year,
-        );
-
-        const studentData = results.find((s) => s.id === formData.studentId);
-        if (studentData) {
-          const monthly = studentData.monthlyPayment || 0;
-          const paidTotal = studentData.paidAmount || 0;
-
-          if (paidTotal >= monthly) {
-            setPaymentSummary({
-              paidTotal,
-              remaining: 0,
-              status: "paid",
-            });
-          } else if (paidTotal > 0) {
-            const remaining = parseFloat((monthly - paidTotal).toFixed(2));
-            setPaymentSummary({
-              paidTotal,
-              remaining,
-              status: "partial",
-            });
-          } else {
-            setPaymentSummary({
-              paidTotal: 0,
-              remaining: monthly,
-              status: "none",
-            });
-          }
-        }
-      } catch (error) {
-        console.error("Failed to update payment summary:", error);
-      }
-    };
-
-    const timer = setTimeout(() => {
-      handleMonthChange();
-    }, 300); // Add debounce to prevent excessive API calls
-
-    return () => clearTimeout(timer);
-  }, [
-    isDialogOpen,
-    formData.month,
-    formData.year,
-    formData.studentId,
-    selectedStudentInfo,
-  ]);
 
   const handleSearch = () => {
     setCurrentPage(1);
@@ -911,28 +371,10 @@ export default function PaymentsPage() {
 
   // Calculate effective status based on actual payment amount vs monthly payment
   const getEffectivePaymentStatus = (payment: Payment): PaymentStatus => {
-    const student = filteredStudentsForModal.find(
-      (s) => s.id === payment.studentId,
-    );
+    const student = studentInfoMap.get(payment.studentId);
     if (!student) return payment.status;
-
-    // If payment amount >= monthly payment, it's fully paid
-    if (payment.amount >= student.monthlyPayment) {
-      return "paid";
-    }
-    // If payment amount < monthly payment, it's partial
+    if (payment.amount >= student.monthlyPayment) return "paid";
     return "partial";
-  };
-
-  const getStatusColor = (status: PaymentStatus) => {
-    switch (status) {
-      case "paid":
-        return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-      case "partial":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
-      default:
-        return "";
-    }
   };
 
   // Use API indicators if available, otherwise calculate from payments
@@ -1017,7 +459,8 @@ export default function PaymentsPage() {
       key: "student",
       header: t("student"),
       render: (p) => {
-        const name = getStudentName(p.studentId);
+        const info = studentInfoMap.get(p.studentId);
+        const name = info?.fullName ?? "Unknown";
         return (
           <div className="flex items-center gap-3">
             <InitialsAvatar name={name} size="md" />
@@ -1025,7 +468,7 @@ export default function PaymentsPage() {
               <p className="font-medium text-slate-900 dark:text-slate-100 truncate">
                 {toTitleCase(name)}
               </p>
-              <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{getClassName(p.studentId)}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{info?.className ?? "N/A"}</p>
             </div>
           </div>
         );
@@ -1099,10 +542,10 @@ export default function PaymentsPage() {
                 payment: p,
                 student: {
                   id: p.studentId,
-                  fullName: studentInfo?.fullName || getStudentName(p.studentId),
-                  phone: studentInfo?.phone || "",
-                  classId: studentInfo?.classId || "",
-                  monthlyPayment: studentInfo?.monthlyPayment || 0,
+                  fullName: studentInfo?.fullName ?? "Unknown",
+                  phone: studentInfo?.phone ?? "",
+                  classId: studentInfo?.classId ?? "",
+                  monthlyPayment: studentInfo?.monthlyPayment ?? 0,
                   branchId: selectedBranchId,
                   status: "active",
                   parentPhone: "",
@@ -1110,7 +553,7 @@ export default function PaymentsPage() {
                   createdAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),
                 },
-                className: studentInfo?.className || getClassName(p.studentId),
+                className: studentInfo?.className ?? "N/A",
               });
             }}
             title={t("printReceipt")}
@@ -1167,7 +610,7 @@ export default function PaymentsPage() {
 
           <Button
             className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-            onClick={() => { resetForm(); setIsDialogOpen(true); }}
+            onClick={() => { setEditPayment(null); setIsDialogOpen(true); }}
             disabled={!canCreatePayments}
             title={
               !canCreatePayments
@@ -1179,339 +622,32 @@ export default function PaymentsPage() {
             {t("addPayment")}
           </Button>
 
-          <FormDialog
-            open={isDialogOpen}
+          <PaymentFormDialog
+            isOpen={isDialogOpen}
             onOpenChange={(open) => {
               setIsDialogOpen(open);
-              if (!open) {
-                setStudentSearchTerm("");
-                setShowStudentDropdown(false);
-                setEditingPaymentId(null);
-                resetForm();
-              }
+              if (!open) setEditPayment(null);
             }}
-            title={t("recordNewPayment")}
-            onSubmit={handleSubmit}
-            submitLabel={t("recordPayment")}
-            submittingLabel={t("recording")}
-            isPending={isSubmitting}
-            maxWidth="max-w-2xl"
-          >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="studentSearch">{t("student")} *</Label>
-                    <div className="relative" data-student-search-container>
-                      <div className="relative">
-                        <Input
-                          id="studentSearch"
-                          type="text"
-                          placeholder={
-                            t("searchStudent") ||
-                            "Search student name, class, or phone..."
-                          }
-                          value={studentSearchTerm}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            setStudentSearchTerm(value);
-                            setShowStudentDropdown(true);
-                            // Clear student selection if user manually clears the field
-                            if (value === "" && formData.studentId) {
-                              setFormData({
-                                ...formData,
-                                studentId: "",
-                                amount: "",
-                              });
-                              setPaymentSummary(null);
-                            }
-                          }}
-                          onFocus={() => setShowStudentDropdown(true)}
-                          className="w-full pr-10"
-                        />
-                        {formData.studentId && !studentSearchTerm && (
-                          <div className="absolute inset-0 flex items-center px-3 pointer-events-none bg-slate-50 dark:bg-slate-900/50 rounded-md">
-                            <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                              {getStudentName(formData.studentId)} -{" "}
-                              {getClassName(formData.studentId)}
-                            </span>
-                          </div>
-                        )}
-                        {(studentSearchTerm || formData.studentId) && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setStudentSearchTerm("");
-                              setSelectedStudentInfo(null);
-                              setFormData({
-                                ...formData,
-                                studentId: "",
-                                amount: "",
-                              });
-                              setPaymentSummary(null);
-                              setShowStudentDropdown(false);
-                            }}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-                            title={t("clear") || "Clear selection"}
-                          >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M6 18L18 6M6 6l12 12"
-                              />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                      {showStudentDropdown && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
-                          {isSearchingStudents ? (
-                            <div className="px-3 py-4 text-center">
-                              <div className="flex items-center justify-center gap-2">
-                                <div className="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
-                                <span className="text-sm text-slate-600 dark:text-slate-400">
-                                  {t("searching") || "Searching..."}
-                                </span>
-                              </div>
-                            </div>
-                          ) : getFilteredStudentsForPayment().length > 0 ? (
-                            getFilteredStudentsForPayment().map((student) => (
-                              <button
-                                key={student.id}
-                                type="button"
-                                className="w-full text-left px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-b-0 flex justify-between items-center"
-                                onClick={() => {
-                                  const monthly = student.monthlyPayment || 0;
-                                  const paidTotal = student.paidAmount || 0;
-
-                                  // Store selected student info for later retrieval
-                                  setSelectedStudentInfo({
-                                    id: student.id,
-                                    fullName: student.fullName,
-                                    phone: student.phone,
-                                    classId: student.classId,
-                                    className: student.className,
-                                    monthlyPayment: student.monthlyPayment,
-                                  });
-
-                                  setFormData({
-                                    ...formData,
-                                    studentId: student.id,
-                                    amount: monthly.toString(),
-                                  });
-                                  setStudentSearchTerm("");
-                                  setShowStudentDropdown(false);
-
-                                  // Use payment info from search response
-                                  if (paidTotal >= monthly) {
-                                    setPaymentSummary({
-                                      paidTotal,
-                                      remaining: 0,
-                                      status: "paid",
-                                    });
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      amount: monthly.toString(),
-                                      status: "paid",
-                                    }));
-                                  } else if (paidTotal > 0) {
-                                    const remaining = parseFloat(
-                                      (monthly - paidTotal).toFixed(2),
-                                    );
-                                    setPaymentSummary({
-                                      paidTotal,
-                                      remaining,
-                                      status: "partial",
-                                    });
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      amount: remaining.toString(),
-                                      status: "partial",
-                                    }));
-                                  } else {
-                                    setPaymentSummary({
-                                      paidTotal: 0,
-                                      remaining: monthly,
-                                      status: "none",
-                                    });
-                                    setFormData((prev) => ({
-                                      ...prev,
-                                      amount: monthly.toString(),
-                                      status: "partial",
-                                    }));
-                                  }
-                                }}
-                              >
-                                <div>
-                                  <div className="font-medium text-sm">
-                                    {student.fullName}
-                                  </div>
-                                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                                    {student.className} • {student.phone}
-                                    {student.paidAmount > 0 && (
-                                      <span className="ml-2 text-xs">
-                                        ({t(student.status) || student.status}:{" "}
-                                        {formatCurrency(student.paidAmount)})
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </button>
-                            ))
-                          ) : studentSearchTerm ? (
-                            <div className="px-3 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
-                              {t("noStudentsFound") || "No students found"}
-                            </div>
-                          ) : (
-                            <div className="px-3 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
-                              {t("typeToSearch") ||
-                                "Type to search for a student"}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    {formSubmitted && !formData.studentId && (
-                      <p className="text-red-500 text-sm mt-1">
-                        {t("studentRequired") || "Student is required"}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Payment summary for selected student / period */}
-                  {formData.studentId && formData.month && paymentSummary && (
-                    <div className="md:col-span-2 p-3 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/30">
-                      {paymentSummary.status === "paid" && (
-                        <p className="text-sm text-green-700 dark:text-green-300">
-                          {t("alreadyPaid")}
-                        </p>
-                      )}
-
-                      {paymentSummary.status === "partial" && (
-                        <p className="text-sm text-orange-700 dark:text-orange-300">
-                          {t("partialPaid")}:{" "}
-                          {formatCurrency(paymentSummary.paidTotal)} •{" "}
-                          {t("remainingAmount")}:{" "}
-                          {formatCurrency(paymentSummary.remaining)}
-                        </p>
-                      )}
-
-                      {paymentSummary.status === "none" && (
-                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                          {t("noPaymentsYet")}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  <Field
-                    id="amount"
-                    label={`${t("amount")} *`}
-                    type="text"
-                    value={formatNumberWithSpaces(formData.amount)}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setFormData({
-                        ...formData,
-                        amount: removeNumberFormatting(e.target.value),
-                      })
-                    }
-                    placeholder="0"
-                  />
-
-                  <div className="space-y-2">
-                    <Label htmlFor="status">{t("paymentStatusLabel")} *</Label>
-                    <Select
-                      value={formData.status}
-                      onValueChange={(value: PaymentStatus) =>
-                        setFormData({ ...formData, status: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="paid">{t("paid")}</SelectItem>
-                        <SelectItem value="partial">{t("partial")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="paymentMethod">
-                      {t("paymentMethod")} *
-                    </Label>
-                    <Select
-                      value={formData.paymentMethod}
-                      onValueChange={(value: StudentPaymentMethod) =>
-                        setFormData({ ...formData, paymentMethod: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="click">{t("click")}</SelectItem>
-                        <SelectItem value="cash">{t("cash")}</SelectItem>
-                        <SelectItem value="terminal">{t("terminal")}</SelectItem>
-                        <SelectItem value="bank">
-                          {t("bankTransfer")}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="month">{t("month")} *</Label>
-                    <Select
-                      value={formData.month}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, month: value })
-                      }
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("selectMonth")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {months.map((month) => (
-                          <SelectItem key={month} value={month}>
-                            {getMonthName(month)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <Field
-                    id="year"
-                    label={`${t("year")} *`}
-                    type="number"
-                    value={formData.year}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                      setFormData({ ...formData, year: e.target.value })
-                    }
-                  />
-
-                  <Field
-                    id="notes"
-                    as="textarea"
-                    label={t("notes")}
-                    value={formData.notes}
-                    className="md:col-span-2"
-                    placeholder={t("additionalNotes")}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                      setFormData({ ...formData, notes: e.target.value })
-                    }
-                  />
-                </div>
-          </FormDialog>
+            editPayment={editPayment}
+            branchId={branchId}
+            existingPayments={payments}
+            defaultMonth={
+              branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
+              getDefaultMonth()
+            }
+            defaultYear={
+              branchData?.currentFinancialMonth?.year?.toString() ||
+              getDefaultYear().toString()
+            }
+            months={months}
+            getMonthName={getMonthName}
+            studentInfoMap={studentInfoMap}
+            onSuccess={() => {}}
+            t={t}
+          />
         </div>
       </div>
+
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <StatCard
@@ -1763,10 +899,10 @@ export default function PaymentsPage() {
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900 dark:text-slate-100">
-                      {toTitleCase(getStudentName(p.studentId))}
+                      {toTitleCase(studentInfoMap.get(p.studentId)?.fullName ?? "Unknown")}
                     </p>
                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                      {getClassName(p.studentId)} · {getMonthName(p.month)} {p.year}
+                      {studentInfoMap.get(p.studentId)?.className ?? "N/A"} · {getMonthName(p.month)} {p.year}
                     </p>
                     <p className="text-xs font-mono text-slate-400 dark:text-slate-500 mt-0.5">
                       {p.invoiceNumber}
@@ -1801,7 +937,7 @@ export default function PaymentsPage() {
                       onClick={() => {
                         const studentInfo = studentInfoMap.get(p.studentId);
                         const selectedBranchId = localStorage.getItem("selectedBranchId") || "";
-                        setPosPreviewData({ payment: p, student: { id: p.studentId, fullName: studentInfo?.fullName || getStudentName(p.studentId), phone: studentInfo?.phone || "", classId: studentInfo?.classId || "", monthlyPayment: studentInfo?.monthlyPayment || 0, branchId: selectedBranchId, status: "active", parentPhone: "", enrollmentDate: undefined, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, className: studentInfo?.className || getClassName(p.studentId) });
+                        setPosPreviewData({ payment: p, student: { id: p.studentId, fullName: studentInfo?.fullName ?? "Unknown", phone: studentInfo?.phone ?? "", classId: studentInfo?.classId ?? "", monthlyPayment: studentInfo?.monthlyPayment ?? 0, branchId: selectedBranchId, status: "active", parentPhone: "", enrollmentDate: undefined, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, className: studentInfo?.className ?? "N/A" });
                       }}><Printer className="w-3.5 h-3.5" /></Button>
                     <Button size="icon" variant="ghost" className="h-7 w-7"
                       onClick={() => handleEdit(p)} disabled={!canEditPayments || processingPaymentId === p.id}>

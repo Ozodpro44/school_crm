@@ -225,7 +225,7 @@ export default function DeveloperLogsPage() {
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
-            <h1 className="text-3xl font-bold text-slate-900">Developer Logs</h1>
+            <h1 className="text-display">Developer Logs</h1>
             <div className="flex gap-2">
               <Button
                 onClick={() => fetchLogs()}

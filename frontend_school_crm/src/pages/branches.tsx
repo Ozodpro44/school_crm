@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import * as api from "@/lib/api";
 import { Branch } from "@/types";
 import type { User } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { Plus, Building2, MapPin, Phone, Edit, Trash2, Users, DollarSign, Loader2 } from "lucide-react";
@@ -27,11 +27,11 @@ export default function BranchesPage() {
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasCheckedAuth, setHasCheckedAuth] = useState(false);
-  const { toast } = useToast();
   const language = useLanguage();
   const router = useRouter();
   const currentUser = getCurrentUser();
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
   const { refreshBranches } = useBranch();
 
   const [formData, setFormData] = useState({
@@ -85,11 +85,7 @@ export default function BranchesPage() {
       setLoading(false);
     } catch (error) {
       console.error("Failed to load branches:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadBranches"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToLoadBranches"));
       setLoading(false);
     }
   };
@@ -99,21 +95,13 @@ export default function BranchesPage() {
     setIsSubmitting(true);
 
     if (!formData.name || !formData.address || !formData.phone) {
-      toast({
-        title: t("error"),
-        description: t("fillAllFields"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("fillAllFields"));
       setIsSubmitting(false);
       return;
     }
 
     if (formData.monthlyPayment <= 0) {
-      toast({
-        title: t("error"),
-        description: t("monthlyPaymentMustBePositive"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("monthlyPaymentMustBePositive"));
       setIsSubmitting(false);
       return;
     }
@@ -127,11 +115,7 @@ export default function BranchesPage() {
           monthlyPayment: formData.monthlyPayment,
           adminId: formData.adminId || undefined,
         });
-        toast({
-          title: t("success"),
-          description: t("branchUpdated"),
-          variant: "success",
-        });
+        notify.success(t("success"), t("branchUpdated"));
       } else {
         // Set current user as admin if no admin is specified
         const adminId = formData.adminId || currentUser?.id;
@@ -143,11 +127,7 @@ export default function BranchesPage() {
           monthlyPayment: formData.monthlyPayment,
           adminId: adminId,
         });
-        toast({
-          title: t("success"),
-          description: t("newBranchAdded"),
-          variant: "success",
-        });
+        notify.success(t("success"), t("newBranchAdded"));
       }
 
       setIsDialogOpen(false);
@@ -156,11 +136,7 @@ export default function BranchesPage() {
       await refreshBranches();
       } catch (error) {
       console.error("Error saving branch:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToSaveBranch"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToSaveBranch"));
       } finally {
       setIsSubmitting(false);
       }
@@ -184,20 +160,12 @@ export default function BranchesPage() {
       setIsDeleteLoading(true);
       try {
         await api.deleteBranch(id);
-        toast({
-          title: t("success"),
-          description: t("branchDeleted"),
-          variant: "success",
-        });
+        notify.success(t("success"), t("branchDeleted"));
         await loadData();
         await refreshBranches();
       } catch (error) {
         console.error("Error deleting branch:", error);
-        toast({
-          title: t("error"),
-          description: t("failedToDeleteBranch") || "Failed to delete branch",
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("failedToDeleteBranch"));
       } finally {
         setIsDeleteLoading(false);
         setDeletingBranchId(null);
@@ -227,11 +195,7 @@ export default function BranchesPage() {
 
     const { branchId, email, password, fullName } = adminForm;
     if (!email || !password || !fullName) {
-      toast({
-        title: t("error"),
-        description: t("fillAllFields"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("fillAllFields"));
       setIsAdminSubmitting(false);
       return;
     }
@@ -246,22 +210,14 @@ export default function BranchesPage() {
 
       await api.updateBranch(branchId, { adminId: newUser.user.id });
 
-      toast({
-        title: t("success"),
-        description: t("branchAdminCreated"),
-        variant: "success",
-      });
+      notify.success(t("success"), t("branchAdminCreated"));
 
       setIsCreateAdminOpen(false);
       setAdminForm({ branchId: "", email: "", password: "", fullName: "" });
       await loadData();
       } catch (error) {
       console.error("Error creating branch admin:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToCreateAdmin") || "Failed to create admin",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToCreateAdmin"));
       } finally {
       setIsAdminSubmitting(false);
       }

@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Settings, Language, Branch } from "@/types";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { Save, Globe, DollarSign, Building2, Calendar, ChevronRight, Loader2 } from "lucide-react";
@@ -49,10 +49,10 @@ export default function SettingsPage() {
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [showSwitchMonthDialog, setShowSwitchMonthDialog] = useState(false);
   const [isSwitchingMonth, setIsSwitchingMonth] = useState(false);
-  const { toast } = useToast();
   const language = useLanguage();
   const setLanguage = useSetLanguage();
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
   const router = useRouter();
   const { currentBranch, refreshBranches } = useBranch();
   const currentUser = getCurrentUser();
@@ -72,11 +72,7 @@ export default function SettingsPage() {
         setBranchData(branch);
       }
     } catch (error) {
-      toast({
-        title: t("error"),
-        description: t("failedToLoadSettings"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToLoadSettings"));
     } finally {
       setLoading(false);
     }
@@ -131,17 +127,9 @@ export default function SettingsPage() {
       // This will cause payments, expenses, salaries pages to reload with new (empty) data
       window.dispatchEvent(new CustomEvent("branchChange", { detail: branchId }));
       
-      toast({
-        title: t("success"),
-        description: t("monthSwitched") || `Месяц переключён на ${updatedBranch.currentFinancialMonth ? getMonthName(updatedBranch.currentFinancialMonth.month) : "неизвестный"} ${updatedBranch.currentFinancialMonth?.year || ""}`,
-        variant: "success",
-      });
+      notify.success(t("success"), t("monthSwitched"));
     } catch (error) {
-      toast({
-        title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToSwitchMonth") || "Не удалось переключить месяц",
-        variant: "destructive",
-      });
+      notify.error(t("error"), error instanceof Error ? error.message : t("failedToSwitchMonth") || "Не удалось переключить месяц");
     } finally {
       setIsSwitchingMonth(false);
     }
@@ -167,20 +155,12 @@ export default function SettingsPage() {
     if (!settings) return;
 
     if (!hasPermission("canEditSettings")) {
-      toast({
-        title: t("error"),
-        description: t("noPermissionEditSettings"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("noPermissionEditSettings"));
       return;
     }
 
     if (monthlyPaymentError) {
-      toast({
-        title: t("error"),
-        description: monthlyPaymentError,
-        variant: "destructive",
-      });
+      notify.error(t("error"), monthlyPaymentError);
       return;
     }
 
@@ -200,18 +180,9 @@ export default function SettingsPage() {
       setOriginalSettings(updatedSettings);
       setSettings(updatedSettings);
 
-      toast({
-        title: t("success"),
-        description: t("settingsSaved"),
-        variant: "success",
-      });
+      notify.success(t("success"), t("settingsSaved"));
     } catch (error) {
-      toast({
-        title: t("error"),
-        description:
-          error instanceof Error ? error.message : t("failedToSaveSettings"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), error instanceof Error ? error.message : t("failedToSaveSettings"));
     } finally {
       setIsSaving(false);
     }

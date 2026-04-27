@@ -22,7 +22,7 @@ import { Field } from "@/components/Field";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentUser } from "@/lib/auth";
 import { listUsers, deleteUser as deleteUserAPI, listBranches, updateUserPermissions, apiRequest } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { User, Permission, Branch } from "@/types";
 import { Plus, Edit2, Trash2, Shield, UserCog, Lock, Loader2 } from "lucide-react";
@@ -48,7 +48,6 @@ export default function ManagersPage() {
    const [deletingManagerId, setDeletingManagerId] = useState<string | null>(null);
    const [isBulkDeleteLoading, setIsBulkDeleteLoading] = useState(false);
    const language = useLanguage();
-     const { toast } = useToast();
      const { currentBranch } = useBranch();
      const {
        selectedIds: selectedManagerIds,
@@ -155,17 +154,14 @@ export default function ManagersPage() {
          setBranches(branch ? [branch] : []);
        }
      } catch (error) {
-       toast({
-         title: t("error"),
-         description: t("failedToLoadManagers"),
-         variant: "destructive",
-       });
+       notify.error(t("error"), t("failedToLoadManagers"));
      } finally {
        setIsLoading(false);
      }
    };
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,10 +176,10 @@ export default function ManagersPage() {
           permissionsPayload[key] = value;
         });
         await updateUserPermissions(editingManager.id, permissionsPayload);
-        toast({ title: t("permissionsUpdatedSuccess") || "Permissions updated successfully", variant: "success" });
+        notify.success(t("permissionsUpdatedSuccess"));
         await loadData();
       } catch (error) {
-        toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
+        notify.error("Error", "Failed to update permissions");
       } finally {
         setIsSubmitting(false);
       }
@@ -221,12 +217,12 @@ export default function ManagersPage() {
             branchId: formData.branchId,
           }),
         });
-        toast({ title: t("success") || "Success", description: t("managerCreatedSuccess") || "Manager created successfully", variant: "success" });
+        notify.success(t("success"), t("managerCreatedSuccess"));
         await loadData();
         resetForm();
         setIsDialogOpen(false);
       } catch (error) {
-        toast({ title: t("error") || "Error", description: (error as Error).message || t("failedToCreateManager") || "Failed to create manager", variant: "destructive" });
+        notify.error(t("error"), (error as Error).message || t("failedToCreateManager") || "Failed to create manager");
       } finally {
         setIsSubmitting(false);
       }
@@ -255,9 +251,9 @@ export default function ManagersPage() {
       try {
         await deleteUserAPI(id);
         await loadData();
-        toast({ title: t("deleted") || "Deleted", description: t("managerDeleted") || "Manager deleted", variant: "success" });
+        notify.success(t("deleted"), t("managerDeleted"));
       } catch (error) {
-        toast({ title: "Error", description: "Failed to delete manager", variant: "destructive" });
+        notify.error("Error", "Failed to delete manager");
       } finally {
         setIsDeleteLoading(false);
         setDeletingManagerId(null);
@@ -275,13 +271,9 @@ export default function ManagersPage() {
         await Promise.all(selectedIds.map((id) => deleteUserAPI(id)));
         clearSelection();
         await loadData();
-        toast({
-          title: t("deleted"),
-          description: `${selectedIds.length} ${t("managersDeleted") || "managers deleted"}`,
-          variant: "success",
-        });
+        notify.success(t("deleted"), `${selectedIds.length} ${t("managersDeleted") || "managers deleted"}`);
       } catch (error) {
-        toast({ title: "Error", description: "Failed to delete managers", variant: "destructive" });
+        notify.error("Error", "Failed to delete managers");
       } finally {
         setIsBulkDeleteLoading(false);
       }
@@ -301,12 +293,12 @@ export default function ManagersPage() {
     e.preventDefault();
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast({ title: t("error") || "Error", description: t("passwordsDoNotMatch") || "Passwords do not match", variant: "destructive" });
+      notify.error(t("error"), t("passwordsDoNotMatch"));
       return;
     }
 
     if (passwordData.newPassword.length < 6) {
-      toast({ title: t("error") || "Error", description: t("passwordMinLengthError") || "Password must be at least 6 characters", variant: "destructive" });
+      notify.error(t("error"), t("passwordMinLengthError"));
       return;
     }
 
@@ -318,12 +310,12 @@ export default function ManagersPage() {
         method: "PUT",
         body: JSON.stringify({ password: passwordData.newPassword }),
       });
-      toast({ title: t("success") || "Success", description: t("passwordUpdatedSuccess") || "Password updated successfully", variant: "success" });
+      notify.success(t("success"), t("passwordUpdatedSuccess"));
       setIsPasswordDialogOpen(false);
       setPasswordData({ newPassword: "", confirmPassword: "" });
       setEditingManager(null);
     } catch {
-      toast({ title: t("error") || "Error", description: t("passwordUpdateError") || "Failed to update password", variant: "destructive" });
+      notify.error(t("error"), t("passwordUpdateError"));
     } finally {
       setIsSubmitting(false);
     }

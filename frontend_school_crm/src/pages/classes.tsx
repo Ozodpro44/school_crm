@@ -35,7 +35,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -77,7 +77,7 @@ export default function ClassesPage() {
     isLoading: false,
   });
   const language = useLanguage();
-  const { toast } = useToast();
+  const notify = useNotify();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -113,11 +113,7 @@ export default function ClassesPage() {
       }
     } catch (error) {
       console.error("Failed to load classes:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadClasses"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToLoadClasses"));
     } finally {
       setIsLoading(false);
     }
@@ -159,11 +155,7 @@ export default function ClassesPage() {
     e.preventDefault();
     setIsSubmitting(true);
     if (!canEditClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionEditClasses"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionEditClasses"));
       setIsSubmitting(false);
       return;
     }
@@ -180,33 +172,21 @@ export default function ClassesPage() {
           name: formData.name,
           teacherId: formData.teacherId || undefined,
         });
-        toast({
-          title: t("success"),
-          description: t("classUpdatedSuccess"),
-          variant: "success",
-        });
+        notify.success(t("success"), t("classUpdatedSuccess"));
       } else {
         await createClass({
           name: formData.name,
           teacherId: formData.teacherId || undefined,
           branchId: branchId,
         });
-        toast({
-          title: t("success"),
-          description: t("classAddedSuccess"),
-          variant: "success",
-        });
+        notify.success(t("success"), t("classAddedSuccess"));
       }
 
       resetForm();
       await loadData();
       setIsDialogOpen(false);
       } catch (error) {
-      toast({
-        title: t("error"),
-        description: editingClass ? t("failedToUpdateClass") : t("failedToCreateClass"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), editingClass ? t("failedToUpdateClass") : t("failedToCreateClass"));
       } finally {
       setIsSubmitting(false);
       }
@@ -214,11 +194,7 @@ export default function ClassesPage() {
 
   const handleEdit = (classData: Class) => {
     if (!canEditClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionEditClasses"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionEditClasses"));
       return;
     }
 
@@ -232,11 +208,7 @@ export default function ClassesPage() {
 
   const handleDelete = (id: string) => {
     if (!canDeleteClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionDeleteClasses"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionDeleteClasses"));
       return;
     }
 
@@ -250,17 +222,9 @@ export default function ClassesPage() {
         try {
           await deleteClass(id);
           await loadData();
-          toast({
-            title: t("deleted"),
-            description: t("classDeletedSuccess"),
-            variant: "success",
-          });
+          notify.success(t("deleted"), t("classDeletedSuccess"));
         } catch (error) {
-          toast({
-            title: t("error"),
-            description: t("failedToDeleteClass"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToDeleteClass"));
         } finally {
           setConfirmDialog(prev => ({ ...prev, isOpen: false, isLoading: false }));
         }
@@ -273,11 +237,7 @@ export default function ClassesPage() {
 
   const handleBulkAddStudents = () => {
     if (!canEditClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionAssignStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionAssignStudents"));
       return;
     }
 
@@ -293,18 +253,10 @@ export default function ClassesPage() {
         setIsBulkAddOpen(false);
         setSelectedClassId("");
         setSelectedStudentIds([]);
-        toast({
-          title: t("success"),
-          description: `${selectedStudentIds.length} ${t("students")} ${t("added")} ${classes.find((c) => c.id === selectedClassId)?.name}`,
-          variant: "success",
-        });
+        notify.success(t("success"), `${selectedStudentIds.length} ${t("students")} ${t("added")} ${classes.find((c) => c.id === selectedClassId)?.name}`);
       })
       .catch((error) => {
-        toast({
-          title: t("error"),
-          description: error instanceof Error ? error.message : t("errorOccurred"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), error instanceof Error ? error.message : t("errorOccurred"));
       });
   };
 
@@ -337,11 +289,7 @@ export default function ClassesPage() {
 
   const removeStudentFromClass = (studentId: string) => {
     if (!canEditClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionRemoveStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionRemoveStudents"));
       return;
     }
 
@@ -352,11 +300,7 @@ export default function ClassesPage() {
       onConfirm: async () => {
         await updateStudent(studentId, { classId: undefined });
         loadData();
-        toast({
-          title: t("updated"),
-          description: t("studentRemovedFromClass"),
-          variant: "success",
-        });
+        notify.success(t("updated"), t("studentRemovedFromClass"));
         setConfirmDialog({ ...confirmDialog, isOpen: false });
       },
       onCancel: () => {
@@ -417,11 +361,7 @@ export default function ClassesPage() {
     if (!draggedStudent || draggedStudentIds.length === 0) return;
 
     if (!canEditClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionAssignStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionAssignStudents"));
       setDraggedStudent(null);
       setDraggedOverClass(null);
       setDraggedStudentIds([]);
@@ -459,22 +399,14 @@ export default function ClassesPage() {
              setDraggedStudentIds([]);
              setUnassignedSelection([]);
 
-             toast({
-               title: t("success"),
-               description: isMultiple
+             notify.success(t("success"), isMultiple
                  ? `${studentCount} ${t("students")} ${t("movedAndSigned")} ${className}`
-                 : `${studentName} ${t("movedAndSigned")} ${className}`,
-               variant: "success",
-             });
+                 : `${studentName} ${t("movedAndSigned")} ${className}`);
 
              setConfirmDialog({ ...confirmDialog, isOpen: false, isLoading: false });
            })
            .catch((error) => {
-             toast({
-               title: t("error"),
-               description: error instanceof Error ? error.message : t("errorOccurred"),
-               variant: "destructive",
-             });
+             notify.error(t("error"), error instanceof Error ? error.message : t("errorOccurred"));
              setConfirmDialog({ ...confirmDialog, isOpen: false, isLoading: false });
            });
       },

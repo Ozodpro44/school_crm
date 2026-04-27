@@ -31,7 +31,7 @@ import { apiRequest } from "@/lib/api";
 import { User as UserType } from "@/types";
 import { getTranslation } from "@/lib/translations";
 import { useLanguage } from "@/hooks/use-language";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 
 const ROLE_CONFIG: Record<string, { color: string; avatar: string; label: string; description: string }> = {
   admin: {
@@ -92,7 +92,7 @@ const PERMISSION_LABELS: Partial<Record<string, string>> = {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { toast } = useToast();
+  const notify = useNotify();
   const [user, setUser] = useState<UserType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -186,11 +186,7 @@ export default function ProfilePage() {
       setUser(updatedUser);
       syncUserToLocalStorage(updatedUser);
       setIsEditModalOpen(false);
-      toast({
-        title: t("profileUpdated") || "Profile updated",
-        description: t("profileUpdatedDescription") || "Your profile has been updated successfully.",
-        variant: "default",
-      });
+      notify.success(t("profileUpdated") || "Profile updated", t("profileUpdatedDescription") || "Your profile has been updated successfully.");
     } catch (error) {
       setFormErrors({ submit: (error as Error).message || t("updateError") || "An error occurred" });
     } finally {
@@ -211,11 +207,7 @@ export default function ProfilePage() {
       });
       setIsPasswordModalOpen(false);
       setPasswordFormData({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      toast({
-        title: t("passwordUpdated") || "Password updated",
-        description: t("passwordUpdatedDescription") || "Your password has been changed successfully.",
-        variant: "default",
-      });
+      notify.success(t("passwordUpdated") || "Password updated", t("passwordUpdatedDescription") || "Your password has been changed successfully.");
     } catch (error) {
       setFormErrors({ submit: (error as Error).message || t("updateError") || "An error occurred" });
     } finally {

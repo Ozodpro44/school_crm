@@ -52,7 +52,7 @@ import {
 } from "@/lib/api";
 import { Branch } from "@/types";
 import MonthYearSelector from "@/components/MonthYearSelector";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -109,7 +109,6 @@ export default function ExpensesPage() {
     isLoading: false,
   });
   const language = useLanguage();
-  const { toast } = useToast();
   const canCreateExpenses = hasPermission("canCreateExpenses");
   const canEditExpenses = hasPermission("canEditExpenses");
   const canDeleteExpenses = hasPermission("canDeleteExpenses");
@@ -160,6 +159,7 @@ export default function ExpensesPage() {
   };
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   // Initialize state from URL params
   useEffect(() => {
@@ -336,11 +336,7 @@ export default function ExpensesPage() {
       }
     } catch (error) {
       console.error("Failed to load expenses:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadExpenses"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToLoadExpenses"));
     }
   };
 
@@ -373,9 +369,9 @@ export default function ExpensesPage() {
       await loadBudgets();
       setBudgetEditCategory("");
       setBudgetEditAmount("");
-      toast({ title: t("saved") || "Saved", description: t("budgetSaved") || "Budget saved", variant: "success" });
+      notify.success(t("saved"), t("budgetSaved"));
     } catch {
-      toast({ title: t("error"), description: t("failedToSaveBudget") || "Failed to save budget", variant: "destructive" });
+      notify.error(t("error"), t("failedToSaveBudget"));
     } finally {
       setIsSavingBudget(false);
     }
@@ -388,7 +384,7 @@ export default function ExpensesPage() {
       await deleteExpenseBudget(branchId, category, selectedMonth, selectedYear);
       setBudgets((prev) => prev.filter((b) => b.category !== category));
     } catch {
-      toast({ title: t("error"), description: t("failedToDeleteBudget") || "Failed to delete budget", variant: "destructive" });
+      notify.error(t("error"), t("failedToDeleteBudget"));
     }
   };
 
@@ -528,11 +524,7 @@ export default function ExpensesPage() {
           date: dateTimestamp,
           branchId: editingExpense.branchId,
         });
-        toast({
-          title: "Updated",
-          description: "Expense updated successfully",
-          variant: "success",
-        });
+        notify.success("Updated", "Expense updated successfully");
       } else {
         await createExpense({
           title: formData.description, // Mapped from description
@@ -543,11 +535,7 @@ export default function ExpensesPage() {
           date: dateTimestamp,
           branchId: localStorage.getItem("selectedBranchId") || "",
         });
-        toast({
-          title: t("created"),
-          description: t("expenseCreatedSuccess"),
-          variant: "success",
-        });
+        notify.success(t("created"), t("expenseCreatedSuccess"));
       }
 
       resetForm();
@@ -555,11 +543,7 @@ export default function ExpensesPage() {
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Failed to save expense:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToSaveExpense"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToSaveExpense"));
     } finally {
       setIsSubmitting(false);
     }
@@ -591,18 +575,10 @@ export default function ExpensesPage() {
         try {
           await deleteExpense(id);
           await loadData();
-          toast({
-            title: t("deletedItem"),
-            description: t("expenseDeleted"),
-            variant: "success",
-          });
+          notify.success(t("deletedItem"), t("expenseDeleted"));
         } catch (error) {
           console.error("Failed to delete expense:", error);
-          toast({
-            title: t("error"),
-            description: t("expenseDeletedError"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("expenseDeletedError"));
         } finally {
           setConfirmDialog(prev => ({ ...prev, isOpen: false, isLoading: false }));
         }
@@ -626,20 +602,12 @@ export default function ExpensesPage() {
           await Promise.all(selectedIds.map((id) => deleteExpense(id)));
           clearSelection();
           await loadData();
-          toast({
-            title: t("deleted"),
-            description: `${selectedIds.length} ${t("expensesDeleted") || "expenses deleted"
-              }`,
-            variant: "success",
-          });
+          notify.success(t("deleted"), `${selectedIds.length} ${t("expensesDeleted") || "expenses deleted"
+              }`);
           setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
         } catch (error) {
           console.error("Failed to delete expenses:", error);
-          toast({
-            title: t("error"),
-            description: t("failedToDeleteExpenses"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToDeleteExpenses"));
         }
       },
       onCancel: () => {

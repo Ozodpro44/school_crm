@@ -42,7 +42,7 @@ import {
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { formatPhoneNumber, toTitleCase, formatDate } from "@/lib/utils";
 import {
@@ -140,12 +140,12 @@ export default function StudentDetailsPage() {
   const [isAddingContact, setIsAddingContact] = useState(false);
 
   const language = useLanguage();
-  const { toast } = useToast();
   const canEditStudents = hasPermission("canEditStudents");
   const canDeleteStudents = hasPermission("canDeleteStudents");
   const currentUser = getCurrentUser();
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   useEffect(() => {
     if (!id) return;
@@ -199,7 +199,7 @@ export default function StudentDetailsPage() {
       setContactLogEntries((contactLog as any[]) || []);
     } catch (error) {
       console.error("Failed to load student details:", error);
-      toast({ title: t("error"), description: t("failedToLoadStudentDetails"), variant: "destructive" });
+      notify.error(t("error"), t("failedToLoadStudentDetails"));
       setStudent(null);
     }
   };
@@ -290,7 +290,7 @@ export default function StudentDetailsPage() {
 
   const handleSaveEdit = async () => {
     if (!student || !editFormData.fullName || !editFormData.classId) {
-      toast({ title: t("error"), description: t("fillRequiredFields"), variant: "destructive" });
+      notify.error(t("error"), t("fillRequiredFields"));
       return;
     }
     try {
@@ -306,16 +306,16 @@ export default function StudentDetailsPage() {
       setStudent(updated || { ...student, ...editFormData, monthlyPayment: updatedMonthlyPayment });
       const classData = classes.find((c) => c.id === editFormData.classId);
       setClassName(classData?.name || "—");
-      toast({ title: t("updated"), description: t("studentDetailsUpdated"), variant: "success" });
+      notify.success(t("updated"), t("studentDetailsUpdated"));
       setEditDialogOpen(false);
     } catch {
-      toast({ title: t("error"), description: t("failedToUpdateStudent"), variant: "destructive" });
+      notify.error(t("error"), t("failedToUpdateStudent"));
     }
   };
 
   const handleDelete = () => {
     if (!canDeleteStudents) {
-      toast({ title: t("permissionDenied"), description: t("noPermissionToDeleteStudents"), variant: "destructive" });
+      notify.error(t("permissionDenied"), t("noPermissionToDeleteStudents"));
       return;
     }
     setDeleteConfirmOpen(true);
@@ -326,10 +326,10 @@ export default function StudentDetailsPage() {
     setIsDeleteLoading(true);
     try {
       await deleteStudent(student.id);
-      toast({ title: t("deleted"), description: t("successfullyDeleted"), variant: "success" });
+      notify.success(t("deleted"), t("successfullyDeleted"));
       router.push(backRoute);
     } catch {
-      toast({ title: t("error"), description: t("failedToDeleteStudent"), variant: "destructive" });
+      notify.error(t("error"), t("failedToDeleteStudent"));
     } finally {
       setIsDeleteLoading(false);
       setDeleteConfirmOpen(false);
@@ -338,7 +338,7 @@ export default function StudentDetailsPage() {
 
   const handleMarkLeft = () => {
     if (!canEditStudents) {
-      toast({ title: t("permissionDenied"), description: "You don't have permission to edit students.", variant: "destructive" });
+      notify.error(t("permissionDenied"), "You don't have permission to edit students.");
       return;
     }
     setMarkLeftConfirmOpen(true);
@@ -351,9 +351,9 @@ export default function StudentDetailsPage() {
       const leftDate = new Date().toISOString();
       await updateStudent(student.id, { status: "left", leftDate });
       setStudent({ ...student, status: "left", leftDate });
-      toast({ title: t("updated"), description: t("statusUpdated"), variant: "success" });
+      notify.success(t("updated"), t("statusUpdated"));
     } catch {
-      toast({ title: t("error"), description: "Failed to update student status", variant: "destructive" });
+      notify.error(t("error"), "Failed to update student status");
     } finally {
       setIsMarkLeftLoading(false);
       setMarkLeftConfirmOpen(false);
@@ -369,9 +369,9 @@ export default function StudentDetailsPage() {
       const note = await addStudentNote(student.id, branchId, newNoteContent.trim());
       setNotes([note, ...notes]);
       setNewNoteContent("");
-      toast({ title: t("success"), variant: "success" });
+      notify.success(t("success"));
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     } finally {
       setIsAddingNote(false);
     }
@@ -385,7 +385,7 @@ export default function StudentDetailsPage() {
       await deleteStudentNote(student.id, branchId, noteId);
       setNotes(notes.filter((n) => n.id !== noteId));
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     }
   };
 
@@ -404,9 +404,9 @@ export default function StudentDetailsPage() {
       setContactLogEntries([entry, ...contactLogEntries]);
       setShowAddContact(false);
       setContactForm({ contactType: "call", outcome: "no_answer", note: "", contactedAt: new Date().toISOString().slice(0, 16) });
-      toast({ title: t("success"), variant: "success" });
+      notify.success(t("success"));
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     } finally {
       setIsAddingContact(false);
     }
@@ -420,7 +420,7 @@ export default function StudentDetailsPage() {
       await deleteContactLog(student.id, branchId, logId);
       setContactLogEntries(contactLogEntries.filter((e) => e.id !== logId));
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     }
   };
 

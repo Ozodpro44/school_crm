@@ -30,6 +30,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { BarChart2, Trophy, Users, TrendingUp, Building2 } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 
 const MONTHS = [
   "january","february","march","april","may","june",
@@ -219,10 +220,7 @@ export default function BranchesOverviewPage() {
           {loading ? (
             <Skeleton className="h-64 w-full" />
           ) : chartData.length === 0 ? (
-            <div className="h-48 flex items-center justify-center text-slate-400 text-sm">
-              <Building2 className="w-8 h-8 mr-2 opacity-30" />
-              {t("noDataFound") || "No data found"}
-            </div>
+            <EmptyState icon={Building2} title={t("noDataFound") || "No data found"} description={t("selectPeriodToSeeData") || "Select a period to see revenue data."} />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>

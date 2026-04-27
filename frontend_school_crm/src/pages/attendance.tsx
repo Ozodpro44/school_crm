@@ -4,7 +4,7 @@ import { getTranslation } from "@/lib/translations";
 import { apiRequest, listClasses, listStudents } from "@/lib/api";
 import type { Class, Student } from "@/lib/api";
 import { useBranch } from "@/context/BranchContext";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -101,8 +101,8 @@ function toDateString(d: Date): string {
 export default function AttendancePage() {
   const language = useLanguage();
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
   const { currentBranch } = useBranch();
-  const { toast } = useToast();
 
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -189,10 +189,10 @@ export default function AttendancePage() {
         status: attendance.get(s.id) ?? "present",
       }));
       const res = await saveAttendance({ branchId, classId: selectedClassId, date: selectedDate, records });
-      toast({ title: t("attendanceSaved"), description: `${res.saved} ${t("students").toLowerCase()}`, variant: "success" });
+      notify.success(t("attendanceSaved"), `${res.saved} ${t("students").toLowerCase()}`);
       if (activeTab === "summary") loadSummary();
     } catch {
-      toast({ title: t("error"), variant: "destructive" });
+      notify.error(t("error"));
     } finally {
       setSaving(false);
     }

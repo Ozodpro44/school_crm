@@ -48,7 +48,6 @@ import {
   useBranchQuery,
 } from "@/hooks/queries";
 import { useBranch } from "@/context/BranchContext";
-import { useToast } from "@/hooks/use-toast";
 import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -128,7 +127,6 @@ export default function StudentsPage() {
   const total: number = studentsData?.total || 0;
   const classes: any[] = classesData || studentsData?.classes || [];
   const language = useLanguage();
-  const { toast } = useToast();
   const notify = useNotify();
   const {
     selectedIds,
@@ -299,25 +297,11 @@ export default function StudentsPage() {
       }
 
       if (importedCount > 0) {
-        toast({
-          title: t("importComplete"),
-          description: `${t("successfullyImported")} ${importedCount} ${t(
-            "students"
-          )}`,
-          variant: "success",
-        });
+        notify.success(t("importComplete"), `${t("successfullyImported")} ${importedCount} ${t("students")}`);
       }
 
       if (warnings.length > 0) {
-        toast({
-          title: "Import Completed with Warnings",
-          description:
-            warnings.slice(0, 3).join("\n") +
-            (warnings.length > 3
-              ? `\n... and ${warnings.length - 3} more`
-              : ""),
-          variant: "default",
-        });
+        notify.warning("Import Completed with Warnings", warnings.slice(0, 3).join("\n") + (warnings.length > 3 ? `\n... and ${warnings.length - 3} more` : ""));
       }
 
       setImportData("");
@@ -325,11 +309,7 @@ export default function StudentsPage() {
       setPage(1);
       qc.invalidateQueries({ queryKey: ["students"] });
     } catch (error) {
-      toast({
-        title: t("importError"),
-        description: t("errorCheckFormat"),
-        variant: "destructive",
-      });
+      notify.error(t("importError"), t("errorCheckFormat"));
       console.error(error);
     }
   };
@@ -350,11 +330,7 @@ export default function StudentsPage() {
         const csvText = e.target?.result as string;
         processCSVData(csvText);
       } catch (error) {
-        toast({
-          title: t("importError"),
-          description: t("failedToReadFile"),
-          variant: "destructive",
-        });
+        notify.error(t("importError"), t("failedToReadFile"));
         console.error(error);
       } finally {
         setIsImporting(false);
@@ -365,11 +341,7 @@ export default function StudentsPage() {
     };
 
     reader.onerror = () => {
-      toast({
-        title: t("importError"),
-        description: t("failedToReadFile"),
-        variant: "destructive",
-      });
+      notify.error(t("importError"), t("failedToReadFile"));
       setIsImporting(false);
     };
 
@@ -417,11 +389,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
     setIsSubmitting(true);
     if (!canEditStudents) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionToCreateOrEditStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionToCreateOrEditStudents"));
       setIsSubmitting(false);
       return;
     }
@@ -456,18 +424,10 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       resetForm();
       qc.invalidateQueries({ queryKey: ["students"] });
       setIsDialogOpen(false);
-      toast({
-        title: editingStudent ? t("updated") : t("created"),
-        description: editingStudent ? t("studentUpdatedSuccessfully") : t("studentCreatedSuccessfully"),
-        variant: "success",
-      });
+      notify.success(editingStudent ? t("updated") : t("created"), editingStudent ? t("studentUpdatedSuccessfully") : t("studentCreatedSuccessfully"));
     } catch (error) {
       console.error("Failed to save student:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToSaveStudent"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToSaveStudent"));
     } finally {
       setIsSubmitting(false);
     }
@@ -475,11 +435,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleEdit = (student: Student) => {
     if (!canEditStudents) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionToEditStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionToEditStudents"));
       return;
     }
 
@@ -497,11 +453,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleDelete = (id: string) => {
     if (!canDeleteStudents) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionToDeleteStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionToDeleteStudents"));
       return;
     }
 
@@ -515,20 +467,12 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       try {
         await apiDeleteStudent(deleteStudentId);
         qc.invalidateQueries({ queryKey: ["students"] });
-        toast({
-          title: t("deleted"),
-          description: t("successfullyDeleted"),
-          variant: "success",
-        });
+        notify.success(t("deleted"), t("successfullyDeleted"));
         setDeleteConfirmOpen(false);
         setDeleteStudentId(null);
       } catch (error) {
         console.error("Failed to delete student:", error);
-        toast({
-          title: t("error"),
-          description: t("failedToDeleteStudent"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("failedToDeleteStudent"));
       } finally {
         setIsDeleteLoading(false);
       }
@@ -537,11 +481,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleBulkDelete = () => {
     if (!canDeleteStudents) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionToDeleteStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionToDeleteStudents"));
       return;
     }
 
@@ -559,19 +499,11 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       clearSelection();
       qc.invalidateQueries({ queryKey: ["students"] });
       setPage(1);
-      toast({
-        title: t("deleted"),
-        description: `${ids.length} ${t("students")} ${t("deletedSuccessfully")}`,
-        variant: "success",
-      });
+      notify.success(t("deleted"), `${ids.length} ${t("students")} ${t("deletedSuccessfully")}`);
       setBulkDeleteConfirmOpen(false);
     } catch (error) {
       console.error("Failed to delete students:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToDeleteStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToDeleteStudents"));
     } finally {
       setIsBulkDeleteLoading(false);
     }
@@ -579,11 +511,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleBulkChangeClass = async () => {
     if (!canEditStudents) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionToEditStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionToEditStudents"));
       return;
     }
 
@@ -596,13 +524,9 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     qc.invalidateQueries({ queryKey: ["students"] });
     setIsBulkChangeClassOpen(false);
     setBulkChangeClassId("");
-    toast({
-      title: t("updated"),
-      description: `${ids.length} ${t("students")} ${t("movedTo")} ${getClassName(
+    notify.success(t("updated"), `${ids.length} ${t("students")} ${t("movedTo")} ${getClassName(
         bulkChangeClassId
-      )}`,
-      variant: "success",
-    });
+      )}`);
   };
 
   const handleMarkLeft = (id: string) => {
@@ -619,20 +543,12 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           leftDate: new Date().toISOString(),
         });
         qc.invalidateQueries({ queryKey: ["students"] });
-        toast({
-          title: t("updated"),
-          description: t("statusUpdated"),
-          variant: "success",
-        });
+        notify.success(t("updated"), t("statusUpdated"));
         setMarkLeftConfirmOpen(false);
         setMarkLeftStudentId(null);
       } catch (error) {
         console.error("Failed to mark student as left:", error);
-        toast({
-          title: t("error"),
-          description: t("failedToUpdateStudentStatus"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("failedToUpdateStudentStatus"));
       } finally {
         setIsMarkLeftLoading(false);
       }

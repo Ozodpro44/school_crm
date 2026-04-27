@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { getCurrentUser } from "@/lib/auth";
 import {
   apiRequest,
@@ -50,7 +50,6 @@ type Tab = "classes" | "students" | "attendance" | "salary" | "profile";
 
 export default function TeacherPortalPage() {
   const language = useLanguage();
-  const { toast } = useToast();
   const currentUser = getCurrentUser();
 
   const { data, isLoading, refetch: refetchPortal } = useTeacherPortalQuery();
@@ -75,6 +74,7 @@ export default function TeacherPortalPage() {
   const [attendanceNote, setAttendanceNote] = useState<Record<string, string>>({});
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   // Auto-select first class for attendance when data loads
   if (data?.classes?.length && !attendanceClassId) {
@@ -111,8 +111,8 @@ export default function TeacherPortalPage() {
     attendanceMutation.mutate(
       { branchId, classId: attendanceClassId, date: today, records },
       {
-        onSuccess: () => toast({ title: t("attendanceSaved"), variant: "success" }),
-        onError: () => toast({ title: t("error"), variant: "destructive" }),
+        onSuccess: () => notify.success(t("attendanceSaved")),
+        onError: () => notify.error(t("error")),
       }
     );
   };
@@ -159,9 +159,9 @@ export default function TeacherPortalPage() {
       window.dispatchEvent(new CustomEvent("userProfileUpdated", { detail: updated }));
       setIsEditProfileOpen(false);
       await refetchPortal();
-      toast({ title: t("profileUpdated") || "Profile updated", variant: "default" });
+      notify.warning(t("profileUpdated"));
     } catch (error) {
-      toast({ title: t("error"), description: (error as Error).message, variant: "destructive" });
+      notify.error(t("error"), (error as Error).message);
     } finally {
       setIsSavingProfile(false);
     }
@@ -170,11 +170,11 @@ export default function TeacherPortalPage() {
   const handleChangePassword = async () => {
     if (!currentUser) return;
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast({ title: t("error"), description: t("passwordMismatch") || "Passwords do not match", variant: "destructive" });
+      notify.error(t("error"), t("passwordMismatch"));
       return;
     }
     if (passwordForm.newPassword.length < 6) {
-      toast({ title: t("error"), description: t("passwordTooShort") || "Password must be at least 6 characters", variant: "destructive" });
+      notify.error(t("error"), t("passwordTooShort"));
       return;
     }
     setIsSavingProfile(true);
@@ -185,9 +185,9 @@ export default function TeacherPortalPage() {
       });
       setIsChangePasswordOpen(false);
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      toast({ title: t("passwordUpdated") || "Password updated", variant: "default" });
+      notify.warning(t("passwordUpdated"));
     } catch (error) {
-      toast({ title: t("error"), description: (error as Error).message, variant: "destructive" });
+      notify.error(t("error"), (error as Error).message);
     } finally {
       setIsSavingProfile(false);
     }

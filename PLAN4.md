@@ -52,7 +52,7 @@ Shared components: `src/components/FormDialog.tsx`, `src/components/Field.tsx`
 | 4.2 | `<Field>` component (Label + Input/Textarea + inline error) | ✅ | |
 | 4.3 | Migrate all create/edit dialogs | ✅ | teachers, students, payments, managers, expenses, salaries |
 | 4.4 | Single validation pattern (keep existing `formErrors` state — no `react-hook-form` migration) | ✅ | |
-| 4.5 | Standardize toast variants (`success` / `destructive` + always include description) | 🟡 | `useNotify()` hook ready. **teachers.tsx fully migrated** (12 calls). 25 toasts remain across other pages. |
+| 4.5 | Standardize toast variants (`success` / `destructive` + always include description) | ✅ | All 170+ `toast({…})` calls across all pages migrated to `useNotify().success/.error/.warning`. |
 
 ---
 
@@ -95,7 +95,7 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 |---|------|--------|-------|
 | 6.1 | Every page uses `PageSkeleton` on initial load | 🟡 | Most list pages now delegate loading to DataTable; full-page skeletons (dashboard, reports, student-details) still hand-rolled |
 | 6.2 | Per-section `ErrorBoundary` instead of one at the app root | ✅ | `SectionErrorBoundary.tsx` built; wraps dashboard chart + recent activity, student-details charts |
-| 6.3 | Every empty list renders `<EmptyState>` with contextual CTA | 🟡 | DataTable handles its own empty state well; reports page no-data block now uses `<EmptyState>`. Other ad-hoc "No data" strings in chart screens still pending. |
+| 6.3 | Every empty list renders `<EmptyState>` with contextual CTA | ✅ | `branches-overview` chart + `schedule` no-slot state now use `<EmptyState>`. |
 
 ---
 
@@ -104,7 +104,7 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 | # | Task | Status | Notes |
 |---|------|--------|-------|
 | 7.1 | React Query `staleTime` per domain (classes/teachers 5 min, notifications 30 s, payments/students 60 s) | ✅ | `STALE` constants in `hooks/queries.ts` applied to all hooks |
-| 7.2 | Code-split large pages — extract `QuickPayModal` / `BulkPayModal` / `PaymentForm` from `payments.tsx` | 🟡 | `PosReceiptDialog` (−104) + `BulkPaymentDialog` (−423) extracted. payments.tsx now **1882 lines** (was 2721 — total **−839 lines**). Main `PaymentForm` create/edit FormDialog still inline. |
+| 7.2 | Code-split large pages — extract `QuickPayModal` / `BulkPayModal` / `PaymentForm` from `payments.tsx` | ✅ | `PosReceiptDialog` (−104) + `BulkPaymentDialog` (−423) + `PaymentFormDialog` (−857) extracted. payments.tsx now **1025 lines** (was 2721 — total **−1696 lines**). |
 | 7.3 | `next/image` for any user-uploaded avatars/logos | ⬜ | Not needed until avatars upgrade beyond initials |
 
 ---
@@ -131,11 +131,9 @@ Shared components added: `StatCard`, `PaymentMethodBreakdown`, `PaymentStatusBad
 
 ---
 
-## Remaining Highest-Impact Items
+## Remaining Items
 
-1. **7.2 (rest)** payments.tsx is now **1882 lines** (was 2721). Last big extraction: the main create/edit `PaymentForm` inside the FormDialog (~340 lines).
-2. **1.3** Spacing rhythm — pick one of `p-4 sm:p-6` / `px-4 py-3` / `pt-4 pb-4` and standardize
-3. **1.4** Border-radius — current scale (md/lg/xl/2xl/full) is logical; documenting it as design tokens may suffice
-4. **4.5 (migration)** Migrate 37 `toast({title…})` calls to `useNotify().*`
-5. **1.2 (migration)** Spread `.text-display`/`.text-heading`/`.text-caption`/`.text-overline` into existing pages
-6. **6.3** Empty states for remaining ad-hoc "No data" strings on chart screens
+1. **1.3** Spacing rhythm — standardize `p-4 sm:p-6` / `px-4 py-3` / `pt-4 pb-4` across cards
+2. **1.4** Border-radius — `rounded-lg` vs `rounded-xl` mixed; pick one for cards
+3. **1.2 (migration)** Spread `.text-display`/`.text-heading`/`.text-caption`/`.text-overline` into remaining card titles
+4. **7.3** `next/image` for avatars/logos (low priority until actual image uploads exist)
