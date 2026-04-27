@@ -2019,6 +2019,21 @@ export const commonTranslations: Partial<Translation> = {
   switchStudents:             { "uz-cyrl": "O'quvchilarni ko'chirish", "uz-latn": "O'quvchilarni ko'chirish", en: "Switch Students" },
   removeStudentsConfirmation: { "uz-cyrl": "Bu o'quvchilarni sinfdan chiqarmoqchimisiz?", "uz-latn": "Bu o'quvchilarni sinfdan chiqarmoqchimisiz?", en: "Remove these students from this class?" },
 
+  // Students
+  importCompletedWithWarnings: { "uz-cyrl": "Import ogohlantirishlar bilan yakunlandi", "uz-latn": "Import ogohlantirishlar bilan yakunlandi", en: "Import Completed with Warnings" },
+
+  // Salaries
+  failedToDeleteSalary: { "uz-cyrl": "Maoshni o'chirishda xatolik", "uz-latn": "Maoshni o'chirishda xatolik", en: "Failed to delete salary" },
+
+  // Managers
+  failedToUpdatePermissions: { "uz-cyrl": "Ruxsatlarni yangilashda xatolik", "uz-latn": "Ruxsatlarni yangilashda xatolik", en: "Failed to update permissions" },
+  failedToDeleteManager:     { "uz-cyrl": "Menejer o'chirishda xatolik", "uz-latn": "Menejer o'chirishda xatolik", en: "Failed to delete manager" },
+  failedToDeleteManagers:    { "uz-cyrl": "Menejerlarni o'chirishda xatolik", "uz-latn": "Menejerlarni o'chirishda xatolik", en: "Failed to delete managers" },
+  noManagersDesc:            { "uz-cyrl": "Filialingizga kirish uchun birinchi menejerni qo'shing", "uz-latn": "Filialingizga kirish uchun birinchi menejerni qo'shing", en: "Add your first manager to let them access and oversee a branch." },
+
+  // Activity feed
+  noRecentActivity:          { "uz-cyrl": "Yaqinda faoliyat yo'q", "uz-latn": "Yaqinda faoliyat yo'q", en: "No recent activity" },
+
   // Time ago
   justNow:  { "uz-cyrl": "Hozir", "uz-latn": "Hozir", en: "just now" },
   minAgo:   { "uz-cyrl": "daqiqa oldin", "uz-latn": "daqiqa oldin", en: "m ago" },

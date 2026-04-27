@@ -231,7 +231,7 @@ export default function SalariesPage() {
         await loadData();
         notify.success(t("deleted"), t("salaryRecordDeleted"));
       } catch (error) {
-        notify.error("Error", "Failed to delete salary");
+        notify.error(t("error"), t("failedToDeleteSalary") || "Failed to delete salary");
       } finally {
         setIsDeleteLoading(false);
         setDeleteConfirmId(null);

@@ -435,10 +435,8 @@ export default function ClassDetailsPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: "Delete Class",
-      message:
-        t("deleteClassConfirmation") ||
-        "Are you sure you want to delete this class?",
+      title: t("deleteClass") || "Delete Class",
+      message: t("deleteClassConfirmation") || "Are you sure you want to delete this class?",
       onConfirm: async () => {
         try {
           await apiDeleteClass(classData!.id);

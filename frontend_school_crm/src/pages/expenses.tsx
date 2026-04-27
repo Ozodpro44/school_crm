@@ -524,7 +524,7 @@ export default function ExpensesPage() {
           date: dateTimestamp,
           branchId: editingExpense.branchId,
         });
-        notify.success("Updated", "Expense updated successfully");
+        notify.success(t("updated"), t("expenseUpdatedSuccess") || "Expense updated successfully");
       } else {
         await createExpense({
           title: formData.description, // Mapped from description

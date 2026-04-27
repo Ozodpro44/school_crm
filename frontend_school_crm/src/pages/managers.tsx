@@ -179,7 +179,7 @@ export default function ManagersPage() {
         notify.success(t("permissionsUpdatedSuccess"));
         await loadData();
       } catch (error) {
-        notify.error("Error", "Failed to update permissions");
+        notify.error(t("error"), t("failedToUpdatePermissions") || "Failed to update permissions");
       } finally {
         setIsSubmitting(false);
       }
@@ -253,7 +253,7 @@ export default function ManagersPage() {
         await loadData();
         notify.success(t("deleted"), t("managerDeleted"));
       } catch (error) {
-        notify.error("Error", "Failed to delete manager");
+        notify.error(t("error"), t("failedToDeleteManager") || "Failed to delete manager");
       } finally {
         setIsDeleteLoading(false);
         setDeletingManagerId(null);
@@ -273,7 +273,7 @@ export default function ManagersPage() {
         await loadData();
         notify.success(t("deleted"), `${selectedIds.length} ${t("managersDeleted") || "managers deleted"}`);
       } catch (error) {
-        notify.error("Error", "Failed to delete managers");
+        notify.error(t("error"), t("failedToDeleteManagers") || "Failed to delete managers");
       } finally {
         setIsBulkDeleteLoading(false);
       }
@@ -714,7 +714,7 @@ export default function ManagersPage() {
             bulkActions={bulkActions}
             emptyIcon={UserCog}
             emptyTitle={t("noManagersYet") || "No managers yet"}
-            emptyDescription="Add your first manager to let them access and oversee a branch."
+            emptyDescription={t("noManagersDesc") || "Add your first manager to let them access and oversee a branch."}
             emptyAction={{ label: t("addManager") || "Add Manager", onClick: () => setIsDialogOpen(true) }}
           />
         </CardContent>

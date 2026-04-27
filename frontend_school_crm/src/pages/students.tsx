@@ -301,7 +301,7 @@ export default function StudentsPage() {
       }
 
       if (warnings.length > 0) {
-        notify.warning("Import Completed with Warnings", warnings.slice(0, 3).join("\n") + (warnings.length > 3 ? `\n... and ${warnings.length - 3} more` : ""));
+        notify.warning(t("importCompletedWithWarnings") || "Import Completed with Warnings", warnings.slice(0, 3).join("\n") + (warnings.length > 3 ? `\n... and ${warnings.length - 3} more` : ""));
       }
 
       setImportData("");

@@ -5,6 +5,8 @@ import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { Activity, Plus, Pencil, Trash2 } from "lucide-react";
 import type { AuditLogEntry } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/hooks/use-language";
+import { getTranslation } from "@/lib/translations";
 
 type RecentActivityFeedProps = {
   entries: AuditLogEntry[];
@@ -34,11 +36,15 @@ export function RecentActivityFeed({
   entries,
   loading = false,
   title,
-  emptyLabel = "No recent activity",
+  emptyLabel,
   limit = 5,
   className,
 }: RecentActivityFeedProps) {
+  const language = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
+  const formatRelative = makeFormatRelative(t);
   const items = entries.slice(0, limit);
+  const defaultEmptyLabel = emptyLabel ?? (t("noRecentActivity") || "No recent activity");
 
   return (
     <Card className={cn("h-full flex flex-col", className)}>
@@ -64,7 +70,7 @@ export function RecentActivityFeed({
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <Activity className="w-8 h-8 text-slate-300 dark:text-slate-700 mb-2" />
-            <p className="text-sm text-slate-400">{emptyLabel}</p>
+            <p className="text-sm text-slate-400">{defaultEmptyLabel}</p>
           </div>
         ) : (
           <ul className="space-y-3">
@@ -107,15 +113,14 @@ export function RecentActivityFeed({
   );
 }
 
-/** Compact relative timestamp ("just now", "3m ago", "2h ago", "Apr 12"). */
-function formatRelative(iso: string): string {
-  const date = new Date(iso);
-  const now = Date.now();
-  const diffSec = Math.floor((now - date.getTime()) / 1000);
-
-  if (diffSec < 60) return "just now";
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-  if (diffSec < 7 * 86400) return `${Math.floor(diffSec / 86400)}d ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function makeFormatRelative(t: (k: string) => string) {
+  return function formatRelative(iso: string): string {
+    const date = new Date(iso);
+    const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (diffSec < 60) return t("justNow") || "just now";
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}${t("minAgo") || "m ago"}`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}${t("hourAgo") || "h ago"}`;
+    if (diffSec < 7 * 86400) return `${Math.floor(diffSec / 86400)}${t("dayAgo") || "d ago"}`;
+    return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
 }
