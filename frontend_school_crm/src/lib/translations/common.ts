@@ -2006,6 +2006,11 @@ export const commonTranslations: Partial<Translation> = {
   permViewSettings:     { "uz-cyrl": "Sozlamalarni ko'rish", "uz-latn": "Sozlamalarni ko'rish", en: "View Settings" },
   permEditSettings:     { "uz-cyrl": "Sozlamalarni tahrirlash", "uz-latn": "Sozlamalarni tahrirlash", en: "Edit Settings" },
 
+  // Attendance
+  modified:         { "uz-cyrl": "O'zgartirildi", "uz-latn": "O'zgartirildi", en: "Modified" },
+  unsavedChanges:   { "uz-cyrl": "Saqlanmagan o'zgarishlar", "uz-latn": "Saqlanmagan o'zgarishlar", en: "Unsaved changes" },
+  readOnly:         { "uz-cyrl": "Faqat ko'rish", "uz-latn": "Faqat ko'rish", en: "Read only" },
+
   // Auth / register
   registrationFailed: { "uz-cyrl": "Ro'yxatdan o'tish muvaffaqiyatsiz tugadi", "uz-latn": "Ro'yxatdan o'tish muvaffaqiyatsiz tugadi", en: "Registration failed" },
   creatingAccount:    { "uz-cyrl": "Akkaunt yaratilmoqda...", "uz-latn": "Akkaunt yaratilmoqda...", en: "Creating Account..." },

@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { apiRequest, listClasses, listStudents } from "@/lib/api";
 import type { Class, Student } from "@/lib/api";
 import { useBranch } from "@/context/BranchContext";
 import { useNotify } from "@/hooks/use-notify";
+import { getCurrentUser } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -27,6 +28,7 @@ import {
   CalendarDays,
   BarChart3,
   Bell,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
@@ -110,12 +112,17 @@ export default function AttendancePage() {
   const [selectedClassId, setSelectedClassId] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>(toDateString(new Date()));
   const [attendance, setAttendance] = useState<Map<string, AttendanceStatus>>(new Map());
+  const [savedAttendance, setSavedAttendance] = useState<Map<string, AttendanceStatus>>(new Map());
+  const [hasSavedData, setHasSavedData] = useState(false);
   const [monthSummary, setMonthSummary] = useState<MonthSummary[]>([]);
   const [absenceAlerts, setAbsenceAlerts] = useState<AbsenceAlert[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"mark" | "summary" | "alerts">("mark");
+
+  const currentUser = useMemo(() => getCurrentUser(), []);
+  const canEdit = currentUser?.role === "admin" || currentUser?.role === "branch_admin";
 
   const branchId = currentBranch?.id ?? "";
 
@@ -138,11 +145,14 @@ export default function AttendancePage() {
   useEffect(() => {
     if (!selectedClassId || !selectedDate) return;
     setLoadingAttendance(true);
+    setHasSavedData(false);
     fetchAttendance(selectedClassId, selectedDate)
       .then((records) => {
         const map = new Map<string, AttendanceStatus>();
         records.forEach((r) => map.set(r.studentId, r.status));
         setAttendance(map);
+        setSavedAttendance(new Map(map));
+        setHasSavedData(records.length > 0);
       })
       .catch(() => {})
       .finally(() => setLoadingAttendance(false));
@@ -191,6 +201,8 @@ export default function AttendancePage() {
       }));
       const res = await saveAttendance({ branchId, classId: selectedClassId, date: selectedDate, records });
       notify.success(t("attendanceSaved"), `${res.saved} ${t("students").toLowerCase()}`);
+      setSavedAttendance(new Map(attendance));
+      setHasSavedData(true);
       if (activeTab === "summary") loadSummary();
     } catch (err) {
       notify.error(t("error"), err instanceof Error ? err.message : t("errorOccurred"));
@@ -208,6 +220,11 @@ export default function AttendancePage() {
   const presentCount = students.filter((s) => attendance.get(s.id) === "present").length;
   const absentCount  = students.filter((s) => attendance.get(s.id) === "absent").length;
   const lateCount    = students.filter((s) => attendance.get(s.id) === "late").length;
+
+  const isDirty = useMemo(() => {
+    if (students.length === 0) return false;
+    return students.some((s) => attendance.get(s.id) !== savedAttendance.get(s.id));
+  }, [attendance, savedAttendance, students]);
 
   const tabs = [
     { id: "mark"    as const, label: t("markAttendance"),    icon: CalendarDays },
@@ -338,6 +355,7 @@ export default function AttendancePage() {
                 <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
                   {students.map((student, idx) => {
                     const status = attendance.get(student.id) ?? "present";
+                    const wasChanged = hasSavedData && savedAttendance.get(student.id) !== status;
                     return (
                       <div
                         key={student.id}
@@ -355,55 +373,104 @@ export default function AttendancePage() {
                           <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
                             {student.fullName}
                           </p>
+                          {wasChanged && (
+                            <p className="text-[10px] text-amber-500 font-medium">
+                              {t("modified") || "Modified"}
+                            </p>
+                          )}
                         </div>
 
-                        {/* Compact 3-segment toggle */}
-                        <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden flex-shrink-0">
-                          <ToggleBtn
-                            active={status === "present"}
-                            activeClass="bg-emerald-500 text-white"
-                            inactiveClass="text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950"
-                            onClick={() => handleStatusChange(student.id, "present")}
-                            title={t("present")}
-                          >
-                            <CheckCircle2 className="w-4 h-4" />
-                          </ToggleBtn>
-                          <ToggleBtn
-                            active={status === "late"}
-                            activeClass="bg-amber-500 text-white"
-                            inactiveClass="text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
-                            onClick={() => handleStatusChange(student.id, "late")}
-                            title={t("late")}
-                            divider
-                          >
-                            <Clock className="w-4 h-4" />
-                          </ToggleBtn>
-                          <ToggleBtn
-                            active={status === "absent"}
-                            activeClass="bg-red-500 text-white"
-                            inactiveClass="text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
-                            onClick={() => handleStatusChange(student.id, "absent")}
-                            title={t("absent")}
-                            divider
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </ToggleBtn>
-                        </div>
+                        {canEdit ? (
+                          /* Editable 3-segment toggle (admin / branch_admin only) */
+                          <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden flex-shrink-0">
+                            <ToggleBtn
+                              active={status === "present"}
+                              activeClass="bg-emerald-500 text-white"
+                              inactiveClass="text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                              onClick={() => handleStatusChange(student.id, "present")}
+                              title={t("present")}
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                            </ToggleBtn>
+                            <ToggleBtn
+                              active={status === "late"}
+                              activeClass="bg-amber-500 text-white"
+                              inactiveClass="text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950"
+                              onClick={() => handleStatusChange(student.id, "late")}
+                              title={t("late")}
+                              divider
+                            >
+                              <Clock className="w-4 h-4" />
+                            </ToggleBtn>
+                            <ToggleBtn
+                              active={status === "absent"}
+                              activeClass="bg-red-500 text-white"
+                              inactiveClass="text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                              onClick={() => handleStatusChange(student.id, "absent")}
+                              title={t("absent")}
+                              divider
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </ToggleBtn>
+                          </div>
+                        ) : (
+                          /* Read-only badge for non-admin roles */
+                          <span className={cn(
+                            "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold",
+                            status === "present" && "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+                            status === "absent"  && "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+                            status === "late"    && "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+                          )}>
+                            {status === "present" && <CheckCircle2 className="w-3.5 h-3.5" />}
+                            {status === "absent"  && <XCircle className="w-3.5 h-3.5" />}
+                            {status === "late"    && <Clock className="w-3.5 h-3.5" />}
+                            {t(status) || status}
+                          </span>
+                        )}
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Save */}
-                <div className="flex justify-end">
-                  <Button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-                  >
-                    <Save className="w-4 h-4" />
-                    {saving ? t("processing") : t("saveAttendance")}
-                  </Button>
+                {/* Save row — status indicator + button */}
+                <div className="flex items-center justify-between gap-3">
+                  {/* Saved / unsaved indicator */}
+                  <div className="flex items-center gap-2">
+                    {hasSavedData && !isDirty ? (
+                      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="w-4 h-4" />
+                        {t("attendanceSaved") || "Saved"}
+                      </span>
+                    ) : isDirty ? (
+                      <span className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-400">
+                        <Save className="w-4 h-4" />
+                        {t("unsavedChanges") || "Unsaved changes"}
+                      </span>
+                    ) : null}
+                    {!canEdit && hasSavedData && (
+                      <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                        <Lock className="w-3 h-3" />
+                        {t("readOnly") || "Read only"}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Save button — only for admins */}
+                  {canEdit && (
+                    <Button
+                      onClick={handleSave}
+                      disabled={saving || (!isDirty && hasSavedData)}
+                      className={cn(
+                        "gap-2 text-white",
+                        hasSavedData && !isDirty
+                          ? "bg-slate-400 hover:bg-slate-400 cursor-default"
+                          : "bg-blue-600 hover:bg-blue-700"
+                      )}
+                    >
+                      <Save className="w-4 h-4" />
+                      {saving ? t("processing") : hasSavedData ? (t("update") || "Update") : t("saveAttendance")}
+                    </Button>
+                  )}
                 </div>
               </>
             )}

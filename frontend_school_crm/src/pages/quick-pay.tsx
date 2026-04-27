@@ -198,36 +198,69 @@ function StudentCard({
   return (
     <div className={cn(
       "flex items-center gap-3 px-4 py-3 transition-colors",
-      isPaid ? "opacity-50" : "hover:bg-slate-50 dark:hover:bg-slate-800/50",
-      selected && "bg-indigo-50 dark:bg-indigo-950/30"
+      isPaid
+        ? "bg-emerald-50/60 dark:bg-emerald-950/20"
+        : isPartial
+        ? "bg-amber-50/40 dark:bg-amber-950/10 hover:bg-amber-50/60 dark:hover:bg-amber-950/20"
+        : "hover:bg-slate-50 dark:hover:bg-slate-800/50",
+      selected && !isPaid && "bg-indigo-50 dark:bg-indigo-950/30"
     )}>
-      {/* Checkbox */}
-      <button onClick={onToggle} disabled={isPaid} className="flex-shrink-0 text-slate-400 hover:text-indigo-500 transition-colors disabled:cursor-not-allowed">
-        {selected
-          ? <CheckSquare className="w-5 h-5 text-indigo-500" />
-          : <Square className="w-5 h-5" />
-        }
-      </button>
+      {/* Icon: checkmark for paid, checkbox for unpaid */}
+      {isPaid ? (
+        <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+      ) : (
+        <button onClick={onToggle} className="flex-shrink-0 text-slate-400 hover:text-indigo-500 transition-colors">
+          {selected
+            ? <CheckSquare className="w-5 h-5 text-indigo-500" />
+            : <Square className="w-5 h-5" />
+          }
+        </button>
+      )}
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">{student.fullName}</p>
+        <p className={cn(
+          "text-sm font-semibold truncate",
+          isPaid ? "text-emerald-700 dark:text-emerald-400" : "text-slate-900 dark:text-white"
+        )}>
+          {student.fullName}
+        </p>
         <p className="text-xs text-slate-400 truncate">{student.phone}</p>
       </div>
 
-      {/* Amount + status */}
-      <div className="text-right flex-shrink-0 mr-2">
-        <p className="text-sm font-bold text-slate-900 dark:text-white">{fmtMoney(student.remaining)} UZS</p>
-        {isPartial && (
-          <p className="text-xs text-amber-500">{t("partial")}: {fmtMoney(student.amountPaid)}</p>
-        )}
-      </div>
-
-      {/* Pay button */}
+      {/* Amount */}
       {isPaid ? (
-        <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300 border-0 text-xs">
-          <CheckCircle2 className="w-3 h-3 mr-1" /> Paid
+        <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+          {fmtMoney(student.monthlyPayment)} UZS
+        </span>
+      ) : (
+        <div className="text-right flex-shrink-0 mr-1">
+          <p className="text-sm font-bold text-slate-900 dark:text-white">{fmtMoney(student.remaining)} UZS</p>
+          {isPartial && (
+            <p className="text-xs text-amber-500">{t("paid")}: {fmtMoney(student.amountPaid)}</p>
+          )}
+        </div>
+      )}
+
+      {/* Status badge / Pay button */}
+      {isPaid ? (
+        <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 border-0 text-xs px-2 py-1 flex-shrink-0">
+          <CheckCircle2 className="w-3 h-3 mr-1" /> {t("paid")}
         </Badge>
+      ) : isPartial ? (
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[11px]">
+            {t("partial")}
+          </Badge>
+          <Button
+            size="sm"
+            disabled={paying}
+            onClick={onPayNow}
+            className="bg-amber-500 hover:bg-amber-600 text-white text-xs h-7 px-2.5"
+          >
+            {paying ? "..." : t("markAsPaid")}
+          </Button>
+        </div>
       ) : (
         <Button
           size="sm"
