@@ -105,12 +105,15 @@ const PAY_METHODS: { id: PayMethod; label: string; icon: React.ReactNode }[] = [
 // ─── Receipt modal ────────────────────────────────────────────────────────────
 
 function ReceiptModal({ data, onClose }: { data: ReceiptData | null; onClose: () => void }) {
+  const language = useLanguage();
+  const t = (k: string) => getTranslation(k, language);
   if (!data) return null;
+
   const print = () => {
     const win = window.open("", "_blank", "width=360,height=520");
     if (!win) return;
     win.document.write(`
-      <html><head><title>Receipt</title>
+      <html><head><title>${t("receiptTitle")}</title>
       <style>
         body { font-family: monospace; font-size: 13px; padding: 16px; max-width: 300px; margin: 0 auto; }
         h2 { text-align: center; font-size: 15px; margin-bottom: 8px; }
@@ -122,15 +125,15 @@ function ReceiptModal({ data, onClose }: { data: ReceiptData | null; onClose: ()
       </style></head><body>
       <h2>${data.branchName}</h2>
       <hr/>
-      <div class="row"><span>Student:</span><span class="bold">${data.studentName}</span></div>
-      <div class="row"><span>Month:</span><span>${data.month} ${data.year}</span></div>
-      <div class="row"><span>Method:</span><span>${data.method}</span></div>
-      <div class="row"><span>Invoice:</span><span>${data.invoiceNumber}</span></div>
-      <div class="row"><span>Date:</span><span>${data.paidAt}</span></div>
+      <div class="row"><span>${t("receiptStudent")}:</span><span class="bold">${data.studentName}</span></div>
+      <div class="row"><span>${t("receiptPeriod")}:</span><span>${data.month} ${data.year}</span></div>
+      <div class="row"><span>${t("receiptMethod")}:</span><span>${data.method}</span></div>
+      <div class="row"><span>${t("receiptInvoice")}:</span><span>${data.invoiceNumber}</span></div>
+      <div class="row"><span>${t("receiptDate")}:</span><span>${data.paidAt}</span></div>
       <hr/>
       <div class="big">${fmtMoney(data.amount)} UZS</div>
       <hr/>
-      <div class="center" style="font-size:11px;color:#666;">Thank you!</div>
+      <div class="center" style="font-size:11px;color:#666;">${t("receiptThankYou")}</div>
       </body></html>
     `);
     win.document.close();
@@ -145,24 +148,24 @@ function ReceiptModal({ data, onClose }: { data: ReceiptData | null; onClose: ()
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-            Receipt
+            {t("receiptTitle")}
           </DialogTitle>
         </DialogHeader>
         <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 font-mono text-sm space-y-2">
           <div className="text-center font-bold text-base mb-1">{data.branchName}</div>
           <hr className="border-dashed border-slate-300 dark:border-slate-600" />
-          <div className="flex justify-between"><span className="text-slate-500">Student</span><span className="font-semibold">{data.studentName}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Period</span><span>{data.month} {data.year}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Method</span><span>{data.method}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Invoice</span><span>{data.invoiceNumber}</span></div>
-          <div className="flex justify-between"><span className="text-slate-500">Date</span><span>{data.paidAt}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">{t("receiptStudent")}</span><span className="font-semibold">{data.studentName}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">{t("receiptPeriod")}</span><span>{data.month} {data.year}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">{t("receiptMethod")}</span><span>{data.method}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">{t("receiptInvoice")}</span><span>{data.invoiceNumber}</span></div>
+          <div className="flex justify-between"><span className="text-slate-500">{t("receiptDate")}</span><span>{data.paidAt}</span></div>
           <hr className="border-dashed border-slate-300 dark:border-slate-600" />
           <div className="text-center text-2xl font-bold text-emerald-600">{fmtMoney(data.amount)} UZS</div>
         </div>
         <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose}>Close</Button>
+          <Button variant="outline" className="flex-1" onClick={onClose}>{t("close") || "Close"}</Button>
           <Button className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white" onClick={print}>
-            <Printer className="w-4 h-4" /> Print
+            <Printer className="w-4 h-4" /> {t("print") || "Print"}
           </Button>
         </div>
       </DialogContent>

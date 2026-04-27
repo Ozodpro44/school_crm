@@ -33,61 +33,36 @@ import { getTranslation } from "@/lib/translations";
 import { useLanguage } from "@/hooks/use-language";
 import { useNotify } from "@/hooks/use-notify";
 
-const ROLE_CONFIG: Record<string, { color: string; avatar: string; label: string; description: string }> = {
-  admin: {
-    color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-    avatar: "from-red-500 to-pink-600",
-    label: "Admin",
-    description: "Full system access — manages all branches and data",
-  },
-  branch_admin: {
-    color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-    avatar: "from-orange-500 to-amber-500",
-    label: "Branch Admin",
-    description: "Full access within your branch",
-  },
-  manager: {
-    color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-    avatar: "from-blue-500 to-indigo-600",
-    label: "Manager",
-    description: "Manages students, payments and classes",
-  },
-  accountant: {
-    color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
-    avatar: "from-purple-500 to-violet-600",
-    label: "Accountant",
-    description: "Manages payments, salaries and expenses",
-  },
-  teacher: {
-    color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-    avatar: "from-emerald-500 to-teal-500",
-    label: "Teacher",
-    description: "Access to your classes and students",
-  },
+const ROLE_CONFIG: Record<string, { color: string; avatar: string; labelKey: string; descKey: string }> = {
+  admin:        { color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",              avatar: "from-red-500 to-pink-600",        labelKey: "admin",       descKey: "adminRoleDesc" },
+  branch_admin: { color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400", avatar: "from-orange-500 to-amber-500",    labelKey: "branchAdmin", descKey: "branchAdminRoleDesc" },
+  manager:      { color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",          avatar: "from-blue-500 to-indigo-600",     labelKey: "manager",     descKey: "managerRoleDesc" },
+  accountant:   { color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400", avatar: "from-purple-500 to-violet-600",   labelKey: "accountant",  descKey: "accountantRoleDesc" },
+  teacher:      { color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",      avatar: "from-emerald-500 to-teal-500",   labelKey: "teacher",     descKey: "teacherRoleDesc" },
 };
 
-const PERMISSION_LABELS: Partial<Record<string, string>> = {
-  canViewStudents: "View Students",
-  canCreateStudents: "Create Students",
-  canEditStudents: "Edit Students",
-  canDeleteStudents: "Delete Students",
-  canViewTeachers: "View Teachers",
-  canCreateTeachers: "Create Teachers",
-  canEditTeachers: "Edit Teachers",
-  canDeleteTeachers: "Delete Teachers",
-  canViewPayments: "View Payments",
-  canCreatePayments: "Create Payments",
-  canEditPayments: "Edit Payments",
-  canDeletePayments: "Delete Payments",
-  canViewSalaries: "View Salaries",
-  canManageSalaries: "Manage Salaries",
-  canViewExpenses: "View Expenses",
-  canManageExpenses: "Manage Expenses",
-  canViewReports: "View Reports",
-  canManageBranches: "Manage Branches",
-  canManageUsers: "Manage Users",
-  canViewSettings: "View Settings",
-  canEditSettings: "Edit Settings",
+const PERMISSION_LABEL_KEYS: Partial<Record<string, string>> = {
+  canViewStudents:    "permViewStudents",
+  canCreateStudents:  "permCreateStudents",
+  canEditStudents:    "permEditStudents",
+  canDeleteStudents:  "permDeleteStudents",
+  canViewTeachers:    "permViewTeachers",
+  canCreateTeachers:  "permCreateTeachers",
+  canEditTeachers:    "permEditTeachers",
+  canDeleteTeachers:  "permDeleteTeachers",
+  canViewPayments:    "permViewPayments",
+  canCreatePayments:  "permCreatePayments",
+  canEditPayments:    "permEditPayments",
+  canDeletePayments:  "permDeletePayments",
+  canViewSalaries:    "permViewSalaries",
+  canManageSalaries:  "permManageSalaries",
+  canViewExpenses:    "permViewExpenses",
+  canManageExpenses:  "permManageExpenses",
+  canViewReports:     "permViewReports",
+  canManageBranches:  "permManageBranches",
+  canManageUsers:     "permManageUsers",
+  canViewSettings:    "permViewSettings",
+  canEditSettings:    "permEditSettings",
 };
 
 export default function ProfilePage() {
@@ -281,10 +256,10 @@ export default function ProfilePage() {
                 {user.fullName}
               </h2>
               <Badge className={`mt-2 ${roleConfig.color}`}>
-                {roleConfig.label}
+                {t(roleConfig.labelKey as any) || roleConfig.labelKey}
               </Badge>
               <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 text-center leading-relaxed">
-                {roleConfig.description}
+                {t(roleConfig.descKey as any) || roleConfig.descKey}
               </p>
             </div>
           </CardContent>
@@ -310,7 +285,7 @@ export default function ProfilePage() {
               <Shield className="w-5 h-5 text-slate-500 dark:text-slate-400 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm text-slate-500 dark:text-slate-400">{t("role") || "Role"}</p>
-                <p className="font-medium text-slate-900 dark:text-slate-100">{roleConfig.label}</p>
+                <p className="font-medium text-slate-900 dark:text-slate-100">{t(roleConfig.labelKey as any) || roleConfig.labelKey}</p>
               </div>
             </div>
             <div className="flex items-start gap-4">
@@ -342,7 +317,7 @@ export default function ProfilePage() {
                 >
                   <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                   <p className="text-sm text-slate-900 dark:text-slate-100">
-                    {PERMISSION_LABELS[key] ?? key}
+                    {t((PERMISSION_LABEL_KEYS[key] ?? key) as any) || PERMISSION_LABEL_KEYS[key] || key}
                   </p>
                 </div>
               ))}
@@ -353,7 +328,7 @@ export default function ProfilePage() {
                 >
                   <XCircle className="w-4 h-4 text-slate-400 flex-shrink-0" />
                   <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {PERMISSION_LABELS[key] ?? key}
+                    {t((PERMISSION_LABEL_KEYS[key] ?? key) as any) || PERMISSION_LABEL_KEYS[key] || key}
                   </p>
                 </div>
               ))}

@@ -16,6 +16,7 @@ import { GraduationCap, AlertCircle, Loader2, Eye, EyeOff, PartyPopper } from "l
 import { register as apiRegister } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { useLanguage } from "@/hooks/use-language";
+import { getTranslation } from "@/lib/translations";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [registered, setRegistered] = useState(false);
   const language = useLanguage();
-  void language; // reserved for future i18n use
+  const t = (key: string) => getTranslation(key, language);
 
   useEffect(() => {
     const user = getCurrentUser();
@@ -75,7 +76,7 @@ export default function RegisterPage() {
         // Brief pause so the success banner is readable before redirect.
         setTimeout(() => router.push("/"), 2000);
       } else {
-        setError("Registration failed");
+        setError(t("registrationFailed") || "Registration failed");
       }
     } catch (error) {
       console.error("Registration error:", error);
@@ -239,7 +240,7 @@ export default function RegisterPage() {
               className="w-full h-11 text-base font-semibold bg-brand hover:bg-brand-hover"
             >
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {loading ? "Creating Account..." : "Create Account"}
+              {loading ? (t("creatingAccount") || "Creating Account...") : (t("createAccount") || "Create Account")}
             </Button>
           </form>
 

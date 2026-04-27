@@ -111,6 +111,8 @@ const LANGUAGES: { value: Language; label: string }[] = [
 ];
 
 function NotificationBell({ direction = "up", align = "right" }: { direction?: "up" | "down"; align?: "left" | "right" }) {
+  const bellLanguage = useLanguage();
+  const bt = (key: string) => getTranslation(key, bellLanguage);
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -184,11 +186,11 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
   const timeAgo = (iso: string) => {
     const diff = Date.now() - new Date(iso).getTime();
     const m = Math.floor(diff / 60000);
-    if (m < 1) return "just now";
-    if (m < 60) return `${m}m ago`;
+    if (m < 1) return bt("justNow") || "just now";
+    if (m < 60) return `${m}${bt("minAgo") || "m ago"}`;
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    return `${Math.floor(h / 24)}d ago`;
+    if (h < 24) return `${h}${bt("hourAgo") || "h ago"}`;
+    return `${Math.floor(h / 24)}${bt("dayAgo") || "d ago"}`;
   };
 
   return (
@@ -224,7 +226,7 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100/50 dark:border-slate-800/50">
           <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            Notifications {unread > 0 && <span className="text-xs text-indigo-500 ml-1">({unread})</span>}
+            {bt("notifications") || "Notifications"} {unread > 0 && <span className="text-xs text-indigo-500 ml-1">({unread})</span>}
           </span>
           {unread > 0 && (
             <button
@@ -232,7 +234,7 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
               className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
             >
               <CheckCheck className="w-3.5 h-3.5" />
-              Mark all read
+              {bt("markAllRead") || "Mark all read"}
             </button>
           )}
         </div>
@@ -256,7 +258,7 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
               <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Bell className="w-6 h-6 text-slate-300 dark:text-slate-600" />
               </div>
-              <p className="text-sm text-slate-400 font-medium">No notifications yet</p>
+              <p className="text-sm text-slate-400 font-medium">{bt("noNotificationsYet") || "No notifications yet"}</p>
             </div>
           ) : (
             <div className="p-1">
@@ -784,8 +786,8 @@ export function Layout({ children }: LayoutProps) {
                                 className={cn(
                                   "h-9 rounded-xl px-3 gap-3 transition-all duration-200 group/item relative",
                                   isActive
-                                    ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-500/25 dark:shadow-indigo-500/10"
-                                    : "text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:pl-4"
+                                    ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-500/25 dark:shadow-indigo-500/10 group-data-[collapsible=icon]:ring-2 group-data-[collapsible=icon]:ring-indigo-500/70 group-data-[collapsible=icon]:ring-offset-1"
+                                    : "text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:pl-4 group-data-[collapsible=icon]:hover:pl-3"
                                 )}
                               >
                                 <Link href={item.href}>

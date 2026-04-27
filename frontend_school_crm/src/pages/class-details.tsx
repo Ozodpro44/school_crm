@@ -238,10 +238,8 @@ export default function ClassDetailsPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: "Remove Student",
-      message:
-        t("removeStudentFromClassConfirmation") ||
-        "Remove this student from the class?",
+      title: t("removeStudent") || "Remove Student",
+      message: t("removeStudentFromClassConfirmation") || "Remove this student from the class?",
       onConfirm: async () => {
         try {
           await apiUpdateStudent(studentId, {
@@ -280,10 +278,8 @@ export default function ClassDetailsPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: "Switch Students",
-      message:
-        t("switchConfirmation") ||
-        `Switch ${selectedCount} student(s) to ${targetClass.name}?`,
+      title: t("switchStudents") || "Switch Students",
+      message: t("switchConfirmation") || `Switch ${selectedCount} student(s) to ${targetClass.name}?`,
       onConfirm: async () => {
         try {
           setConfirmDialog((prev) => ({ ...prev, isLoading: true }));
@@ -325,8 +321,8 @@ export default function ClassDetailsPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: "Remove Students",
-      message: `Remove ${selectedCount} student(s) from this class?`,
+      title: t("removeStudents") || "Remove Students",
+      message: t("removeStudentsConfirmation") || `Remove ${selectedCount} student(s) from this class?`,
       onConfirm: async () => {
         try {
           await Promise.all(

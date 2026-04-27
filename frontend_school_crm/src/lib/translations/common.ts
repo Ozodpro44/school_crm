@@ -1976,6 +1976,69 @@ export const commonTranslations: Partial<Translation> = {
   noPermissionReports: { "uz-cyrl": "Ҳисоботларга кириш рухсати йўқ", "uz-latn": "Hisobotlarga kirish ruxsati yo'q", en: "You don't have permission to view reports" },
   forbidden:        { "uz-cyrl": "Рухсат йўқ",        "uz-latn": "Ruxsat yo'q",      en: "Access denied" },
 
+  // Role descriptions
+  adminRoleDesc:        { "uz-cyrl": "Barcha filiallar va ma'lumotlarga to'liq kirish", "uz-latn": "Barcha filiallar va ma'lumotlarga to'liq kirish", en: "Full system access — manages all branches and data" },
+  branchAdminRoleDesc:  { "uz-cyrl": "Filialingizga to'liq kirish", "uz-latn": "Filialingizga to'liq kirish", en: "Full access within your branch" },
+  managerRoleDesc:      { "uz-cyrl": "O'quvchilar, to'lovlar va sinflarni boshqaradi", "uz-latn": "O'quvchilar, to'lovlar va sinflarni boshqaradi", en: "Manages students, payments and classes" },
+  accountantRoleDesc:   { "uz-cyrl": "To'lovlar, maoshlar va xarajatlarni boshqaradi", "uz-latn": "To'lovlar, maoshlar va xarajatlarni boshqaradi", en: "Manages payments, salaries and expenses" },
+  teacherRoleDesc:      { "uz-cyrl": "Sinflaringiz va o'quvchilaringizga kirish", "uz-latn": "Sinflaringiz va o'quvchilaringizga kirish", en: "Access to your classes and students" },
+
+  // Permission labels
+  permViewStudents:     { "uz-cyrl": "O'quvchilarni ko'rish", "uz-latn": "O'quvchilarni ko'rish", en: "View Students" },
+  permCreateStudents:   { "uz-cyrl": "O'quvchi qo'shish", "uz-latn": "O'quvchi qo'shish", en: "Create Students" },
+  permEditStudents:     { "uz-cyrl": "O'quvchilarni tahrirlash", "uz-latn": "O'quvchilarni tahrirlash", en: "Edit Students" },
+  permDeleteStudents:   { "uz-cyrl": "O'quvchilarni o'chirish", "uz-latn": "O'quvchilarni o'chirish", en: "Delete Students" },
+  permViewTeachers:     { "uz-cyrl": "O'qituvchilarni ko'rish", "uz-latn": "O'qituvchilarni ko'rish", en: "View Teachers" },
+  permCreateTeachers:   { "uz-cyrl": "O'qituvchi qo'shish", "uz-latn": "O'qituvchi qo'shish", en: "Create Teachers" },
+  permEditTeachers:     { "uz-cyrl": "O'qituvchilarni tahrirlash", "uz-latn": "O'qituvchilarni tahrirlash", en: "Edit Teachers" },
+  permDeleteTeachers:   { "uz-cyrl": "O'qituvchilarni o'chirish", "uz-latn": "O'qituvchilarni o'chirish", en: "Delete Teachers" },
+  permViewPayments:     { "uz-cyrl": "To'lovlarni ko'rish", "uz-latn": "To'lovlarni ko'rish", en: "View Payments" },
+  permCreatePayments:   { "uz-cyrl": "To'lov qo'shish", "uz-latn": "To'lov qo'shish", en: "Create Payments" },
+  permEditPayments:     { "uz-cyrl": "To'lovlarni tahrirlash", "uz-latn": "To'lovlarni tahrirlash", en: "Edit Payments" },
+  permDeletePayments:   { "uz-cyrl": "To'lovlarni o'chirish", "uz-latn": "To'lovlarni o'chirish", en: "Delete Payments" },
+  permViewSalaries:     { "uz-cyrl": "Maoshlarni ko'rish", "uz-latn": "Maoshlarni ko'rish", en: "View Salaries" },
+  permManageSalaries:   { "uz-cyrl": "Maoshlarni boshqarish", "uz-latn": "Maoshlarni boshqarish", en: "Manage Salaries" },
+  permViewExpenses:     { "uz-cyrl": "Xarajatlarni ko'rish", "uz-latn": "Xarajatlarni ko'rish", en: "View Expenses" },
+  permManageExpenses:   { "uz-cyrl": "Xarajatlarni boshqarish", "uz-latn": "Xarajatlarni boshqarish", en: "Manage Expenses" },
+  permViewReports:      { "uz-cyrl": "Hisobotlarni ko'rish", "uz-latn": "Hisobotlarni ko'rish", en: "View Reports" },
+  permManageBranches:   { "uz-cyrl": "Filialni boshqarish", "uz-latn": "Filialni boshqarish", en: "Manage Branches" },
+  permManageUsers:      { "uz-cyrl": "Foydalanuvchilarni boshqarish", "uz-latn": "Foydalanuvchilarni boshqarish", en: "Manage Users" },
+  permViewSettings:     { "uz-cyrl": "Sozlamalarni ko'rish", "uz-latn": "Sozlamalarni ko'rish", en: "View Settings" },
+  permEditSettings:     { "uz-cyrl": "Sozlamalarni tahrirlash", "uz-latn": "Sozlamalarni tahrirlash", en: "Edit Settings" },
+
+  // Auth / register
+  registrationFailed: { "uz-cyrl": "Ro'yxatdan o'tish muvaffaqiyatsiz tugadi", "uz-latn": "Ro'yxatdan o'tish muvaffaqiyatsiz tugadi", en: "Registration failed" },
+  creatingAccount:    { "uz-cyrl": "Akkaunt yaratilmoqda...", "uz-latn": "Akkaunt yaratilmoqda...", en: "Creating Account..." },
+  createAccount:      { "uz-cyrl": "Akkaunt yaratish", "uz-latn": "Akkaunt yaratish", en: "Create Account" },
+  hidePassword:       { "uz-cyrl": "Parolni yashirish", "uz-latn": "Parolni yashirish", en: "Hide password" },
+  showPassword:       { "uz-cyrl": "Parolni ko'rsatish", "uz-latn": "Parolni ko'rsatish", en: "Show password" },
+
+  // Class-details confirm dialogs
+  removeStudent:              { "uz-cyrl": "O'quvchini o'chirish", "uz-latn": "O'quvchini o'chirish", en: "Remove Student" },
+  removeStudents:             { "uz-cyrl": "O'quvchilarni o'chirish", "uz-latn": "O'quvchilarni o'chirish", en: "Remove Students" },
+  switchStudents:             { "uz-cyrl": "O'quvchilarni ko'chirish", "uz-latn": "O'quvchilarni ko'chirish", en: "Switch Students" },
+  removeStudentsConfirmation: { "uz-cyrl": "Bu o'quvchilarni sinfdan chiqarmoqchimisiz?", "uz-latn": "Bu o'quvchilarni sinfdan chiqarmoqchimisiz?", en: "Remove these students from this class?" },
+
+  // Time ago
+  justNow:  { "uz-cyrl": "Hozir", "uz-latn": "Hozir", en: "just now" },
+  minAgo:   { "uz-cyrl": "daqiqa oldin", "uz-latn": "daqiqa oldin", en: "m ago" },
+  hourAgo:  { "uz-cyrl": "soat oldin", "uz-latn": "soat oldin", en: "h ago" },
+  dayAgo:   { "uz-cyrl": "kun oldin", "uz-latn": "kun oldin", en: "d ago" },
+
+  // Notifications
+  notifications:        { "uz-cyrl": "Bildirishnomalar",  "uz-latn": "Bildirishnomalar", en: "Notifications" },
+  markAllRead:          { "uz-cyrl": "Barchasini o'qildi deb belgilash", "uz-latn": "Barchasini o'qildi deb belgilash", en: "Mark all read" },
+  noNotificationsYet:   { "uz-cyrl": "Hali bildirishnomalar yo'q", "uz-latn": "Hali bildirishnomalar yo'q", en: "No notifications yet" },
+
+  // Receipt
+  receiptTitle:         { "uz-cyrl": "Kvitansiya", "uz-latn": "Kvitansiya", en: "Receipt" },
+  receiptStudent:       { "uz-cyrl": "O'quvchi", "uz-latn": "O'quvchi", en: "Student" },
+  receiptPeriod:        { "uz-cyrl": "Davr", "uz-latn": "Davr", en: "Period" },
+  receiptMethod:        { "uz-cyrl": "To'lov usuli", "uz-latn": "To'lov usuli", en: "Method" },
+  receiptInvoice:       { "uz-cyrl": "Hisob raqam", "uz-latn": "Hisob raqam", en: "Invoice" },
+  receiptDate:          { "uz-cyrl": "Sana", "uz-latn": "Sana", en: "Date" },
+  receiptThankYou:      { "uz-cyrl": "Rahmat!", "uz-latn": "Rahmat!", en: "Thank you!" },
+
   // Teacher portal
   noClassesAssigned:    { "uz-cyrl": "Синфлар белгиланмаган", "uz-latn": "Sinflar belgilanmagan", en: "No classes assigned" },
   noClassesAssignedDesc:{ "uz-cyrl": "Сизга ҳали ҳеч қандай синф белгиланмаган", "uz-latn": "Sizga hali hech qanday sinf belgilanmagan", en: "You haven't been assigned to any classes yet" },
