@@ -762,7 +762,9 @@ export function Layout({ children }: LayoutProps) {
                   <SidebarGroupContent>
                     <SidebarMenu className="gap-0.5">
                       {visibleItems.map((item) => {
-                        const isActive = item.href === "/" ? router.pathname === "/" : router.pathname.startsWith(item.href);
+                        const isActive = item.href === "/"
+                          ? router.pathname === "/"
+                          : router.pathname === item.href || router.pathname.startsWith(item.href + "/");
                         const Icon = item.icon;
                         return (
                           <SidebarMenuItem key={item.name}>
@@ -972,7 +974,9 @@ export function Layout({ children }: LayoutProps) {
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 pb-[env(safe-area-inset-bottom,0)]">
           <div className="flex items-stretch h-16">
             {bottomNavItems.map((item) => {
-              const isActive = item.href === "/" ? router.pathname === "/" : router.pathname.startsWith(item.href);
+              const isActive = item.href === "/"
+                ? router.pathname === "/"
+                : router.pathname === item.href || router.pathname.startsWith(item.href + "/");
               const Icon = item.icon;
               return (
                 <Link
