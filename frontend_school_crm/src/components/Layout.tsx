@@ -64,14 +64,8 @@ import {
   SidebarTrigger,
   useSidebar,
   SidebarInset,
-  SidebarGroupAction,
   SidebarGroupLabel,
 } from "@/components/ui/sidebar";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -478,15 +472,22 @@ function SidebarHeaderSection({
 
 function MobileMoreButton({ label }: { label: string }) {
   const { setOpenMobile } = useSidebar();
+  // In the header it's used as a hamburger (label=""), in bottom nav as "More"
+  const isHamburger = label === "";
   return (
     <button
       onClick={() => setOpenMobile(true)}
-      className="flex flex-col items-center gap-1.5 px-4 py-2 min-w-[64px] text-slate-400 dark:text-slate-500 active:scale-90 transition-all group"
+      className={cn(
+        "flex items-center justify-center text-slate-500 dark:text-slate-400 transition-colors active:scale-95",
+        isHamburger
+          ? "w-8 h-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+          : "flex-1 flex-col gap-1 h-full text-slate-400 dark:text-slate-500"
+      )}
     >
-      <div className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-100/50 dark:bg-slate-800/50 group-hover:rotate-12 transition-all duration-300">
-        <Menu className="w-5 h-5" />
-      </div>
-      <span className="text-[10px] uppercase tracking-widest font-bold opacity-60">{label}</span>
+      <Menu className="w-5 h-5" />
+      {!isHamburger && (
+        <span className="text-[10px] font-medium leading-none">{label}</span>
+      )}
     </button>
   );
 }
@@ -707,14 +708,14 @@ export function Layout({ children }: LayoutProps) {
       defaultOpen={savedOpen}
       onOpenChange={(open) => localStorage.setItem("sidebarOpen", String(open))}
     >
-      <div className="flex min-h-screen w-full overflow-x-hidden bg-slate-50 dark:bg-slate-950">
+      <MobileSidebarCloser />
+      <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-950">
 
         {/* ────────────────────────────────── SIDEBAR ── */}
-        {/* hidden on mobile — desktop only */}
         <Sidebar
           variant="inset"
           collapsible="icon"
-          className="hidden md:flex border-slate-200 dark:border-slate-800"
+          className="hidden md:flex border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
         >
           {/* Header */}
           <SidebarHeaderSection
@@ -723,15 +724,15 @@ export function Layout({ children }: LayoutProps) {
           />
 
           {/* Content */}
-          <SidebarContent className="px-2 py-2">
+          <SidebarContent className="px-2 py-3 gap-0">
 
-            {/* Branch switcher (admin only, expanded only) */}
+            {/* Branch switcher — admin, expanded only */}
             {branches.length > 0 && user?.role === "admin" && (
               <div className="mb-3 px-1 group-data-[collapsible=icon]:hidden">
                 <Select value={currentBranch?.id || "__none__"} onValueChange={(v) => v !== "__none__" && handleBranchChange(v)}>
-                  <SelectTrigger className="w-full h-9 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-xs focus:ring-1 focus:ring-indigo-500">
+                  <SelectTrigger className="w-full h-9 bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-xs rounded-lg">
                     <div className="flex items-center gap-2 min-w-0">
-                      <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                      <Building2 className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
                       <SelectValue placeholder={t("selectBranch")} />
                     </div>
                   </SelectTrigger>
@@ -748,72 +749,60 @@ export function Layout({ children }: LayoutProps) {
               </div>
             )}
 
-            {/* Navigation groups */}
-            {navigationGroups.map((group, groupIdx) => (
-              <Collapsible
-                key={group.title}
-                asChild
-                defaultOpen={groupIdx === 0}
-                className="group/collapsible"
-              >
-                <SidebarGroup className="px-0 py-0 mb-1">
-                  <SidebarGroupLabel
-                    asChild
-                    className={cn(
-                      "px-3 mb-0.5 h-8 flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest cursor-pointer hover:text-indigo-500 transition-colors",
-                      "group-data-[collapsible=icon]:hidden",
-                      groupIdx === 0 && "h-6"
-                    )}
-                  >
-                    <CollapsibleTrigger>
-                      {group.title}
-                      <ChevronDown className="ml-auto h-3.5 w-3.5 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-180" />
-                    </CollapsibleTrigger>
+            {/* Navigation groups — no collapsible, always visible */}
+            {navigationGroups.map((group, groupIdx) => {
+              const visibleItems = group.items.filter((i) => i.show);
+              if (visibleItems.length === 0) return null;
+              return (
+                <SidebarGroup key={group.title} className="px-0 py-0 mb-1">
+                  {/* Group label — hidden in icon mode, hidden for first group if teacher */}
+                  <SidebarGroupLabel className="px-2 mb-1 h-7 flex items-center text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest group-data-[collapsible=icon]:hidden">
+                    {group.title}
                   </SidebarGroupLabel>
-
-                  <CollapsibleContent>
-                    <SidebarGroupContent>
-                      <SidebarMenu className="gap-0.5 px-0">
-                        {group.items.filter((i) => i.show).map((item) => {
-                          const isActive = item.href === "/" ? router.pathname === "/" : router.pathname.startsWith(item.href);
-                          const Icon = item.icon;
-                          return (
-                            <SidebarMenuItem key={item.name}>
-                              <SidebarMenuButton
-                                asChild
-                                isActive={isActive}
-                                tooltip={item.name}
-                                className={cn(
-                                  "h-9 rounded-xl px-3 gap-3 transition-all duration-200 group/item relative",
-                                  isActive
-                                    ? "bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-500/25 dark:shadow-indigo-500/10 group-data-[collapsible=icon]:ring-2 group-data-[collapsible=icon]:ring-indigo-500/70 group-data-[collapsible=icon]:ring-offset-1"
-                                    : "text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 hover:text-indigo-600 dark:hover:text-indigo-400 hover:pl-4 group-data-[collapsible=icon]:hover:pl-3"
+                  <SidebarGroupContent>
+                    <SidebarMenu className="gap-0.5">
+                      {visibleItems.map((item) => {
+                        const isActive = item.href === "/" ? router.pathname === "/" : router.pathname.startsWith(item.href);
+                        const Icon = item.icon;
+                        return (
+                          <SidebarMenuItem key={item.name}>
+                            <SidebarMenuButton
+                              asChild
+                              isActive={isActive}
+                              tooltip={item.name}
+                              className={cn(
+                                "h-9 rounded-lg px-2.5 gap-2.5 transition-colors duration-150 group/item relative",
+                                isActive
+                                  ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-semibold group-data-[collapsible=icon]:ring-2 group-data-[collapsible=icon]:ring-indigo-500/40"
+                                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
+                              )}
+                            >
+                              <Link href={item.href} className="flex items-center gap-2.5 w-full">
+                                {/* Active left bar */}
+                                {isActive && (
+                                  <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-indigo-500 group-data-[collapsible=icon]:hidden" />
                                 )}
-                              >
-                                <Link href={item.href}>
-                                  <div className={cn(
-                                    "w-5 h-5 flex items-center justify-center transition-transform duration-200 group-hover/item:scale-110",
-                                    isActive ? "text-white" : "text-slate-400 group-hover/item:text-indigo-500"
-                                  )}>
-                                    <Icon className="w-[18px] h-[18px]" />
-                                  </div>
-                                  <span className="text-sm font-semibold group-data-[collapsible=icon]:hidden">
-                                    {item.name}
-                                  </span>
-                                  {isActive && (
-                                    <div className="absolute right-2 w-1.5 h-1.5 rounded-full bg-white/40 animate-pulse" />
-                                  )}
-                                </Link>
-                              </SidebarMenuButton>
-                            </SidebarMenuItem>
-                          );
-                        })}
-                      </SidebarMenu>
-                    </SidebarGroupContent>
-                  </CollapsibleContent>
+                                <Icon className={cn(
+                                  "w-4 h-4 flex-shrink-0",
+                                  isActive ? "text-indigo-500" : "text-slate-400 group-hover/item:text-slate-600 dark:group-hover/item:text-slate-300"
+                                )} />
+                                <span className="text-sm group-data-[collapsible=icon]:hidden truncate">
+                                  {item.name}
+                                </span>
+                              </Link>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                  {/* Divider between groups */}
+                  {groupIdx < navigationGroups.length - 1 && (
+                    <div className="my-2 mx-2 border-t border-slate-100 dark:border-slate-800 group-data-[collapsible=icon]:hidden" />
+                  )}
                 </SidebarGroup>
-              </Collapsible>
-            ))}
+              );
+            })}
 
             {/* Subscription badge */}
             {user?.role === "admin" && subInfo && (
@@ -821,9 +810,9 @@ export function Layout({ children }: LayoutProps) {
             )}
           </SidebarContent>
 
-          {/* Footer — notifications + user profile */}
-          <SidebarFooter className="p-2 border-t border-slate-200 dark:border-slate-800">
-            <div className="flex items-center gap-1 px-1 mb-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+          {/* Footer — notification bell + user */}
+          <SidebarFooter className="p-2 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+            <div className="flex items-center gap-1 px-1 mb-1.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
               <NotificationBell align="left" />
             </div>
             <DropdownMenu>
@@ -894,29 +883,25 @@ export function Layout({ children }: LayoutProps) {
         </Sidebar>
 
         {/* ──────────────────────────── MAIN CONTENT ── */}
-        <SidebarInset className="flex-1 flex flex-col min-w-0 bg-transparent">
+        <SidebarInset className="flex-1 flex flex-col min-w-0">
 
-          {/* Mobile top bar */}
-          <header className="md:hidden sticky top-0 z-30 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border-b border-white/20 dark:border-slate-800/20 px-4 h-14 flex items-center justify-between gap-3">
-            {/* Branch selector / name */}
-            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/20 flex-shrink-0">
-                <Building2 className="w-4 h-4 text-white" />
-              </div>
+          {/* ── Mobile top bar — FIXED (not sticky, fixes stacking context bug) ── */}
+          <header className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3 px-4">
+
+            {/* Hamburger — opens sidebar drawer */}
+            <MobileMoreButton label="" />
+
+            {/* Branch name / selector */}
+            <div className="flex-1 min-w-0">
               {user?.role === "admin" && branches.length > 1 ? (
                 <Select
                   value={currentBranch?.id || "__none__"}
                   onValueChange={(v) => v !== "__none__" && handleBranchChange(v)}
                 >
-                  <SelectTrigger className="h-8 border-none bg-transparent shadow-none focus:ring-0 px-0 gap-1 min-w-0 flex-1 text-left [&>span]:truncate">
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate leading-tight">
-                        <SelectValue placeholder={t("selectBranch")} />
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-tight">
-                        {t("branch") || "Branch"}
-                      </span>
-                    </div>
+                  <SelectTrigger className="h-8 border-none bg-transparent shadow-none focus:ring-0 px-0 min-w-0 w-full text-left">
+                    <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">
+                      <SelectValue placeholder={t("selectBranch")} />
+                    </span>
                   </SelectTrigger>
                   <SelectContent>
                     {[...branches]
@@ -929,87 +914,63 @@ export function Layout({ children }: LayoutProps) {
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="flex flex-col min-w-0">
-                  <span className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate max-w-[160px] leading-tight">
-                    {branchDisplayName}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-tight">
-                    {t("branch") || "Branch"}
-                  </span>
-                </div>
+                <p className="font-semibold text-sm text-slate-900 dark:text-slate-100 truncate">
+                  {branchDisplayName}
+                </p>
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            {/* Right: notification + avatar */}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
               <NotificationBell direction="down" />
-
-            {/* Mobile user avatar + dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-1 py-1 pl-1 pr-2 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors active:scale-95">
-                  <Avatar className="h-6 w-6">
-                    <AvatarFallback className="bg-indigo-600 text-white text-[10px] font-bold">
-                      {user?.fullName.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <ChevronDown className="w-3 h-3 text-slate-400" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-56 p-1.5 shadow-xl border-slate-200 dark:border-slate-800 mr-2"
-                align="end"
-                sideOffset={8}
-              >
-                <div className="px-2 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-                    {user?.fullName}
-                  </p>
-                  <p className="text-xs text-slate-400 capitalize">
-                    {user?.role?.replace("_", " ")}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between px-2 py-1.5 mb-1">
-                  <span className="text-xs text-slate-500">{t("theme") || "Theme"}</span>
-                  <ThemeSwitch />
-                </div>
-                <DropdownMenuItem onClick={cycleLanguage} className="rounded-md gap-2 cursor-pointer py-1.5">
-                  <Globe className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm flex-1">{t("language") || "Language"}</span>
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
-                    {LANGUAGES.find((l) => l.value === language)?.label ?? language}
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => router.push("/profile")}
-                  className="rounded-md gap-2 cursor-pointer py-2"
-                >
-                  <UserCog className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm">{t("account") || "Account"}</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleLogout}
-                  className="rounded-md gap-2 cursor-pointer py-2 text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span className="text-sm">{t("logout") || "Log out"}</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold active:scale-95 transition-transform">
+                    {user?.fullName.charAt(0).toUpperCase()}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-52 p-1.5 shadow-lg border-slate-200 dark:border-slate-800" align="end" sideOffset={8}>
+                  <div className="px-2 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{user?.fullName}</p>
+                    <p className="text-xs text-slate-400 capitalize">{user?.role?.replace("_", " ")}</p>
+                  </div>
+                  <div className="flex items-center justify-between px-2 py-1.5">
+                    <span className="text-xs text-slate-500">{t("theme") || "Theme"}</span>
+                    <ThemeSwitch />
+                  </div>
+                  <DropdownMenuItem onClick={cycleLanguage} className="gap-2 cursor-pointer py-1.5">
+                    <Globe className="h-4 w-4 text-slate-400" />
+                    <span className="text-sm flex-1">{t("language") || "Language"}</span>
+                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
+                      {LANGUAGES.find((l) => l.value === language)?.label ?? language}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => router.push("/profile")} className="gap-2 cursor-pointer py-1.5">
+                    <UserCog className="h-4 w-4 text-slate-400" />
+                    <span className="text-sm">{t("account") || "Account"}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="gap-2 cursor-pointer py-1.5 text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20">
+                    <LogOut className="h-4 w-4" />
+                    <span className="text-sm">{t("logout") || "Log out"}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </header>
 
-          {/* Page content */}
-          <div className="flex-1 overflow-x-hidden w-full">
-            <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 pb-32 md:pb-8">
+          {/* Page content — pt-14 on mobile offsets the fixed header */}
+          <div className="flex-1 w-full pt-14 md:pt-0 overflow-x-hidden">
+            <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 pb-20 md:pb-8">
               {children}
             </div>
           </div>
 
         {/* ──────────────────────── MOBILE BOTTOM NAV ── */}
-        <nav className="md:hidden fixed bottom-8 inset-x-6 z-40 bg-white/80 dark:bg-slate-900/80 backdrop-blur-2xl border border-white/20 dark:border-slate-800/20 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.1)] dark:shadow-none pb-[env(safe-area-inset-bottom,0)] transition-all duration-300">
-          <div className="flex items-center justify-around px-2 h-20">
+        {/* Flat bar pinned to the bottom — no floating pill */}
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 pb-[env(safe-area-inset-bottom,0)]">
+          <div className="flex items-stretch h-16">
             {bottomNavItems.map((item) => {
               const isActive = item.href === "/" ? router.pathname === "/" : router.pathname.startsWith(item.href);
               const Icon = item.icon;
@@ -1018,31 +979,26 @@ export function Layout({ children }: LayoutProps) {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex flex-col items-center gap-1.5 px-4 py-2 min-w-[64px] active:scale-90 transition-all group",
+                    "flex-1 flex flex-col items-center justify-center gap-1 transition-colors active:scale-95",
                     isActive
                       ? "text-indigo-600 dark:text-indigo-400"
-                      : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+                      : "text-slate-400 dark:text-slate-500"
                   )}
                 >
-                  <div
-                    className={cn(
-                      "w-10 h-10 flex items-center justify-center rounded-2xl transition-all duration-300 group-hover:rotate-6",
-                      isActive 
-                        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20" 
-                        : "bg-slate-100/50 dark:bg-slate-800/50"
-                    )}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </div>
+                  {/* Active top indicator */}
                   <span className={cn(
-                    "text-[10px] uppercase tracking-widest font-bold leading-none",
-                    isActive ? "opacity-100" : "opacity-60"
-                  )}>
+                    "absolute top-0 h-0.5 w-8 rounded-b-full transition-all duration-200",
+                    isActive ? "bg-indigo-500" : "bg-transparent"
+                  )} />
+                  <Icon className="w-5 h-5" />
+                  <span className="text-[10px] font-medium leading-none truncate max-w-[56px] text-center">
                     {item.name}
                   </span>
                 </Link>
               );
             })}
+            {/* More — opens sidebar sheet */}
+            <MobileMoreButton label={t("more") || "More"} />
           </div>
         </nav>
       </SidebarInset>
