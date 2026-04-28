@@ -81,10 +81,7 @@ export default function ReportsPage() {
 
     setIsLoading(true);
     const timer = setTimeout(async () => {
-      loadClasses();
-      loadStudents();
-      loadUsers();
-      await loadBranch();
+      await Promise.all([loadClasses(), loadStudents(), loadUsers(), loadBranch()]);
       setDefaultDates();
       setIsLoading(false);
     }, 300);
@@ -788,38 +785,45 @@ export default function ReportsPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        {/* Title */}
+        {/* PageHeader */}
         <div className="space-y-2">
-          <Skeleton className="h-9 w-48" />
-          <Skeleton className="h-4 w-72" />
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="h-4 w-60" />
         </div>
-        {/* Filters card */}
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
-          <Skeleton className="h-5 w-32" />
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="space-y-2">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-10 w-full rounded-md" />
-              </div>
-            ))}
-          </div>
-          <Skeleton className="h-10 w-36 rounded-md" />
-        </div>
-        {/* Summary stats */}
+        {/* FilterBar — matches the actual filter bar shape */}
+        <Card>
+          <CardHeader className="pb-2"><Skeleton className="h-5 w-32" /></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {[180, 130, 130, 130, 130].map((w, i) => (
+                <Skeleton key={i} className="h-9 rounded-lg" style={{ width: w }} />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        {/* Stat cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-8 w-28" />
-            </div>
+            <Card key={i}>
+              <CardHeader className="pb-2"><Skeleton className="h-4 w-24" /></CardHeader>
+              <CardContent><Skeleton className="h-8 w-28" /></CardContent>
+            </Card>
           ))}
         </div>
-        {/* Chart area */}
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-6 space-y-4">
-          <Skeleton className="h-5 w-40" />
-          <Skeleton className="h-64 w-full rounded-lg" />
-        </div>
+        {/* Table area */}
+        <Card>
+          <CardHeader className="pb-2"><Skeleton className="h-5 w-40" /></CardHeader>
+          <CardContent className="p-0">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-slate-100 dark:border-slate-800 last:border-0">
+                <Skeleton className="h-4 w-40 flex-shrink-0" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 w-24 flex-shrink-0" />
+                <Skeleton className="h-6 w-16 rounded-full flex-shrink-0" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
     );
   }

@@ -22,6 +22,7 @@ import { FormDialog } from "@/components/FormDialog";
 import { Field } from "@/components/Field";
 import { Salary, PaymentStatus, Teacher, PaymentMethod, Branch } from "@/types";
 import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { listSalaries, getBranch, listTeachers, createSalary, updateSalary, deleteSalary } from "@/lib/api";
@@ -89,11 +90,7 @@ export default function SalariesPage() {
 
   useEffect(() => {
     setIsLoading(true);
-    const timer = setTimeout(() => {
-      loadData();
-      setIsLoading(false);
-    }, 300);
-    return () => clearTimeout(timer);
+    loadData().finally(() => setIsLoading(false));
   }, []);
 
   // Reload data when branch changes
@@ -616,12 +613,10 @@ export default function SalariesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {formatCurrency(totalPaid)}
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("salariesPaidOut")}
-            </p>
+            {isLoading ? <Skeleton className="h-9 w-36 mb-1" /> : (
+              <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">{formatCurrency(totalPaid)}</div>
+            )}
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("salariesPaidOut")}</p>
           </CardContent>
         </Card>
 
@@ -633,11 +628,11 @@ export default function SalariesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">
-              {formatCurrency(totalPending)}
-            </div>
+            {isLoading ? <Skeleton className="h-9 w-36 mb-1" /> : (
+              <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">{formatCurrency(totalPending)}</div>
+            )}
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {unpaidTeacherCount > 0
+              {!isLoading && unpaidTeacherCount > 0
                 ? `${unpaidTeacherCount} ${t("teachersNotPaid") || "teachers not paid"}`
                 : t("unpaidSalariesLabel")}
             </p>
@@ -652,12 +647,10 @@ export default function SalariesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {salaries.length}
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("salaryRecords")}
-            </p>
+            {isLoading ? <Skeleton className="h-9 w-16 mb-1" /> : (
+              <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">{salaries.length}</div>
+            )}
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("salaryRecords")}</p>
           </CardContent>
         </Card>
       </div>

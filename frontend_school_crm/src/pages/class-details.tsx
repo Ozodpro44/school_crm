@@ -350,18 +350,21 @@ export default function ClassDetailsPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-60 w-full" />
+        <div className="flex items-center gap-4">
+          <Skeleton className="w-9 h-9 rounded-lg" />
+          <div className="flex-1"><Skeleton className="h-8 w-48 mb-1" /><Skeleton className="h-4 w-32" /></div>
+          <Skeleton className="h-9 w-20 rounded-lg" />
+          <Skeleton className="h-9 w-20 rounded-lg" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader><CardContent className="space-y-3"><Skeleton className="h-5 w-1/2" /><Skeleton className="h-5 w-2/3" /></CardContent></Card>
+          <Card><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader><CardContent><Skeleton className="h-8 w-1/4" /></CardContent></Card>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="border-l-4 border-l-blue-200"><CardHeader className="pb-2"><Skeleton className="h-4 w-1/3" /></CardHeader><CardContent><Skeleton className="h-10 w-1/4" /></CardContent></Card>
+          <Card className="border-l-4 border-l-green-200"><CardHeader className="pb-2"><Skeleton className="h-4 w-1/3" /></CardHeader><CardContent><Skeleton className="h-10 w-1/4" /></CardContent></Card>
+        </div>
+        <Card><CardHeader><Skeleton className="h-6 w-1/4" /></CardHeader><CardContent className="space-y-2">{[1,2,3,4,5].map(i=><Skeleton key={i} className="h-14 w-full rounded-xl" />)}</CardContent></Card>
       </div>
     );
   }
@@ -453,88 +456,6 @@ export default function ClassDetailsPage() {
       },
     });
   };
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        {/* Header Skeleton */}
-        <div className="flex items-center gap-4">
-          <Skeleton className="w-10 h-10 rounded" />
-          <div className="flex-1">
-            <Skeleton className="w-1/3 h-10 rounded" />
-            <Skeleton className="w-1/4 h-5 rounded mt-2" />
-          </div>
-        </div>
-
-        {/* Info Cards Skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <Skeleton className="w-1/3 h-6 rounded" />
-                <div className="flex gap-2">
-                  <Skeleton className="w-20 h-9 rounded" />
-                  <Skeleton className="w-20 h-9 rounded" />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Skeleton className="w-1/4 h-4 rounded mb-2" />
-                <Skeleton className="w-1/2 h-6 rounded" />
-              </div>
-              <div>
-                <Skeleton className="w-1/4 h-4 rounded mb-2" />
-                <Skeleton className="w-1/2 h-6 rounded" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <Skeleton className="w-1/3 h-6 rounded" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="w-1/2 h-10 rounded" />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Stats Cards Skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <Card className="border-l-4 border-l-blue-500">
-            <CardHeader className="pb-2">
-              <Skeleton className="w-1/3 h-5 rounded" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="w-1/4 h-12 rounded" />
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-green-500">
-            <CardHeader className="pb-2">
-              <Skeleton className="w-1/3 h-5 rounded" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="w-1/4 h-12 rounded" />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Students List Skeleton */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Skeleton className="w-1/4 h-6 rounded" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="w-full h-16 rounded" />
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">

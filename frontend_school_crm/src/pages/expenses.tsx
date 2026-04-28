@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -904,12 +905,10 @@ export default function ExpensesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-              {formatCurrency(totalExpenseAmount)}
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("thisMonth")}
-            </p>
+            {isLoading ? <Skeleton className="h-8 w-36 mb-1" /> : (
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(totalExpenseAmount)}</div>
+            )}
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("thisMonth")}</p>
           </CardContent>
         </Card>
 
@@ -921,9 +920,9 @@ export default function ExpensesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {formatCurrency(totalByMethod.card)}
-            </div>
+            {isLoading ? <Skeleton className="h-8 w-28" /> : (
+              <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{formatCurrency(totalByMethod.card)}</div>
+            )}
           </CardContent>
         </Card>
 
@@ -935,9 +934,9 @@ export default function ExpensesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {formatCurrency(totalByMethod.cash)}
-            </div>
+            {isLoading ? <Skeleton className="h-8 w-28" /> : (
+              <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{formatCurrency(totalByMethod.cash)}</div>
+            )}
           </CardContent>
         </Card>
 
@@ -949,9 +948,9 @@ export default function ExpensesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {formatCurrency(totalByMethod.bank)}
-            </div>
+            {isLoading ? <Skeleton className="h-8 w-28" /> : (
+              <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{formatCurrency(totalByMethod.bank)}</div>
+            )}
           </CardContent>
         </Card>
       </div>
