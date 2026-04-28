@@ -2006,6 +2006,8 @@ export const commonTranslations: Partial<Translation> = {
   permViewSettings:     { "uz-cyrl": "Sozlamalarni ko'rish", "uz-latn": "Sozlamalarni ko'rish", en: "View Settings" },
   permEditSettings:     { "uz-cyrl": "Sozlamalarni tahrirlash", "uz-latn": "Sozlamalarni tahrirlash", en: "Edit Settings" },
 
+  pending:          { "uz-cyrl": "To'lanmagan", "uz-latn": "To'lanmagan", en: "Pending" },
+
   // Attendance
   modified:         { "uz-cyrl": "O'zgartirildi", "uz-latn": "O'zgartirildi", en: "Modified" },
   unsavedChanges:   { "uz-cyrl": "Saqlanmagan o'zgarishlar", "uz-latn": "Saqlanmagan o'zgarishlar", en: "Unsaved changes" },
