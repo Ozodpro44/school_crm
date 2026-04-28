@@ -80,7 +80,7 @@ async function bulkPay(branchId: string, paymentMethod: string, entries: BulkEnt
     "/payments/bulk",
     {
       method: "POST",
-      body: JSON.stringify({ branchId, paymentMethod, entries }),
+      body: JSON.stringify({ branchId, defaultMethod: paymentMethod, entries }),
     }
   );
 }
