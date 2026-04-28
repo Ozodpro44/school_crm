@@ -21,26 +21,6 @@ import { Badge } from "@/components/ui/badge";
 import { FormDialog } from "@/components/FormDialog";
 import { Field } from "@/components/Field";
 import { Salary, PaymentStatus, Teacher, PaymentMethod, Branch } from "@/types";
-
-// A display row is either a real DB salary or a synthetic "pending" row
-// (teacher has no salary record for the selected month).
-type SalaryRow =
-  | (Salary & { synthetic?: false })
-  | {
-      synthetic: true;
-      id: string;          // "pending-{teacherId}"
-      teacherId: string;
-      amount: number;      // teacher's monthlySalary
-      month: string;
-      year: number;
-      paymentMethod: PaymentMethod;
-      status: "pending";
-      notes?: string;
-      paidDate?: undefined;
-      branchId: string;
-      createdBy?: string;
-      createdAt: string;
-    };
 import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, Loader2 } from "lucide-react";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
@@ -281,52 +261,25 @@ export default function SalariesPage() {
     return teacher?.fullName || "Unknown";
   };
 
-  // Build synthetic "pending" rows for teachers with no salary record this month
-  const pendingRows: SalaryRow[] = teachers
-    .filter((teacher) => !salaries.some((s) => s.teacherId === teacher.id))
-    .map((teacher) => ({
-      synthetic: true as const,
-      id: `pending-${teacher.id}`,
-      teacherId: teacher.id,
-      amount: teacher.monthlySalary,
-      month: selectedMonth || getDefaultMonth(),
-      year: selectedYear || new Date().getFullYear(),
-      paymentMethod: "bank" as PaymentMethod,
-      status: "pending" as const,
-      branchId: salaries[0]?.branchId ?? "",
-      createdAt: new Date().toISOString(),
-    }));
-
-  // Combined rows: real records first, then pending teachers
-  const allRows: SalaryRow[] = [...salaries, ...pendingRows];
-
-  const filteredRows = allRows.filter((row) => {
-    const teacherName = getTeacherName(row.teacherId);
+  const filteredSalaries = salaries.filter((salary) => {
+    const teacherName = getTeacherName(salary.teacherId);
     const matchesSearch = searchMatchesCrossScript(teacherName, searchTerm);
-    const matchesStatus = filterStatus === "all" || row.status === filterStatus;
+    const matchesStatus = filterStatus === "all" || salary.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedSalaries = filteredRows.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedSalaries = filteredSalaries.slice(startIndex, startIndex + itemsPerPage);
 
-  const getStatusColor = (status: PaymentStatus | "pending") => {
+  const getStatusColor = (status: PaymentStatus) => {
     switch (status) {
       case "paid":
         return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
       case "partial":
         return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
-      case "pending":
-        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
       default:
         return "";
     }
-  };
-
-  const getStatusLabel = (status: PaymentStatus | "pending") => {
-    if (status === "pending") return t("pending") || "Pending";
-    if (status === "partial") return t("partialPaid");
-    return t(status);
   };
 
   const getPaymentMethodIcon = (method: PaymentMethod) => {
@@ -355,10 +308,19 @@ export default function SalariesPage() {
     .filter((s) => s.status === "paid")
     .reduce((sum, s) => sum + s.amount, 0);
 
-  // Pending = partial salary records + teachers with no record this month
+  // Teachers who have no salary record for this month — their salary is still owed
+  const unpaidTeacherIds = new Set(salaries.map((s) => s.teacherId));
+  const unpaidTeacherTotal = teachers
+    .filter((t) => !unpaidTeacherIds.has(t.id))
+    .reduce((sum, t) => sum + (t.monthlySalary || 0), 0);
+
+  // Pending = partial records + teachers with no record at all
   const totalPending =
     salaries.filter((s) => s.status === "partial").reduce((sum, s) => sum + s.amount, 0) +
-    pendingRows.reduce((sum, r) => sum + r.amount, 0);
+    unpaidTeacherTotal;
+
+  // Count of teachers not yet paid (for the subtitle)
+  const unpaidTeacherCount = teachers.filter((t) => !unpaidTeacherIds.has(t.id)).length;
 
   const months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
 
@@ -372,7 +334,7 @@ export default function SalariesPage() {
   };
 
   // ── Column definitions ────────────────────────────────────────────────────────
-  const columns: Column<SalaryRow>[] = [
+  const columns: Column<Salary>[] = [
     {
       key: "teacher",
       header: t("teacher"),
@@ -404,9 +366,9 @@ export default function SalariesPage() {
     {
       key: "status",
       header: t("status"),
-      render: (row) => (
-        <Badge className={getStatusColor(row.status as PaymentStatus | "pending")}>
-          {getStatusLabel(row.status as PaymentStatus | "pending")}
+      render: (salary) => (
+        <Badge className={getStatusColor(salary.status)}>
+          {salary.status === "partial" ? t("partialPaid") : t(salary.status)}
         </Badge>
       ),
     },
@@ -414,27 +376,23 @@ export default function SalariesPage() {
       key: "paymentMethod",
       header: t("paymentMethod"),
       hideOnMobile: true,
-      render: (row) => (
-        row.status === "pending" ? (
-          <span className="text-sm text-slate-400 italic">—</span>
-        ) : (
-          <Badge className={`gap-1 ${getPaymentMethodColor(row.paymentMethod)}`}>
-            {getPaymentMethodIcon(row.paymentMethod)}
-            <span>{t(row.paymentMethod === "bank" ? "bankTransfer" : row.paymentMethod)}</span>
-            <span className="ml-1 font-medium">{formatCurrency(row.amount)}</span>
-          </Badge>
-        )
+      render: (salary) => (
+        <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
+          {getPaymentMethodIcon(salary.paymentMethod)}
+          <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
+          <span className="ml-1 font-medium">{formatCurrency(salary.amount)}</span>
+        </Badge>
       ),
     },
     {
       key: "paidDate",
       header: t("paidDate"),
       hideOnMobile: true,
-      render: (row) => (
+      render: (salary) => (
         <span className="text-slate-900 dark:text-slate-100">
-          {row.paidDate
-            ? new Date(row.paidDate).toLocaleDateString("en-GB").replace(/\//g, ".")
-            : "—"}
+          {salary.paidDate
+            ? new Date(salary.paidDate).toLocaleDateString('en-GB').replace(/\//g, ".")
+            : "-"}
         </span>
       ),
     },
@@ -442,8 +400,8 @@ export default function SalariesPage() {
       key: "createdBy",
       header: t("whoAddedSalaries"),
       hideOnMobile: true,
-      render: (row) => (
-        <span className="text-sm text-slate-900 dark:text-slate-100">{row.createdBy || "—"}</span>
+      render: (salary) => (
+        <span className="text-sm text-slate-900 dark:text-slate-100">{salary.createdBy || "-"}</span>
       ),
     },
     {
@@ -451,50 +409,38 @@ export default function SalariesPage() {
       header: t("actions"),
       headerClassName: "text-right",
       cellClassName: "text-right",
-      render: (row) => {
-        if (row.status === "pending") {
-          // Synthetic row — offer to record the salary
-          return (
+      render: (salary) => (
+        <div className="flex items-center justify-end gap-2">
+          {salary.status === "partial" && (
             <Button
               size="sm"
-              className="bg-indigo-600 hover:bg-indigo-700 text-white"
-              disabled={!canCreateSalaries}
-              onClick={() => {
-                const teacher = teachers.find((t) => t.id === row.teacherId);
-                setFormData({
-                  teacherId: row.teacherId,
-                  amount: teacher?.monthlySalary.toString() || "",
-                  month: row.month,
-                  year: row.year.toString(),
-                  status: "paid",
-                  paymentMethod: "bank",
-                  notes: "",
-                });
-                setEditingSalaryId(null);
-                setIsDialogOpen(true);
-              }}
+              variant="outline"
+              className="text-green-600"
+              onClick={() => handleMarkPaid(salary.id)}
             >
-              {t("recordSalaryPayment")}
+              {t("markPaid")}
             </Button>
-          );
-        }
-        const salary = row as Salary;
-        return (
-          <div className="flex items-center justify-end gap-2">
-            {salary.status === "partial" && (
-              <Button size="sm" variant="outline" className="text-green-600" onClick={() => handleMarkPaid(salary.id)}>
-                {t("markPaid")}
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={() => handleEdit(salary)} disabled={!canEditSalaries}>
-              <Edit2 className="w-4 h-4" />
-            </Button>
-            <Button size="sm" variant="destructive" onClick={() => handleDelete(salary.id)} disabled={!canDeleteSalaries}>
-              <Trash2 className="w-4 h-4 text-red-200" />
-            </Button>
-          </div>
-        );
-      },
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleEdit(salary)}
+            disabled={!canEditSalaries}
+            title={canEditSalaries ? "" : "No permission"}
+          >
+            <Edit2 className="w-4 h-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => handleDelete(salary.id)}
+            disabled={!canDeleteSalaries}
+            title={canDeleteSalaries ? "" : "No permission"}
+          >
+            <Trash2 className="w-4 h-4 text-red-200" />
+          </Button>
+        </div>
+      ),
     },
   ];
 
@@ -691,7 +637,9 @@ export default function SalariesPage() {
               {formatCurrency(totalPending)}
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("unpaidSalariesLabel")}
+              {unpaidTeacherCount > 0
+                ? `${unpaidTeacherCount} ${t("teachersNotPaid") || "teachers not paid"}`
+                : t("unpaidSalariesLabel")}
             </p>
           </CardContent>
         </Card>
@@ -729,7 +677,6 @@ export default function SalariesPage() {
             <SelectItem value="all">{t("allStatus")}</SelectItem>
             <SelectItem value="paid">{t("paid")}</SelectItem>
             <SelectItem value="partial">{t("partialPaid")}</SelectItem>
-            <SelectItem value="pending">{t("pending") || "Pending"}</SelectItem>
           </SelectContent>
         </Select>
         <FilterReset onClick={() => { setSearchTerm(""); setFilterStatus("all"); setCurrentPage(1); }} show={searchTerm !== "" || filterStatus !== "all"} label={t("reset") || "Reset"} />
@@ -746,78 +693,63 @@ export default function SalariesPage() {
             pagination={{
               page: currentPage,
               limit: itemsPerPage,
-              total: filteredRows.length,
+              total: filteredSalaries.length,
             }}
             onPageChange={(page) => {
               setCurrentPage(page);
               router.push(`/salaries?page=${page}`, undefined, { shallow: true });
             }}
-            renderCard={(row) => (
+            renderCard={(salary) => (
               <div
-                key={row.id}
+                key={salary.id}
                 className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 space-y-3"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-slate-900 dark:text-slate-100">
-                      {getTeacherName(row.teacherId)}
+                      {getTeacherName(salary.teacherId)}
                     </p>
                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                      {getMonthName(row.month)} {row.year}
+                      {getMonthName(salary.month)} {salary.year}
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <span className="font-semibold text-slate-900 dark:text-slate-100">
-                      {formatCurrency(row.amount)}
+                      {formatCurrency(salary.amount)}
                     </span>
-                    <Badge className={getStatusColor(row.status as PaymentStatus | "pending")}>
-                      {getStatusLabel(row.status as PaymentStatus | "pending")}
+                    <Badge className={getStatusColor(salary.status)}>
+                      {salary.status === "partial" ? t("partialPaid") : t(salary.status)}
                     </Badge>
                   </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {row.status !== "pending" && (
-                      <Badge className={`gap-1 ${getPaymentMethodColor(row.paymentMethod)}`}>
-                        {getPaymentMethodIcon(row.paymentMethod)}
-                        <span>{t(row.paymentMethod === "bank" ? "bankTransfer" : row.paymentMethod)}</span>
-                      </Badge>
-                    )}
-                    {row.paidDate && (
+                    <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
+                      {getPaymentMethodIcon(salary.paymentMethod)}
+                      <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
+                    </Badge>
+                    {salary.paidDate && (
                       <span className="text-xs text-slate-500 dark:text-slate-400">
-                        {new Date(row.paidDate).toLocaleDateString("en-GB").replace(/\//g, ".")}
+                        {new Date(salary.paidDate).toLocaleDateString("en-GB").replace(/\//g, ".")}
                       </span>
                     )}
                   </div>
                   <div className="flex items-center gap-1">
-                    {row.status === "pending" ? (
-                      <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white h-7 text-xs px-2" disabled={!canCreateSalaries}
-                        onClick={() => {
-                          const teacher = teachers.find((t) => t.id === row.teacherId);
-                          setFormData({ teacherId: row.teacherId, amount: teacher?.monthlySalary.toString() || "", month: row.month, year: row.year.toString(), status: "paid", paymentMethod: "bank", notes: "" });
-                          setEditingSalaryId(null); setIsDialogOpen(true);
-                        }}>
-                        {t("recordSalaryPayment")}
+                    {salary.status === "partial" && (
+                      <Button size="sm" variant="outline" className="text-green-600 h-7 text-xs px-2" onClick={() => handleMarkPaid(salary.id)}>
+                        {t("markPaid")}
                       </Button>
-                    ) : (
-                      <>
-                        {row.status === "partial" && (
-                          <Button size="sm" variant="outline" className="text-green-600 h-7 text-xs px-2" onClick={() => handleMarkPaid(row.id)}>
-                            {t("markPaid")}
-                          </Button>
-                        )}
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(row as Salary)} disabled={!canEditSalaries}>
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(row.id)} disabled={!canDeleteSalaries}>
-                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                        </Button>
-                      </>
                     )}
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(salary)} disabled={!canEditSalaries}>
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(salary.id)} disabled={!canDeleteSalaries}>
+                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    </Button>
                   </div>
                 </div>
-                {row.createdBy && (
-                  <p className="text-xs text-slate-400 dark:text-slate-500">{t("whoAddedSalaries")}: {row.createdBy}</p>
+                {salary.createdBy && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500">{t("whoAddedSalaries")}: {salary.createdBy}</p>
                 )}
               </div>
             )}
