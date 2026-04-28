@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import {
@@ -349,7 +350,7 @@ function QRScanTab({
     stopCamera();
     setError("");
     try {
-      const res = await searchStudentsWithPaymentStatus({ branchId, search: studentId, limit: 1 });
+      const res = await searchStudentsWithPaymentStatus({ branchId, search: studentId, status: "active", limit: 1 });
       const found = res.data.find((s) => s.id === studentId) ?? res.data[0] ?? null;
       if (!found) { setError(t("studentNotFound")); return; }
       setStudent(found);
@@ -524,7 +525,7 @@ export default function QuickPayPage() {
     listClasses(branchId).then(setClasses).catch(() => {});
   }, [branchId]);
 
-  // Load unpaid/partial students
+  // Load active students with their current-month payment status
   const loadStudents = useCallback(async () => {
     if (!branchId) return;
     setLoading(true);
@@ -533,7 +534,8 @@ export default function QuickPayPage() {
         branchId,
         search,
         classId: classFilter !== "all" ? classFilter : undefined,
-        limit: 200,
+        status: "active",   // only active students can receive payments
+        limit: 500,
       });
       setStudents(res.data ?? []);
     } catch {
@@ -546,6 +548,9 @@ export default function QuickPayPage() {
   useEffect(() => {
     if (tab === "collect" || tab === "bulk") loadStudents();
   }, [tab, loadStudents]);
+
+  // Re-fetch when the page regains visibility (e.g. user deleted a payment elsewhere)
+  useRefetchOnFocus(loadStudents);
 
   // Debounce search
   useEffect(() => {
@@ -592,9 +597,8 @@ export default function QuickPayPage() {
       const r = res.results[0]!;
       if (r.error) { notify.error(r.error); return; }
       setReceipt(makeReceipt(student, r));
-      setStudents((prev) =>
-        prev.map((s) => s.id === student.id ? { ...s, paymentStatus: "paid", amountPaid: s.monthlyPayment, remaining: 0 } : s)
-      );
+      // Re-fetch from server — never trust stale local state for payment status
+      await loadStudents();
     } catch (e: any) {
       notify.error(e.message);
     } finally {
@@ -614,14 +618,7 @@ export default function QuickPayPage() {
         paymentMethod: payMethod,
       }));
       const res = await bulkPay(branchId, payMethod, entries);
-      notify.warning(t("paymentSuccess"), `${res.succeeded} / ${targets.length} ${t("students").toLowerCase()}`);
-      // Update local state
-      const paidIds = new Set(res.results.filter((r) => r.payment).map((r) => r.studentId));
-      setStudents((prev) =>
-        prev.map((s) =>
-          paidIds.has(s.id) ? { ...s, paymentStatus: "paid", amountPaid: s.monthlyPayment, remaining: 0 } : s
-        )
-      );
+      notify.success(t("paymentSuccess"), `${res.succeeded} / ${targets.length} ${t("students").toLowerCase()}`);
       setSelected(new Set());
       // Show receipt for first success
       const first = res.results.find((r) => r.payment);
@@ -629,6 +626,8 @@ export default function QuickPayPage() {
         const s = targets.find((s) => s.id === first.studentId)!;
         setReceipt(makeReceipt(s, first));
       }
+      // Re-fetch from server — reflects actual backend state
+      await loadStudents();
     } catch (e: any) {
       notify.error(e.message);
     } finally {
