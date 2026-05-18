@@ -21,6 +21,8 @@ type Database struct {
 	conn *sql.DB
 }
 
+const latestRepairableMigrationVersion = 6
+
 func New(ctx context.Context, dsn string) (*Database, error) {
 	conn, err := sql.Open("postgres", dsn)
 	if err != nil {
@@ -108,10 +110,10 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		if err := m.Force(migratedb.NilVersion); err != nil {
 			return fmt.Errorf("failed to reset migration version 0: %w", err)
 		}
-	} else if err == nil && dirty && version == 1 {
-		log.Printf("[Database.RunMigrations] Detected dirty initial migration at version 1. Resetting to nil version so idempotent migration can repair the schema.")
+	} else if err == nil && dirty && version >= 1 && version <= latestRepairableMigrationVersion {
+		log.Printf("[Database.RunMigrations] Detected dirty migration at version %d. Resetting to nil version so idempotent migrations can repair the schema.", version)
 		if err := m.Force(migratedb.NilVersion); err != nil {
-			return fmt.Errorf("failed to reset dirty initial migration: %w", err)
+			return fmt.Errorf("failed to reset dirty migration version %d: %w", version, err)
 		}
 	} else if err == nil && dirty {
 		return fmt.Errorf("database is dirty at migration version %d; repair the failed migration and force the correct version", version)
@@ -164,9 +166,7 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		"developers",
 		"logs",
 		"branch_managers",
-		"notifications",
-		"audit_logs",
-		"expense_budgets",
+		"teacher_subjects",
 	}
 
 	missingTables, err := db.getMissingTables(ctx, requiredTables)
