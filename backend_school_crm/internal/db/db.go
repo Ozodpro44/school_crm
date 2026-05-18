@@ -160,10 +160,10 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 	}
 	if len(missingTables) > 0 {
 		log.Printf("[Database.RunMigrations] Detected missing tables despite migration state: %s", strings.Join(missingTables, ", "))
-		log.Printf("[Database.RunMigrations] Attempting auto-repair: force version to 0 and re-run all migrations")
+		log.Printf("[Database.RunMigrations] Attempting auto-repair: force version to -1 (NilVersion) and re-run all migrations")
 
-		if err := m.Force(0); err != nil {
-			return fmt.Errorf("failed to force migration version to 0 for repair: %w", err)
+		if err := m.Force(-1); err != nil {
+			return fmt.Errorf("failed to force migration version to -1 for repair: %w", err)
 		}
 		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 			return fmt.Errorf("auto-repair migration failed: %w", err)
