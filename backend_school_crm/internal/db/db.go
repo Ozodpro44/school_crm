@@ -108,6 +108,11 @@ func (db *Database) RunMigrations(ctx context.Context) error {
 		if err := m.Force(migratedb.NilVersion); err != nil {
 			return fmt.Errorf("failed to reset migration version 0: %w", err)
 		}
+	} else if err == nil && dirty && version == 1 {
+		log.Printf("[Database.RunMigrations] Detected dirty initial migration at version 1. Resetting to nil version so idempotent migration can repair the schema.")
+		if err := m.Force(migratedb.NilVersion); err != nil {
+			return fmt.Errorf("failed to reset dirty initial migration: %w", err)
+		}
 	} else if err == nil && dirty {
 		return fmt.Errorf("database is dirty at migration version %d; repair the failed migration and force the correct version", version)
 	} else if err != nil && err != migrate.ErrNilVersion {

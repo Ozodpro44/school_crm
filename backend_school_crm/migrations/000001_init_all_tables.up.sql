@@ -9,6 +9,19 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create branches table before tables that reference it
+CREATE TABLE IF NOT EXISTS branches (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
+    name VARCHAR(255) NOT NULL,
+    address VARCHAR(500),
+    phone VARCHAR(20),
+    monthly_payment DECIMAL(20, 2) DEFAULT 0,
+    currency VARCHAR(10) DEFAULT 'UZS',
+    admin_id UUID REFERENCES users (id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create subscription_plans table
 CREATE TABLE IF NOT EXISTS subscription_plans (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -72,19 +85,6 @@ CREATE TABLE IF NOT EXISTS subscription_payments (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create branches table
-CREATE TABLE IF NOT EXISTS branches (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
-    name VARCHAR(255) NOT NULL,
-    address VARCHAR(500),
-    phone VARCHAR(20),
-    monthly_payment DECIMAL(20, 2) DEFAULT 0,
-    currency VARCHAR(10) DEFAULT 'UZS',
-    admin_id UUID REFERENCES users (id) ON DELETE SET NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Create branch_managers table
 CREATE TABLE IF NOT EXISTS branch_managers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid (),
@@ -136,8 +136,17 @@ CREATE TABLE IF NOT EXISTS teachers (
 );
 
 -- Add teacher_id foreign key to classes
-ALTER TABLE classes
-ADD CONSTRAINT fk_classes_teacher_id FOREIGN KEY (teacher_id) REFERENCES teachers (id) ON DELETE SET NULL;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_classes_teacher_id'
+    ) THEN
+        ALTER TABLE classes
+        ADD CONSTRAINT fk_classes_teacher_id FOREIGN KEY (teacher_id) REFERENCES teachers (id) ON DELETE SET NULL;
+    END IF;
+END $$;
 
 -- Create teacher_subjects table
 CREATE TABLE IF NOT EXISTS teacher_subjects (
@@ -166,7 +175,7 @@ CREATE TABLE IF NOT EXISTS financial_months (
 
 -- Add current_financial_month_id to branches
 ALTER TABLE branches
-ADD COLUMN current_financial_month_id UUID REFERENCES financial_months (id) ON DELETE SET NULL;
+ADD COLUMN IF NOT EXISTS current_financial_month_id UUID REFERENCES financial_months (id) ON DELETE SET NULL;
 
 -- Create payments table
 CREATE TABLE IF NOT EXISTS payments (
@@ -267,56 +276,56 @@ CREATE TABLE IF NOT EXISTS permissions (
 );
 
 -- Create indexes for better performance
-CREATE INDEX idx_users_email ON users (email);
-CREATE INDEX idx_subscriptions_user_id ON subscriptions (user_id);
-CREATE INDEX idx_subscriptions_plan_id ON subscriptions (plan_id);
-CREATE INDEX idx_subscriptions_branch_id ON subscriptions (branch_id);
-CREATE INDEX idx_subscriptions_status ON subscriptions (status);
-CREATE INDEX idx_subscription_usage_subscription_id ON subscription_usage (subscription_id);
-CREATE INDEX idx_subscription_payments_subscription_id ON subscription_payments (subscription_id);
-CREATE INDEX idx_subscription_payments_status ON subscription_payments (status);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions (user_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_plan_id ON subscriptions (plan_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_branch_id ON subscriptions (branch_id);
+CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions (status);
+CREATE INDEX IF NOT EXISTS idx_subscription_usage_subscription_id ON subscription_usage (subscription_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_subscription_id ON subscription_payments (subscription_id);
+CREATE INDEX IF NOT EXISTS idx_subscription_payments_status ON subscription_payments (status);
 
-CREATE INDEX idx_students_branch_id ON students (branch_id);
+CREATE INDEX IF NOT EXISTS idx_students_branch_id ON students (branch_id);
 
-CREATE INDEX idx_students_class_id ON students (class_id);
+CREATE INDEX IF NOT EXISTS idx_students_class_id ON students (class_id);
 
-CREATE INDEX idx_payments_student_id ON payments (student_id);
+CREATE INDEX IF NOT EXISTS idx_payments_student_id ON payments (student_id);
 
-CREATE INDEX idx_payments_branch_id ON payments (branch_id);
+CREATE INDEX IF NOT EXISTS idx_payments_branch_id ON payments (branch_id);
 
-CREATE INDEX idx_payments_month_year ON payments (month, year);
+CREATE INDEX IF NOT EXISTS idx_payments_month_year ON payments (month, year);
 
-CREATE INDEX idx_payments_financial_month_id ON payments (financial_month_id);
+CREATE INDEX IF NOT EXISTS idx_payments_financial_month_id ON payments (financial_month_id);
 
-CREATE INDEX idx_salaries_teacher_id ON salaries (teacher_id);
+CREATE INDEX IF NOT EXISTS idx_salaries_teacher_id ON salaries (teacher_id);
 
-CREATE INDEX idx_salaries_branch_id ON salaries (branch_id);
+CREATE INDEX IF NOT EXISTS idx_salaries_branch_id ON salaries (branch_id);
 
-CREATE INDEX idx_salaries_month_year ON salaries (month, year);
+CREATE INDEX IF NOT EXISTS idx_salaries_month_year ON salaries (month, year);
 
-CREATE INDEX idx_salaries_financial_month_id ON salaries (financial_month_id);
+CREATE INDEX IF NOT EXISTS idx_salaries_financial_month_id ON salaries (financial_month_id);
 
-CREATE INDEX idx_expenses_branch_id ON expenses (branch_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_branch_id ON expenses (branch_id);
 
-CREATE INDEX idx_expenses_financial_month_id ON expenses (financial_month_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_financial_month_id ON expenses (financial_month_id);
 
-CREATE INDEX idx_incomes_branch_id ON incomes (branch_id);
+CREATE INDEX IF NOT EXISTS idx_incomes_branch_id ON incomes (branch_id);
 
-CREATE INDEX idx_classes_branch_id ON classes (branch_id);
+CREATE INDEX IF NOT EXISTS idx_classes_branch_id ON classes (branch_id);
 
-CREATE INDEX idx_teachers_branch_id ON teachers (branch_id);
+CREATE INDEX IF NOT EXISTS idx_teachers_branch_id ON teachers (branch_id);
 
-CREATE INDEX idx_permissions_user_id ON permissions (user_id);
+CREATE INDEX IF NOT EXISTS idx_permissions_user_id ON permissions (user_id);
 
-CREATE INDEX idx_branch_managers_branch_id ON branch_managers (branch_id);
+CREATE INDEX IF NOT EXISTS idx_branch_managers_branch_id ON branch_managers (branch_id);
 
-CREATE INDEX idx_branch_managers_manager_id ON branch_managers (manager_id);
+CREATE INDEX IF NOT EXISTS idx_branch_managers_manager_id ON branch_managers (manager_id);
 
-CREATE INDEX idx_financial_months_branch_id ON financial_months (branch_id);
+CREATE INDEX IF NOT EXISTS idx_financial_months_branch_id ON financial_months (branch_id);
 
-CREATE INDEX idx_financial_months_status ON financial_months (status);
+CREATE INDEX IF NOT EXISTS idx_financial_months_status ON financial_months (status);
 
-CREATE INDEX idx_financial_months_year_month ON financial_months (year, month);
+CREATE INDEX IF NOT EXISTS idx_financial_months_year_month ON financial_months (year, month);
 
 -- Populate financial_months for all existing branches
 INSERT INTO
