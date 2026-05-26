@@ -24,7 +24,6 @@ import {
   Payment,
   PaymentStatus,
   Student,
-  Class,
 } from "@/types";
 import {
   Plus,
@@ -84,7 +83,9 @@ export default function PaymentsPage() {
       }
     >
   >(new Map());
-  const [classes, setClasses] = useState<Class[]>([]);
+  // Consolidated endpoint returns a lightweight class summary (id + name only).
+  // The full Class type lives in @/lib/api but isn't needed for this page.
+  const [classes, setClasses] = useState<{ id: string; name: string }[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -123,16 +124,13 @@ export default function PaymentsPage() {
     isOpen: false,
     paymentId: null,
   });
+  // byMethod is keyed by payment-method string (cash/click/bank/terminal/...),
+  // and the backend can add methods without a frontend change — keep it open.
   const [indicators, setIndicators] = useState<{
     totalPaid?: number;
     totalUnpaid?: number;
     totalPartial?: number;
-    byMethod?: {
-      click: number;
-      cash: number;
-      bank: number;
-      terminal: number;
-    };
+    byMethod?: Record<string, number>;
   } | null>(null);
 
   const language = useLanguage();
@@ -220,14 +218,14 @@ export default function PaymentsPage() {
   // Process query response into component state
   useEffect(() => {
     if (!paymentsQueryData) return;
-    const paymentsList = paymentsQueryData?.items || paymentsQueryData?.data || [];
-    const studentsList = paymentsQueryData?.students || [];
+    const paymentsList = paymentsQueryData.items ?? [];
+    const studentsList = paymentsQueryData.students ?? [];
     const classesList = classesFromQuery?.length
       ? classesFromQuery
-      : paymentsQueryData?.classes || [];
-    const paymentIndicators = paymentsQueryData?.indicators || null;
+      : paymentsQueryData.classes ?? [];
+    const paymentIndicators = paymentsQueryData.indicators ?? null;
 
-    setTotalPayments(paymentsQueryData?.total || 0);
+    setTotalPayments(paymentsQueryData.total ?? 0);
     setOriginalPayments(paymentsList);
     setPayments(paymentsList);
     setIndicators(paymentIndicators);
@@ -235,7 +233,7 @@ export default function PaymentsPage() {
     setConsolidatedPaymentMap(new Map());
 
     const studentMap = new Map<string, { fullName: string; phone: string; classId: string; className: string; monthlyPayment: number }>();
-    studentsList.forEach((s: any) => {
+    studentsList.forEach((s) => {
       studentMap.set(s.id, { fullName: s.fullName, phone: s.phone, classId: s.classId, className: s.className, monthlyPayment: s.monthlyPayment });
     });
     setStudentInfoMap(studentMap);
@@ -538,7 +536,7 @@ export default function PaymentsPage() {
             onClick={(e) => {
               e.stopPropagation();
               const studentInfo = studentInfoMap.get(p.studentId);
-              const selectedBranchId = localStorage.getItem("selectedBranchId") || "";
+              const selectedBranchId = currentBranch?.id || "";
               setPosPreviewData({
                 payment: p,
                 student: {
@@ -855,7 +853,7 @@ export default function PaymentsPage() {
                     <Button size="icon" variant="ghost" className="h-7 w-7"
                       onClick={() => {
                         const studentInfo = studentInfoMap.get(p.studentId);
-                        const selectedBranchId = localStorage.getItem("selectedBranchId") || "";
+                        const selectedBranchId = currentBranch?.id || "";
                         setPosPreviewData({ payment: p, student: { id: p.studentId, fullName: studentInfo?.fullName ?? "Unknown", phone: studentInfo?.phone ?? "", classId: studentInfo?.classId ?? "", monthlyPayment: studentInfo?.monthlyPayment ?? 0, branchId: selectedBranchId, status: "active", parentPhone: "", enrollmentDate: undefined, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, className: studentInfo?.className ?? "N/A" });
                       }}><Printer className="w-3.5 h-3.5" /></Button>
                     <Button size="icon" variant="ghost" className="h-7 w-7"

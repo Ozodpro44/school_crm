@@ -5,8 +5,7 @@
 
 import { User, UserRole, Permission } from "@/types";
 import * as api from "./api";
-
-const AUTH_USER_KEY = "school_auth_user";
+import { clearAuthState, getStoredUser, setStoredUser } from "./storage";
 
 const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   admin: {
@@ -238,15 +237,11 @@ export async function login(email: string, password: string): Promise<User> {
       createdAt: new Date().toISOString(),
     };
 
-    // Store user in localStorage (without password)
-    if (typeof window !== "undefined") {
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
-      
-      // Set selectedBranchId if user has a branch assigned
-      if (user.branchId) {
-        localStorage.setItem("selectedBranchId", user.branchId);
-      }
-    }
+    // api.login already persisted token + user + branch via persistLogin
+    // and emitted AuthEvents.LOGIN. We refresh the stored user with the
+    // enriched record (permissions/branchIds) computed above so consumers
+    // see the merged shape.
+    setStoredUser(user as unknown as Parameters<typeof setStoredUser>[0]);
 
     return user;
   } catch (error) {
@@ -282,9 +277,9 @@ export async function register(
       createdAt: new Date().toISOString(),
     };
 
-    if (typeof window !== "undefined") {
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
-    }
+    // api.register already persisted token + user + branch via persistLogin.
+    // Overwrite with the enriched record (permissions baked in).
+    setStoredUser(user as unknown as Parameters<typeof setStoredUser>[0]);
 
     return user;
   } catch (error) {
@@ -294,37 +289,25 @@ export async function register(
 }
 
 /**
- * Logout user
+ * Logout user — wipes all auth + branch state. The hard redirect is owned by
+ * @/lib/auth.logout(); callers wanting that flow should use it instead.
  */
 export function logout(): void {
-  api.logout();
-  if (typeof window !== "undefined") {
-    localStorage.removeItem(AUTH_USER_KEY);
-    localStorage.removeItem("school_auth_user");
-    localStorage.removeItem("current_user");
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("selectedBranchId");
-  }
+  clearAuthState();
 }
 
 /**
  * Get currently authenticated user
  */
 export function getCurrentUser(): User | null {
-  if (typeof window === "undefined") return null;
-
-  const userStr = localStorage.getItem(AUTH_USER_KEY);
-  if (!userStr) return null;
-
-  try {
-    const user = JSON.parse(userStr) as User;
-    if (!user.permissions) {
-      user.permissions = DEFAULT_PERMISSIONS[user.role as UserRole] || DEFAULT_PERMISSIONS.teacher;
-    }
-    return user;
-  } catch {
-    return null;
+  const raw = getStoredUser();
+  if (!raw) return null;
+  const user = raw as unknown as User;
+  if (!user.permissions) {
+    user.permissions =
+      DEFAULT_PERMISSIONS[user.role as UserRole] || DEFAULT_PERMISSIONS.teacher;
   }
+  return user;
 }
 
 /**

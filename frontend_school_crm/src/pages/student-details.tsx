@@ -45,6 +45,7 @@ import { formatCurrency } from "@/lib/exportUtils";
 import { useNotify } from "@/hooks/use-notify";
 import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { formatPhoneNumber, toTitleCase, formatDate } from "@/lib/utils";
+import { useBranch } from "@/context/BranchContext";
 import {
   getStudent,
   listClasses,
@@ -100,6 +101,7 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 export default function StudentDetailsPage() {
   const router = useRouter();
   const { id, from } = router.query;
+  const { currentBranch } = useBranch();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [isLoading, setIsLoading] = useState(true);
   const [student, setStudent] = useState<Student | null>(null);
@@ -170,7 +172,7 @@ export default function StudentDetailsPage() {
 
   const loadData = async () => {
     if (!id) return;
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
 
     try {
       const studentData = await getStudent(id as string);
@@ -362,7 +364,7 @@ export default function StudentDetailsPage() {
 
   const handleAddNote = async () => {
     if (!newNoteContent.trim() || !student) return;
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
     setIsAddingNote(true);
     try {
@@ -379,7 +381,7 @@ export default function StudentDetailsPage() {
 
   const handleDeleteNote = async (noteId: string) => {
     if (!student) return;
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
     try {
       await deleteStudentNote(student.id, branchId, noteId);
@@ -391,7 +393,7 @@ export default function StudentDetailsPage() {
 
   const handleAddContact = async () => {
     if (!student) return;
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
     setIsAddingContact(true);
     try {
@@ -414,7 +416,7 @@ export default function StudentDetailsPage() {
 
   const handleDeleteContact = async (logId: string) => {
     if (!student) return;
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
     try {
       await deleteContactLog(student.id, branchId, logId);

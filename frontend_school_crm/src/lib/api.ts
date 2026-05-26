@@ -1,37 +1,22 @@
 /**
- * Get students and classes consolidated data
- */
-export async function getStudentsConsolidatedData(
-  branchId: string,
-  page?: number,
-  limit?: number,
-  filters?: {
-    search?: string;
-    classId?: string;
-    status?: string;
-    paymentStatus?: string;
-    month?: string;
-    year?: string;
-  }
-): Promise<any> {
-  let query = `/students/consolidated/data?branchId=${branchId}`;
-  if (page) query += `&page=${page}`;
-  if (limit) query += `&limit=${limit}`;
-  if (filters?.search) query += `&search=${encodeURIComponent(filters.search)}`;
-  if (filters?.classId) query += `&classId=${filters.classId}`;
-  if (filters?.status) query += `&status=${filters.status}`;
-  if (filters?.paymentStatus) query += `&paymentStatus=${filters.paymentStatus}`;
-  if (filters?.month) query += `&month=${filters.month}`;
-  if (filters?.year) query += `&year=${filters.year}`;
-  return apiRequest<any>(query);
-}
-/**
  * API Client for Wonderkids' CRM Backend
  * Complete integration with all Golang backend endpoints
  * Handles all HTTP requests with authentication, error handling, and data marshalling
  */
 
 import { Branch } from "@/types";
+import {
+  AuthEvents,
+  clearAuthState,
+  clearStoredBranchId,
+  getAuthToken as readAuthToken,
+  getStoredBranchId,
+  getStoredUser as readStoredUser,
+  markLastSync,
+  persistLogin,
+  setAuthToken as writeAuthToken,
+  setStoredUser as writeStoredUser,
+} from "@/lib/storage";
 
 // NEXT_PUBLIC_API_URL must be set in production. Fallback to localhost for local dev only.
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
@@ -44,6 +29,20 @@ function unwrapItems<T>(response: T[] | { items: T[] } | unknown): T[] {
     return (response as { items: T[] }).items;
   }
   return [];
+}
+
+/**
+ * Build a query string from a params object, skipping undefined / null / empty values.
+ * Returns an empty string when no params remain (so callers can blindly append it).
+ */
+function buildQuery(params: Record<string, string | number | undefined | null>): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === "") continue;
+    sp.set(k, String(v));
+  }
+  const s = sp.toString();
+  return s ? `?${s}` : "";
 }
 
 // ============================================================================
@@ -115,6 +114,31 @@ export interface Student {
   updatedAt: string;
 }
 
+// Consolidated row shape returned by /students/consolidated/data
+// (mirrors backend models.StudentList — embeds class + payment).
+export interface StudentListRow {
+  id: string;
+  fullName: string;
+  class: { id: string; name: string };
+  phone: string;
+  parentPhone: string;
+  monthlyPayment: number;
+  status: "active" | "left" | "suspended";
+  branchId: string;
+  payment: { status: "paid" | "partial" | "none"; amount: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudentsConsolidatedData {
+  items: StudentListRow[];
+  classes: { id: string; name: string }[];
+  total: number;
+  page: number;
+  limit: number;
+  nextCursor?: string;
+}
+
 export interface CreateStudentRequest {
   fullName: string;
   classId?: string;
@@ -163,6 +187,29 @@ export interface UpdatePaymentRequest {
   notes?: string;
   paidDate?: string;
   }
+
+// Consolidated payments response (mirrors backend models.PaymentListResponse).
+export interface PaymentsConsolidatedData {
+  items: Payment[];
+  classes: { id: string; name: string }[];
+  students: {
+    id: string;
+    fullName: string;
+    phone: string;
+    classId: string;
+    className: string;
+    monthlyPayment: number;
+  }[];
+  indicators: {
+    totalPaid: number;
+    totalUnpaid: number;
+    byMethod: Record<string, number>;
+  };
+  total: number;
+  page: number;
+  limit: number;
+  nextCursor?: string;
+}
 
 export interface PaymentSummary {
   totalPaid: number;
@@ -342,7 +389,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const { timeout = 30000, ...fetchOptions } = options;
   const token = getAuthToken();
-  const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
+  const branchId = getStoredBranchId();
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -376,8 +423,8 @@ export async function apiRequest<T>(
     clearTimeout(timeoutId);
 
     // Track last successful sync time for the offline banner
-    if (response.ok && typeof window !== "undefined") {
-      localStorage.setItem("lastSyncAt", Date.now().toString());
+    if (response.ok) {
+      markLastSync();
     }
 
     if (!response.ok) {
@@ -396,10 +443,7 @@ export async function apiRequest<T>(
           window.location.pathname.startsWith("/forgot-password");
 
         if (!isAuthEndpoint && !onPublicPage) {
-          localStorage.removeItem("auth_token");
-          localStorage.removeItem("school_auth_user");
-          localStorage.removeItem("current_user");
-          localStorage.removeItem("selectedBranchId");
+          clearAuthState();
           window.location.href = "/login";
         }
       }
@@ -417,7 +461,7 @@ export async function apiRequest<T>(
       if (response.status === 402 && errorData.error === "subscription_limit_reached") {
         if (typeof window !== "undefined") {
           window.dispatchEvent(
-            new CustomEvent("subscription:limitReached", {
+            new CustomEvent(AuthEvents.SUBSCRIPTION_LIMIT_REACHED, {
               detail: { message: errorData.detail || errorMessage },
             })
           );
@@ -426,11 +470,11 @@ export async function apiRequest<T>(
 
       // Branch access denied — the X-Branch-ID header was rejected by the
       // server's TenantBranchMiddleware. Clear the stale branch selection and
-      // redirect the user to the dashboard so they can pick a valid branch.
+      // notify the BranchContext so it can redirect / pick another branch.
       if (response.status === 403 && errorData.error?.includes("branch")) {
+        clearStoredBranchId();
         if (typeof window !== "undefined") {
-          localStorage.removeItem("selectedBranchId");
-          window.dispatchEvent(new CustomEvent("branch:accessDenied"));
+          window.dispatchEvent(new CustomEvent(AuthEvents.BRANCH_ACCESS_DENIED));
         }
       }
 
@@ -453,55 +497,27 @@ export async function apiRequest<T>(
   }
 }
 
-/**
- * Get stored authentication token
- */
+// Auth-state helpers are exported from @/lib/storage. We re-export the read
+// helpers under the old names so callers that imported `getAuthToken` from
+// "@/lib/api" keep working.
 export function getAuthToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("auth_token");
+  return readAuthToken();
 }
 
-/**
- * Set authentication token
- */
 export function setAuthToken(token: string): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("auth_token", token);
-  }
+  writeAuthToken(token);
 }
 
-/**
- * Clear authentication token
- */
-export function clearAuthToken(): void {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("auth_token");
-  }
-}
-
-/**
- * Check if user is authenticated
- */
 export function isAuthenticated(): boolean {
   return getAuthToken() !== null;
 }
 
-/**
- * Get current user from localStorage
- */
 export function getCurrentUser(): LoginResponse["user"] | null {
-  if (typeof window === "undefined") return null;
-  const userJson = localStorage.getItem("current_user");
-  return userJson ? JSON.parse(userJson) : null;
+  return readStoredUser() as unknown as LoginResponse["user"] | null;
 }
 
-/**
- * Set current user in localStorage
- */
 export function setCurrentUser(user: LoginResponse["user"]): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("current_user", JSON.stringify(user));
-  }
+  writeStoredUser(user as unknown as Parameters<typeof writeStoredUser>[0]);
 }
 
 // ============================================================================
@@ -509,7 +525,8 @@ export function setCurrentUser(user: LoginResponse["user"]): void {
 // ============================================================================
 
 /**
- * Login user with email and password
+ * Login user with email and password. On success, the JWT and the user blob
+ * are persisted atomically (token + user + branch + LOGIN event in one place).
  */
 export async function login(request: LoginRequest): Promise<LoginResponse> {
   const response = await apiRequest<LoginResponse>("/auth/login", {
@@ -518,15 +535,18 @@ export async function login(request: LoginRequest): Promise<LoginResponse> {
   });
 
   if (response.token) {
-    setAuthToken(response.token);
-    setCurrentUser(response.user);
+    persistLogin({
+      token: response.token,
+      user: response.user as unknown as Parameters<typeof persistLogin>[0]["user"],
+      branchId: response.user.branchId,
+    });
   }
 
   return response;
 }
 
 /**
- * Register new user
+ * Register new user. Same persistence rules as login().
  */
 export async function register(request: RegisterRequest): Promise<LoginResponse> {
   const response = await apiRequest<LoginResponse>("/auth/register", {
@@ -535,21 +555,24 @@ export async function register(request: RegisterRequest): Promise<LoginResponse>
   });
 
   if (response.token) {
-    setAuthToken(response.token);
-    setCurrentUser(response.user);
+    persistLogin({
+      token: response.token,
+      user: response.user as unknown as Parameters<typeof persistLogin>[0]["user"],
+      branchId: response.user.branchId,
+    });
   }
 
   return response;
 }
 
+
 /**
- * Logout user
+ * Logout user — wipes all auth + branch state and emits AuthEvents.LOGOUT.
+ * Note: a separate `logout()` in @/lib/auth additionally redirects to /login.
+ * This one just clears state, leaving navigation to the caller.
  */
 export function logout(): void {
-  clearAuthToken();
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("current_user");
-  }
+  clearAuthState();
 }
 
 // ============================================================================
@@ -747,6 +770,36 @@ export async function searchStudentsWithPayments(
   }>>(`/students/search/with-payments${query}`);
 }
 
+/**
+ * Get students and classes consolidated data — used by the students table.
+ */
+export async function getStudentsConsolidatedData(
+  branchId: string,
+  page?: number,
+  limit?: number,
+  filters?: {
+    search?: string;
+    classId?: string;
+    status?: string;
+    paymentStatus?: string;
+    month?: string;
+    year?: string;
+  }
+): Promise<StudentsConsolidatedData> {
+  const query = buildQuery({
+    branchId,
+    page,
+    limit,
+    search: filters?.search,
+    classId: filters?.classId,
+    status: filters?.status,
+    paymentStatus: filters?.paymentStatus,
+    month: filters?.month,
+    year: filters?.year,
+  });
+  return apiRequest<StudentsConsolidatedData>(`/students/consolidated/data${query}`);
+}
+
 // ============================================================================
 // PAYMENT ENDPOINTS
 // ============================================================================
@@ -920,17 +973,19 @@ export async function getPaymentsConsolidatedData(
     paymentMethod?: string;
     classId?: string;
   }
-): Promise<any> {
-  let query = `/payments/consolidated/data?branchId=${branchId}`;
-  if (page) query += `&page=${page}`;
-  if (limit) query += `&limit=${limit}`;
-  if (filters?.search) query += `&search=${encodeURIComponent(filters.search)}`;
-  if (filters?.status) query += `&status=${filters.status}`;
-  if (filters?.month) query += `&month=${filters.month}`;
-  if (filters?.year) query += `&year=${filters.year}`;
-  if (filters?.paymentMethod) query += `&paymentMethod=${filters.paymentMethod}`;
-  if (filters?.classId) query += `&classId=${filters.classId}`;
-  return apiRequest<any>(query);
+): Promise<PaymentsConsolidatedData> {
+  const query = buildQuery({
+    branchId,
+    page,
+    limit,
+    search: filters?.search,
+    status: filters?.status,
+    month: filters?.month,
+    year: filters?.year,
+    paymentMethod: filters?.paymentMethod,
+    classId: filters?.classId,
+  });
+  return apiRequest<PaymentsConsolidatedData>(`/payments/consolidated/data${query}`);
 }
 
 // ============================================================================
@@ -1579,15 +1634,15 @@ export interface AppNotification {
 }
 
 export async function getNotifications(limit = 20): Promise<AppNotification[]> {
-  const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
-  const q = branchId ? `?branchId=${branchId}&limit=${limit}` : `?limit=${limit}`;
+  const branchId = getStoredBranchId();
+  const q = buildQuery({ branchId, limit });
   const response = await apiRequest<unknown>(`/notifications${q}`);
   return unwrapItems<AppNotification>(response);
 }
 
 export async function getUnreadCount(): Promise<number> {
-  const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
-  const q = branchId ? `?branchId=${branchId}` : "";
+  const branchId = getStoredBranchId();
+  const q = buildQuery({ branchId });
   const data = await apiRequest<{ count: number }>(`/notifications/count${q}`);
   return data.count;
 }

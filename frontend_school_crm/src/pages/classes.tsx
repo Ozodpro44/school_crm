@@ -40,11 +40,13 @@ import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { createClass, updateClass, deleteClass, listClasses, listTeachers, listStudents, updateStudent } from "@/lib/api";
+import { useBranch } from "@/context/BranchContext";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 import { PageHeader } from "@/components/PageHeader";
 
 export default function ClassesPage() {
   const router = useRouter();
+  const { currentBranch } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -99,7 +101,7 @@ export default function ClassesPage() {
     }
 
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (branchId) {
         const [classList, teachersList] = await Promise.all([
           listClasses(branchId),
@@ -160,7 +162,7 @@ export default function ClassesPage() {
       return;
     }
 
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) {
       setIsSubmitting(false);
       return;
@@ -616,7 +618,7 @@ export default function ClassesPage() {
             onOpenChange={(open) => {
               setIsDialogOpen(open);
               if (open) {
-                const branchId = localStorage.getItem("selectedBranchId");
+                const branchId = currentBranch?.id;
                 if (branchId) {
                   listTeachers(branchId).then(setTeachers);
                 }

@@ -10,6 +10,7 @@ import {
   SubscriptionPayment,
   SubscriptionResponse,
 } from "@/types";
+import { getAuthToken } from "@/lib/storage";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
 
@@ -41,7 +42,7 @@ async function makeRequest<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
-  const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
+  const token = getAuthToken();
   const headers: HeadersInit = {
     "Content-Type": "application/json",
     ...options?.headers,

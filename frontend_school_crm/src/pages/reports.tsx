@@ -41,11 +41,13 @@ import { printReport, downloadCSV, type PrintColumn } from "@/lib/printExport";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import { useNotify } from "@/hooks/use-notify";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { useBranch } from "@/context/BranchContext";
 
 type ReportType = "payment" | "salary" | "debtors" | "income" | "expenses" | "forecast";
 
 export default function ReportsPage() {
   const router = useRouter();
+  const { currentBranch } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [reportType, setReportType] = useState<ReportType>("payment");
@@ -122,7 +124,7 @@ export default function ReportsPage() {
 
   const loadBranch = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (branchId) {
         const branch = await getBranch(branchId);
         setBranchData(branch);
@@ -134,7 +136,7 @@ export default function ReportsPage() {
 
   const loadClasses = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (branchId) {
         const classesData = await listClasses(branchId);
         setClasses(classesData);
@@ -146,7 +148,7 @@ export default function ReportsPage() {
 
   const loadStudents = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (branchId) {
         const res = await listStudents(branchId, undefined, 1000);
         setStudents(res.data ?? []);
@@ -158,7 +160,7 @@ export default function ReportsPage() {
 
   const loadUsers = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       const data = await listUsers(branchId || undefined);
       setUsers(data);
     } catch (error) {
@@ -247,7 +249,7 @@ export default function ReportsPage() {
 
   const generatePaymentReport = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
         notify.error(t("error"), t("noBranchSelected"));
         return;
@@ -316,7 +318,7 @@ export default function ReportsPage() {
 
   const generateSalaryReport = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
         notify.error(t("error"), t("noBranchSelected"));
         return;
@@ -381,7 +383,7 @@ export default function ReportsPage() {
 
   const generateDebtorsReport = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
         notify.error(t("error"), t("noBranchSelected"));
         return;
@@ -443,7 +445,7 @@ export default function ReportsPage() {
 
   const generateExpensesReport = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
         notify.error(t("error"), t("noBranchSelected"));
         setReportData([]);
@@ -503,7 +505,7 @@ export default function ReportsPage() {
 
   const generateIncomeReport = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
         notify.error(t("error"), t("noBranchSelected"));
         return;
@@ -580,7 +582,7 @@ export default function ReportsPage() {
 
   const generateForecastReport = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
         notify.error(t("error"), t("noBranchSelected"));
         return;

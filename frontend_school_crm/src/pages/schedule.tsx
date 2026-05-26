@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Plus, Trash2, Calendar, Clock, BookOpen } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
+import { useBranch } from "@/context/BranchContext";
 
 const DAYS = [
   { num: 1, key: "monday" },
@@ -51,6 +52,7 @@ const DAY_COLORS = [
 
 export default function SchedulePage() {
   const language = useLanguage();
+  const { currentBranch } = useBranch();
 
   const [isLoading, setIsLoading] = useState(true);
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
@@ -80,7 +82,7 @@ export default function SchedulePage() {
   }, []);
 
   const loadData = async () => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
     setIsLoading(true);
     try {
@@ -116,7 +118,7 @@ export default function SchedulePage() {
   };
 
   const handleSave = async () => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId || !form.classId) return;
     setIsSaving(true);
     try {
@@ -146,7 +148,7 @@ export default function SchedulePage() {
   };
 
   const handleDelete = async (slot: ScheduleSlot) => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
     try {
       await deleteScheduleSlot(slot.id, branchId);

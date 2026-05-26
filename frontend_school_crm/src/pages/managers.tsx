@@ -119,7 +119,7 @@ export default function ManagersPage() {
 
      try {
        const allBranches = await listBranches();
-       const branchId = currentBranch?.id || localStorage.getItem("selectedBranchId");
+       const branchId = currentBranch?.id;
 
        // Transform API branches to include managerIds
        const transformedBranches = allBranches.map(branch => ({
@@ -235,7 +235,7 @@ export default function ManagersPage() {
       fullName: manager.fullName,
       email: manager.email,
       password: "",
-      branchId: currentBranch?.id || localStorage.getItem("selectedBranchId") || "",
+      branchId: currentBranch?.id || "",
       role: (manager.role as "manager" | "branch_admin") || "manager",
     });
     const perms = manager.permissions || getDefaultPermissions();

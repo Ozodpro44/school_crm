@@ -27,6 +27,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { getCurrentUser, logout } from "@/lib/auth";
+import { setStoredUser } from "@/lib/storage";
 import { apiRequest } from "@/lib/api";
 import { User as UserType } from "@/types";
 import { getTranslation } from "@/lib/translations";
@@ -139,11 +140,9 @@ export default function ProfilePage() {
     return Object.keys(errors).length === 0;
   };
 
-  /** Sync updated user object to both localStorage keys used across the app */
+  /** Persist updated user via the canonical storage helper, then broadcast. */
   const syncUserToLocalStorage = (updatedUser: UserType) => {
-    const json = JSON.stringify(updatedUser);
-    localStorage.setItem("current_user", json);
-    localStorage.setItem("school_auth_user", json);
+    setStoredUser(updatedUser as unknown as Parameters<typeof setStoredUser>[0]);
     window.dispatchEvent(new CustomEvent("userProfileUpdated", { detail: updatedUser }));
   };
 

@@ -4,6 +4,7 @@ import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { useNotify } from "@/hooks/use-notify";
 import { getCurrentUser } from "@/lib/auth";
+import { setStoredUser } from "@/lib/storage";
 import {
   apiRequest,
   TeacherPortalStudent,
@@ -160,10 +161,9 @@ export default function TeacherPortalPage() {
         method: "PUT",
         body: JSON.stringify({ full_name: profileForm.fullName }),
       });
-      // Sync localStorage so the sidebar name updates
+      // Sync canonical storage so the sidebar name updates
       const updated = { ...currentUser, fullName: profileForm.fullName };
-      localStorage.setItem("current_user", JSON.stringify(updated));
-      localStorage.setItem("school_auth_user", JSON.stringify(updated));
+      setStoredUser(updated as unknown as Parameters<typeof setStoredUser>[0]);
       window.dispatchEvent(new CustomEvent("userProfileUpdated", { detail: updated }));
       setIsEditProfileOpen(false);
       await refetchPortal();

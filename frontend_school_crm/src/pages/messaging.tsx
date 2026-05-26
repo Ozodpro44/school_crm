@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Send, MessageSquare, Users, CheckCircle, Clock } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { useBranch } from "@/context/BranchContext";
 
 const TEMPLATES = [
   { key: "payment_due", text: "Hurmatli ota-ona, {name} uchun oylik to'lov muddati yaqinlashmoqda. Iltimos, to'lovni amalga oshiring." },
@@ -33,6 +34,7 @@ const TEMPLATES = [
 
 export default function MessagingPage() {
   const language = useLanguage();
+  const { currentBranch } = useBranch();
 
   const [isLoading, setIsLoading] = useState(true);
   const [history, setHistory] = useState<MessageLogEntry[]>([]);
@@ -53,7 +55,7 @@ export default function MessagingPage() {
   }, []);
 
   const loadData = async () => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
     setIsLoading(true);
     try {
@@ -77,7 +79,7 @@ export default function MessagingPage() {
   };
 
   const handleSend = async () => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId || !message.trim()) return;
     setIsSending(true);
     try {

@@ -46,10 +46,12 @@ import {
 } from "lucide-react";
 import { toTitleCase } from "@/lib/utils";
 import { formatCurrency } from "@/lib/exportUtils";
+import { useBranch } from "@/context/BranchContext";
 
 export default function AssignmentsPage() {
   const language = useLanguage();
   const currentUser = getCurrentUser();
+  const { currentBranch } = useBranch();
 
   const [isLoading, setIsLoading] = useState(true);
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
@@ -79,7 +81,7 @@ export default function AssignmentsPage() {
   }, []);
 
   const loadData = async () => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
     setIsLoading(true);
     try {
@@ -137,7 +139,7 @@ export default function AssignmentsPage() {
   };
 
   const handleCreate = async () => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId || !form.classId || !form.title || !form.dueDate) return;
     setIsSaving(true);
     try {
@@ -160,7 +162,7 @@ export default function AssignmentsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
     try {
       await deleteAssignment(id, branchId);

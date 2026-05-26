@@ -64,9 +64,11 @@ import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { DataTable, Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
+import { useBranch } from "@/context/BranchContext";
 
 export default function ExpensesPage() {
   const router = useRouter();
+  const { currentBranch } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -262,16 +264,6 @@ export default function ExpensesPage() {
     router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
   };
 
-  const waitForSelectedBranchId = async () => {
-    let retries = 0;
-    const maxRetries = 20;
-    while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      retries++;
-    }
-    return localStorage.getItem("selectedBranchId");
-  };
-
   const loadData = async (
     monthOverride?: string,
     yearOverride?: number,
@@ -282,7 +274,8 @@ export default function ExpensesPage() {
   ) => {
     try {
       const loadId = ++currentLoadIdRef.current;
-      const branchId = await waitForSelectedBranchId();
+      // No polling — caller (effects below) gate loadData on currentBranch.
+      const branchId = currentBranch?.id;
       if (!branchId) {
         return;
       }
@@ -344,7 +337,7 @@ export default function ExpensesPage() {
 
   const loadBudgets = async (month?: string, year?: number) => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) return;
       const m = month || selectedMonth;
       const y = year || selectedYear;
@@ -357,7 +350,7 @@ export default function ExpensesPage() {
   };
 
   const handleSaveBudget = async () => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId || !budgetEditCategory || !budgetEditAmount) return;
     setIsSavingBudget(true);
     try {
@@ -380,7 +373,7 @@ export default function ExpensesPage() {
   };
 
   const handleDeleteBudget = async (category: string) => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
     try {
       await deleteExpenseBudget(branchId, category, selectedMonth, selectedYear);
@@ -535,7 +528,7 @@ export default function ExpensesPage() {
           amount: parseFloat(formData.amount),
           paymentMethod: formData.paymentMethod,
           date: dateTimestamp,
-          branchId: localStorage.getItem("selectedBranchId") || "",
+          branchId: currentBranch?.id || "",
         });
         notify.success(t("created"), t("expenseCreatedSuccess"));
       }

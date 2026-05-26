@@ -5,6 +5,12 @@ import { listBranches, getAuthToken } from "@/lib/api";
 import { Branch } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
 import { queryClient } from "@/lib/query-client";
+import {
+  AuthEvents,
+  clearStoredBranchId,
+  getStoredBranchId,
+  setStoredBranchId,
+} from "@/lib/storage";
 
 interface BranchContextType {
   currentBranch: Branch | null;
@@ -51,22 +57,19 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       }
 
       setBranches(filteredBranches);
-      
-      // Restore selected branch from localStorage or use first branch
-      const savedBranchId = localStorage.getItem("selectedBranchId");
-      if (savedBranchId) {
-        const savedBranch = filteredBranches.find((b: Branch) => b.id === savedBranchId);
-        if (savedBranch) {
-          setCurrentBranchState(savedBranch);
-        } else if (filteredBranches.length > 0) {
-          const first = filteredBranches[0]!;
-          setCurrentBranchState(first);
-          localStorage.setItem("selectedBranchId", first.id);
-        }
+
+      // Pick the branch to surface: persisted choice first, else first available.
+      const savedBranchId = getStoredBranchId();
+      const savedBranch = savedBranchId
+        ? filteredBranches.find((b: Branch) => b.id === savedBranchId)
+        : undefined;
+
+      if (savedBranch) {
+        setCurrentBranchState(savedBranch);
       } else if (filteredBranches.length > 0) {
         const first = filteredBranches[0]!;
         setCurrentBranchState(first);
-        localStorage.setItem("selectedBranchId", first.id);
+        setStoredBranchId(first.id);
       }
     } catch (error) {
       console.error("Failed to load branches:", error);
@@ -76,40 +79,38 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    // Reload branches when user changes (login/logout)
+    // Initial load.
     loadBranches();
-    
-    // Listen for auth changes from storage (other tabs)
-    const handleAuthChange = () => {
-      loadBranches();
-    };
-    
-    window.addEventListener("storage", handleAuthChange);
-    
-    // Also listen for user changes on the same tab
-    const checkUserChange = setInterval(() => {
-      const currentUser = getCurrentUser();
-      const savedUserId = sessionStorage.getItem("lastUserId");
-      
-      if (currentUser?.id && currentUser.id !== savedUserId) {
-        sessionStorage.setItem("lastUserId", currentUser.id);
+
+    // Cross-tab: another tab logged in/out or switched branch.
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === "auth_token" || e.key === "current_user" || e.key === "selectedBranchId") {
         loadBranches();
-      } else if (!currentUser && savedUserId) {
-        sessionStorage.removeItem("lastUserId");
-        clearBranches();
       }
-    }, 500);
-    
+    };
+
+    // Same-tab: fired by storage.ts after login/logout/branch-change.
+    const handleLogin = () => loadBranches();
+    const handleLogout = () => clearBranches();
+    const handleAccessDenied = () => loadBranches();
+
+    window.addEventListener("storage", handleStorageEvent);
+    window.addEventListener(AuthEvents.LOGIN, handleLogin);
+    window.addEventListener(AuthEvents.LOGOUT, handleLogout);
+    window.addEventListener(AuthEvents.BRANCH_ACCESS_DENIED, handleAccessDenied);
+
     return () => {
-      window.removeEventListener("storage", handleAuthChange);
-      clearInterval(checkUserChange);
+      window.removeEventListener("storage", handleStorageEvent);
+      window.removeEventListener(AuthEvents.LOGIN, handleLogin);
+      window.removeEventListener(AuthEvents.LOGOUT, handleLogout);
+      window.removeEventListener(AuthEvents.BRANCH_ACCESS_DENIED, handleAccessDenied);
     };
   }, []);
 
   const setCurrentBranch = (branch: Branch) => {
     setCurrentBranchState(branch);
-    localStorage.setItem("selectedBranchId", branch.id);
-    // Dispatch event for legacy components that listen to branchChange.
+    setStoredBranchId(branch.id);
+    // Legacy event name kept for any non-migrated listeners.
     window.dispatchEvent(new CustomEvent("branchChange", { detail: branch.id }));
     // Invalidate all branch-scoped React Query caches so pages refetch automatically.
     queryClient.invalidateQueries();
@@ -129,7 +130,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   const clearBranches = () => {
     setCurrentBranchState(null);
     setBranches([]);
-    localStorage.removeItem("selectedBranchId");
+    clearStoredBranchId();
   };
 
   return (
@@ -158,5 +159,5 @@ export function useBranch() {
 }
 
 export function getCurrentBranchId(): string | null {
-  return localStorage.getItem("selectedBranchId");
+  return getStoredBranchId();
 }

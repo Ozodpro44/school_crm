@@ -35,9 +35,11 @@ import { searchMatchesCrossScript } from "@/lib/transliterate";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable, Column } from "@/components/DataTable";
 import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
+import { useBranch } from "@/context/BranchContext";
 
 export default function SalariesPage() {
   const router = useRouter();
+  const { currentBranch } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -121,7 +123,7 @@ export default function SalariesPage() {
 
   const loadData = async (month?: string, year?: number) => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId") || "";
+      const branchId = currentBranch?.id || "";
 
       if (branchId) {
         const branch = await getBranch(branchId);
@@ -157,7 +159,7 @@ export default function SalariesPage() {
     const user = getCurrentUser();
     if (!user) { setIsSubmitting(false); return; }
 
-    const branchId = localStorage.getItem("selectedBranchId") || user.branchId || "";
+    const branchId = currentBranch?.id || user.branchId || "";
     try {
       if (editingSalaryId) {
         await updateSalary(editingSalaryId, {

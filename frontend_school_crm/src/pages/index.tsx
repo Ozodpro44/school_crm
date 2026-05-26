@@ -29,6 +29,7 @@ import { getAuditLogs } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
+import { useBranch } from "@/context/BranchContext";
 
 export default function HomePage() {
   const router = useRouter();
@@ -37,6 +38,7 @@ export default function HomePage() {
   const [chartView, setChartView] = useState<"daily" | "monthly">("monthly");
   const language = useLanguage();
   const t = (key: string) => getTranslation(key, language);
+  const { currentBranch, isLoading: branchLoading } = useBranch();
 
   const [stats, setStats] = useState({
     totalStudents: 0,
@@ -108,24 +110,7 @@ export default function HomePage() {
   }, [router, isMounted]);
 
   const performLoadData = async () => {
-    // Wait for selectedBranchId to be available in localStorage
-    // This is needed after login when BranchContext is still loading
-    let retries = 0;
-    const maxRetries = 20; // 2 seconds max wait
-
-    while (
-      !localStorage.getItem("selectedBranchId") &&
-      retries < maxRetries
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      retries++;
-    }
-
-    if (!localStorage.getItem("selectedBranchId")) {
-      console.warn("[Dashboard] No branch ID found after waiting");
-      return;
-    }
-
+    if (!currentBranch?.id) return;
     // NOTE: We intentionally do NOT reset stats/chartData here on refetch.
     // The previous values stay visible while the next request is in flight,
     // which prevents the "UZS 0" / blank-card flash on focus/branch-change/storage events.
@@ -133,7 +118,11 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    if (!isMounted) return;
+    if (!isMounted || branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
 
     // Initial load — show full skeleton.
     setIsLoading(true);
@@ -162,7 +151,8 @@ export default function HomePage() {
       window.removeEventListener("branchChange", handleBranchChange);
       window.removeEventListener("focus", refreshSilently);
     };
-  }, [isMounted]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMounted, branchLoading, currentBranch?.id]);
 
   useEffect(() => {
     generateChartData();
@@ -309,11 +299,8 @@ export default function HomePage() {
 
   const calculateStats = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
-      if (!branchId) {
-        console.warn("[Dashboard] No branch ID found");
-        return;
-      }
+      const branchId = currentBranch?.id;
+      if (!branchId) return;
 
       // Fetch branch data to get current financial month
       const branch = await api.getBranch(branchId);

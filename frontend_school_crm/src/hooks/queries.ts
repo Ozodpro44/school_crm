@@ -48,12 +48,21 @@ import {
   getNotifications,
   getTeacherPortalData,
   apiRequest,
-  Teacher,
-  Class,
+  type Teacher,
+  type Class,
+  type Salary,
+  type Expense,
+  type Settings,
+  type AppNotification,
+  type StudentsConsolidatedData,
+  type PaymentsConsolidatedData,
   type TeacherPortalData,
   type CreateTeacherRequest,
   type CreateClassRequest,
   type CreateBranchRequest,
+  type CreateSalaryRequest,
+  type UpdateSalaryRequest,
+  type CreateExpenseRequest,
 } from "@/lib/api";
 import type { Branch } from "@/types";
 
@@ -236,9 +245,9 @@ export function useDeleteBranchMutation() {
 export function useSalariesQuery(
   branchId: string | null | undefined,
   params?: { month?: string; year?: number },
-  options?: Partial<UseQueryOptions<any>>
+  options?: Partial<UseQueryOptions<Salary[]>>
 ) {
-  return useQuery<any>({
+  return useQuery<Salary[]>({
     queryKey: ["salaries", branchId, params],
     queryFn: () => listSalaries(branchId!, params?.month, params?.year),
     enabled: !!branchId,
@@ -250,7 +259,7 @@ export function useSalariesQuery(
 export function useCreateSalaryMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: any) => createSalary(data),
+    mutationFn: (data: CreateSalaryRequest) => createSalary(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["salaries"] });
     },
@@ -260,7 +269,7 @@ export function useCreateSalaryMutation() {
 export function useUpdateSalaryMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => updateSalary(id, data),
+    mutationFn: ({ id, data }: { id: string; data: UpdateSalaryRequest }) => updateSalary(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["salaries"] });
     },
@@ -284,9 +293,9 @@ export function useDeleteSalaryMutation() {
 export function useExpensesQuery(
   branchId: string | null | undefined,
   params?: { month?: string; year?: number },
-  options?: Partial<UseQueryOptions<any>>
+  options?: Partial<UseQueryOptions<Expense[]>>
 ) {
-  return useQuery<any>({
+  return useQuery<Expense[]>({
     queryKey: ["expenses", branchId, params],
     queryFn: () => listExpenses(branchId!, params?.month, params?.year),
     enabled: !!branchId,
@@ -298,7 +307,7 @@ export function useExpensesQuery(
 export function useCreateExpenseMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: any) => createExpense(data),
+    mutationFn: (data: CreateExpenseRequest) => createExpense(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["expenses"] });
     },
@@ -308,7 +317,7 @@ export function useCreateExpenseMutation() {
 export function useUpdateExpenseMutation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => updateExpense(id, data),
+    mutationFn: ({ id, data }: { id: string; data: CreateExpenseRequest }) => updateExpense(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["expenses"] });
     },
@@ -341,14 +350,14 @@ export function useStudentsConsolidatedQuery(
     month?: string;
     year?: string;
   },
-  options?: Partial<UseQueryOptions<any>>
+  options?: Partial<UseQueryOptions<StudentsConsolidatedData>>
 ) {
-  return useQuery<any>({
+  return useQuery<StudentsConsolidatedData>({
     queryKey: ["students", branchId, page, limit, filters],
     queryFn: () => getStudentsConsolidatedData(branchId!, page, limit, filters),
     enabled: !!branchId,
     staleTime: STALE.TRANSACTIONAL,
-    placeholderData: (prev: unknown) => prev, // keep previous data visible during refetch
+    placeholderData: (prev) => prev, // keep previous data visible during refetch
     ...options,
   });
 }
@@ -369,14 +378,14 @@ export function usePaymentsConsolidatedQuery(
     paymentMethod?: string;
     classId?: string;
   },
-  options?: Partial<UseQueryOptions<any>>
+  options?: Partial<UseQueryOptions<PaymentsConsolidatedData>>
 ) {
-  return useQuery<any>({
+  return useQuery<PaymentsConsolidatedData>({
     queryKey: ["payments", branchId, page, limit, filters],
     queryFn: () => getPaymentsConsolidatedData(branchId!, page, limit, filters),
     enabled: !!branchId,
     staleTime: STALE.TRANSACTIONAL,
-    placeholderData: (prev: unknown) => prev,
+    placeholderData: (prev) => prev,
     ...options,
   });
 }
@@ -387,9 +396,9 @@ export function usePaymentsConsolidatedQuery(
 
 export function useSettingsQuery(
   branchId: string | null | undefined,
-  options?: Partial<UseQueryOptions<any>>
+  options?: Partial<UseQueryOptions<Settings>>
 ) {
-  return useQuery<any>({
+  return useQuery<Settings>({
     queryKey: ["settings", branchId],
     queryFn: () => getSettings(branchId ?? undefined),
     enabled: !!branchId,
@@ -404,9 +413,9 @@ export function useSettingsQuery(
 
 export function useNotificationsQuery(
   branchId: string | null | undefined,
-  options?: Partial<UseQueryOptions<any>>
+  options?: Partial<UseQueryOptions<AppNotification[]>>
 ) {
-  return useQuery<any>({
+  return useQuery<AppNotification[]>({
     queryKey: ["notifications", branchId],
     queryFn: () => getNotifications(),
     enabled: !!branchId,

@@ -55,23 +55,12 @@ export default function LoginPage() {
       const response = await apiLogin({ email, password });
 
       if (response.user && response.token) {
-        localStorage.removeItem("selectedBranchId");
-
+        // `apiLogin` (via @/lib/storage's persistLogin) already wrote the
+        // token, the user blob, and any branchId from the response, then
+        // emitted AuthEvents.LOGIN so BranchContext can reload. No polling.
         if (response.user.role === "teacher") {
-          // Teachers don't go through BranchContext — set branchId directly so
-          // apiRequest can attach the X-Branch-ID header on subsequent calls.
-          if (response.user.branchId) {
-            localStorage.setItem("selectedBranchId", response.user.branchId);
-          }
           router.push("/teacher-portal");
         } else {
-          let retries = 0;
-          const maxRetries = 30;
-          while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-            retries++;
-          }
-
           router.push("/");
         }
       } else {

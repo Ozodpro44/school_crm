@@ -66,7 +66,7 @@ export default function SettingsPage() {
       setOriginalSettings(data);
       
       // Also fetch branch data for current month info
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (branchId) {
         const branch = await getBranch(branchId);
         setBranchData(branch);
@@ -109,7 +109,7 @@ export default function SettingsPage() {
   };
 
   const handleSwitchMonth = async () => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
 
     try {

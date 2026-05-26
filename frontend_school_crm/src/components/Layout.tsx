@@ -82,6 +82,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { getCurrentUser, logout, hasPermission } from "@/lib/auth";
+import { getStoredBranchId } from "@/lib/storage";
 import { User } from "@/types";
 import { getTranslation } from "@/lib/translations";
 import { useLanguage, useSetLanguage } from "@/hooks/use-language";
@@ -537,7 +538,7 @@ export function Layout({ children }: LayoutProps) {
       branches.length > 0
     ) {
       const userBranch = branches.find((b) => b.id === currentUser.branchId);
-      const alreadySet = localStorage.getItem("selectedBranchId") === currentUser.branchId;
+      const alreadySet = getStoredBranchId() === currentUser.branchId;
       if (userBranch && !alreadySet) {
         setCurrentBranchById(currentUser.branchId);
       }

@@ -8,6 +8,7 @@ import React, {
 import { Language, Settings } from "@/types";
 import { getSettings } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
+import { AuthEvents, getStoredBranchId, StorageKeys } from "@/lib/storage";
 
 interface LanguageContextType {
   language: Language;
@@ -71,7 +72,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const branchId = localStorage.getItem("selectedBranchId") ?? undefined;
+        const branchId = getStoredBranchId() ?? undefined;
         const data = await getSettings(branchId);
         setSettings(data);
       } catch (error) {
@@ -85,16 +86,20 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
     loadSettings();
 
-    // Listen for branch changes via storage events
+    // Cross-tab: another tab changed branch.
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === "selectedBranchId") {
+      if (event.key === StorageKeys.BRANCH_ID) {
         loadSettings();
       }
     };
+    // Same-tab: BranchContext / api.ts fire this on branch change.
+    const handleBranchChange = () => loadSettings();
 
     window.addEventListener("storage", handleStorageChange);
+    window.addEventListener(AuthEvents.BRANCH_CHANGE, handleBranchChange);
     return () => {
       window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener(AuthEvents.BRANCH_CHANGE, handleBranchChange);
     };
   }, []);
 

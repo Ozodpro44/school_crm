@@ -56,10 +56,12 @@ import {
 import type { Payment } from "@/lib/api";
 import type { Branch } from "@/types";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { useBranch } from "@/context/BranchContext";
 
 export default function ClassDetailsPage() {
   const router = useRouter();
   const { id } = router.query;
+  const { currentBranch } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [classData, setClassData] = useState<Class | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -175,7 +177,7 @@ export default function ClassDetailsPage() {
 
   const loadData = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) return;
 
       // Run independent requests in parallel

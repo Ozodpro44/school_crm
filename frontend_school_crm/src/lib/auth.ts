@@ -1,6 +1,5 @@
 import { User, UserRole, Permission } from "@/types";
-
-const AUTH_KEY = "school_auth_user";
+import { clearAuthState, getStoredUser } from "@/lib/storage";
 
 const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   admin: {
@@ -211,41 +210,21 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
 
 export function logout(): void {
   if (typeof window === "undefined") return;
-  // Clear ALL auth + branch state so a fresh login starts clean.
-  localStorage.removeItem(AUTH_KEY);
-  localStorage.removeItem("school_auth_user");
-  localStorage.removeItem("current_user");
-  localStorage.removeItem("auth_token");
-  localStorage.removeItem("selectedBranchId");
-  localStorage.removeItem("token");
-  localStorage.removeItem("lastSyncAt");
+  clearAuthState();
   // Hard navigation guarantees React Query caches and component state
   // are dropped — preventing leakage of the previous user's data.
   window.location.href = "/login";
 }
 
 export function getCurrentUser(): User | null {
-  if (typeof window === "undefined") return null;
-  
-  // Try API-saved user first (from @/lib/api login)
-  let userStr = localStorage.getItem("current_user");
-  
-  // Fall back to local auth user
-  if (!userStr) {
-    userStr = localStorage.getItem(AUTH_KEY);
+  const raw = getStoredUser();
+  if (!raw) return null;
+  const user = raw as unknown as User;
+  if (!user.permissions) {
+    user.permissions =
+      DEFAULT_PERMISSIONS[user.role as UserRole] || DEFAULT_PERMISSIONS.teacher;
   }
-  
-  if (!userStr) return null;
-  
-  try {
-    const user = JSON.parse(userStr);
-    if (!user.permissions) {
-      user.permissions = DEFAULT_PERMISSIONS[user.role as UserRole] || DEFAULT_PERMISSIONS.teacher;
-    }
-    return user;
-  } catch {
-    return null;
-  }
+  return user;
 }
 
 export function hasRole(requiredRole: UserRole | UserRole[]): boolean {

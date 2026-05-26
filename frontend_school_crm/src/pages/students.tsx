@@ -124,9 +124,9 @@ export default function StudentsPage() {
 
   const { data: classesData } = useClassesQuery(branchId);
 
-  const students: Student[] = studentsData?.items || studentsData?.data || [];
-  const total: number = studentsData?.total || 0;
-  const classes: any[] = classesData || studentsData?.classes || [];
+  const students = (studentsData?.items ?? []) as unknown as Student[];
+  const total: number = studentsData?.total ?? 0;
+  const classes = (classesData ?? studentsData?.classes ?? []) as Array<{ id: string; name: string }>;
   const language = useLanguage();
   const notify = useNotify();
   const {
