@@ -181,11 +181,11 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
   const timeAgo = (iso: string) => {
     const diff = Date.now() - new Date(iso).getTime();
     const m = Math.floor(diff / 60000);
-    if (m < 1) return bt("justNow") || "just now";
-    if (m < 60) return `${m}${bt("minAgo") || "m ago"}`;
+    if (m < 1) return bt("justNow");
+    if (m < 60) return `${m}${bt("minAgo")}`;
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h}${bt("hourAgo") || "h ago"}`;
-    return `${Math.floor(h / 24)}${bt("dayAgo") || "d ago"}`;
+    if (h < 24) return `${h}${bt("hourAgo")}`;
+    return `${Math.floor(h / 24)}${bt("dayAgo")}`;
   };
 
   return (
@@ -221,7 +221,7 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100/50 dark:border-slate-800/50">
           <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
-            {bt("notifications") || "Notifications"} {unread > 0 && <span className="text-xs text-indigo-500 ml-1">({unread})</span>}
+            {bt("notifications")} {unread > 0 && <span className="text-xs text-indigo-500 ml-1">({unread})</span>}
           </span>
           {unread > 0 && (
             <button
@@ -229,7 +229,7 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
               className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
             >
               <CheckCheck className="w-3.5 h-3.5" />
-              {bt("markAllRead") || "Mark all read"}
+              {bt("markAllRead")}
             </button>
           )}
         </div>
@@ -253,7 +253,7 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
               <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-3">
                 <Bell className="w-6 h-6 text-slate-300 dark:text-slate-600" />
               </div>
-              <p className="text-sm text-slate-400 font-medium">{bt("noNotificationsYet") || "No notifications yet"}</p>
+              <p className="text-sm text-slate-400 font-medium">{bt("noNotificationsYet")}</p>
             </div>
           ) : (
             <div className="p-1">
@@ -630,51 +630,51 @@ export function Layout({ children }: LayoutProps) {
   const navigationGroups = isTeacher
     ? [
         {
-          title: t("teacherPortal") || "Teacher",
+          title: t("teacherPortal"),
           items: [
-            { name: t("teacherPortal") || "Teacher Portal", href: "/teacher-portal", icon: PortalIcon, show: true },
-            { name: t("timetable") || "Schedule", href: "/schedule", icon: Calendar, show: true },
-            { name: t("assignments") || "Assignments", href: "/assignments", icon: ClipboardCheck, show: true },
+            { name: t("teacherPortal"), href: "/teacher-portal", icon: PortalIcon, show: true },
+            { name: t("timetable"), href: "/schedule", icon: Calendar, show: true },
+            { name: t("assignments"), href: "/assignments", icon: ClipboardCheck, show: true },
             { name: t("help"), href: "/help", icon: HelpCircle, show: true },
           ],
         },
       ]
     : [
         {
-          title: t("main") || "Main",
+          title: t("main"),
           items: [
             { name: t("dashboard"), href: "/", icon: LayoutDashboard, show: true },
             { name: t("students"), href: "/students", icon: Users, show: true },
             { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: true },
             { name: t("classes"), href: "/classes", icon: BookOpen, show: true },
-            { name: t("attendance") || "Attendance", href: "/attendance", icon: ClipboardList, show: true },
-            { name: t("timetable") || "Schedule", href: "/schedule", icon: Calendar, show: true },
-            { name: t("assignments") || "Assignments", href: "/assignments", icon: ClipboardCheck, show: true },
-            { name: t("messaging") || "Messaging", href: "/messaging", icon: MessageSquare, show: true },
+            { name: t("attendance"), href: "/attendance", icon: ClipboardList, show: true },
+            { name: t("timetable"), href: "/schedule", icon: Calendar, show: true },
+            { name: t("assignments"), href: "/assignments", icon: ClipboardCheck, show: true },
+            { name: t("messaging"), href: "/messaging", icon: MessageSquare, show: true },
           ],
         },
         {
-          title: t("finance") || "Finance",
+          title: t("finance"),
           items: [
             { name: t("payments"), href: "/payments", icon: DollarSign, show: true },
-            { name: t("quickPayment") || "Quick Pay", href: "/quick-pay", icon: Zap, show: true },
+            { name: t("quickPayment"), href: "/quick-pay", icon: Zap, show: true },
             { name: t("salaries"), href: "/salaries", icon: Wallet, show: true },
             { name: t("expenses"), href: "/expenses", icon: TrendingDown, show: true },
           ],
         },
         {
-          title: t("administration") || "Admin",
+          title: t("administration"),
           items: [
             { name: t("reports"), href: "/reports", icon: FileText, show: hasPermission("canViewReports") },
-            { name: t("branchesOverview") || "Multi-Branch Overview", href: "/branches-overview", icon: BarChart2, show: user?.role === "admin" },
-            { name: t("auditLog") || "Audit Log", href: "/audit-log", icon: Shield, show: user?.role === "admin" },
+            { name: t("branchesOverview"), href: "/branches-overview", icon: BarChart2, show: user?.role === "admin" },
+            { name: t("auditLog"), href: "/audit-log", icon: Shield, show: user?.role === "admin" },
             { name: t("branches"), href: "/branches", icon: Building2, show: user?.role === "admin" },
             { name: t("managers"), href: "/managers", icon: UserCog, show: user?.role === "admin" || user?.role === "branch_admin" },
             { name: t("settings"), href: "/settings", icon: Settings, show: user?.role === "admin" },
           ],
         },
         {
-          title: t("support") || "Support",
+          title: t("support"),
           items: [
             { name: t("help"), href: "/help", icon: HelpCircle, show: true },
           ],
@@ -684,9 +684,9 @@ export function Layout({ children }: LayoutProps) {
   // Bottom nav — role-aware
   const bottomNavItems = isTeacher
     ? [
-        { name: t("teacherPortal") || "Portal", href: "/teacher-portal", icon: PortalIcon },
-        { name: t("timetable") || "Schedule", href: "/schedule", icon: Calendar },
-        { name: t("assignments") || "Tasks", href: "/assignments", icon: ClipboardCheck },
+        { name: t("teacherPortal"), href: "/teacher-portal", icon: PortalIcon },
+        { name: t("timetable"), href: "/schedule", icon: Calendar },
+        { name: t("assignments"), href: "/assignments", icon: ClipboardCheck },
         { name: t("help"), href: "/help", icon: HelpCircle },
       ]
     : [
@@ -696,7 +696,7 @@ export function Layout({ children }: LayoutProps) {
         { name: t("classes"), href: "/classes", icon: BookOpen },
       ];
 
-  const branchDisplayName = currentBranch?.name || t("schoolName") || "School";
+  const branchDisplayName = currentBranch?.name || t("schoolName");
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -853,7 +853,7 @@ export function Layout({ children }: LayoutProps) {
                 </div>
                 <div className="flex items-center justify-between px-2 py-1.5 mb-1 border-t border-slate-100 dark:border-slate-800">
                   <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                    {t("theme") || "Theme"}
+                    {t("theme")}
                   </span>
                   <ThemeSwitch />
                 </div>
@@ -863,11 +863,11 @@ export function Layout({ children }: LayoutProps) {
                   className="rounded-md gap-2 cursor-pointer py-2"
                 >
                   <UserCog className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm font-medium">{t("account") || "Account"}</span>
+                  <span className="text-sm font-medium">{t("account")}</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={cycleLanguage} className="rounded-md gap-2 cursor-pointer py-2">
                   <Globe className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm font-medium flex-1">{t("language") || "Language"}</span>
+                  <span className="text-sm font-medium flex-1">{t("language")}</span>
                   <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
                     {LANGUAGES.find((l) => l.value === language)?.label ?? language}
                   </span>
@@ -878,7 +878,7 @@ export function Layout({ children }: LayoutProps) {
                   className="rounded-md gap-2 cursor-pointer py-2 text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20"
                 >
                   <LogOut className="h-4 w-4" />
-                  <span className="text-sm font-medium">{t("logout") || "Log out"}</span>
+                  <span className="text-sm font-medium">{t("logout")}</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -938,12 +938,12 @@ export function Layout({ children }: LayoutProps) {
                     <p className="text-xs text-slate-400 capitalize">{user?.role?.replace("_", " ")}</p>
                   </div>
                   <div className="flex items-center justify-between px-2 py-1.5">
-                    <span className="text-xs text-slate-500">{t("theme") || "Theme"}</span>
+                    <span className="text-xs text-slate-500">{t("theme")}</span>
                     <ThemeSwitch />
                   </div>
                   <DropdownMenuItem onClick={cycleLanguage} className="gap-2 cursor-pointer py-1.5">
                     <Globe className="h-4 w-4 text-slate-400" />
-                    <span className="text-sm flex-1">{t("language") || "Language"}</span>
+                    <span className="text-sm flex-1">{t("language")}</span>
                     <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
                       {LANGUAGES.find((l) => l.value === language)?.label ?? language}
                     </span>
@@ -951,12 +951,12 @@ export function Layout({ children }: LayoutProps) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => router.push("/profile")} className="gap-2 cursor-pointer py-1.5">
                     <UserCog className="h-4 w-4 text-slate-400" />
-                    <span className="text-sm">{t("account") || "Account"}</span>
+                    <span className="text-sm">{t("account")}</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout} className="gap-2 cursor-pointer py-1.5 text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20">
                     <LogOut className="h-4 w-4" />
-                    <span className="text-sm">{t("logout") || "Log out"}</span>
+                    <span className="text-sm">{t("logout")}</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1003,7 +1003,7 @@ export function Layout({ children }: LayoutProps) {
               );
             })}
             {/* More — opens sidebar sheet */}
-            <MobileMoreButton label={t("more") || "More"} />
+            <MobileMoreButton label={t("more")} />
           </div>
         </nav>
       </SidebarInset>
@@ -1013,12 +1013,11 @@ export function Layout({ children }: LayoutProps) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-bold text-lg text-slate-900 dark:text-slate-100">
-              {t("subscriptionLimitReached") || "Limit reached"}
+              {t("subscriptionLimitReached")}
             </DialogTitle>
             <DialogDescription className="text-slate-500">
               {upgradeMessage ||
-                t("subscriptionLimitDetail") ||
-                "You have reached the limit included in your current plan. Upgrade to add more."}
+                t("subscriptionLimitDetail")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0 border-t pt-4 mt-2">
@@ -1027,7 +1026,7 @@ export function Layout({ children }: LayoutProps) {
               onClick={() => setUpgradeModalOpen(false)}
               className="text-sm font-medium"
             >
-              {t("close") || "Close"}
+              {t("close")}
             </Button>
             <Button
               className="bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold transition-transform active:scale-95"
@@ -1036,7 +1035,7 @@ export function Layout({ children }: LayoutProps) {
                 router.push("/billing");
               }}
             >
-              {t("upgradePlan") || "Upgrade Plan"}
+              {t("upgradePlan")}
             </Button>
           </DialogFooter>
         </DialogContent>

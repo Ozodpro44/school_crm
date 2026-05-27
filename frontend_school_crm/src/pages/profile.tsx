@@ -115,11 +115,11 @@ export default function ProfilePage() {
   const validateEditForm = (): boolean => {
     const errors: Record<string, string> = {};
     if (!editFormData.fullName.trim())
-      errors.fullName = t("fullNameRequired") || "Full name is required";
+      errors.fullName = t("fullNameRequired");
     if (!editFormData.email.trim())
-      errors.email = t("emailRequired") || "Email is required";
+      errors.email = t("emailRequired");
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editFormData.email))
-      errors.email = t("invalidEmail") || "Invalid email format";
+      errors.email = t("invalidEmail");
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -127,15 +127,15 @@ export default function ProfilePage() {
   const validatePasswordForm = (): boolean => {
     const errors: Record<string, string> = {};
     if (!passwordFormData.currentPassword.trim())
-      errors.currentPassword = t("currentPasswordRequired") || "Current password is required";
+      errors.currentPassword = t("currentPasswordRequired");
     if (!passwordFormData.newPassword.trim())
-      errors.newPassword = t("newPasswordRequired") || "New password is required";
+      errors.newPassword = t("newPasswordRequired");
     else if (passwordFormData.newPassword.length < 6)
-      errors.newPassword = t("passwordTooShort") || "Password must be at least 6 characters";
+      errors.newPassword = t("passwordTooShort");
     if (!passwordFormData.confirmPassword.trim())
-      errors.confirmPassword = t("confirmPasswordRequired") || "Confirm password is required";
+      errors.confirmPassword = t("confirmPasswordRequired");
     else if (passwordFormData.newPassword !== passwordFormData.confirmPassword)
-      errors.confirmPassword = t("passwordMismatch") || "Passwords do not match";
+      errors.confirmPassword = t("passwordMismatch");
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -160,9 +160,9 @@ export default function ProfilePage() {
       setUser(updatedUser);
       syncUserToLocalStorage(updatedUser);
       setIsEditModalOpen(false);
-      notify.success(t("profileUpdated") || "Profile updated", t("profileUpdatedDescription") || "Your profile has been updated successfully.");
+      notify.success(t("profileUpdated"), t("profileUpdatedDescription"));
     } catch (error) {
-      setFormErrors({ submit: (error as Error).message || t("updateError") || "An error occurred" });
+      setFormErrors({ submit: (error as Error).message || t("updateError") });
     } finally {
       setIsSaving(false);
     }
@@ -181,9 +181,9 @@ export default function ProfilePage() {
       });
       setIsPasswordModalOpen(false);
       setPasswordFormData({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      notify.success(t("passwordUpdated") || "Password updated", t("passwordUpdatedDescription") || "Your password has been changed successfully.");
+      notify.success(t("passwordUpdated"), t("passwordUpdatedDescription"));
     } catch (error) {
-      setFormErrors({ submit: (error as Error).message || t("updateError") || "An error occurred" });
+      setFormErrors({ submit: (error as Error).message || t("updateError") });
     } finally {
       setIsSaving(false);
     }
@@ -232,10 +232,10 @@ export default function ProfilePage() {
         </Button>
         <div>
           <h1 className="text-display text-slate-900 dark:text-slate-100">
-            {t("myProfile") || "My Profile"}
+            {t("myProfile")}
           </h1>
           <p className="text-slate-600 dark:text-slate-400 mt-1">
-            {t("viewAndManageProfile") || "View and manage your account"}
+            {t("viewAndManageProfile")}
           </p>
         </div>
       </div>
@@ -269,28 +269,28 @@ export default function ProfilePage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="w-5 h-5" />
-              {t("accountDetails") || "Account Details"}
+              {t("accountDetails")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-start gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
               <Mail className="w-5 h-5 text-slate-500 dark:text-slate-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{t("emailAddress") || "Email"}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{t("emailAddress")}</p>
                 <p className="font-medium text-slate-900 dark:text-slate-100">{user.email || "—"}</p>
               </div>
             </div>
             <div className="flex items-start gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
               <Shield className="w-5 h-5 text-slate-500 dark:text-slate-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{t("role") || "Role"}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{t("role")}</p>
                 <p className="font-medium text-slate-900 dark:text-slate-100">{t(roleConfig.labelKey as any) || roleConfig.labelKey}</p>
               </div>
             </div>
             <div className="flex items-start gap-4">
               <Calendar className="w-5 h-5 text-slate-500 dark:text-slate-400 flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{t("memberSince") || "Member since"}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{t("memberSince")}</p>
                 <p className="font-medium text-slate-900 dark:text-slate-100">{formatDate(user.createdAt)}</p>
               </div>
             </div>
@@ -304,7 +304,7 @@ export default function ProfilePage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="w-5 h-5" />
-              {t("permissions") || "Permissions"}
+              {t("permissions")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -340,11 +340,11 @@ export default function ProfilePage() {
       <div className="flex gap-3 flex-wrap">
         <Button variant="outline" onClick={openEditModal}>
           <Edit2 className="w-4 h-4 mr-2" />
-          {t("editProfile") || "Edit Profile"}
+          {t("editProfile")}
         </Button>
         <Button variant="outline" onClick={openPasswordModal}>
           <Shield className="w-4 h-4 mr-2" />
-          {t("changePassword") || "Change Password"}
+          {t("changePassword")}
         </Button>
         <Button variant="destructive" onClick={handleLogout} className="ml-auto">
           <LogOut className="w-4 h-4 mr-2" />
@@ -356,9 +356,9 @@ export default function ProfilePage() {
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t("editProfile") || "Edit Profile"}</DialogTitle>
+            <DialogTitle>{t("editProfile")}</DialogTitle>
             <DialogDescription>
-              {t("updateProfileInfo") || "Update your profile information"}
+              {t("updateProfileInfo")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -368,7 +368,7 @@ export default function ProfilePage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="fullName">{t("fullName") || "Full Name"}</Label>
+              <Label htmlFor="fullName">{t("fullName")}</Label>
               <Input
                 id="fullName"
                 value={editFormData.fullName}
@@ -378,7 +378,7 @@ export default function ProfilePage() {
               {formErrors.fullName && <p className="text-xs text-red-500">{formErrors.fullName}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">{t("emailAddress") || "Email"}</Label>
+              <Label htmlFor="email">{t("emailAddress")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -394,7 +394,7 @@ export default function ProfilePage() {
               {t("cancel")}
             </Button>
             <Button onClick={handleUpdateProfile} disabled={isSaving}>
-              {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{t("saving")}</> : t("save") || "Save"}
+              {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{t("saving")}</> : t("save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -404,9 +404,9 @@ export default function ProfilePage() {
       <Dialog open={isPasswordModalOpen} onOpenChange={setIsPasswordModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t("changePassword") || "Change Password"}</DialogTitle>
+            <DialogTitle>{t("changePassword")}</DialogTitle>
             <DialogDescription>
-              {t("changePasswordDescription") || "Enter your current password and a new password"}
+              {t("changePasswordDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -416,7 +416,7 @@ export default function ProfilePage() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="currentPassword">{t("currentPassword") || "Current Password"}</Label>
+              <Label htmlFor="currentPassword">{t("currentPassword")}</Label>
               <Input
                 id="currentPassword"
                 type="password"
@@ -427,7 +427,7 @@ export default function ProfilePage() {
               {formErrors.currentPassword && <p className="text-xs text-red-500">{formErrors.currentPassword}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="newPassword">{t("newPassword") || "New Password"}</Label>
+              <Label htmlFor="newPassword">{t("newPassword")}</Label>
               <Input
                 id="newPassword"
                 type="password"
@@ -438,7 +438,7 @@ export default function ProfilePage() {
               {formErrors.newPassword && <p className="text-xs text-red-500">{formErrors.newPassword}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmNewPassword">{t("confirmPassword") || "Confirm Password"}</Label>
+              <Label htmlFor="confirmNewPassword">{t("confirmPassword")}</Label>
               <Input
                 id="confirmNewPassword"
                 type="password"
@@ -454,7 +454,7 @@ export default function ProfilePage() {
               {t("cancel")}
             </Button>
             <Button onClick={handleChangePassword} disabled={isSaving}>
-              {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{t("updating")}</> : t("updatePassword") || "Update Password"}
+              {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{t("updating")}</> : t("updatePassword")}
             </Button>
           </DialogFooter>
         </DialogContent>

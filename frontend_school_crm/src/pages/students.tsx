@@ -302,7 +302,7 @@ export default function StudentsPage() {
       }
 
       if (warnings.length > 0) {
-        notify.warning(t("importCompletedWithWarnings") || "Import Completed with Warnings", warnings.slice(0, 3).join("\n") + (warnings.length > 3 ? `\n... and ${warnings.length - 3} more` : ""));
+        notify.warning(t("importCompletedWithWarnings"), warnings.slice(0, 3).join("\n") + (warnings.length > 3 ? `\n... and ${warnings.length - 3} more` : ""));
       }
 
       setImportData("");
@@ -372,16 +372,16 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
     // Inline validation
     const errors: typeof formErrors = {};
-    if (!formData.fullName.trim()) errors.fullName = t("fieldRequired") || "This field is required";
+    if (!formData.fullName.trim()) errors.fullName = t("fieldRequired");
     if (!formData.phone.trim()) {
-      errors.phone = t("fieldRequired") || "This field is required";
+      errors.phone = t("fieldRequired");
     } else if (!isValidUzbekPhone(formData.phone)) {
-      errors.phone = t("invalidPhone") || "Enter a valid phone: +998 XX XXX-XX-XX";
+      errors.phone = t("invalidPhone");
     }
     if (!formData.parentPhone.trim()) {
-      errors.parentPhone = t("fieldRequired") || "This field is required";
+      errors.parentPhone = t("fieldRequired");
     } else if (!isValidUzbekPhone(formData.parentPhone)) {
-      errors.parentPhone = t("invalidPhone") || "Enter a valid phone: +998 XX XXX-XX-XX";
+      errors.parentPhone = t("invalidPhone");
     }
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
@@ -723,19 +723,19 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
             variant="outline"
             onClick={() => setBulkChangeClassId("")}
           >
-            {t("changeClass") || "Sinfni o'zgartirish"}
+            {t("changeClass")}
           </Button>
         </DialogTrigger>
         <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-3 border-b border-slate-100 dark:border-slate-800">
-            <DialogTitle className="text-base">{t("changeClass") || "Change class"}</DialogTitle>
+            <DialogTitle className="text-base">{t("changeClass")}</DialogTitle>
           </DialogHeader>
 
           <div className="p-4 space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder={t("searchClasses") || "Search classes…"}
+                placeholder={t("searchClasses")}
                 value={bulkChangeClassSearch}
                 onChange={(e) => setBulkChangeClassSearch(e.target.value)}
                 className="pl-9"
@@ -752,7 +752,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                 if (filtered.length === 0) {
                   return (
                     <p className="text-sm text-slate-400 text-center py-6">
-                      {t("noClassesFound") || "No classes found"}
+                      {t("noClassesFound")}
                     </p>
                   );
                 }
@@ -783,7 +783,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           <div className="px-6 py-3 bg-blue-50 dark:bg-blue-900/20 border-y border-blue-100 dark:border-blue-900/50">
             <p className="text-sm text-blue-900 dark:text-blue-100">
               <span className="font-semibold">{selectedIds.size}</span>{" "}
-              {t("studentsWillBeMoved") || "students will be moved"}
+              {t("studentsWillBeMoved")}
             </p>
           </div>
 
@@ -803,7 +803,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               onClick={handleBulkChangeClass}
               disabled={!bulkChangeClassId}
             >
-              {t("change") || "Change class"}
+              {t("change")}
             </Button>
           </div>
         </DialogContent>
@@ -813,7 +813,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
         variant="destructive"
         onClick={handleBulkDelete}
       >
-        {t("deleteSelected") || "Tanlanganlarni o'chirish"}
+        {t("deleteSelected")}
       </Button>
       <Button size="sm" variant="outline" onClick={clearSelection}>
         {t("cancel")}
@@ -1089,7 +1089,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
         <FilterReset
           onClick={handleClearSearch}
           show={searchInput !== "" || filterClass !== "all" || filterStatus !== "all" || filterPaymentStatus !== "all"}
-          label={t("reset") || "Reset"}
+          label={t("reset")}
         />
       </FilterBar>
 
@@ -1113,7 +1113,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
             limitOptions={[5, 10, 20, 50, 100]}
             emptyIcon={Users}
             emptyTitle={t("noStudentsYet")}
-            emptyDescription={t("addFirstStudent") || "Add your first student to get started."}
+            emptyDescription={t("addFirstStudent")}
             emptyAction={canCreateStudents ? { label: t("addStudent"), onClick: handleOpenDialog } : undefined}
             renderCard={(student, isSelected, onToggle) => {
               const paymentStatus = student.payment?.status || "unpaid";
@@ -1254,7 +1254,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               {isDeleteLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("deleting") || "Deleting..."}
+                  {t("deleting")}
                 </>
               ) : (
                 t("delete")
@@ -1297,7 +1297,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               {isBulkDeleteLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("deleting") || "Deleting..."}
+                  {t("deleting")}
                 </>
               ) : (
                 t("delete")
@@ -1342,7 +1342,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               {isMarkLeftLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("updating") || "Updating..."}
+                  {t("updating")}
                 </>
               ) : (
                 t("confirm")

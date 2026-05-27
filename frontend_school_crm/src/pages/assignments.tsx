@@ -47,6 +47,7 @@ import {
 import { toTitleCase } from "@/lib/utils";
 import { formatCurrency } from "@/lib/exportUtils";
 import { useBranch } from "@/context/BranchContext";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function AssignmentsPage() {
   const language = useLanguage();
@@ -74,11 +75,9 @@ export default function AssignmentsPage() {
   const notify = useNotify();
 
   useEffect(() => {
+    if (!currentBranch?.id) return;
     loadData();
-    const handler = () => loadData();
-    window.addEventListener("branchChange", handler);
-    return () => window.removeEventListener("branchChange", handler);
-  }, []);
+  }, [currentBranch?.id]);
 
   const loadData = async () => {
     const branchId = currentBranch?.id;
@@ -232,9 +231,12 @@ export default function AssignmentsPage() {
       {/* Assignment list */}
       {filteredAssignments.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-slate-500">
-            <ClipboardList className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-            <p>{t("noAssignments")}</p>
+          <CardContent className="p-0">
+            <EmptyState
+              icon={ClipboardList}
+              title={t("noAssignments")}
+              action={{ label: t("addAssignment"), onClick: () => setDialogOpen(true) }}
+            />
           </CardContent>
         </Card>
       ) : (

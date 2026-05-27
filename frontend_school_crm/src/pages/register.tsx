@@ -76,7 +76,7 @@ export default function RegisterPage() {
         // Brief pause so the success banner is readable before redirect.
         setTimeout(() => router.push("/"), 2000);
       } else {
-        setError(t("registrationFailed") || "Registration failed");
+        setError(t("registrationFailed"));
       }
     } catch (error) {
       console.error("Registration error:", error);
@@ -240,7 +240,7 @@ export default function RegisterPage() {
               className="w-full h-11 text-base font-semibold bg-brand hover:bg-brand-hover"
             >
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {loading ? (t("creatingAccount") || "Creating Account...") : (t("createAccount") || "Create Account")}
+              {loading ? (t("creatingAccount")) : (t("createAccount"))}
             </Button>
           </form>
 

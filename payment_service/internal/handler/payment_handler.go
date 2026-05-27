@@ -145,8 +145,8 @@ func (h *PaymentHandler) Delete(c *gin.Context) {
 // Body: { "defaultMethod": "cash", "entries": [...] }
 func (h *PaymentHandler) BulkCreate(c *gin.Context) {
 	var body struct {
-		BranchID      string             `json:"branchId"      binding:"required"`
-		DefaultMethod string             `json:"defaultMethod" binding:"required"`
+		BranchID      string              `json:"branchId"      binding:"required"`
+		DefaultMethod string              `json:"defaultMethod" binding:"required"`
 		Entries       []service.BulkEntry `json:"entries"       binding:"required,min=1"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {

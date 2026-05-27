@@ -158,22 +158,13 @@ export default function ClassDetailsPage() {
   };
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !currentBranch?.id) return;
 
     setIsLoading(true);
     loadData().finally(() => {
       setIsLoading(false);
     });
-  }, [id]);
-
-  // Reload data when branch changes
-  useEffect(() => {
-    const handleBranchChange = () => {
-      loadData();
-    };
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
+  }, [id, currentBranch?.id]);
 
   const loadData = async () => {
     try {
@@ -240,8 +231,8 @@ export default function ClassDetailsPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: t("removeStudent") || "Remove Student",
-      message: t("removeStudentFromClassConfirmation") || "Remove this student from the class?",
+      title: t("removeStudent"),
+      message: t("removeStudentFromClassConfirmation"),
       onConfirm: async () => {
         try {
           await apiUpdateStudent(studentId, {
@@ -280,7 +271,7 @@ export default function ClassDetailsPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: t("switchStudents") || "Switch Students",
+      title: t("switchStudents"),
       message: t("switchConfirmation") || `Switch ${selectedCount} student(s) to ${targetClass.name}?`,
       onConfirm: async () => {
         try {
@@ -323,7 +314,7 @@ export default function ClassDetailsPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: t("removeStudents") || "Remove Students",
+      title: t("removeStudents"),
       message: t("removeStudentsConfirmation") || `Remove ${selectedCount} student(s) from this class?`,
       onConfirm: async () => {
         try {
@@ -375,7 +366,7 @@ export default function ClassDetailsPage() {
     return (
       <div className="text-center py-12">
         <p className="text-slate-500 dark:text-slate-400">
-          {t("classNotFound") || "Class not found"}
+          {t("classNotFound")}
         </p>
         <Button
           variant="outline"
@@ -383,7 +374,7 @@ export default function ClassDetailsPage() {
           className="mt-4"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          {t("backToClasses") || "Back to Classes"}
+          {t("backToClasses")}
         </Button>
       </div>
     );
@@ -440,8 +431,8 @@ export default function ClassDetailsPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: t("deleteClass") || "Delete Class",
-      message: t("deleteClassConfirmation") || "Are you sure you want to delete this class?",
+      title: t("deleteClass"),
+      message: t("deleteClassConfirmation"),
       onConfirm: async () => {
         try {
           await apiDeleteClass(classData!.id);
@@ -584,7 +575,7 @@ export default function ClassDetailsPage() {
         <CardContent className="py-3 px-4 space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-sm font-medium">
-              {getSelectedCount()} {t("itemsSelected") || "selected"}
+              {getSelectedCount()} {t("itemsSelected")}
             </p>
             <div className="flex gap-2 flex-wrap">
               <Select
@@ -593,7 +584,7 @@ export default function ClassDetailsPage() {
                 disabled={getSelectedCount() === 0}
               >
                 <SelectTrigger className="w-auto min-w-[150px]">
-                  <SelectValue placeholder={t("chooseClass") || "Class"} />
+                  <SelectValue placeholder={t("chooseClass")} />
                 </SelectTrigger>
                 <SelectContent>
                   {otherClasses.map((cls) => (
@@ -612,7 +603,7 @@ export default function ClassDetailsPage() {
                 className="whitespace-nowrap"
               >
                 <ArrowRight className="w-4 h-4 mr-1" />
-                {t("switch") || "Switch"}
+                {t("switch")}
               </Button>
               <Button
                 size="sm"
@@ -649,7 +640,7 @@ export default function ClassDetailsPage() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
               <Input
-                placeholder={t("searchStudents") || "Search by name or phone"}
+                placeholder={t("searchStudents")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -669,7 +660,7 @@ export default function ClassDetailsPage() {
                   onCheckedChange={() => toggleSelectAll(filteredStudents)}
                 />
                 <label className="text-sm font-medium cursor-pointer flex-1">
-                  {t("selectAll") || "Select All"} ({filteredStudents.length})
+                  {t("selectAll")} ({filteredStudents.length})
                 </label>
               </div>
 
@@ -704,7 +695,7 @@ export default function ClassDetailsPage() {
                           </p>
                           <PaymentStatusBadge
                             status={hasCurrentMonthPayment(student.id) ? "paid" : "unpaid"}
-                            label={hasCurrentMonthPayment(student.id) ? t("paid") : t("unpaid") || "To'lanmadi"}
+                            label={hasCurrentMonthPayment(student.id) ? t("paid") : t("unpaid")}
                           />
                         </div>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -751,7 +742,7 @@ export default function ClassDetailsPage() {
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("editClass") || "Edit Class"}</DialogTitle>
+            <DialogTitle>{t("editClass")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -762,13 +753,13 @@ export default function ClassDetailsPage() {
                 onChange={(e) =>
                   setEditFormData({ ...editFormData, name: e.target.value })
                 }
-                placeholder={t("classNamePlaceholder") || "e.g., 7A, Grade 9B"}
+                placeholder={t("classNamePlaceholder")}
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="teacherId">
-                {t("classTeacher") || "Class Teacher"}
+                {t("classTeacher")}
               </Label>
               <Select
                 value={editFormData.teacherId || "none"}
@@ -781,12 +772,12 @@ export default function ClassDetailsPage() {
               >
                 <SelectTrigger>
                   <SelectValue
-                    placeholder={t("selectTeacherOptional") || "Select teacher"}
+                    placeholder={t("selectTeacherOptional")}
                   />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">
-                    {t("noTeacherAssigned") || "No teacher assigned"}
+                    {t("noTeacherAssigned")}
                   </SelectItem>
                   {teachers.map((teacher) => (
                     <SelectItem key={teacher.id} value={teacher.id}>
@@ -806,7 +797,7 @@ export default function ClassDetailsPage() {
             >
               {t("cancel")}
             </Button>
-            <Button onClick={handleSaveEdit}>{t("save") || "Save"}</Button>
+            <Button onClick={handleSaveEdit}>{t("save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

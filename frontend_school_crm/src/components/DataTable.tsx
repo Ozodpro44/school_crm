@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/EmptyState";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/hooks/use-language";
+import { getTranslation } from "@/lib/translations";
 
 // ── Column definition ─────────────────────────────────────────────────────────
 
@@ -130,6 +132,8 @@ function TablePagination({
   onLimitChange?: (l: number) => void;
   limitOptions?: number[];
 }) {
+  const language = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const { page, limit, total } = pagination;
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const from = total === 0 ? 0 : (page - 1) * limit + 1;
@@ -138,13 +142,13 @@ function TablePagination({
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
       <p className="text-sm text-slate-500 dark:text-slate-400 order-2 sm:order-1">
-        {total === 0 ? "No results" : `${from}–${to} of ${total}`}
+        {total === 0 ? t("noResults") : `${from}–${to} of ${total}`}
       </p>
 
       <div className="flex items-center gap-3 order-1 sm:order-2">
         {/* Rows per page */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 whitespace-nowrap">Rows</span>
+          <span className="text-xs text-slate-500 whitespace-nowrap">{t("rowsPerPage")}</span>
           <Select
             value={String(limit)}
             onValueChange={(v) => onLimitChange?.(Number(v))}

@@ -395,7 +395,7 @@ export function BulkPaymentDialog({
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
               <Input
-                placeholder={t("searchStudents") || "Search students..."}
+                placeholder={t("searchStudents")}
                 value={bulkSearchTerm}
                 onChange={(e) => setBulkSearchTerm(e.target.value)}
                 className="pl-10 pr-10"
@@ -405,7 +405,7 @@ export function BulkPaymentDialog({
                   type="button"
                   onClick={() => setBulkSearchTerm("")}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-                  title={t("clear") || "Clear"}
+                  title={t("clear")}
                 >
                   <svg
                     className="w-4 h-4"
@@ -430,7 +430,7 @@ export function BulkPaymentDialog({
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
                     <span className="text-sm text-slate-600 dark:text-slate-400">
-                      {t("searching") || "Searching..."}
+                      {t("searching")}
                     </span>
                   </div>
                 </div>

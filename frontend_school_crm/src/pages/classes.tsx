@@ -43,6 +43,7 @@ import { createClass, updateClass, deleteClass, listClasses, listTeachers, listS
 import { useBranch } from "@/context/BranchContext";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function ClassesPage() {
   const router = useRouter();
@@ -132,19 +133,10 @@ export default function ClassesPage() {
   };
 
   useEffect(() => {
+    if (!currentBranch?.id) return;
     setIsLoading(true);
     loadData();
-  }, []);
-
-  useEffect(() => {
-    // Listen for branch changes
-    const handleBranchChange = () => {
-      loadData();
-    };
-
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
+  }, [currentBranch?.id]);
 
   // Refetch data when page regains focus
   useRefetchOnFocus(loadData);
@@ -578,10 +570,10 @@ export default function ClassesPage() {
                 {selectedStudentIds.length > 0 && selectedClassId && (
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                     <p className="font-semibold text-blue-900 dark:text-blue-100">
-                      {selectedStudentIds.length} {t("student")} selected
+                      {selectedStudentIds.length} {t("student")} {t("selected")}
                     </p>
                     <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                      {t("willBeAddedTo") || "Will be added to:"}{" "}
+                      {t("willBeAddedTo")}{" "}
                       {classes.find((c) => c.id === selectedClassId)?.name}
                     </p>
                   </div>
@@ -630,7 +622,7 @@ export default function ClassesPage() {
                 className="bg-brand hover:bg-brand-hover w-full sm:w-auto"
                 onClick={() => resetForm()}
                 disabled={!canCreateClasses}
-                title={!canCreateClasses ? t("noPermission") || "No permission to create classes" : ""}
+                title={!canCreateClasses ? t("noPermission") : ""}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 {t("addClass")}
@@ -652,14 +644,14 @@ export default function ClassesPage() {
                       setFormData({ ...formData, name: e.target.value })
                     }
                     placeholder={
-                      t("classNamePlaceholder") || "e.g., 7A, Grade 9B"
+                      t("classNamePlaceholder")
                     }
                     required
                   />
                 </div>
 
                 <div className="space-y-2">
-                   <Label htmlFor="teacherId">Class Teacher</Label>
+                   <Label htmlFor="teacherId">{t("classTeacher")}</Label>
                    <Select
                      value={formData.teacherId || "none"}
                      onValueChange={(value) =>
@@ -789,7 +781,7 @@ export default function ClassesPage() {
                           variant="ghost"
                           onClick={() => handleEdit(classData)}
                           disabled={!canEditClasses}
-                          title={canEditClasses ? t("edit") : t("noPermission") || "No permission"}
+                          title={canEditClasses ? t("edit") : t("noPermission")}
                           className="h-8 w-8 sm:h-10 sm:w-10"
                         >
                           <Edit2 className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -799,7 +791,7 @@ export default function ClassesPage() {
                           variant="ghost"
                           onClick={() => handleDelete(classData.id)}
                           disabled={!canDeleteClasses}
-                          title={canDeleteClasses ? t("delete") : t("noPermission") || "No permission"}
+                          title={canDeleteClasses ? t("delete") : t("noPermission")}
                           className="h-8 w-8 sm:h-10 sm:w-10"
                         >
                           <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
@@ -832,12 +824,11 @@ export default function ClassesPage() {
           </div>
 
           {filteredClasses.length === 0 && (
-            <div className="text-center py-12">
-              <BookOpen className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-4" />
-              <p className="text-slate-500 dark:text-slate-400">
-                {t("noClassesYet")}
-              </p>
-            </div>
+            <EmptyState
+              icon={BookOpen}
+              title={t("noClassesYet")}
+              action={canCreateClasses ? { label: t("addClass"), onClick: () => { resetForm(); setIsDialogOpen(true); } } : undefined}
+            />
           )}
         </CardContent>
       </Card>
@@ -915,7 +906,7 @@ export default function ClassesPage() {
               {unassignedSelection.length > 0 && (
                 <div className="mt-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
                   <p className="text-sm font-medium text-orange-900 dark:text-orange-100 mb-3">
-                    {unassignedSelection.length} {t("student")} selected
+                    {unassignedSelection.length} {t("student")} {t("selected")}
                   </p>
                   <Button
                     onClick={() => {
@@ -971,10 +962,10 @@ export default function ClassesPage() {
               {confirmDialog.isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("deleting") || "Deleting..."}
+                  {t("deleting")}
                 </>
               ) : (
-                t("confirm") || "Confirm"
+                t("confirm")
               )}
             </Button>
           </DialogFooter>

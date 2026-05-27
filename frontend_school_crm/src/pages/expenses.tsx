@@ -165,10 +165,24 @@ export default function ExpensesPage() {
   const t = (key: string) => getTranslation(key, language);
   const notify = useNotify();
 
+  const financialMonthKey = currentBranch?.currentFinancialMonth
+    ? `${currentBranch.currentFinancialMonth.year}-${currentBranch.currentFinancialMonth.month}`
+    : undefined;
+
   // Initialize state from URL params
   useEffect(() => {
-    if (!router.isReady) return;
+    if (!router.isReady || !currentBranch?.id) return;
 
+    if (initialLoadDoneRef.current) {
+      // Branch switched or financial month changed — reset filters and reload
+      setCurrentPage(1);
+      setSelectedMonth("");
+      setIsLoading(true);
+      loadData().finally(() => setIsLoading(false));
+      return;
+    }
+
+    // Initial load — read URL params first
     const { page, limit, search, category, paymentMethod, month, year } = router.query;
     if (page) setCurrentPage(parseInt(page as string) || 1);
     if (limit) setItemsPerPage(parseInt(limit as string) || 10);
@@ -181,7 +195,6 @@ export default function ExpensesPage() {
     if (month) setSelectedMonth(month as string);
     if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
 
-    // Load initial data
     setIsLoading(true);
     loadData().finally(() => {
       setIsLoading(false);
@@ -189,20 +202,7 @@ export default function ExpensesPage() {
     });
     loadBudgets(month as string | undefined, year ? parseInt(year as string) : undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady]);
-
-  // Refetch when branch changes
-  useEffect(() => {
-    const handleBranchChange = async () => {
-      setIsLoading(true);
-      setCurrentPage(1);
-      setSelectedMonth("");
-      loadData().finally(() => setIsLoading(false));
-    };
-
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
+  }, [router.isReady, currentBranch?.id, financialMonthKey]);
 
   // Reload data when page or items per page changes
   useEffect(() => {
@@ -519,7 +519,7 @@ export default function ExpensesPage() {
           date: dateTimestamp,
           branchId: editingExpense.branchId,
         });
-        notify.success(t("updated"), t("expenseUpdatedSuccess") || "Expense updated successfully");
+        notify.success(t("updated"), t("expenseUpdatedSuccess"));
       } else {
         await createExpense({
           title: formData.description, // Mapped from description
@@ -597,7 +597,7 @@ export default function ExpensesPage() {
           await Promise.all(selectedIds.map((id) => deleteExpense(id)));
           clearSelection();
           await loadData();
-          notify.success(t("deleted"), `${selectedIds.length} ${t("expensesDeleted") || "expenses deleted"
+          notify.success(t("deleted"), `${selectedIds.length} ${t("expensesDeleted")
               }`);
           setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
         } catch (error) {
@@ -774,7 +774,7 @@ export default function ExpensesPage() {
             disabled={!canCreateExpenses}
             title={
               !canCreateExpenses
-                ? t("noPermission") || "No permission to create expenses"
+                ? t("noPermission")
                 : ""
             }
           >
@@ -955,7 +955,7 @@ export default function ExpensesPage() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <Target className="w-4 h-4 text-indigo-500" />
-                {t("budgetVsActual") || "Budget vs Actual"}
+                {t("budgetVsActual")}
               </CardTitle>
               <Button
                 variant="outline"
@@ -964,14 +964,14 @@ export default function ExpensesPage() {
                 onClick={() => setIsBudgetDialogOpen(true)}
               >
                 <Plus className="w-3.5 h-3.5" />
-                {t("setBudget") || "Set Budget"}
+                {t("setBudget")}
               </Button>
             </div>
           </CardHeader>
           <CardContent>
             {budgets.length === 0 ? (
               <p className="text-sm text-slate-400 text-center py-4">
-                {t("noBudgetsSet") || "No budgets set for this period. Click \"Set Budget\" to add one."}
+                {t("noBudgetsSet")}
               </p>
             ) : (
               <div className="space-y-3">
@@ -1010,12 +1010,12 @@ export default function ExpensesPage() {
                     </div>
                     {b.isNearLimit && !b.isExceeded && (
                       <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                        {t("budgetNearLimit") || "Approaching budget limit"} ({Math.round(b.usedPct)}%)
+                        {t("budgetNearLimit")} ({Math.round(b.usedPct)}%)
                       </p>
                     )}
                     {b.isExceeded && (
                       <p className="text-[11px] text-red-600 dark:text-red-400">
-                        {t("budgetExceeded") || "Budget exceeded"} ({Math.round(b.usedPct)}%)
+                        {t("budgetExceeded")} ({Math.round(b.usedPct)}%)
                       </p>
                     )}
                   </div>
@@ -1032,7 +1032,7 @@ export default function ExpensesPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Target className="w-4 h-4 text-indigo-500" />
-              {t("setBudget") || "Set Monthly Budget"}
+              {t("setBudget")}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
@@ -1052,7 +1052,7 @@ export default function ExpensesPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{t("budgetAmount") || "Budget Amount"}</Label>
+              <Label>{t("budgetAmount")}</Label>
               <Input
                 type="number"
                 min="0"
@@ -1064,7 +1064,7 @@ export default function ExpensesPage() {
             </div>
             {budgetEditCategory && budgets.find((b) => b.category === budgetEditCategory) && (
               <p className="text-xs text-slate-500">
-                {t("currentBudget") || "Current budget"}: {formatCurrency(budgets.find((b) => b.category === budgetEditCategory)!.amount)}
+                {t("currentBudget")}: {formatCurrency(budgets.find((b) => b.category === budgetEditCategory)!.amount)}
               </p>
             )}
           </div>
@@ -1112,7 +1112,7 @@ export default function ExpensesPage() {
             <SelectItem value="all">{t("allMethods")}</SelectItem>
             <SelectItem value="cash">{t("cash")}</SelectItem>
             <SelectItem value="click">Click</SelectItem>
-            <SelectItem value="terminal">{t("terminal") || "Terminal"}</SelectItem>
+            <SelectItem value="terminal">{t("terminal")}</SelectItem>
             <SelectItem value="card">{t("card")}</SelectItem>
             <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
           </SelectContent>
@@ -1120,7 +1120,7 @@ export default function ExpensesPage() {
         <FilterReset
           onClick={handleClearSearch}
           show={searchInput !== "" || filterCategory !== "all" || filterPaymentMethod !== "all"}
-          label={t("reset") || "Reset"}
+          label={t("reset")}
         />
       </FilterBar>
 
@@ -1143,7 +1143,7 @@ export default function ExpensesPage() {
                 <>
                   <Button size="sm" variant="destructive" onClick={handleBulkDelete}>
                     <Trash2 className="w-3.5 h-3.5 mr-1" />
-                    {t("deleteSelected") || "Delete Selected"}
+                    {t("deleteSelected")}
                   </Button>
                   <Button size="sm" variant="outline" onClick={clearSelection}>
                     {t("cancel")}
@@ -1151,6 +1151,7 @@ export default function ExpensesPage() {
                 </>
               ) : null
             }
+            emptyIcon={TrendingDown}
             emptyTitle={t("noExpensesFound")}
             pagination={{
               page: currentPage,

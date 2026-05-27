@@ -320,13 +320,13 @@ export default function AttendancePage() {
         {activeTab === "mark" && (
           <div className="space-y-4">
             {!selectedClassId ? (
-              <EmptyState icon={Users} title={t("selectClassAndDate") || "Select a class and date"} />
+              <EmptyState icon={Users} title={t("selectClassAndDate")} />
             ) : loadingAttendance ? (
               <div className="space-y-2">
                 {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}
               </div>
             ) : students.length === 0 ? (
-              <EmptyState icon={Users} title={t("noStudentsInClass") || "No students in this class"} />
+              <EmptyState icon={Users} title={t("noStudentsInClass")} />
             ) : (
               <>
                 {/* Stats row */}
@@ -375,7 +375,7 @@ export default function AttendancePage() {
                           </p>
                           {wasChanged && (
                             <p className="text-[10px] text-amber-500 font-medium">
-                              {t("modified") || "Modified"}
+                              {t("modified")}
                             </p>
                           )}
                         </div>
@@ -439,18 +439,18 @@ export default function AttendancePage() {
                     {hasSavedData && !isDirty ? (
                       <span className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-600 dark:text-emerald-400">
                         <CheckCircle2 className="w-4 h-4" />
-                        {t("attendanceSaved") || "Saved"}
+                        {t("attendanceSaved")}
                       </span>
                     ) : isDirty ? (
                       <span className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-400">
                         <Save className="w-4 h-4" />
-                        {t("unsavedChanges") || "Unsaved changes"}
+                        {t("unsavedChanges")}
                       </span>
                     ) : null}
                     {!canEdit && hasSavedData && (
                       <span className="inline-flex items-center gap-1 text-xs text-slate-400">
                         <Lock className="w-3 h-3" />
-                        {t("readOnly") || "Read only"}
+                        {t("readOnly")}
                       </span>
                     )}
                   </div>
@@ -468,7 +468,7 @@ export default function AttendancePage() {
                       )}
                     >
                       <Save className="w-4 h-4" />
-                      {saving ? t("processing") : hasSavedData ? (t("update") || "Update") : t("saveAttendance")}
+                      {saving ? t("processing") : hasSavedData ? (t("update")) : t("saveAttendance")}
                     </Button>
                   )}
                 </div>
@@ -481,9 +481,9 @@ export default function AttendancePage() {
         {activeTab === "summary" && (
           <div className="space-y-4">
             {!selectedClassId ? (
-              <EmptyState icon={Users} title={t("selectClassAndDate") || "Select a class and date"} />
+              <EmptyState icon={Users} title={t("selectClassAndDate")} />
             ) : monthSummary.length === 0 ? (
-              <EmptyState icon={BarChart3} title={t("noStudentsInClass") || "No students in this class"} />
+              <EmptyState icon={BarChart3} title={t("noStudentsInClass")} />
             ) : (
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
                 <div className="overflow-x-auto">
@@ -560,17 +560,13 @@ export default function AttendancePage() {
                   <CheckCircle2 className="w-7 h-7 text-emerald-500" />
                 </div>
                 <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
-                  {language === "en"
-                    ? "All good — no consecutive absences"
-                    : "Hamma yaxshi — ketma-ket qolmagan o'quvchilar yo'q"}
+                  {t("noConsecutiveAbsences")}
                 </p>
               </div>
             ) : (
               <>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {language === "en"
-                    ? "Students with 3+ consecutive absences in the last 14 days"
-                    : "So'nggi 14 kun ichida 3 yoki undan ko'p ketma-ket kun kelmaganlar"}
+                  {t("consecutiveAbsencesDescription")}
                 </p>
                 <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
                   {absenceAlerts.map((alert) => (

@@ -303,8 +303,8 @@ export function PaymentFormDialog({
           paidDate: new Date().toISOString(),
         });
         toast({
-          title: t("paymentUpdated") || "Payment Updated",
-          description: t("paymentUpdatedDescription") || "Payment has been updated successfully",
+          title: t("paymentUpdated"),
+          description: t("paymentUpdatedDescription"),
         });
       } catch {
         toast({ title: t("error"), description: t("failedToUpdatePayment"), variant: "destructive" });
@@ -365,8 +365,8 @@ export function PaymentFormDialog({
         }
 
         toast({
-          title: t("paymentCreated") || "Payment Created",
-          description: t("paymentCreatedDescription") || "Payment has been created successfully",
+          title: t("paymentCreated"),
+          description: t("paymentCreatedDescription"),
         });
       } catch {
         toast({ title: t("error"), description: "Failed to create payment", variant: "destructive" });
@@ -419,9 +419,9 @@ export function PaymentFormDialog({
         }
         onOpenChange(open);
       }}
-      title={isEditing ? t("editPayment") || "Edit Payment" : t("recordNewPayment")}
+      title={isEditing ? t("editPayment") : t("recordNewPayment")}
       onSubmit={handleSubmit}
-      submitLabel={isEditing ? t("saveChanges") || "Save Changes" : t("recordPayment")}
+      submitLabel={isEditing ? t("saveChanges") : t("recordPayment")}
       submittingLabel={t("recording")}
       isPending={isSubmitting}
       maxWidth="max-w-2xl"
@@ -435,7 +435,7 @@ export function PaymentFormDialog({
               <Input
                 id="studentSearch"
                 type="text"
-                placeholder={t("searchStudent") || "Search student name, class, or phone..."}
+                placeholder={t("searchStudent")}
                 value={studentSearchTerm}
                 onChange={(e) => {
                   const value = e.target.value;
@@ -462,7 +462,7 @@ export function PaymentFormDialog({
                   type="button"
                   onClick={clearStudentSelection}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-                  title={t("clear") || "Clear selection"}
+                  title={t("clear")}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -478,7 +478,7 @@ export function PaymentFormDialog({
                     <div className="flex items-center justify-center gap-2">
                       <div className="w-4 h-4 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
                       <span className="text-sm text-slate-600 dark:text-slate-400">
-                        {t("searching") || "Searching..."}
+                        {t("searching")}
                       </span>
                     </div>
                   </div>
@@ -505,11 +505,11 @@ export function PaymentFormDialog({
                   ))
                 ) : studentSearchTerm ? (
                   <div className="px-3 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
-                    {t("noStudentsFound") || "No students found"}
+                    {t("noStudentsFound")}
                   </div>
                 ) : (
                   <div className="px-3 py-4 text-center text-sm text-slate-500 dark:text-slate-400">
-                    {t("typeToSearch") || "Type to search for a student"}
+                    {t("typeToSearch")}
                   </div>
                 )}
               </div>
@@ -517,7 +517,7 @@ export function PaymentFormDialog({
           </div>
           {formSubmitted && !formData.studentId && (
             <p className="text-red-500 text-sm mt-1">
-              {t("studentRequired") || "Student is required"}
+              {t("studentRequired")}
             </p>
           )}
         </div>

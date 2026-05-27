@@ -613,7 +613,7 @@ export default function PaymentsPage() {
             disabled={!canCreatePayments}
             title={
               !canCreatePayments
-                ? t("noPermission") || "No permission to create payments"
+                ? t("noPermission")
                 : ""
             }
           >
@@ -781,7 +781,7 @@ export default function PaymentsPage() {
         <FilterReset
           onClick={() => { setSearchInput(""); setSearchTerm(""); setFilterStatus("all"); setFilterPaymentMethod("all"); setFilterClassId("all"); setCurrentPage(1); qc.invalidateQueries({ queryKey: ["payments"] }); }}
           show={searchInput !== "" || filterStatus !== "all" || filterPaymentMethod !== "all" || filterClassId !== "all"}
-          label={t("reset") || "Reset"}
+          label={t("reset")}
         />
       </FilterBar>
 

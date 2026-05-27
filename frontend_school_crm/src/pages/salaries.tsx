@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,11 @@ export default function SalariesPage() {
     notes: "",
   });
 
+  const firstBranchLoadRef = useRef(true);
+  const financialMonthKey = currentBranch?.currentFinancialMonth
+    ? `${currentBranch.currentFinancialMonth.year}-${currentBranch.currentFinancialMonth.month}`
+    : undefined;
+
   useEffect(() => {
     if (router.isReady) {
       const page = router.query.page ? parseInt(router.query.page as string, 10) : 1;
@@ -91,21 +96,16 @@ export default function SalariesPage() {
   }, [router.isReady, router.query.page]);
 
   useEffect(() => {
+    if (!currentBranch?.id) return;
     setIsLoading(true);
-    loadData().finally(() => setIsLoading(false));
-  }, []);
-
-  // Reload data when branch changes
-  useEffect(() => {
-    const handleBranchChange = async () => {
-      setIsLoading(true);
+    if (!firstBranchLoadRef.current) {
       setCurrentPage(1);
       setSelectedMonth("");
-      loadData().finally(() => setIsLoading(false));
-    };
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
+    }
+    firstBranchLoadRef.current = false;
+    loadData().finally(() => setIsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentBranch?.id, financialMonthKey]);
 
   // Reload data when month/year changes
   useEffect(() => {
@@ -231,7 +231,7 @@ export default function SalariesPage() {
         await loadData();
         notify.success(t("deleted"), t("salaryRecordDeleted"));
       } catch (error) {
-        notify.error(t("error"), t("failedToDeleteSalary") || "Failed to delete salary");
+        notify.error(t("error"), t("failedToDeleteSalary"));
       } finally {
         setIsDeleteLoading(false);
         setDeleteConfirmId(null);
@@ -467,7 +467,7 @@ export default function SalariesPage() {
             className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
             onClick={() => { resetForm(); setIsDialogOpen(true); }}
             disabled={!canCreateSalaries}
-            title={!canCreateSalaries ? t("noPermission") || "No permission to create salaries" : ""}
+            title={!canCreateSalaries ? t("noPermission") : ""}
           >
             <Plus className="w-4 h-4 mr-2" />
             {t("recordSalaryPayment")}
@@ -476,7 +476,7 @@ export default function SalariesPage() {
           <FormDialog
             open={isDialogOpen}
             onOpenChange={setIsDialogOpen}
-            title={editingSalaryId ? t("edit") || "Edit" : t("recordSalaryPayment")}
+            title={editingSalaryId ? t("edit") : t("recordSalaryPayment")}
             onSubmit={handleSubmit}
             submitLabel={editingSalaryId ? t("update") : t("recordSalaryPayment")}
             submittingLabel={t("recording")}
@@ -635,7 +635,7 @@ export default function SalariesPage() {
             )}
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               {!isLoading && unpaidTeacherCount > 0
-                ? `${unpaidTeacherCount} ${t("teachersNotPaid") || "teachers not paid"}`
+                ? `${unpaidTeacherCount} ${t("teachersNotPaid")}`
                 : t("unpaidSalariesLabel")}
             </p>
           </CardContent>
@@ -674,7 +674,7 @@ export default function SalariesPage() {
             <SelectItem value="partial">{t("partialPaid")}</SelectItem>
           </SelectContent>
         </Select>
-        <FilterReset onClick={() => { setSearchTerm(""); setFilterStatus("all"); setCurrentPage(1); }} show={searchTerm !== "" || filterStatus !== "all"} label={t("reset") || "Reset"} />
+        <FilterReset onClick={() => { setSearchTerm(""); setFilterStatus("all"); setCurrentPage(1); }} show={searchTerm !== "" || filterStatus !== "all"} label={t("reset")} />
       </FilterBar>
 
       {/* Table */}
@@ -684,6 +684,7 @@ export default function SalariesPage() {
             columns={columns}
             data={paginatedSalaries}
             loading={isLoading}
+            emptyIcon={Wallet}
             emptyTitle={t("noSalaryRecordsFound")}
             pagination={{
               page: currentPage,
@@ -779,10 +780,10 @@ export default function SalariesPage() {
               {isDeleteLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("deleting") || "Deleting..."}
+                  {t("deleting")}
                 </>
               ) : (
-                t("delete") || "Delete"
+                t("delete")
               )}
             </Button>
           </div>

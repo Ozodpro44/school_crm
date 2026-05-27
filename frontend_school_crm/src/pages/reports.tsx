@@ -80,6 +80,7 @@ export default function ReportsPage() {
       setIsLoading(false);
       return;
     }
+    if (!currentBranch?.id) return;
 
     setIsLoading(true);
     const timer = setTimeout(async () => {
@@ -88,12 +89,11 @@ export default function ReportsPage() {
       setIsLoading(false);
     }, 300);
     return () => clearTimeout(timer);
-  }, [canViewReports, router]);
+  }, [canViewReports, currentBranch?.id]);
 
   // Apply default dates when branch data loads
   useEffect(() => {
     if (branchData && !debtorMonth) {
-      console.log("Setting default dates with branchData:", branchData);
       setDefaultDates();
     }
   }, [branchData]);
@@ -396,13 +396,6 @@ export default function ReportsPage() {
 
       const yearNum = parseInt(debtorYear, 10);
 
-      console.log("Debtors Report Query Params:", {
-        branchId,
-        debtorMonth,
-        debtorYear,
-        yearNum,
-      });
-
       const result = await runReportJob("debtors_report", {
         branchId,
         month: debtorMonth,
@@ -411,8 +404,6 @@ export default function ReportsPage() {
       });
 
       const items = Array.isArray(result) ? result : [];
-
-      console.log("Debtors Report Response:", items);
 
       const data = items.map((item) => ({
         id: item.id,
@@ -426,7 +417,6 @@ export default function ReportsPage() {
         status: item.status,
       }));
 
-      console.log("Processed Debtors Data:", data);
 
       const total = data.reduce((sum, item) => sum + item.dueAmount, 0);
       setSummary({
@@ -531,25 +521,25 @@ export default function ReportsPage() {
 
       setReportData([
         {
-          label: t("totalIncome") || "Total Income",
+          label: t("totalIncome"),
           amount: financialSummary.totalIncome,
           type: "income",
           count: 0,
         },
         {
-          label: t("totalSalaries") || "Total Salaries",
+          label: t("totalSalaries"),
           amount: financialSummary.totalSalaries,
           type: "expense",
           count: 0,
         },
         {
-          label: t("totalExpenses") || "Total Expenses",
+          label: t("totalExpenses"),
           amount: financialSummary.totalExpenses,
           type: "expense",
           count: 0,
         },
         {
-          label: t("netProfit") || "Net Profit",
+          label: t("netProfit"),
           amount: profit,
           type: profit >= 0 ? "profit" : "loss",
           count: 0,
@@ -613,7 +603,7 @@ export default function ReportsPage() {
       if (reportType === "income") {
         csv = `${t("financialSummary")}\n`;
         csv += `${t("dateRange")}: ${periodLabel}\n\n`;
-        csv += `${t("label") || "Label"},${t("amount") || "Amount"}\n`;
+        csv += `${t("label")},${t("amount")}\n`;
         reportData.forEach((item) => {
           csv += `${item.label},${item.amount}\n`;
         });
@@ -621,49 +611,49 @@ export default function ReportsPage() {
         let columns: string[] = [];
         if (reportType === "debtors") {
           columns = [
-            t("fullName") || "Student Name",
-            t("class") || "Class",
-            t("month") || "Month",
-            t("year") || "Year",
-            t("monthlyPayment") || "Monthly Payment",
-            t("paidAmount") || "Paid Amount",
-            t("dueAmount") || "Due Amount",
-            t("status") || "Status",
+            t("fullName"),
+            t("class"),
+            t("month"),
+            t("year"),
+            t("monthlyPayment"),
+            t("paidAmount"),
+            t("dueAmount"),
+            t("status"),
           ];
         } else if (reportType === "expenses") {
           columns = [
-            t("title") || "Title",
-            t("category") || "Category",
-            t("amount") || "Amount",
-            t("paymentMethod") || "Payment Method",
-            t("date") || "Date",
-            t("notes") || "Notes",
+            t("title"),
+            t("category"),
+            t("amount"),
+            t("paymentMethod"),
+            t("date"),
+            t("notes"),
           ];
         } else if (reportType === "salary") {
           columns = [
-            t("teacherName") || "Teacher Name",
-            t("amount") || "Amount",
-            t("month") || "Month",
-            t("year") || "Year",
-            t("status") || "Status",
-            t("paidDate") || "Paid Date",
-            t("addedBy") || "Added By",
+            t("teacherName"),
+            t("amount"),
+            t("month"),
+            t("year"),
+            t("status"),
+            t("paidDate"),
+            t("addedBy"),
           ];
         } else {
           columns = [
-            t("fullName") || "Student Name",
-            t("class") || "Class",
-            t("amount") || "Amount",
-            t("month") || "Month",
-            t("year") || "Year",
-            t("status") || "Status",
-            t("paidDate") || "Paid Date",
-            t("addedBy") || "Added By",
+            t("fullName"),
+            t("class"),
+            t("amount"),
+            t("month"),
+            t("year"),
+            t("status"),
+            t("paidDate"),
+            t("addedBy"),
           ];
         }
 
         csv = `${t(reportType + "Report") || reportType.toUpperCase()}\n`;
-        csv += `${t("dateRange") || "Period"}: ${periodLabel}\n\n`;
+        csv += `${t("dateRange")}: ${periodLabel}\n\n`;
         csv += columns.join(",") + "\n";
 
         reportData.forEach((item) => {
@@ -704,15 +694,15 @@ export default function ReportsPage() {
       : `${paymentMonth}/${paymentYear}`;
 
     const titles: Record<string, string> = {
-      payment: t("studentPayments") || "Payment Report",
-      salary:  t("teacherSalaries") || "Salary Report",
-      debtors: t("studentDebtors") || "Debtors Report",
-      income:  t("financialSummary") || "Financial Summary",
-      expenses: t("expensesReport") || "Expenses Report",
+      payment: t("studentPayments"),
+      salary:  t("teacherSalaries"),
+      debtors: t("studentDebtors"),
+      income:  t("financialSummary"),
+      expenses: t("expensesReport"),
     };
 
     const title = titles[reportType] || reportType;
-    const subtitle = `${t("period") || "Period"}: ${periodLabel}`;
+    const subtitle = `${t("period")}: ${periodLabel}`;
     const filename = `${reportType}-report-${periodLabel}`;
 
     let columns: PrintColumn[] = [];
@@ -720,53 +710,53 @@ export default function ReportsPage() {
 
     if (reportType === "payment") {
       columns = [
-        { header: t("fullName") || "Student", key: "studentName" },
-        { header: t("class") || "Class", key: "className" },
-        { header: t("amount") || "Amount", key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("month") || "Month", key: "month", align: "center" },
-        { header: t("year") || "Year", key: "year", align: "center" },
-        { header: t("status") || "Status", key: "status", align: "center" },
-        { header: t("paidDate") || "Paid Date", key: "paidDate" },
-        { header: t("addedBy") || "Added By", key: "addedBy" },
+        { header: t("fullName"), key: "studentName" },
+        { header: t("class"), key: "className" },
+        { header: t("amount"), key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("month"), key: "month", align: "center" },
+        { header: t("year"), key: "year", align: "center" },
+        { header: t("status"), key: "status", align: "center" },
+        { header: t("paidDate"), key: "paidDate" },
+        { header: t("addedBy"), key: "addedBy" },
       ];
       data = reportData;
     } else if (reportType === "salary") {
       columns = [
-        { header: t("teacherName") || "Teacher", key: "teacherName" },
-        { header: t("amount") || "Amount", key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("month") || "Month", key: "month", align: "center" },
-        { header: t("year") || "Year", key: "year", align: "center" },
-        { header: t("status") || "Status", key: "status", align: "center" },
-        { header: t("paidDate") || "Paid Date", key: "paidDate" },
-        { header: t("addedBy") || "Added By", key: "addedBy" },
+        { header: t("teacherName"), key: "teacherName" },
+        { header: t("amount"), key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("month"), key: "month", align: "center" },
+        { header: t("year"), key: "year", align: "center" },
+        { header: t("status"), key: "status", align: "center" },
+        { header: t("paidDate"), key: "paidDate" },
+        { header: t("addedBy"), key: "addedBy" },
       ];
       data = reportData;
     } else if (reportType === "debtors") {
       columns = [
-        { header: t("fullName") || "Student", key: "studentName" },
-        { header: t("class") || "Class", key: "className" },
-        { header: t("month") || "Month", key: "month", align: "center" },
-        { header: t("year") || "Year", key: "year", align: "center" },
-        { header: t("monthlyPayment") || "Monthly", key: "monthlyPayment", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("paid") || "Paid", key: "paidAmount", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("due") || "Due", key: "dueAmount", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("status") || "Status", key: "status", align: "center" },
+        { header: t("fullName"), key: "studentName" },
+        { header: t("class"), key: "className" },
+        { header: t("month"), key: "month", align: "center" },
+        { header: t("year"), key: "year", align: "center" },
+        { header: t("monthlyPayment"), key: "monthlyPayment", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("paid"), key: "paidAmount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("due"), key: "dueAmount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("status"), key: "status", align: "center" },
       ];
       data = reportData;
     } else if (reportType === "income") {
       columns = [
-        { header: t("label") || "Label", key: "label" },
-        { header: t("amount") || "Amount", key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("label"), key: "label" },
+        { header: t("amount"), key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
       ];
       data = reportData;
     } else if (reportType === "expenses") {
       columns = [
-        { header: t("title") || "Title", key: "title" },
-        { header: t("category") || "Category", key: "category" },
-        { header: t("amount") || "Amount", key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
-        { header: t("paymentMethod") || "Method", key: "paymentMethod", align: "center" },
-        { header: t("date") || "Date", key: "date" },
-        { header: t("description") || "Notes", key: "description" },
+        { header: t("title"), key: "title" },
+        { header: t("category"), key: "category" },
+        { header: t("amount"), key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("paymentMethod"), key: "paymentMethod", align: "center" },
+        { header: t("date"), key: "date" },
+        { header: t("description"), key: "description" },
       ];
       data = reportData;
     }
@@ -834,9 +824,9 @@ export default function ReportsPage() {
     return (
       <div className="flex flex-col items-center justify-center h-96 space-y-4">
         <AlertCircle className="w-16 h-16 text-red-500" />
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("forbidden") || "Access denied"}</h2>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("forbidden")}</h2>
         <p className="text-slate-600 dark:text-slate-400 text-center max-w-md">
-          {t("noPermissionReports") || "You don't have permission to view reports."}
+          {t("noPermissionReports")}
         </p>
       </div>
     );
@@ -846,10 +836,10 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-display text-slate-900 dark:text-slate-100">
-          {t("reports") || "Reports"}
+          {t("reports")}
         </h1>
         <p className="text-slate-600 dark:text-slate-400 mt-1">
-          {t("reportsSubtitle") || t("generateDetailedReports") || "Generate detailed reports with custom date ranges"}
+          {t("reportsSubtitle") || t("generateDetailedReports")}
         </p>
       </div>
 
@@ -886,7 +876,7 @@ export default function ReportsPage() {
                     {t("financialSummary")}
                   </SelectItem>
                   <SelectItem value="forecast">
-                    {t("financialForecast") || "Financial Forecast"}
+                    {t("financialForecast")}
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -894,7 +884,7 @@ export default function ReportsPage() {
 
             {reportType !== "debtors" && reportType !== "forecast" && (
               <div className="space-y-2">
-                <Label htmlFor="paymentMonth">{t("month") || "Month"}</Label>
+                <Label htmlFor="paymentMonth">{t("month")}</Label>
                 <div className="flex gap-2">
                   <Select value={paymentMonth} onValueChange={setPaymentMonth}>
                     <SelectTrigger className="flex-1">
@@ -1002,11 +992,7 @@ export default function ReportsPage() {
                     min="2000"
                     max="2099"
                     value={debtorYear || ""}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      console.log("Debtor year changed to:", val);
-                      setDebtorYear(val);
-                    }}
+                    onChange={(e) => setDebtorYear(e.target.value)}
                   />
                 </div>
               </>
@@ -1019,7 +1005,7 @@ export default function ReportsPage() {
               variant="outline"
               onClick={downloadReport}
               disabled={(reportData.length === 0 && reportType !== "forecast") || isDownloading}
-              title={t("downloadCSV") || "Download CSV"}
+              title={t("downloadCSV")}
             >
               {isDownloading ? (
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -1035,10 +1021,10 @@ export default function ReportsPage() {
                 variant="outline"
                 onClick={handleExportCSV}
                 disabled={reportData.length === 0}
-                title={t("downloadExcel") || "Download Excel-compatible CSV"}
+                title={t("downloadExcel")}
               >
                 <FileDown className="w-4 h-4 mr-2" />
-                {t("excel") || "Excel"}
+                {t("excel")}
               </Button>
             )}
 
@@ -1047,11 +1033,11 @@ export default function ReportsPage() {
               <Button
                 onClick={handleExportPDF}
                 disabled={reportData.length === 0}
-                title={t("exportPDF") || "Export PDF"}
+                title={t("exportPDF")}
                 className="bg-brand hover:bg-brand-hover"
               >
                 <Printer className="w-4 h-4 mr-2" />
-                {t("printPDF") || "Print / PDF"}
+                {t("printPDF")}
               </Button>
             )}
           </div>
@@ -1112,7 +1098,7 @@ export default function ReportsPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                     <DollarSign className="w-3.5 h-3.5" />
-                    {t("expectedMonthlyIncome") || "Expected Monthly Income"}
+                    {t("expectedMonthlyIncome")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1120,7 +1106,7 @@ export default function ReportsPage() {
                     {formatCurrency(forecastData.expectedMonthlyIncome)}
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    {forecastData.activeStudentCount} {t("activeStudents") || "active students"} · {t("avg") || "avg"} {formatCurrency(forecastData.avgMonthlyPayment)}
+                    {forecastData.activeStudentCount} {t("activeStudents")} · {t("avg")} {formatCurrency(forecastData.avgMonthlyPayment)}
                   </p>
                 </CardContent>
               </Card>
@@ -1129,7 +1115,7 @@ export default function ReportsPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                     <TrendingUp className="w-3.5 h-3.5" />
-                    {t("actualIncomeThisMonth") || "Actual Income (This Month)"}
+                    {t("actualIncomeThisMonth")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1138,7 +1124,7 @@ export default function ReportsPage() {
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
                     {forecastData.expectedMonthlyIncome > 0
-                      ? `${Math.round((forecastData.actualIncomeThisMonth / forecastData.expectedMonthlyIncome) * 100)}% ${t("ofExpected") || "of expected"}`
+                      ? `${Math.round((forecastData.actualIncomeThisMonth / forecastData.expectedMonthlyIncome) * 100)}% ${t("ofExpected")}`
                       : "—"}
                   </p>
                 </CardContent>
@@ -1148,7 +1134,7 @@ export default function ReportsPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                     <TrendingDown className="w-3.5 h-3.5" />
-                    {t("totalExpensesThisMonth") || "Total Expenses (This Month)"}
+                    {t("totalExpensesThisMonth")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1156,7 +1142,7 @@ export default function ReportsPage() {
                     {formatCurrency(forecastData.totalExpensesThisMonth)}
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    {t("salaries") || "Salaries"} + {t("expenses") || "expenses"}
+                    {t("salaries")} + {t("expenses")}
                   </p>
                 </CardContent>
               </Card>
@@ -1165,7 +1151,7 @@ export default function ReportsPage() {
                 <CardHeader className="pb-2">
                   <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
                     <Users className="w-3.5 h-3.5" />
-                    {t("projectedSalaryCosts") || "Projected Salary Costs"}
+                    {t("projectedSalaryCosts")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1173,7 +1159,7 @@ export default function ReportsPage() {
                     {formatCurrency(forecastData.projectedSalaryCosts)}
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
-                    {t("nextMonthEstimate") || "based on active teachers"}
+                    {t("nextMonthEstimate")}
                   </p>
                 </CardContent>
               </Card>
@@ -1182,16 +1168,16 @@ export default function ReportsPage() {
             {/* Break-even analysis */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle>{t("breakEvenAnalysis") || "Break-Even Analysis"}</CardTitle>
+                <CardTitle>{t("breakEvenAnalysis")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-4">
                   <div className={`flex items-center gap-2 text-sm font-semibold px-3 py-1.5 rounded-full ${forecastData.isBreakingEven ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
                     {forecastData.isBreakingEven ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                    {forecastData.isBreakingEven ? (t("profitable") || "Profitable") : (t("operatingAtLoss") || "Operating at loss")}
+                    {forecastData.isBreakingEven ? (t("profitable")) : (t("operatingAtLoss"))}
                   </div>
                   <span className="text-sm text-slate-500">
-                    {t("expensesCoverRate") || "Expenses cover"} {Math.round(forecastData.breakEvenRate)}% {t("ofExpectedIncome") || "of expected income"}
+                    {t("expensesCoverRate")} {Math.round(forecastData.breakEvenRate)}% {t("ofExpectedIncome")}
                   </span>
                 </div>
                 <div className="mt-4 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -1210,7 +1196,7 @@ export default function ReportsPage() {
             {/* 6-month expected vs actual chart */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle>{t("sixMonthTrend") || "6-Month Trend: Expected vs Actual"}</CardTitle>
+                <CardTitle>{t("sixMonthTrend")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -1220,9 +1206,9 @@ export default function ReportsPage() {
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatCurrency(v)} width={90} />
                     <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar dataKey="expectedIncome" name={t("expectedIncome") || "Expected"} fill="#6366f1" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="actualIncome" name={t("actualIncome") || "Actual Income"} fill="#10b981" radius={[3, 3, 0, 0]} />
-                    <Bar dataKey="actualExpenses" name={t("actualExpenses") || "Actual Expenses"} fill="#f87171" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="expectedIncome" name={t("expectedIncome")} fill="#6366f1" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="actualIncome" name={t("actualIncome")} fill="#10b981" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="actualExpenses" name={t("actualExpenses")} fill="#f87171" radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -1232,7 +1218,7 @@ export default function ReportsPage() {
           <Card>
             <CardContent className="py-16 text-center text-slate-400">
               <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">{t("loadingForecast") || "Loading forecast data…"}</p>
+              <p className="text-sm">{t("loadingForecast")}</p>
             </CardContent>
           </Card>
         )
@@ -1284,7 +1270,7 @@ export default function ReportsPage() {
             {/* Bar Chart */}
             <Card>
               <CardHeader>
-                <CardTitle>{t("incomeVsExpenses") || "Income vs Expenses"}</CardTitle>
+                <CardTitle>{t("incomeVsExpenses")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -1304,7 +1290,7 @@ export default function ReportsPage() {
             {paymentMethodsData.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>{t("incomeByPaymentMethod") || "Income by Payment Method"}</CardTitle>
+                  <CardTitle>{t("incomeByPaymentMethod")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -1547,8 +1533,8 @@ export default function ReportsPage() {
               {reportData.length === 0 && (
                 <EmptyState
                   icon={FileText}
-                  title={t("noDataFound") || "No data found"}
-                  description={t("generateReportFirst") || "Adjust filters or pick a different period to see results."}
+                  title={t("noDataFound")}
+                  description={t("generateReportFirst")}
                 />
               )}
             </div>
@@ -1558,7 +1544,7 @@ export default function ReportsPage() {
               <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-4">
                   <Label className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("perPage") || "Per Page"}
+                    {t("perPage")}
                   </Label>
                   <Select value={limit.toString()} onValueChange={(val) => setLimit(parseInt(val))}>
                     <SelectTrigger className="w-20">
@@ -1573,7 +1559,7 @@ export default function ReportsPage() {
                     </SelectContent>
                   </Select>
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("showing") || "Showing"} {(page - 1) * limit + 1} {t("to") || "to"} {Math.min(page * limit, total)} {t("of") || "of"} {total}
+                    {t("showing")} {(page - 1) * limit + 1} {t("to")} {Math.min(page * limit, total)} {t("of")} {total}
                   </span>
                 </div>
 
@@ -1586,10 +1572,10 @@ export default function ReportsPage() {
                     className="h-8"
                   >
                     <ChevronLeft className="w-4 h-4" />
-                    <span className="hidden sm:inline ml-1">{t("previous") || "Previous"}</span>
+                    <span className="hidden sm:inline ml-1">{t("previous")}</span>
                   </Button>
                   <div className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("page") || "Page"} {page} {t("of") || "of"} {totalPages}
+                    {t("page")} {page} {t("of")} {totalPages}
                   </div>
                   <Button
                     variant="outline"
@@ -1598,7 +1584,7 @@ export default function ReportsPage() {
                     disabled={page === totalPages || totalPages === 0}
                     className="h-8"
                   >
-                    <span className="hidden sm:inline mr-1">{t("next") || "Next"}</span>
+                    <span className="hidden sm:inline mr-1">{t("next")}</span>
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                 </div>

@@ -399,7 +399,7 @@ export default function HomePage() {
           tone="purple"
           label={t("teachers")}
           value={stats.totalTeachers}
-          hint={t("activeTeachers") || "Faol o'qituvchilar"}
+          hint={t("activeTeachers")}
           loading={isLoading}
         />
         <StatCard
@@ -407,7 +407,7 @@ export default function HomePage() {
           tone="green"
           label={t("totalIncome")}
           value={formatCurrency(stats.totalIncome)}
-          hint={t("ushbuOyUchun") || "Ushbu oy uchun"}
+          hint={t("ushbuOyUchun")}
           loading={isLoading}
         />
         <StatCard
@@ -505,12 +505,12 @@ export default function HomePage() {
         </Card>
 
         {/* Recent activity feed */}
-        <SectionErrorBoundary label={t("recentActivity") || "Recent activity"}>
+        <SectionErrorBoundary label={t("recentActivity")}>
           <RecentActivityFeed
             entries={recentActivity}
             loading={isAuditLoading}
-            title={t("recentActivity") || "Recent activity"}
-            emptyLabel={t("noRecentActivity") || "No recent activity yet"}
+            title={t("recentActivity")}
+            emptyLabel={t("noRecentActivity")}
             limit={5}
           />
         </SectionErrorBoundary>
@@ -526,7 +526,7 @@ export default function HomePage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
               <TrendingUp className="w-4 h-4 text-emerald-500" />
-              {t("collectionRate") || "Collection Rate"}
+              {t("collectionRate")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -538,7 +538,7 @@ export default function HomePage() {
               className="mt-2 h-2"
             />
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {t("collectionRateDesc") || "Paid / Expected"}
+              {t("collectionRateDesc")}
             </p>
           </CardContent>
         </Card>
@@ -548,7 +548,7 @@ export default function HomePage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
               <UserMinus className="w-4 h-4 text-red-500" />
-              {t("studentChurn") || "Students Left"}
+              {t("studentChurn")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -556,10 +556,10 @@ export default function HomePage() {
               {stats.churnedStudents}
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {t("churnThisMonth") || "This month"}
+              {t("churnThisMonth")}
               {" · "}
               <span className="text-slate-400">
-                {stats.prevChurnedStudents} {t("churnLastMonth") || "last month"}
+                {stats.prevChurnedStudents} {t("churnLastMonth")}
               </span>
             </p>
           </CardContent>
@@ -570,7 +570,7 @@ export default function HomePage() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
               <Award className="w-4 h-4 text-purple-500" />
-              {t("salaryPayoutPct") || "Salary Payout"}
+              {t("salaryPayoutPct")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -582,7 +582,7 @@ export default function HomePage() {
               className="mt-2 h-2"
             />
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {t("salaryPayoutDesc") || "Paid / Total salaries"}
+              {t("salaryPayoutDesc")}
             </p>
           </CardContent>
         </Card>
@@ -598,7 +598,7 @@ export default function HomePage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingDown className="w-5 h-5 text-red-500" />
-              {t("topDebtors") || "Top Debtors"}
+              {t("topDebtors")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -636,7 +636,7 @@ export default function HomePage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5 text-orange-500" />
-              {t("unpaidByClass") || "Debtors by Class"}
+              {t("unpaidByClass")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -655,7 +655,7 @@ export default function HomePage() {
                       {c.className}
                     </p>
                     <span className="text-sm font-bold text-orange-600 dark:text-orange-400">
-                      {c.count} {t("debtors") || "debtors"}
+                      {c.count} {t("debtors")}
                     </span>
                   </div>
                 ))}
@@ -701,7 +701,7 @@ export default function HomePage() {
           </div>
         </CardHeader>
         <CardContent className="px-2 md:px-6">
-          <SectionErrorBoundary label={t("financialOverview") || "Chart"}>
+          <SectionErrorBoundary label={t("financialOverview")}>
             <FinancialChart data={chartData} />
           </SectionErrorBoundary>
         </CardContent>

@@ -69,7 +69,7 @@ export default function BranchesOverviewPage() {
     return (
       <div className="p-8 text-center text-slate-500">
         <Building2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
-        <p>{t("noPermission") || "You do not have permission to view this page."}</p>
+        <p>{t("noPermission")}</p>
       </div>
     );
   }
@@ -89,10 +89,10 @@ export default function BranchesOverviewPage() {
       <div>
         <h1 className="text-display text-brand-gradient flex items-center gap-3">
           <BarChart2 className="w-8 h-8 text-indigo-600" />
-          {t("branchesOverview") || "Multi-Branch Overview"}
+          {t("branchesOverview")}
         </h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-          {t("branchesOverviewDesc") || "Compare revenue, students, and collection rate across all your branches"}
+          {t("branchesOverviewDesc")}
         </p>
       </div>
 
@@ -102,7 +102,7 @@ export default function BranchesOverviewPage() {
           <div className="flex flex-wrap gap-3 items-end">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
-                {t("month") || "Month"}
+                {t("month")}
               </span>
               <Select value={month} onValueChange={setMonth}>
                 <SelectTrigger className="h-9 w-36">
@@ -122,7 +122,7 @@ export default function BranchesOverviewPage() {
             </div>
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
-                {t("year") || "Year"}
+                {t("year")}
               </span>
               <Input
                 type="number"
@@ -144,7 +144,7 @@ export default function BranchesOverviewPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
               <TrendingUp className="w-3.5 h-3.5" />
-              {t("totalRevenue") || "Total Revenue"}
+              {t("totalRevenue")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -156,7 +156,7 @@ export default function BranchesOverviewPage() {
               </div>
             )}
             <p className="text-xs text-slate-500 mt-1">
-              {branches.length} {t("branches") || "branches"}
+              {branches.length} {t("branches")}
             </p>
           </CardContent>
         </Card>
@@ -166,7 +166,7 @@ export default function BranchesOverviewPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5" />
-              {t("totalStudents") || "Total Active Students"}
+              {t("totalStudents")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -185,7 +185,7 @@ export default function BranchesOverviewPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
               <Trophy className="w-3.5 h-3.5" />
-              {t("topPerformingBranch") || "Top Performing Branch"}
+              {t("topPerformingBranch")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -213,14 +213,14 @@ export default function BranchesOverviewPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle>
-            {t("revenueByBranch") || "Revenue by Branch"}
+            {t("revenueByBranch")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
             <Skeleton className="h-64 w-full" />
           ) : chartData.length === 0 ? (
-            <EmptyState icon={Building2} title={t("noDataFound") || "No data found"} description={t("selectPeriodToSeeData") || "Select a period to see revenue data."} />
+            <EmptyState icon={Building2} title={t("noDataFound")} description={t("selectPeriodToSeeData")} />
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
@@ -231,7 +231,7 @@ export default function BranchesOverviewPage() {
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar
                   dataKey="revenue"
-                  name={t("revenue") || "Revenue"}
+                  name={t("revenue")}
                   fill="#6366f1"
                   radius={[4, 4, 0, 0]}
                 />
@@ -245,7 +245,7 @@ export default function BranchesOverviewPage() {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle>
-            {t("branchComparison") || "Branch Comparison"}
+            {t("branchComparison")}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -254,19 +254,19 @@ export default function BranchesOverviewPage() {
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    {t("branch") || "Branch"}
+                    {t("branch")}
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    {t("revenue") || "Revenue"}
+                    {t("revenue")}
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    {t("activeStudents") || "Students"}
+                    {t("activeStudents")}
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    {t("teachers") || "Teachers"}
+                    {t("teachers")}
                   </th>
                   <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    {t("collectionRate") || "Collection Rate"}
+                    {t("collectionRate")}
                   </th>
                 </tr>
               </thead>
@@ -285,7 +285,7 @@ export default function BranchesOverviewPage() {
                   <tr>
                     <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
                       <Building2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">{t("noDataFound") || "No branches found"}</p>
+                      <p className="text-sm">{t("noDataFound")}</p>
                     </td>
                   </tr>
                 ) : (
@@ -340,7 +340,7 @@ export default function BranchesOverviewPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle>
-              {t("studentCountByBranch") || "Active Students by Branch"}
+              {t("studentCountByBranch")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -353,13 +353,13 @@ export default function BranchesOverviewPage() {
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar
                   dataKey="students"
-                  name={t("activeStudents") || "Active Students"}
+                  name={t("activeStudents")}
                   fill="#10b981"
                   radius={[4, 4, 0, 0]}
                 />
                 <Bar
                   dataKey="collectionRate"
-                  name={t("collectionRate") || "Collection Rate (%)"}
+                  name={t("collectionRate")}
                   fill="#f59e0b"
                   radius={[4, 4, 0, 0]}
                 />

@@ -21,7 +21,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, MessageSquare, Users, CheckCircle, Clock } from "lucide-react";
+import { Send, MessageSquare, Users, CheckCircle } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import { formatDate } from "@/lib/utils";
 import { useBranch } from "@/context/BranchContext";
 
@@ -51,8 +52,9 @@ export default function MessagingPage() {
   const notify = useNotify();
 
   useEffect(() => {
+    if (!currentBranch?.id) return;
     loadData();
-  }, []);
+  }, [currentBranch?.id]);
 
   const loadData = async () => {
     const branchId = currentBranch?.id;
@@ -160,7 +162,7 @@ export default function MessagingPage() {
           {t("messaging")}
         </h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1">
-          Send Telegram messages to student parents
+          {t("messagingDescription")}
         </p>
       </div>
 
@@ -203,15 +205,15 @@ export default function MessagingPage() {
                   <Label>{t("useTemplate")}</Label>
                   <Select value={selectedTemplate} onValueChange={handleTemplateSelect}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select a template or write custom…" />
+                      <SelectValue placeholder={t("selectTemplateOrCustom")} />
                     </SelectTrigger>
                     <SelectContent>
                       {TEMPLATES.map((tmpl) => (
                         <SelectItem key={tmpl.key} value={tmpl.key}>
-                          {tmpl.key === "payment_due" ? "Payment reminder" :
-                           tmpl.key === "payment_received" ? "Payment received" :
-                           tmpl.key === "absent_notice" ? "Absence notice" :
-                           "Custom message"}
+                          {tmpl.key === "payment_due" ? t("templatePaymentDue") :
+                           tmpl.key === "payment_received" ? t("templatePaymentReceived") :
+                           tmpl.key === "absent_notice" ? t("templateAbsentNotice") :
+                           t("templateCustom")}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -221,12 +223,12 @@ export default function MessagingPage() {
                 <div className="space-y-2">
                   <Label>{t("message")} *</Label>
                   <Textarea
-                    placeholder="Write your message… Use {name} to insert student name."
+                    placeholder={t("writeMessagePlaceholder")}
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                     className="min-h-[120px]"
                   />
-                  <p className="text-xs text-slate-400">Use <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">{"{name}"}</code> to insert student name.</p>
+                  <p className="text-xs text-slate-400">{t("nameVariableHint")}</p>
                 </div>
 
                 <Button
@@ -272,7 +274,7 @@ export default function MessagingPage() {
                 </div>
 
                 <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-xs text-amber-700 dark:text-amber-300">
-                  Only students with a Telegram Chat ID set will receive messages. Set the chat ID on the student's profile.
+                  {t("telegramChatIdHint")}
                 </div>
               </CardContent>
             </Card>
@@ -284,9 +286,12 @@ export default function MessagingPage() {
         <div className="space-y-4">
           {history.length === 0 ? (
             <Card>
-              <CardContent className="py-12 text-center text-slate-500">
-                <MessageSquare className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                <p>{t("noMessagesYet")}</p>
+              <CardContent className="p-0">
+                <EmptyState
+                  icon={MessageSquare}
+                  title={t("noMessagesYet")}
+                  action={{ label: t("composeMessage"), onClick: () => setActiveTab("compose") }}
+                />
               </CardContent>
             </Card>
           ) : (

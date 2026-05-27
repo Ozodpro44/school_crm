@@ -24,18 +24,18 @@ export default function MonthYearSelector({
   const t = (key: string) => getTranslation(key, language);
 
   const monthNames: { [key: string]: string } = {
-    "01": t("january") || "Январь",
-    "02": t("february") || "Февраль",
-    "03": t("march") || "Март",
-    "04": t("april") || "Апрель",
-    "05": t("may") || "Май",
-    "06": t("june") || "Июнь",
-    "07": t("july") || "Июль",
-    "08": t("august") || "Август",
-    "09": t("september") || "Сентябрь",
-    "10": t("october") || "Октябрь",
-    "11": t("november") || "Ноябрь",
-    "12": t("december") || "Декабрь",
+    "01": t("january"),
+    "02": t("february"),
+    "03": t("march"),
+    "04": t("april"),
+    "05": t("may"),
+    "06": t("june"),
+    "07": t("july"),
+    "08": t("august"),
+    "09": t("september"),
+    "10": t("october"),
+    "11": t("november"),
+    "12": t("december"),
   };
 
   const handlePrevMonth = () => {
@@ -84,12 +84,12 @@ export default function MonthYearSelector({
         </span>
         {isCurrentMonth && (
           <span className="ml-2 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded">
-            {t("current") || "текущий"}
+            {t("current")}
           </span>
         )}
         {isPastMonth && (
           <span className="ml-2 text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded">
-            {t("archive") || "архив"}
+            {t("archive")}
           </span>
         )}
       </div>
@@ -110,7 +110,7 @@ export default function MonthYearSelector({
           onClick={handleGoToCurrent}
           className="ml-2 text-xs"
         >
-          {t("goToCurrent") || "К текущему"}
+          {t("goToCurrent")}
         </Button>
       )}
     </div>

@@ -44,7 +44,7 @@ export function RecentActivityFeed({
   const t = (key: string) => getTranslation(key, language);
   const formatRelative = makeFormatRelative(t);
   const items = entries.slice(0, limit);
-  const defaultEmptyLabel = emptyLabel ?? (t("noRecentActivity") || "No recent activity");
+  const defaultEmptyLabel = emptyLabel ?? (t("noRecentActivity"));
 
   return (
     <Card className={cn("h-full flex flex-col", className)}>
@@ -117,10 +117,10 @@ function makeFormatRelative(t: (k: string) => string) {
   return function formatRelative(iso: string): string {
     const date = new Date(iso);
     const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
-    if (diffSec < 60) return t("justNow") || "just now";
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}${t("minAgo") || "m ago"}`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}${t("hourAgo") || "h ago"}`;
-    if (diffSec < 7 * 86400) return `${Math.floor(diffSec / 86400)}${t("dayAgo") || "d ago"}`;
+    if (diffSec < 60) return t("justNow");
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}${t("minAgo")}`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}${t("hourAgo")}`;
+    if (diffSec < 7 * 86400) return `${Math.floor(diffSec / 86400)}${t("dayAgo")}`;
     return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   };
 }

@@ -75,11 +75,9 @@ export default function SchedulePage() {
   const notify = useNotify();
 
   useEffect(() => {
+    if (!currentBranch?.id) return;
     loadData();
-    const handler = () => loadData();
-    window.addEventListener("branchChange", handler);
-    return () => window.removeEventListener("branchChange", handler);
-  }, []);
+  }, [currentBranch?.id]);
 
   const loadData = async () => {
     const branchId = currentBranch?.id;
@@ -289,9 +287,9 @@ export default function SchedulePage() {
           <CardContent className="pt-2">
             <EmptyState
               icon={Calendar}
-              title={t("noData") || "No schedule slots"}
-              description={t("addSlotHint") || "Add a time slot to build out your weekly schedule."}
-              action={{ label: t("addSlot") || "Add Slot", onClick: openAdd }}
+              title={t("noData")}
+              description={t("addSlotHint")}
+              action={{ label: t("addSlot"), onClick: openAdd }}
             />
           </CardContent>
         </Card>

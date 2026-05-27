@@ -133,8 +133,8 @@ export default function LoginPage() {
           <CardHeader className="pb-2 pt-6">
             <p className="text-center text-sm text-slate-500 dark:text-slate-400">
               {mode === "admin"
-                ? t("adminLoginSubtitle") || "Sign in to manage your school"
-                : t("teacherLoginSubtitle") || "Sign in to access your teacher portal"}
+                ? t("adminLoginSubtitle")
+                : t("teacherLoginSubtitle")}
             </p>
           </CardHeader>
           <CardContent className="pb-6">
@@ -188,7 +188,7 @@ export default function LoginPage() {
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={loading}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-50 transition-colors"
-                    aria-label={showPassword ? (t("hidePassword") || "Hide password") : (t("showPassword") || "Show password")}
+                    aria-label={showPassword ? (t("hidePassword")) : (t("showPassword"))}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>

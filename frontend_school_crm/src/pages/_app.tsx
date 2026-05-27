@@ -130,7 +130,7 @@ function OfflineBanner() {
             <span className="text-sm text-red-100">{t("offlineBannerDesc")}</span>
             {lastSyncAgo && (
               <span className="text-xs text-red-200 ml-2">
-                {t("lastUpdated") || "Last updated"} {lastSyncAgo}
+                {t("lastUpdated")} {lastSyncAgo}
               </span>
             )}
           </div>

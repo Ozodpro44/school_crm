@@ -27,29 +27,27 @@ export default function HelpPage() {
       <div className="space-y-8">
         <div>
           <h1 className="text-4xl font-bold text-brand-gradient">
-            {t("help") || "Help"} & {t("documentation") || "Documentation"}
+            {t("help")} & {t("documentation")}
           </h1>
           <p className="text-slate-600 dark:text-slate-400 mt-2">
-            {t("helpDescription") ||
-              "Complete guide to using the School Management System"}
+            {t("helpDescription")}
           </p>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>{t("gettingStarted") || "Getting Started"}</CardTitle>
+            <CardTitle>{t("gettingStarted")}</CardTitle>
           </CardHeader>
           <CardContent className="prose dark:prose-invert max-w-none">
             <p>
-              {t("gettingStartedText") ||
-                "Welcome to the Private School Management System! This comprehensive platform helps you manage all aspects of your school operations including students, teachers, classes, payments, and finances."}
+              {t("gettingStartedText")}
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>{t("featureGuide") || "Feature Guide"}</CardTitle>
+            <CardTitle>{t("featureGuide")}</CardTitle>
           </CardHeader>
           <CardContent>
             <Accordion type="single" collapsible className="w-full">
@@ -57,13 +55,13 @@ export default function HelpPage() {
                 <AccordionTrigger className="text-lg">
                   <div className="flex items-center gap-3">
                     <Users className="w-5 h-5 text-indigo-600" />
-                    {t("studentManagement") || "Student Management"}
+                    {t("studentManagement")}
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3">
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("addingStudents") || "Adding Students"}
+                      {t("addingStudents")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
                       {t("addingStudentsDesc") ||
@@ -72,11 +70,10 @@ export default function HelpPage() {
                   </div>
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("managingStudentStatus") || "Managing Student Status"}
+                      {t("managingStudentStatus")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
-                      {t("studentStatusHelp") ||
-                        "Students can have three statuses:"}
+                      {t("studentStatusHelp")}
                     </p>
                     <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600 dark:text-slate-400">
                       <li>
@@ -84,33 +81,33 @@ export default function HelpPage() {
                           variant="secondary"
                           className="bg-green-100 text-green-800"
                         >
-                          {t("active") || "Active"}
+                          {t("active")}
                         </Badge>{" "}
-                        - {t("activeStudentDesc") || "Currently enrolled"}
+                        - {t("activeStudentDesc")}
                       </li>
                       <li>
                         <Badge
                           variant="secondary"
                           className="bg-gray-100 text-gray-800"
                         >
-                          {t("left") || "Left"}
+                          {t("left")}
                         </Badge>{" "}
-                        - {t("leftStudentDesc") || "No longer enrolled"}
+                        - {t("leftStudentDesc")}
                       </li>
                       <li>
                         <Badge
                           variant="secondary"
                           className="bg-red-100 text-red-800"
                         >
-                          {t("suspended") || "Suspended"}
+                          {t("suspended")}
                         </Badge>{" "}
-                        - {t("suspendedDesc") || "Temporarily suspended"}
+                        - {t("suspendedDesc")}
                       </li>
                     </ul>
                   </div>
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("markingStudentsAsLeft") || "Marking Students as Left"}
+                      {t("markingStudentsAsLeft")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
                       {t("markingStudentsAsLeftDesc") ||
@@ -124,26 +121,24 @@ export default function HelpPage() {
                 <AccordionTrigger className="text-lg">
                   <div className="flex items-center gap-3">
                     <GraduationCap className="w-5 h-5 text-purple-600" />
-                    {t("teacherManagement") || "Teacher Management"}
+                    {t("teacherManagement")}
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3">
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("addingTeachers") || "Adding Teachers"}
+                      {t("addingTeachers")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
-                      {t("addingTeachersDesc") ||
-                        "Record teacher information including name, subjects, contact details, and monthly salary. You can assign multiple subjects to each teacher."}
+                      {t("addingTeachersDesc")}
                     </p>
                   </div>
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("assigningClasses") || "Assigning Classes"}
+                      {t("assigningClasses")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
-                      {t("assigningClassesDesc") ||
-                        "Teachers are assigned to classes through the Class Management section. Each class can have one class teacher."}
+                      {t("assigningClassesDesc")}
                     </p>
                   </div>
                 </AccordionContent>
@@ -153,27 +148,24 @@ export default function HelpPage() {
                 <AccordionTrigger className="text-lg">
                   <div className="flex items-center gap-3">
                     <BookOpen className="w-5 h-5 text-blue-600" />
-                    {t("classManagement") || "Class Management"}
+                    {t("classManagement")}
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3">
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("creatingClasses") || "Creating Classes"}
+                      {t("creatingClasses")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
-                      {t("creatingClassesDesc") ||
-                        "Create class sections (e.g., 7A, 8B, 9C) and assign a class teacher to each. The system automatically tracks student enrollment per class."}
+                      {t("creatingClassesDesc")}
                     </p>
                   </div>
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("switchingStudents") ||
-                        "Switching Students Between Classes"}
+                      {t("switchingStudents")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
-                      {t("switchingStudentsDesc") ||
-                        "You can move students from one class to another. Select the students, choose the target class, and use the Switch button to transfer them."}
+                      {t("switchingStudentsDesc")}
                     </p>
                   </div>
                 </AccordionContent>
@@ -183,41 +175,40 @@ export default function HelpPage() {
                 <AccordionTrigger className="text-lg">
                   <div className="flex items-center gap-3">
                     <DollarSign className="w-5 h-5 text-green-600" />
-                    {t("paymentTracking") || "Payment Tracking"}
+                    {t("paymentTracking")}
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3">
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("recordingPayments") || "Recording Payments"}
+                      {t("recordingPayments")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
-                      {t("recordingPaymentsDesc") ||
-                        "Track student fee payments by selecting the student, entering the amount, and marking the payment status. The system automatically generates invoice numbers."}
+                      {t("recordingPaymentsDesc")}
                     </p>
                   </div>
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("paymentStatus") || "Payment Status"}
+                      {t("paymentStatus")}
                     </h4>
                     <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600 dark:text-slate-400">
                       <li>
                         <Badge className="bg-green-100 text-green-800">
-                          {t("paid") || "Paid"}
+                          {t("paid")}
                         </Badge>{" "}
-                        - {t("paidDesc") || "Payment received"}
+                        - {t("paidDesc")}
                       </li>
                       <li>
                         <Badge className="bg-red-100 text-red-800">
-                          {t("unpaid") || "Unpaid"}
+                          {t("unpaid")}
                         </Badge>{" "}
-                        - {t("unpaidDesc") || "Payment pending"}
+                        - {t("unpaidDesc")}
                       </li>
                       <li>
                         <Badge className="bg-orange-100 text-orange-800">
-                          {t("partial") || "Partial"}
+                          {t("partial")}
                         </Badge>{" "}
-                        - {t("partialDesc") || "Partially paid"}
+                        - {t("partialDesc")}
                       </li>
                     </ul>
                   </div>
@@ -228,17 +219,16 @@ export default function HelpPage() {
                 <AccordionTrigger className="text-lg">
                   <div className="flex items-center gap-3">
                     <Wallet className="w-5 h-5 text-cyan-600" />
-                    {t("salaryManagement") || "Salary Management"}
+                    {t("salaryManagement")}
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3">
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("recordingSalaries") || "Recording Salaries"}
+                      {t("recordingSalaries")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
-                      {t("recordingSalariesDesc") ||
-                        "Track teacher salary payments monthly. The system auto-fills the amount based on the teacher's monthly salary but allows manual adjustments if needed."}
+                      {t("recordingSalariesDesc")}
                     </p>
                   </div>
                 </AccordionContent>
@@ -248,33 +238,30 @@ export default function HelpPage() {
                 <AccordionTrigger className="text-lg">
                   <div className="flex items-center gap-3">
                     <BarChart3 className="w-5 h-5 text-orange-600" />
-                    {t("reportsExport") || "Reports & Export"}
+                    {t("reportsExport")}
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="space-y-3">
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("generatingReports") || "Generating Reports"}
+                      {t("generatingReports")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
-                      {t("generatingReportsDesc") ||
-                        "Generate monthly or yearly financial reports showing income, expenses, and profit. Select the reporting period and export to PDF or CSV format."}
+                      {t("generatingReportsDesc")}
                     </p>
                   </div>
                   <div>
                     <h4 className="font-semibold mb-2">
-                      {t("exportOptions") || "Export Options"}
+                      {t("exportOptions")}
                     </h4>
                     <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600 dark:text-slate-400">
                       <li>
                         <strong>PDF:</strong>{" "}
-                        {t("pdfDesc") ||
-                          "Professional formatted reports for printing"}
+                        {t("pdfDesc")}
                       </li>
                       <li>
                         <strong>CSV:</strong>{" "}
-                        {t("csvDesc") ||
-                          "Spreadsheet data for further analysis in Excel"}
+                        {t("csvDesc")}
                       </li>
                     </ul>
                   </div>
@@ -287,7 +274,7 @@ export default function HelpPage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              {t("tipsAndBestPractices") || "Tips & Best Practices"}
+              {t("tipsAndBestPractices")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -296,11 +283,10 @@ export default function HelpPage() {
                 <HelpCircle className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-1" />
                 <div>
                   <h4 className="font-semibold mb-1">
-                    {t("regularDataBackups") || "Regular Data Backups"}
+                    {t("regularDataBackups")}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-400">
-                    {t("regularDataBackupsDesc") ||
-                      "Export your data regularly to CSV format as a backup. This system uses browser storage, so clearing browser data will remove all records."}
+                    {t("regularDataBackupsDesc")}
                   </p>
                 </div>
               </div>
@@ -308,11 +294,10 @@ export default function HelpPage() {
                 <HelpCircle className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-1" />
                 <div>
                   <h4 className="font-semibold mb-1">
-                    {t("useSearchFeatures") || "Use Search Features"}
+                    {t("useSearchFeatures")}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-400">
-                    {t("useSearchFeaturesDesc") ||
-                      "Every page has search functionality. Use it to quickly find students, teachers, or records."}
+                    {t("useSearchFeaturesDesc")}
                   </p>
                 </div>
               </div>
@@ -320,11 +305,10 @@ export default function HelpPage() {
                 <HelpCircle className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-1" />
                 <div>
                   <h4 className="font-semibold mb-1">
-                    {t("monitorDashboard") || "Monitor the Dashboard"}
+                    {t("monitorDashboard")}
                   </h4>
                   <p className="text-slate-600 dark:text-slate-400">
-                    {t("monitorDashboardDesc") ||
-                      "Check the dashboard daily for quick insights into pending payments, unpaid salaries, and overall financial health."}
+                    {t("monitorDashboardDesc")}
                   </p>
                 </div>
               </div>
@@ -334,25 +318,21 @@ export default function HelpPage() {
 
         <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30">
           <CardHeader>
-            <CardTitle>{t("needMoreHelp") || "Need More Help?"}</CardTitle>
+            <CardTitle>{t("needMoreHelp")}</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-slate-600 dark:text-slate-400 mb-4">
-              {t("needMoreHelpDesc") ||
-                "If you need additional assistance or have questions about specific features:"}
+              {t("needMoreHelpDesc")}
             </p>
             <ul className="list-disc list-inside space-y-2 text-slate-600 dark:text-slate-400">
               <li>
-                {t("checkReadme") ||
-                  "Check the README.md file for technical documentation"}
+                {t("checkReadme")}
               </li>
               <li>
-                {t("reviewSampleData") ||
-                  "Review the sample data to see how the system works"}
+                {t("reviewSampleData")}
               </li>
               <li>
-                {t("contactAdmin") ||
-                  "Contact your system administrator for school-specific setup"}
+                {t("contactAdmin")}
               </li>
             </ul>
           </CardContent>

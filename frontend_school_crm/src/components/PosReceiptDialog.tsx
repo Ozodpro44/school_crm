@@ -53,7 +53,7 @@ export function PosReceiptDialog({
     <Dialog open={data !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>{t("printReceipt") || "Print Receipt"}</DialogTitle>
+          <DialogTitle>{t("printReceipt")}</DialogTitle>
         </DialogHeader>
         {data && (
           <div className="space-y-4">
@@ -61,7 +61,7 @@ export function PosReceiptDialog({
               {/* Header */}
               <div className="text-center border-b border-dashed border-slate-300 dark:border-slate-700 print:border-slate-300 pb-2 mb-2">
                 <p className="font-bold text-lg print:text-base">
-                  {t("receipt") || "RECEIPT"}
+                  {t("receipt")}
                 </p>
                 <p className="text-xs text-slate-600 dark:text-slate-400 print:text-black print:text-opacity-70">
                   {branchName || "Branch"}
@@ -75,16 +75,16 @@ export function PosReceiptDialog({
               </div>
 
               {/* Student */}
-              <ReceiptRow label={t("student") || "Student"} value={data.student.fullName} />
-              <ReceiptRow label={t("class") || "Class"} value={data.className} divider />
+              <ReceiptRow label={t("student")} value={data.student.fullName} />
+              <ReceiptRow label={t("class")} value={data.className} divider />
 
               {/* Payment */}
               <ReceiptRow
-                label={t("period") || "Period"}
+                label={t("period")}
                 value={`${formatMonth(data.payment.month)} ${data.payment.year}`}
               />
               <ReceiptRow
-                label={t("status") || "Status"}
+                label={t("status")}
                 value={formatStatus(data.payment.status)}
                 divider
               />
@@ -92,14 +92,14 @@ export function PosReceiptDialog({
               {/* Amount */}
               <div className="border-b border-dashed border-slate-300 dark:border-slate-700 print:border-slate-300 pb-2 mb-2">
                 <div className="flex justify-between print:text-black">
-                  <span className="font-semibold">{t("amount") || "Amount"}:</span>
+                  <span className="font-semibold">{t("amount")}:</span>
                   <span className="font-bold">{formatCurrency(data.payment.amount)}</span>
                 </div>
               </div>
 
               {/* Method */}
               <ReceiptRow
-                label={t("method") || "Method"}
+                label={t("method")}
                 value={formatMethod(data.payment.paymentMethod)}
                 divider
               />

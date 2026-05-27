@@ -120,22 +120,22 @@ export default function AuditLogPage() {
   const columns: Column<AuditLogEntry>[] = [
     {
       key: "createdAt",
-      header: t("auditTime") || "Time",
+      header: t("auditTime"),
       cellClassName: "text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap w-40",
       render: (entry) => formatTime(entry.createdAt),
     },
     {
       key: "userName",
-      header: t("auditUser") || "User",
+      header: t("auditUser"),
       render: (entry) => (
         <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-          {entry.userName || <span className="text-slate-400 italic">{t("unknown") || "Unknown"}</span>}
+          {entry.userName || <span className="text-slate-400 italic">{t("unknown")}</span>}
         </span>
       ),
     },
     {
       key: "action",
-      header: t("action") || "Action",
+      header: t("action"),
       cellClassName: "w-24",
       render: (entry) => (
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${ACTION_COLORS[entry.action] ?? ""}`}>
@@ -145,7 +145,7 @@ export default function AuditLogPage() {
     },
     {
       key: "resource",
-      header: t("resource") || "Resource",
+      header: t("resource"),
       cellClassName: "w-28",
       render: (entry) => (
         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${RESOURCE_COLORS[entry.resource] ?? "bg-slate-100 text-slate-600"}`}>
@@ -155,13 +155,13 @@ export default function AuditLogPage() {
     },
     {
       key: "description",
-      header: t("description") || "Description",
+      header: t("description"),
       cellClassName: "text-sm text-slate-700 dark:text-slate-300 max-w-xs truncate",
       render: (entry) => entry.description,
     },
     {
       key: "resourceId",
-      header: t("resourceId") || "Resource ID",
+      header: t("resourceId"),
       cellClassName: "w-40",
       hideOnMobile: true,
       render: (entry) =>
@@ -181,10 +181,10 @@ export default function AuditLogPage() {
       <div>
         <h1 className="text-display text-brand-gradient flex items-center gap-3">
           <Shield className="w-8 h-8 text-indigo-600" />
-          {t("auditLog") || "Audit Log"}
+          {t("auditLog")}
         </h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
-          {t("auditLogDesc") || "Track who did what and when across your branch"}
+          {t("auditLogDesc")}
         </p>
       </div>
 
@@ -193,21 +193,21 @@ export default function AuditLogPage() {
         <FilterSearch
           value={search}
           onChange={setSearch}
-          placeholder={t("search") || "Search…"}
+          placeholder={t("search")}
         />
         <Select value={resource} onValueChange={setResource}>
           <SelectTrigger className={filterSelectClass("w-44")}>
-            <SelectValue placeholder={t("resource") || "Resource"} />
+            <SelectValue placeholder={t("resource")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">{t("allResources") || "All resources"}</SelectItem>
+            <SelectItem value="all">{t("allResources")}</SelectItem>
             {RESOURCES.map((r) => (
               <SelectItem key={r} value={r}>{resourceLabel(r)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-slate-400 whitespace-nowrap">{t("from") || "From"}</span>
+          <span className="text-xs text-slate-400 whitespace-nowrap">{t("from")}</span>
           <input
             type="date"
             value={from}
@@ -216,7 +216,7 @@ export default function AuditLogPage() {
           />
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-slate-400 whitespace-nowrap">{t("to") || "To"}</span>
+          <span className="text-xs text-slate-400 whitespace-nowrap">{t("to")}</span>
           <input
             type="date"
             value={to}
@@ -224,7 +224,7 @@ export default function AuditLogPage() {
             className="h-9 w-36 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500"
           />
         </div>
-        <FilterReset onClick={handleReset} show={resource !== "all" || !!from || !!to || !!search} label={t("reset") || "Reset"} />
+        <FilterReset onClick={handleReset} show={resource !== "all" || !!from || !!to || !!search} label={t("reset")} />
       </FilterBar>
 
       {/* Table */}
@@ -236,7 +236,7 @@ export default function AuditLogPage() {
                 <Skeleton className="h-4 w-32" />
               ) : (
                 <span>
-                  {total.toLocaleString()} {total === 1 ? (t("entry") || "entry") : (t("entries") || "entries")}
+                  {total.toLocaleString()} {total === 1 ? (t("entry")) : (t("entries"))}
                 </span>
               )}
             </CardTitle>
@@ -249,7 +249,7 @@ export default function AuditLogPage() {
             loading={loading}
             skeletonRows={8}
             emptyIcon={Shield}
-            emptyTitle={t("noAuditEntries") || "No audit entries found"}
+            emptyTitle={t("noAuditEntries")}
             pagination={{ page, limit: LIMIT, total }}
             onPageChange={setPage}
             renderCard={(entry) => (

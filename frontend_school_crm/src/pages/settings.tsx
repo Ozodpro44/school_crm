@@ -28,6 +28,7 @@ import { useSetLanguage } from "@/hooks/use-language";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { getSettings, updateSettings, UpdateSettingsRequest, switchBranchMonth, getBranch } from "@/lib/api";
 import { useBranch } from "@/context/BranchContext";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
 import { PageHeader } from "@/components/PageHeader";
 import {
@@ -55,6 +56,7 @@ export default function SettingsPage() {
   const notify = useNotify();
   const router = useRouter();
   const { currentBranch, refreshBranches } = useBranch();
+  const queryClient = useQueryClient();
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.role === "admin";
 
@@ -81,18 +83,18 @@ export default function SettingsPage() {
   const getMonthName = (month: number | string) => {
     const monthNum = typeof month === "string" ? parseInt(month) : month;
     const monthNames: { [key: number]: string } = {
-      1: t("january") || "Январь",
-      2: t("february") || "Февраль",
-      3: t("march") || "Март",
-      4: t("april") || "Апрель",
-      5: t("may") || "Май",
-      6: t("june") || "Июнь",
-      7: t("july") || "Июль",
-      8: t("august") || "Август",
-      9: t("september") || "Сентябрь",
-      10: t("october") || "Октябрь",
-      11: t("november") || "Ноябрь",
-      12: t("december") || "Декабрь",
+      1: t("january"),
+      2: t("february"),
+      3: t("march"),
+      4: t("april"),
+      5: t("may"),
+      6: t("june"),
+      7: t("july"),
+      8: t("august"),
+      9: t("september"),
+      10: t("october"),
+      11: t("november"),
+      12: t("december"),
     };
     return monthNames[monthNum] || month;
   };
@@ -118,18 +120,19 @@ export default function SettingsPage() {
       setBranchData(updatedBranch);
       setShowSwitchMonthDialog(false);
       
-      // Refresh branch context
+      // Refresh branch context and invalidate React Query cache so pages
+      // reading financialMonth from useBranchQuery get fresh data immediately
       if (refreshBranches) {
         await refreshBranches();
       }
-      
+      queryClient.invalidateQueries({ queryKey: ["branch"] });
+
       // Dispatch branchChange event to reload all pages with new month data
-      // This will cause payments, expenses, salaries pages to reload with new (empty) data
       window.dispatchEvent(new CustomEvent("branchChange", { detail: branchId }));
       
       notify.success(t("success"), t("monthSwitched"));
     } catch (error) {
-      notify.error(t("error"), error instanceof Error ? error.message : t("failedToSwitchMonth") || "Не удалось переключить месяц");
+      notify.error(t("error"), error instanceof Error ? error.message : t("failedToSwitchMonth"));
     } finally {
       setIsSwitchingMonth(false);
     }
@@ -193,7 +196,7 @@ export default function SettingsPage() {
     if (field === "monthlyPayment") {
       const raw = typeof value === "string" ? removeNumberFormatting(value) : String(value);
       if (raw !== "" && (!/^\d+$/.test(raw) || isNaN(Number(raw)))) {
-        setMonthlyPaymentError(t("onlyNumericAllowed") || "Faqat raqam kiritish mumkin");
+        setMonthlyPaymentError(t("onlyNumericAllowed"));
       } else {
         setMonthlyPaymentError("");
       }
@@ -304,7 +307,7 @@ export default function SettingsPage() {
                 onChange={(e) => {
                   const raw = removeNumberFormatting(e.target.value);
                   if (raw !== "" && !/^\d*$/.test(raw)) {
-                    setMonthlyPaymentError(t("onlyNumericAllowed") || "Faqat raqam kiritish mumkin");
+                    setMonthlyPaymentError(t("onlyNumericAllowed"));
                     return; // reject non-numeric input entirely
                   }
                   setMonthlyPaymentError("");
@@ -346,10 +349,10 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
-                {t("currentMonth") || "Текущий месяц"}
+                {t("currentMonth")}
               </CardTitle>
               <CardDescription>
-                {t("currentMonthDescription") || "Все платежи, расходы и зарплаты записываются в этот месяц"}
+                {t("currentMonthDescription")}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -361,11 +364,11 @@ export default function SettingsPage() {
                     </p>
                   ) : (
                     <p className="text-3xl font-bold text-gray-400 dark:text-gray-600">
-                      {t("loading") || "Загрузка..."}
+                      {t("loading")}
                     </p>
                   )}
                   <p className="text-sm text-muted-foreground mt-1">
-                    {t("activeMonth") || "Активный период для записи данных"}
+                    {t("activeMonth")}
                   </p>
                 </div>
                 <Button
@@ -374,7 +377,7 @@ export default function SettingsPage() {
                   className="flex items-center gap-2"
                   disabled={!branchData?.currentFinancialMonth}
                 >
-                  {t("switchToNextMonth") || "Следующий месяц"}
+                  {t("switchToNextMonth")}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -429,21 +432,21 @@ export default function SettingsPage() {
       <Dialog open={showSwitchMonthDialog} onOpenChange={setShowSwitchMonthDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("confirmSwitchMonth") || "Подтвердите переключение месяца"}</DialogTitle>
+            <DialogTitle>{t("confirmSwitchMonth")}</DialogTitle>
             <DialogDescription>
-              {t("switchMonthWarning") || "После переключения менеджеры не смогут видеть и редактировать данные предыдущего месяца."}
+              {t("switchMonthWarning")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div className="bg-muted p-4 rounded-lg">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">{t("currentMonth") || "Текущий месяц"}</p>
+                  <p className="text-sm text-muted-foreground">{t("currentMonth")}</p>
                   <p className="font-semibold">{branchData?.currentFinancialMonth && `${getMonthName(branchData.currentFinancialMonth.month)} ${branchData.currentFinancialMonth.year}`}</p>
                 </div>
                 <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 <div>
-                  <p className="text-sm text-muted-foreground">{t("nextMonth") || "Следующий месяц"}</p>
+                  <p className="text-sm text-muted-foreground">{t("nextMonth")}</p>
                   <p className="font-semibold text-blue-600">
                     {getMonthName(getNextMonth().month)} {getNextMonth().year}
                   </p>
@@ -452,10 +455,10 @@ export default function SettingsPage() {
             </div>
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
               <p className="text-sm text-amber-900 dark:text-amber-100">
-                {t("switchMonthNote") || "• Новый месяц начнётся с нуля (payments = 0, expenses = 0, salaries = 0)"}
+                {t("switchMonthNote")}
               </p>
               <p className="text-sm text-amber-900 dark:text-amber-100 mt-1">
-                {t("switchMonthNoteManager") || "• Менеджеры потеряют доступ к данным прошлого месяца"}
+                {t("switchMonthNoteManager")}
               </p>
             </div>
             <div className="flex justify-end gap-3 pt-2">
@@ -474,10 +477,10 @@ export default function SettingsPage() {
                 {isSwitchingMonth ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {t("switching") || "Переключение..."}
+                    {t("switching")}
                   </>
                 ) : (
-                  t("confirmSwitch") || "Подтвердить"
+                  t("confirmSwitch")
                 )}
               </Button>
             </div>

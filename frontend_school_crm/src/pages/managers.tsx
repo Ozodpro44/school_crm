@@ -179,25 +179,25 @@ export default function ManagersPage() {
         notify.success(t("permissionsUpdatedSuccess"));
         await loadData();
       } catch (error) {
-        notify.error(t("error"), t("failedToUpdatePermissions") || "Failed to update permissions");
+        notify.error(t("error"), t("failedToUpdatePermissions"));
       } finally {
         setIsSubmitting(false);
       }
     } else {
       // Inline validation
       const errors: Record<string, string> = {};
-      if (!formData.fullName.trim()) errors.fullName = t("fullNameRequired") || "Full name is required";
+      if (!formData.fullName.trim()) errors.fullName = t("fullNameRequired");
       if (!formData.email.trim()) {
-        errors.email = t("emailRequired") || "Email is required";
+        errors.email = t("emailRequired");
       } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-        errors.email = t("invalidEmail") || "Invalid email format";
+        errors.email = t("invalidEmail");
       }
       if (!formData.password) {
-        errors.password = t("passwordRequired") || "Password is required";
+        errors.password = t("passwordRequired");
       } else if (formData.password.length < 6) {
-        errors.password = t("passwordTooShort") || "Password must be at least 6 characters";
+        errors.password = t("passwordTooShort");
       }
-      if (!formData.branchId) errors.branchId = t("branchRequired") || "Branch is required";
+      if (!formData.branchId) errors.branchId = t("branchRequired");
 
       if (Object.keys(errors).length > 0) {
         setFormErrors(errors);
@@ -222,7 +222,7 @@ export default function ManagersPage() {
         resetForm();
         setIsDialogOpen(false);
       } catch (error) {
-        notify.error(t("error"), (error as Error).message || t("failedToCreateManager") || "Failed to create manager");
+        notify.error(t("error"), (error as Error).message || t("failedToCreateManager"));
       } finally {
         setIsSubmitting(false);
       }
@@ -245,7 +245,7 @@ export default function ManagersPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm(t("confirmDelete") || "Are you sure you want to delete this manager?")) {
+    if (confirm(t("confirmDelete"))) {
       setDeletingManagerId(id);
       setIsDeleteLoading(true);
       try {
@@ -253,7 +253,7 @@ export default function ManagersPage() {
         await loadData();
         notify.success(t("deleted"), t("managerDeleted"));
       } catch (error) {
-        notify.error(t("error"), t("failedToDeleteManager") || "Failed to delete manager");
+        notify.error(t("error"), t("failedToDeleteManager"));
       } finally {
         setIsDeleteLoading(false);
         setDeletingManagerId(null);
@@ -265,15 +265,15 @@ export default function ManagersPage() {
     const selectedIds = getSelectedIds();
     if (selectedIds.length === 0) return;
 
-    if (confirm(`${t("confirmDelete") || "Are you sure?"} (${selectedIds.length} ${t("items")})`)) {
+    if (confirm(`${t("confirmDelete")} (${selectedIds.length} ${t("items")})`)) {
       setIsBulkDeleteLoading(true);
       try {
         await Promise.all(selectedIds.map((id) => deleteUserAPI(id)));
         clearSelection();
         await loadData();
-        notify.success(t("deleted"), `${selectedIds.length} ${t("managersDeleted") || "managers deleted"}`);
+        notify.success(t("deleted"), `${selectedIds.length} ${t("managersDeleted")}`);
       } catch (error) {
-        notify.error(t("error"), t("failedToDeleteManagers") || "Failed to delete managers");
+        notify.error(t("error"), t("failedToDeleteManagers"));
       } finally {
         setIsBulkDeleteLoading(false);
       }
@@ -388,7 +388,7 @@ export default function ManagersPage() {
       title: t("students"),
       permissions: [
         { key: "canViewStudents" as keyof Permission, label: t("canView") },
-        { key: "canCreateStudents" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreateStudents" as keyof Permission, label: t("canCreate") },
         { key: "canEditStudents" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteStudents" as keyof Permission, label: t("canDelete") },
       ],
@@ -397,7 +397,7 @@ export default function ManagersPage() {
       title: t("teachers"),
       permissions: [
         { key: "canViewTeachers" as keyof Permission, label: t("canView") },
-        { key: "canCreateTeachers" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreateTeachers" as keyof Permission, label: t("canCreate") },
         { key: "canEditTeachers" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteTeachers" as keyof Permission, label: t("canDelete") },
       ],
@@ -406,7 +406,7 @@ export default function ManagersPage() {
       title: t("classes"),
       permissions: [
         { key: "canViewClasses" as keyof Permission, label: t("canView") },
-        { key: "canCreateClasses" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreateClasses" as keyof Permission, label: t("canCreate") },
         { key: "canEditClasses" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteClasses" as keyof Permission, label: t("canDelete") },
       ],
@@ -415,7 +415,7 @@ export default function ManagersPage() {
       title: t("payments"),
       permissions: [
         { key: "canViewPayments" as keyof Permission, label: t("canView") },
-        { key: "canCreatePayments" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreatePayments" as keyof Permission, label: t("canCreate") },
         { key: "canEditPayments" as keyof Permission, label: t("canEdit") },
         { key: "canDeletePayments" as keyof Permission, label: t("canDelete") },
       ],
@@ -424,7 +424,7 @@ export default function ManagersPage() {
       title: t("salaries"),
       permissions: [
         { key: "canViewSalaries" as keyof Permission, label: t("canView") },
-        { key: "canCreateSalaries" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreateSalaries" as keyof Permission, label: t("canCreate") },
         { key: "canEditSalaries" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteSalaries" as keyof Permission, label: t("canDelete") },
       ],
@@ -433,7 +433,7 @@ export default function ManagersPage() {
       title: t("expenses"),
       permissions: [
         { key: "canViewExpenses" as keyof Permission, label: t("canView") },
-        { key: "canCreateExpenses" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreateExpenses" as keyof Permission, label: t("canCreate") },
         { key: "canEditExpenses" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteExpenses" as keyof Permission, label: t("canDelete") },
       ],
@@ -534,10 +534,10 @@ export default function ManagersPage() {
         {isBulkDeleteLoading ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            {t("deleting") || "Deleting..."}
+            {t("deleting")}
           </>
         ) : (
-          t("deleteSelected") || "Delete Selected"
+          t("deleteSelected")
         )}
       </Button>
       <Button size="sm" variant="outline" onClick={clearSelection}>
@@ -613,7 +613,7 @@ export default function ManagersPage() {
 
             {!editingManager && (
               <div className="space-y-1.5">
-                <Label htmlFor="role">{t("role") || "Role"} *</Label>
+                <Label htmlFor="role">{t("role")} *</Label>
                 <Select
                   value={formData.role}
                   onValueChange={(value) =>
@@ -624,8 +624,8 @@ export default function ManagersPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="manager">{t("manager") || "Manager"}</SelectItem>
-                    <SelectItem value="branch_admin">{t("branchAdmin") || "Branch Admin"}</SelectItem>
+                    <SelectItem value="manager">{t("manager")}</SelectItem>
+                    <SelectItem value="branch_admin">{t("branchAdmin")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -655,7 +655,7 @@ export default function ManagersPage() {
               {formErrors.branchId && <p className="text-xs text-red-500">{formErrors.branchId}</p>}
               {!editingManager && (
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {t("managerBranchNote") || "Menejer faqat tayinlangan filialini boshqara oladi"}
+                  {t("managerBranchNote")}
                 </p>
               )}
             </div>
@@ -713,9 +713,9 @@ export default function ManagersPage() {
             areSomeSelected={areSomeSelected(managers)}
             bulkActions={bulkActions}
             emptyIcon={UserCog}
-            emptyTitle={t("noManagersYet") || "No managers yet"}
-            emptyDescription={t("noManagersDesc") || "Add your first manager to let them access and oversee a branch."}
-            emptyAction={{ label: t("addManager") || "Add Manager", onClick: () => setIsDialogOpen(true) }}
+            emptyTitle={t("noManagersYet")}
+            emptyDescription={t("noManagersDesc")}
+            emptyAction={{ label: t("addManager"), onClick: () => setIsDialogOpen(true) }}
           />
         </CardContent>
       </Card>

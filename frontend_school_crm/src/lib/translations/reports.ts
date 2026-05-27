@@ -369,5 +369,6 @@ export const reportTranslations: Partial<Translation> = {
     "uz-latn": "Xarajatlar hisoboti",
     en: "Expenses Report",
   },
+  generateDetailedReports: { "uz-cyrl": "Махсус сана оралиғи билан батафсил ҳисоботлар яратинг", "uz-latn": "Maxsus sana oralig'i bilan batafsil hisobotlar yarating", en: "Generate detailed reports with custom date ranges" },
 
 };

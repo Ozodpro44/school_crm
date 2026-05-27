@@ -104,11 +104,11 @@ export function FinancialChart({ data }: FinancialChartProps) {
       <div className="flex justify-center gap-6 mt-4">
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 bg-green-500 rounded"></div>
-          <span className="text-sm text-slate-600 dark:text-slate-400">{t("income") || "Daromad"}</span>
+          <span className="text-sm text-slate-600 dark:text-slate-400">{t("income")}</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 bg-red-500 rounded"></div>
-          <span className="text-sm text-slate-600 dark:text-slate-400">{t("expenses") || "Xarajatlar"}</span>
+          <span className="text-sm text-slate-600 dark:text-slate-400">{t("expenses")}</span>
         </div>
       </div>
     </div>

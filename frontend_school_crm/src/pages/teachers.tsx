@@ -101,17 +101,17 @@ export default function TeachersPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const errors: typeof formErrors = {};
-    if (!formData.fullName.trim()) errors.fullName = t("fieldRequired") || "Required";
-    if (!formData.email.trim()) errors.email = t("fieldRequired") || "Required";
+    if (!formData.fullName.trim()) errors.fullName = t("fieldRequired");
+    if (!formData.email.trim()) errors.email = t("fieldRequired");
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email))
-      errors.email = t("invalidEmail") || "Invalid email";
-    if (!formData.phone.trim()) errors.phone = t("fieldRequired") || "Required";
+      errors.email = t("invalidEmail");
+    if (!formData.phone.trim()) errors.phone = t("fieldRequired");
     else if (!isValidUzbekPhone(formData.phone))
-      errors.phone = t("invalidPhone") || "Invalid phone";
+      errors.phone = t("invalidPhone");
     if (!editingTeacher && !formData.password)
-      errors.password = t("fieldRequired") || "Required";
+      errors.password = t("fieldRequired");
     else if (!editingTeacher && formData.password.length < 6)
-      errors.password = t("passwordMinLength") || "Min 6 characters";
+      errors.password = t("passwordMinLength");
 
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
     if (!(editingTeacher ? canEditTeachers : canCreateTeachers)) {
@@ -334,7 +334,7 @@ export default function TeachersPage() {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, monthlySalary: removeNumberFormatting(e.target.value) })}
             />
             <Field id="subjects" as="textarea"
-              label={`${t("subjects")} (${t("commaSeparated") || "comma separated"}) *`}
+              label={`${t("subjects")} (${t("commaSeparated")}) *`}
               value={formData.subjects} placeholder={t("subjectsPlaceholder")}
               className="md:col-span-2"
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, subjects: e.target.value })}
@@ -370,7 +370,7 @@ export default function TeachersPage() {
                 <>
                   <Button size="sm" variant="destructive" onClick={handleBulkDelete}>
                     <Trash2 className="w-3.5 h-3.5 mr-1" />
-                    {t("deleteSelected") || "Delete selected"}
+                    {t("deleteSelected")}
                   </Button>
                   <Button size="sm" variant="outline" onClick={clearSelection}>{t("cancel")}</Button>
                 </>
@@ -378,7 +378,7 @@ export default function TeachersPage() {
             }
             emptyIcon={Users}
             emptyTitle={t("noTeachersYet")}
-            emptyDescription={t("addFirstTeacher") || "Add your first teacher to get started."}
+            emptyDescription={t("addFirstTeacher")}
             emptyAction={canCreateTeachers ? { label: t("addTeacher"), onClick: () => setIsDialogOpen(true) } : undefined}
             renderCard={(teacher, isSelected, onToggle) => (
               <div

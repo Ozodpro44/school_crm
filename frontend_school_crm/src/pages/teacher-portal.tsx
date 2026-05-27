@@ -206,7 +206,7 @@ export default function TeacherPortalPage() {
     { key: "students",   label: t("myStudents"),     icon: <Users className="w-4 h-4" /> },
     { key: "attendance", label: t("todayAttendance"), icon: <ClipboardList className="w-4 h-4" /> },
     { key: "salary",     label: t("mySalary"),       icon: <DollarSign className="w-4 h-4" /> },
-    { key: "profile",    label: t("myProfile") || "My Profile", icon: <UserCircle className="w-4 h-4" /> },
+    { key: "profile",    label: t("myProfile"), icon: <UserCircle className="w-4 h-4" /> },
   ];
 
   if (isLoading) {
@@ -501,8 +501,8 @@ export default function TeacherPortalPage() {
           {studentsForAttendance.length === 0 ? (
             <EmptyState
               icon={data.classes.length === 0 ? BookOpen : Users}
-              title={data.classes.length === 0 ? (t("noClassesAssigned") || "No classes assigned") : (!attendanceClassId ? (t("selectClass") || "Select a class") : (t("noStudentsInClass") || "No students in this class"))}
-              description={data.classes.length === 0 ? (t("noClassesAssignedDesc") || "You haven't been assigned to any classes yet.") : (!attendanceClassId ? (t("selectClassToMark") || "Select a class above to mark attendance.") : undefined)}
+              title={data.classes.length === 0 ? (t("noClassesAssigned")) : (!attendanceClassId ? (t("selectClass")) : (t("noStudentsInClass")))}
+              description={data.classes.length === 0 ? (t("noClassesAssignedDesc")) : (!attendanceClassId ? (t("selectClassToMark")) : undefined)}
             />
           ) : (
             <div className="space-y-2">
@@ -650,11 +650,11 @@ export default function TeacherPortalPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="flex items-center gap-2">
                 <UserCircle className="w-5 h-5" />
-                {t("myProfile") || "My Profile"}
+                {t("myProfile")}
               </CardTitle>
               <Button variant="outline" size="sm" onClick={handleOpenEditProfile}>
                 <Edit2 className="w-4 h-4 mr-2" />
-                {t("edit") || "Edit"}
+                {t("edit")}
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -677,12 +677,12 @@ export default function TeacherPortalPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Lock className="w-4 h-4" />
-                {t("changePassword") || "Change Password"}
+                {t("changePassword")}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <Button variant="outline" onClick={() => setIsChangePasswordOpen(true)}>
-                {t("changePassword") || "Change Password"}
+                {t("changePassword")}
               </Button>
             </CardContent>
           </Card>
@@ -691,7 +691,7 @@ export default function TeacherPortalPage() {
           <Dialog open={isEditProfileOpen} onOpenChange={setIsEditProfileOpen}>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>{t("editProfile") || "Edit Profile"}</DialogTitle>
+                <DialogTitle>{t("editProfile")}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -703,10 +703,10 @@ export default function TeacherPortalPage() {
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <Button variant="outline" onClick={() => setIsEditProfileOpen(false)} disabled={isSavingProfile}>
-                    {t("cancel") || "Cancel"}
+                    {t("cancel")}
                   </Button>
                   <Button onClick={handleSaveProfile} disabled={isSavingProfile}>
-                    {isSavingProfile ? t("saving") || "Saving..." : t("save") || "Save"}
+                    {isSavingProfile ? t("saving") : t("save")}
                   </Button>
                 </div>
               </div>
@@ -717,11 +717,11 @@ export default function TeacherPortalPage() {
           <Dialog open={isChangePasswordOpen} onOpenChange={setIsChangePasswordOpen}>
             <DialogContent className="max-w-md">
               <DialogHeader>
-                <DialogTitle>{t("changePassword") || "Change Password"}</DialogTitle>
+                <DialogTitle>{t("changePassword")}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>{t("currentPassword") || "Current Password"}</Label>
+                  <Label>{t("currentPassword")}</Label>
                   <Input
                     type="password"
                     value={passwordForm.currentPassword}
@@ -729,7 +729,7 @@ export default function TeacherPortalPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("newPassword") || "New Password"}</Label>
+                  <Label>{t("newPassword")}</Label>
                   <Input
                     type="password"
                     value={passwordForm.newPassword}
@@ -737,7 +737,7 @@ export default function TeacherPortalPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("confirmPassword") || "Confirm Password"}</Label>
+                  <Label>{t("confirmPassword")}</Label>
                   <Input
                     type="password"
                     value={passwordForm.confirmPassword}
@@ -746,10 +746,10 @@ export default function TeacherPortalPage() {
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <Button variant="outline" onClick={() => setIsChangePasswordOpen(false)} disabled={isSavingProfile}>
-                    {t("cancel") || "Cancel"}
+                    {t("cancel")}
                   </Button>
                   <Button onClick={handleChangePassword} disabled={isSavingProfile}>
-                    {isSavingProfile ? t("saving") || "Saving..." : t("update") || "Update"}
+                    {isSavingProfile ? t("saving") : t("update")}
                   </Button>
                 </div>
               </div>

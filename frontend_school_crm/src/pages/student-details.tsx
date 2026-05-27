@@ -150,10 +150,10 @@ export default function StudentDetailsPage() {
   const notify = useNotify();
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !currentBranch?.id) return;
     setIsLoading(true);
     loadData().finally(() => setIsLoading(false));
-  }, [id]);
+  }, [id, currentBranch?.id]);
 
   useEffect(() => {
     if (from === "class") {
@@ -163,12 +163,6 @@ export default function StudentDetailsPage() {
       setBackRoute("/students");
     }
   }, [from, router.query.classId]);
-
-  useEffect(() => {
-    const handleBranchChange = () => loadData();
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
 
   const loadData = async () => {
     if (!id) return;
@@ -670,7 +664,7 @@ export default function StudentDetailsPage() {
                   {t("paymentHistory")}
                 </span>
                 <span className="text-xs font-normal text-slate-500">
-                  {t("last6Months") || "Last 6 months"}
+                  {t("last6Months")}
                 </span>
               </CardTitle>
             </CardHeader>
@@ -685,7 +679,7 @@ export default function StudentDetailsPage() {
               <div className="flex items-center gap-4 mt-3 text-xs text-slate-500 flex-wrap">
                 <LegendDot color="#10b981" label={t("paid")} />
                 <LegendDot color="#f59e0b" label={t("partial")} />
-                <LegendDot color="#e2e8f0" label={t("unpaid") || "Unpaid"} />
+                <LegendDot color="#e2e8f0" label={t("unpaid")} />
                 <span className="ml-auto">
                   {t("monthlyPayment")}:{" "}
                   <span className="font-semibold text-slate-700 dark:text-slate-300">

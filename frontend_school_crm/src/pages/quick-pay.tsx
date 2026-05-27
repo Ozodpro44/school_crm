@@ -164,9 +164,9 @@ function ReceiptModal({ data, onClose }: { data: ReceiptData | null; onClose: ()
           <div className="text-center text-2xl font-bold text-emerald-600">{fmtMoney(data.amount)} UZS</div>
         </div>
         <div className="flex gap-2 pt-1">
-          <Button variant="outline" className="flex-1" onClick={onClose}>{t("close") || "Close"}</Button>
+          <Button variant="outline" className="flex-1" onClick={onClose}>{t("close")}</Button>
           <Button className="flex-1 gap-2 bg-indigo-600 hover:bg-indigo-700 text-white" onClick={print}>
-            <Printer className="w-4 h-4" /> {t("print") || "Print"}
+            <Printer className="w-4 h-4" /> {t("print")}
           </Button>
         </div>
       </DialogContent>
@@ -317,7 +317,7 @@ function QRScanTab({
       setScanning(true);
       scanLoop(stream);
     } catch {
-      setError(t("cameraPermissionDenied") || "Camera permission denied");
+      setError(t("cameraPermissionDenied"));
     }
   };
 
@@ -449,7 +449,7 @@ function QRScanTab({
             onClick={startCamera}
             className="text-xs font-semibold text-red-600 hover:text-red-700 underline underline-offset-2 flex-shrink-0"
           >
-            {t("tryAgain") || "Try again"}
+            {t("tryAgain")}
           </button>
         </div>
       )}
@@ -784,7 +784,7 @@ export default function QuickPayPage() {
                   onClick={selected.size === unpaid.length ? clearAll : selectAll}
                   className="text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
                 >
-                  {selected.size === unpaid.length ? (t("deselectAll") || "Deselect all") : (t("selectAll") || "Select all")}
+                  {selected.size === unpaid.length ? (t("deselectAll")) : (t("selectAll"))}
                 </button>
                 {selected.size > 0 && (
                   <span className="text-sm text-slate-500">
