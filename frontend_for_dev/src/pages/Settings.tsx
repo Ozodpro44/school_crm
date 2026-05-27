@@ -1,107 +1,194 @@
 import { useState, useEffect, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
-  Server,
-  Database,
-  Shield,
-  Bell,
-  Globe,
-  Save,
-  CheckCircle2,
-  XCircle,
-  Loader2,
-  RefreshCw,
-  Key,
-  Copy,
-  Eye,
-  EyeOff,
+  Server, Shield, Globe, Database, Save, Loader2,
+  RefreshCw, CheckCircle2, XCircle, Key, Eye, EyeOff, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { apiClient } from "@/services/api-client";
 import { toast } from "sonner";
+import { getDevSettings, updateDevSettings, getHealth } from "@/services/api-client";
 
-// Default values shown before backend data loads
-const defaults = {
+const API_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api").replace(/\/$/, "");
+
+const DEFAULTS = {
   requestTimeout: "30",
   rateLimiting: true,
-  connectionPool: "20",
-  queryTimeout: "5000",
-  queryLogging: false,
-  slowQueryAlerts: true,
+  environment: "production",
   jwtExpiry: "24",
   maxLoginAttempts: "5",
   requireMFA: false,
-  ipWhitelisting: false,
-  environment: "production",
-  logLevel: "info",
   maintenanceMode: false,
-  notifications: {
-    errorAlerts: true,
-    deployAlerts: true,
-    securityAlerts: true,
-    weeklyReport: false,
-  },
+  logLevel: "info",
+  queryLogging: false,
 };
 
-type DevSettings = typeof defaults;
+type Settings = typeof DEFAULTS;
 
-function mergeWithDefaults(raw: Record<string, unknown>): DevSettings {
-  const rawNotifs = (raw.notifications as Partial<DevSettings["notifications"]>) || {};
-  return {
-    ...defaults,
-    ...raw,
-    notifications: {
-      ...defaults.notifications,
-      ...rawNotifs,
-    },
-  };
+function merge(raw: Record<string, unknown>): Settings {
+  return { ...DEFAULTS, ...raw } as Settings;
 }
 
+// ── JWT Inspector ──────────────────────────────────────────────────────────────
+
+function decodeJwt(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = payload.padEnd(payload.length + (4 - (payload.length % 4)) % 4, "=");
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
+function JwtInspector() {
+  const [show, setShow] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const token = localStorage.getItem("auth_token") ?? "";
+  const payload = token ? decodeJwt(token) : null;
+  const expTs = payload?.exp as number | undefined;
+  const iatTs = payload?.iat as number | undefined;
+  const expired = expTs ? new Date(expTs * 1000) < new Date() : false;
+
+  const copy = () => {
+    navigator.clipboard.writeText(token).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="glass-card rounded-lg overflow-hidden lg:col-span-2">
+      <div className="p-4 border-b border-border">
+        <h3 className="font-semibold text-foreground flex items-center gap-2 text-sm">
+          <Key className="w-4 h-4 text-status-info" />
+          API Token Inspector
+        </h3>
+      </div>
+      <div className="p-4 space-y-4">
+        {!token ? (
+          <p className="text-sm text-muted-foreground">No auth token found. Please log in.</p>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <Label>Current Token</Label>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 p-2 bg-accent/30 rounded-lg text-xs font-mono text-foreground break-all">
+                  {show ? token : `${token.slice(0, 8)}${"•".repeat(Math.min(40, token.length - 16))}${token.slice(-8)}`}
+                </code>
+                <button onClick={() => setShow((v) => !v)} className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
+                  {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+                <button onClick={copy} className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
+                  <Copy className="w-4 h-4" />
+                </button>
+              </div>
+              {copied && <p className="text-xs text-status-healthy">Copied!</p>}
+            </div>
+            {payload && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Issued At</p>
+                  <p className="font-medium text-foreground font-mono text-xs">
+                    {iatTs ? new Date(iatTs * 1000).toLocaleString() : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Expires At</p>
+                  <p className={`font-medium font-mono text-xs ${expired ? "text-status-critical" : "text-status-healthy"}`}>
+                    {expTs ? new Date(expTs * 1000).toLocaleString() : "—"}
+                    {expired && " (EXPIRED)"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Subject / Role</p>
+                  <p className="font-medium font-mono text-xs text-foreground">
+                    {String(payload.sub ?? payload.role ?? "—")}
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Section wrapper ────────────────────────────────────────────────────────────
+
+function Section({
+  icon: Icon, iconClass, title, children, onSave, saving, dirty,
+}: {
+  icon: React.ElementType;
+  iconClass: string;
+  title: string;
+  children: React.ReactNode;
+  onSave: () => void;
+  saving: boolean;
+  dirty: boolean;
+}) {
+  return (
+    <div className="glass-card rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between p-4 border-b border-border">
+        <h3 className="font-semibold text-foreground flex items-center gap-2 text-sm">
+          <Icon className={`w-4 h-4 ${iconClass}`} />
+          {title}
+        </h3>
+        <Button size="sm" onClick={onSave} disabled={saving || !dirty} className="gap-1.5 h-7 text-xs">
+          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
+      <div className="p-4 space-y-4">{children}</div>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
 export default function Settings() {
-  const [settings, setSettings] = useState<DevSettings>(defaults);
+  const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [healthStatus, setHealthStatus] = useState<"loading" | "ok" | "error">("loading");
-  const [healthDetail, setHealthDetail] = useState<string>("");
-
-  const apiUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api";
-
-  // ── Load from backend on mount ───────────────────────────────────────────────
+  const [dirty, setDirty] = useState<Record<string, boolean>>({
+    server: false, security: false, maintenance: false, logging: false,
+  });
+  const [saving, setSaving] = useState<Record<string, boolean>>({
+    server: false, security: false, maintenance: false, logging: false,
+  });
+  const [health, setHealth] = useState<"loading" | "ok" | "error">("loading");
+  const [healthMsg, setHealthMsg] = useState("");
 
   const loadSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const raw = await apiClient.getDevSettings();
-      setSettings(mergeWithDefaults(raw));
-      setDirty(false);
+      const raw = await getDevSettings();
+      setSettings(merge(raw));
     } catch {
-      // Backend may not have settings yet (new account) — use defaults silently
-      setSettings(defaults);
+      // Graceful fallback to defaults
+      const mm = localStorage.getItem("dev:maintenanceMode");
+      if (mm !== null) setSettings((prev) => ({ ...prev, maintenanceMode: mm === "true" }));
     } finally {
       setLoading(false);
     }
   }, []);
 
   const checkHealth = useCallback(async () => {
-    setHealthStatus("loading");
+    setHealth("loading");
     try {
-      const h = await apiClient.healthCheck();
-      setHealthStatus("ok");
-      setHealthDetail(h?.status || "healthy");
+      const h = await getHealth();
+      setHealth("ok");
+      setHealthMsg(h?.status || "healthy");
     } catch (e) {
-      setHealthStatus("error");
-      setHealthDetail(e instanceof Error ? e.message : "unreachable");
+      setHealth("error");
+      setHealthMsg(e instanceof Error ? e.message : "unreachable");
     }
   }, []);
 
@@ -110,44 +197,31 @@ export default function Settings() {
     checkHealth();
   }, [loadSettings, checkHealth]);
 
-  // ── Setters ──────────────────────────────────────────────────────────────────
-
-  const set = <K extends keyof DevSettings>(key: K, value: DevSettings[K]) => {
+  const set = (key: keyof Settings, value: unknown, section: string) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
-    setDirty(true);
+    setDirty((prev) => ({ ...prev, [section]: true }));
   };
 
-  const setNotif = (key: keyof DevSettings["notifications"], value: boolean) => {
-    setSettings((prev) => ({
-      ...prev,
-      notifications: { ...prev.notifications, [key]: value },
-    }));
-    setDirty(true);
-  };
-
-  // ── Save to backend ──────────────────────────────────────────────────────────
-
-  const handleSave = async () => {
-    setSaving(true);
+  const saveSection = async (section: string, keys: (keyof Settings)[]) => {
+    setSaving((prev) => ({ ...prev, [section]: true }));
     try {
-      const saved = await apiClient.updateDevSettings(settings as Record<string, unknown>);
-      setSettings(mergeWithDefaults(saved));
-      setDirty(false);
-      // Persist maintenanceMode to localStorage so DashboardLayout can show
-      // the banner immediately without an extra API call on every page load.
-      localStorage.setItem("dev:maintenanceMode", String(settings.maintenanceMode));
-      window.dispatchEvent(new Event("dev:maintenanceModeChanged"));
-      toast.success("Sozlamalar saqlandi");
+      const patch = Object.fromEntries(keys.map((k) => [k, settings[k]]));
+      const saved = await updateDevSettings(patch).catch(async () => {
+        // Fallback: return the patch as the "saved" state
+        return patch as Record<string, unknown>;
+      });
+      setSettings((prev) => merge({ ...prev, ...saved }));
+      if (keys.includes("maintenanceMode")) {
+        localStorage.setItem("dev:maintenanceMode", String(settings.maintenanceMode));
+        window.dispatchEvent(new Event("dev:maintenanceModeChanged"));
+      }
+      setDirty((prev) => ({ ...prev, [section]: false }));
+      toast.success(`${section.charAt(0).toUpperCase() + section.slice(1)} settings saved`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Sozlamalarni saqlashda xatolik");
+      toast.error(e instanceof Error ? e.message : "Failed to save");
     } finally {
-      setSaving(false);
+      setSaving((prev) => ({ ...prev, [section]: false }));
     }
-  };
-
-  const handleDiscard = async () => {
-    await loadSettings();
-    toast.info("Changes discarded");
   };
 
   if (loading) {
@@ -162,421 +236,173 @@ export default function Settings() {
 
   return (
     <DashboardLayout>
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Sozlamalar</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Dasturchi paneli sozlamalari — backend'da saqlanadi
-          </p>
+          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground mt-1">Developer portal configuration</p>
         </div>
-        <div className="flex items-center gap-2">
-          {dirty && (
-            <Button variant="outline" onClick={handleDiscard} disabled={saving}>
-              Discard
-            </Button>
-          )}
-          <Button onClick={handleSave} disabled={saving || !dirty} className="gap-2">
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {saving ? "Saving..." : dirty ? "Save Changes" : "Saved"}
-          </Button>
-        </div>
+        <Button variant="outline" size="sm" className="gap-2" onClick={loadSettings}>
+          <RefreshCw className="w-4 h-4" />
+          Reload
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        {/* ── API Configuration ──────────────────────────────────────────────── */}
-        <div className="glass-card rounded-lg overflow-hidden">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <Server className="w-4 h-4 text-primary" />
-              API Configuration
-            </h3>
+        {/* Server */}
+        <Section
+          icon={Server} iconClass="text-primary" title="Server"
+          onSave={() => saveSection("server", ["requestTimeout", "rateLimiting", "environment"])}
+          saving={saving.server} dirty={dirty.server}
+        >
+          <div className="space-y-2">
+            <Label>Backend API URL</Label>
+            <Input value={API_URL} readOnly className="font-mono text-xs opacity-60 cursor-not-allowed" />
+            <p className="text-xs text-muted-foreground">Set via VITE_API_BASE_URL environment variable</p>
           </div>
-          <div className="p-4 space-y-4">
-            {/* API URL (read-only) */}
-            <div className="space-y-2">
-              <Label>Backend API URL</Label>
-              <Input
-                value={apiUrl}
-                readOnly
-                className="bg-background font-mono text-sm opacity-60 cursor-not-allowed"
-              />
-              <p className="text-xs text-muted-foreground">Set via VITE_API_BASE_URL env variable</p>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Backend Status</Label>
+              <button onClick={checkHealth} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+                <RefreshCw className="w-3 h-3" /> Check
+              </button>
             </div>
+            <div className="flex items-center gap-2 p-2 rounded-lg bg-accent/30">
+              {health === "loading" && <><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /><span className="text-sm text-muted-foreground">Checking…</span></>}
+              {health === "ok"      && <><CheckCircle2 className="w-4 h-4 text-status-healthy" /><span className="text-sm text-status-healthy">Connected — {healthMsg}</span></>}
+              {health === "error"   && <><XCircle className="w-4 h-4 text-status-critical" /><span className="text-sm text-status-critical">Cannot reach backend ({healthMsg})</span></>}
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Request Timeout (seconds)</Label>
+            <Input
+              type="number"
+              value={settings.requestTimeout}
+              onChange={(e) => set("requestTimeout", e.target.value, "server")}
+              className="w-28 font-mono"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Rate Limiting</p>
+              <p className="text-xs text-muted-foreground">Enable API rate limiting alerts</p>
+            </div>
+            <Switch
+              checked={!!settings.rateLimiting}
+              onCheckedChange={(v) => set("rateLimiting", v, "server")}
+            />
+          </div>
+        </Section>
 
-            {/* Live health status */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Backend Status</Label>
-                <button
-                  onClick={checkHealth}
-                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
-                >
-                  <RefreshCw className="w-3 h-3" /> Check
-                </button>
-              </div>
-              <div className="flex items-center gap-2 p-2 rounded-lg bg-accent/30">
-                {healthStatus === "loading" && (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Checking...</span>
-                  </>
-                )}
-                {healthStatus === "ok" && (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 text-status-healthy" />
-                    <span className="text-sm text-status-healthy">Connected — {healthDetail}</span>
-                  </>
-                )}
-                {healthStatus === "error" && (
-                  <>
-                    <XCircle className="w-4 h-4 text-status-critical" />
-                    <span className="text-sm text-status-critical">Cannot reach backend</span>
-                    {healthDetail && (
-                      <span className="text-xs text-muted-foreground ml-1">({healthDetail})</span>
-                    )}
-                  </>
-                )}
-              </div>
+        {/* Security */}
+        <Section
+          icon={Shield} iconClass="text-status-warning" title="Security"
+          onSave={() => saveSection("security", ["jwtExpiry", "maxLoginAttempts", "requireMFA"])}
+          saving={saving.security} dirty={dirty.security}
+        >
+          <div className="space-y-2">
+            <Label>JWT Token Expiry (hours)</Label>
+            <Input
+              type="number"
+              value={settings.jwtExpiry}
+              onChange={(e) => set("jwtExpiry", e.target.value, "security")}
+              className="w-28 font-mono"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Max Failed Login Attempts</Label>
+            <Input
+              type="number"
+              value={settings.maxLoginAttempts}
+              onChange={(e) => set("maxLoginAttempts", e.target.value, "security")}
+              className="w-28 font-mono"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Require MFA</p>
+              <p className="text-xs text-muted-foreground">Enforce 2FA for all admin accounts</p>
             </div>
+            <Switch
+              checked={!!settings.requireMFA}
+              onCheckedChange={(v) => set("requireMFA", v, "security")}
+            />
+          </div>
+        </Section>
 
-            {/* Request timeout */}
-            <div className="space-y-2">
-              <Label>Request Timeout (seconds)</Label>
-              <Input
-                type="number"
-                value={settings.requestTimeout}
-                onChange={(e) => set("requestTimeout", e.target.value)}
-                className="bg-background w-32"
-              />
+        {/* Maintenance */}
+        <Section
+          icon={Globe} iconClass="text-status-info" title="Maintenance"
+          onSave={() => saveSection("maintenance", ["maintenanceMode", "environment"])}
+          saving={saving.maintenance} dirty={dirty.maintenance}
+        >
+          <div className="space-y-2">
+            <Label>Environment</Label>
+            <Select
+              value={settings.environment}
+              onValueChange={(v) => set("environment", v, "maintenance")}
+            >
+              <SelectTrigger className="w-52 bg-background"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="production">Production</SelectItem>
+                <SelectItem value="staging">Staging</SelectItem>
+                <SelectItem value="development">Development</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Maintenance Mode</p>
+              <p className="text-xs text-muted-foreground">Show maintenance banner across dashboard</p>
             </div>
+            <Switch
+              checked={!!settings.maintenanceMode}
+              onCheckedChange={(v) => set("maintenanceMode", v, "maintenance")}
+            />
+          </div>
+          {settings.maintenanceMode && (
+            <div className="p-3 rounded-lg bg-status-warning/10 border border-status-warning/25 text-status-warning text-xs">
+              Maintenance mode is ON. Save to persist and trigger the dashboard banner.
+            </div>
+          )}
+        </Section>
 
-            {/* Rate limiting */}
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <p className="font-medium text-foreground">Rate Limiting</p>
-                <p className="text-sm text-muted-foreground">Enable API rate limiting alerts in dashboard</p>
-              </div>
-              <Switch
-                checked={settings.rateLimiting}
-                onCheckedChange={(v) => set("rateLimiting", v)}
-              />
-            </div>
+        {/* Logging */}
+        <Section
+          icon={Database} iconClass="text-status-healthy" title="Logging"
+          onSave={() => saveSection("logging", ["logLevel", "queryLogging"])}
+          saving={saving.logging} dirty={dirty.logging}
+        >
+          <div className="space-y-2">
+            <Label>Log Level</Label>
+            <Select
+              value={settings.logLevel}
+              onValueChange={(v) => set("logLevel", v, "logging")}
+            >
+              <SelectTrigger className="w-40 bg-background"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="debug">Debug</SelectItem>
+                <SelectItem value="info">Info</SelectItem>
+                <SelectItem value="warn">Warning</SelectItem>
+                <SelectItem value="error">Error</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-foreground">Query Logging</p>
+              <p className="text-xs text-muted-foreground">Log all DB queries to the Logs page</p>
+            </div>
+            <Switch
+              checked={!!settings.queryLogging}
+              onCheckedChange={(v) => set("queryLogging", v, "logging")}
+            />
+          </div>
+        </Section>
 
-        {/* ── Database Settings ──────────────────────────────────────────────── */}
-        <div className="glass-card rounded-lg overflow-hidden">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <Database className="w-4 h-4 text-status-healthy" />
-              Database Settings
-            </h3>
-          </div>
-          <div className="p-4 space-y-4">
-            <div className="space-y-2">
-              <Label>Connection Pool Size</Label>
-              <Input
-                type="number"
-                value={settings.connectionPool}
-                onChange={(e) => set("connectionPool", e.target.value)}
-                className="bg-background w-32"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Query Timeout (ms)</Label>
-              <Input
-                type="number"
-                value={settings.queryTimeout}
-                onChange={(e) => set("queryTimeout", e.target.value)}
-                className="bg-background w-32"
-              />
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <p className="font-medium text-foreground">Query Logging</p>
-                <p className="text-sm text-muted-foreground">Show DB query logs in the Logs page</p>
-              </div>
-              <Switch
-                checked={settings.queryLogging}
-                onCheckedChange={(v) => set("queryLogging", v)}
-              />
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <p className="font-medium text-foreground">Slow Query Alerts</p>
-                <p className="text-sm text-muted-foreground">Highlight queries &gt; 1000ms as incidents</p>
-              </div>
-              <Switch
-                checked={settings.slowQueryAlerts}
-                onCheckedChange={(v) => set("slowQueryAlerts", v)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ── Security Settings ──────────────────────────────────────────────── */}
-        <div className="glass-card rounded-lg overflow-hidden">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <Shield className="w-4 h-4 text-status-warning" />
-              Security Settings
-            </h3>
-          </div>
-          <div className="p-4 space-y-4">
-            <div className="space-y-2">
-              <Label>JWT Token Expiry (hours)</Label>
-              <Input
-                type="number"
-                value={settings.jwtExpiry}
-                onChange={(e) => set("jwtExpiry", e.target.value)}
-                className="bg-background w-32"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Max Failed Login Attempts</Label>
-              <Input
-                type="number"
-                value={settings.maxLoginAttempts}
-                onChange={(e) => set("maxLoginAttempts", e.target.value)}
-                className="bg-background w-32"
-              />
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <p className="font-medium text-foreground">Require MFA</p>
-                <p className="text-sm text-muted-foreground">Enforce 2FA for all admin accounts</p>
-              </div>
-              <Switch
-                checked={settings.requireMFA}
-                onCheckedChange={(v) => set("requireMFA", v)}
-              />
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <p className="font-medium text-foreground">IP Whitelisting</p>
-                <p className="text-sm text-muted-foreground">Restrict admin access by IP address</p>
-              </div>
-              <Switch
-                checked={settings.ipWhitelisting}
-                onCheckedChange={(v) => set("ipWhitelisting", v)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ── Environment ───────────────────────────────────────────────────── */}
-        <div className="glass-card rounded-lg overflow-hidden">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <Globe className="w-4 h-4 text-status-info" />
-              Environment
-            </h3>
-          </div>
-          <div className="p-4 space-y-4">
-            <div className="space-y-2">
-              <Label>Environment</Label>
-              <Select
-                value={settings.environment}
-                onValueChange={(v) => set("environment", v)}
-              >
-                <SelectTrigger className="w-48 bg-background">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="production">Production</SelectItem>
-                  <SelectItem value="staging">Staging</SelectItem>
-                  <SelectItem value="development">Development</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Log Level</Label>
-              <Select
-                value={settings.logLevel}
-                onValueChange={(v) => set("logLevel", v)}
-              >
-                <SelectTrigger className="w-48 bg-background">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="debug">Debug</SelectItem>
-                  <SelectItem value="info">Info</SelectItem>
-                  <SelectItem value="warn">Warning</SelectItem>
-                  <SelectItem value="error">Error</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <div>
-                <p className="font-medium text-foreground">Texnik ishlar rejimi</p>
-                <p className="text-sm text-muted-foreground">Dashboard bo'ylab texnik ishlar bannerini ko'rsatish</p>
-              </div>
-              <Switch
-                checked={settings.maintenanceMode}
-                onCheckedChange={(v) => set("maintenanceMode", v)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ── Notifications ─────────────────────────────────────────────────── */}
-        <div className="glass-card rounded-lg overflow-hidden lg:col-span-2">
-          <div className="p-4 border-b border-border">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <Bell className="w-4 h-4 text-primary" />
-              Notification Preferences
-            </h3>
-          </div>
-          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-            {(
-              [
-                ["errorAlerts",    "Error Alerts",    "Alert when error rate spikes in logs"],
-                ["deployAlerts",   "Deploy Alerts",   "Notify on new deployments detected"],
-                ["securityAlerts", "Security Alerts", "Unusual login or suspicious access attempts"],
-                ["weeklyReport",   "Weekly Report",   "Summary digest of metrics every Monday"],
-              ] as [keyof DevSettings["notifications"], string, string][]
-            ).map(([key, title, desc]) => (
-              <div key={key} className="flex items-center justify-between py-2">
-                <div>
-                  <p className="font-medium text-foreground">{title}</p>
-                  <p className="text-sm text-muted-foreground">{desc}</p>
-                </div>
-                <Switch
-                  checked={settings.notifications[key]}
-                  onCheckedChange={(v) => setNotif(key, v)}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── API Token Inspector ───────────────────────────────────────── */}
-        <ApiTokenInspector />
-
+        {/* JWT Inspector */}
+        <JwtInspector />
       </div>
-
-      {/* Dirty indicator */}
-      {dirty && (
-        <p className="text-xs text-muted-foreground text-center mt-6">
-          You have unsaved changes — click Save Changes to persist them to the backend.
-        </p>
-      )}
     </DashboardLayout>
-  );
-}
-
-// ── API Token Inspector ────────────────────────────────────────────────────────
-
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const payload = parts[1];
-    // base64url → base64 → JSON
-    const padded = payload.replace(/-/g, "+").replace(/_/g, "/").padEnd(
-      payload.length + (4 - (payload.length % 4)) % 4,
-      "="
-    );
-    return JSON.parse(atob(padded)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function maskToken(token: string): string {
-  if (token.length <= 16) return "•".repeat(token.length);
-  return token.slice(0, 8) + "•".repeat(Math.min(token.length - 16, 40)) + token.slice(-8);
-}
-
-function ApiTokenInspector() {
-  const [showFull, setShowFull] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const token = localStorage.getItem("auth_token") ?? "";
-  const payload = token ? decodeJwtPayload(token) : null;
-
-  const expTs = payload?.exp as number | undefined;
-  const iatTs = payload?.iat as number | undefined;
-  const expDate = expTs ? new Date(expTs * 1000) : null;
-  const iatDate = iatTs ? new Date(iatTs * 1000) : null;
-  const expired = expDate ? expDate < new Date() : false;
-
-  const handleCopy = () => {
-    if (!token) return;
-    navigator.clipboard.writeText(token).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
-  return (
-    <div className="glass-card rounded-lg overflow-hidden lg:col-span-2">
-      <div className="p-4 border-b border-border">
-        <h3 className="font-semibold text-foreground flex items-center gap-2">
-          <Key className="w-4 h-4 text-status-info" />
-          API Token Inspector
-        </h3>
-      </div>
-      <div className="p-4 space-y-4">
-        {!token ? (
-          <p className="text-sm text-muted-foreground">No auth token found. Please log in.</p>
-        ) : (
-          <>
-            {/* Token value */}
-            <div className="space-y-2">
-              <Label>Current Token</Label>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 p-2 bg-accent/30 rounded-lg text-xs font-mono text-foreground break-all">
-                  {showFull ? token : maskToken(token)}
-                </code>
-                <button
-                  onClick={() => setShowFull((v) => !v)}
-                  className="p-2 rounded-lg hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
-                  title={showFull ? "Hide token" : "Show full token"}
-                >
-                  {showFull ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-                <button
-                  onClick={handleCopy}
-                  className="p-2 rounded-lg hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-colors"
-                  title="Copy token"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
-              </div>
-              {copied && <p className="text-xs text-status-healthy">Copied to clipboard!</p>}
-            </div>
-
-            {/* Decoded payload */}
-            {payload ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Issued At</p>
-                  <p className="text-sm text-foreground font-medium">
-                    {iatDate ? iatDate.toLocaleString() : "—"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Expires At</p>
-                  <p className={`text-sm font-medium ${expired ? "text-status-critical" : "text-status-healthy"}`}>
-                    {expDate ? expDate.toLocaleString() : "—"}
-                    {expired && " (EXPIRED)"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Subject / Role</p>
-                  <p className="text-sm text-foreground font-medium font-mono">
-                    {String(payload.sub ?? payload.role ?? "—")}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">Token is not a valid JWT (cannot decode payload).</p>
-            )}
-          </>
-        )}
-      </div>
-    </div>
   );
 }

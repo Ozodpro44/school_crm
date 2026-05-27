@@ -1,389 +1,311 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Search, Download, Clock, AlertCircle, AlertTriangle, Info, Eye, Copy, Trash2, Loader } from "lucide-react";
-import { apiClient } from "@/services/api-client";
+import {
+  Search, Download, RefreshCw, Trash2, Loader2, AlertCircle,
+  Bug, Info, AlertTriangle, Copy, ChevronDown, ChevronRight, Activity,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { getLogs, clearLogs, type LogEntry } from "@/services/api-client";
 
-type LogLevel = "INFO" | "WARN" | "ERROR";
+type Level = "ALL" | "DEBUG" | "INFO" | "WARN" | "ERROR";
 
-interface LogEntry {
-  id: string;
-  timestamp: string;
-  level: LogLevel;
-  module: string;
-  message: string;
-  details?: string;
-  stackTrace?: string;
-  requestId?: string;
-  userId?: string;
-  branch?: string;
-}
-
-// Mock logs removed - only showing real backend data
-
-const levelConfig: Record<LogLevel, { icon: typeof Info; className: string }> = {
-  INFO: { icon: Info, className: "log-info" },
-  WARN: { icon: AlertTriangle, className: "log-warning" },
-  ERROR: { icon: AlertCircle, className: "log-error" },
+const LEVEL_CONFIG: Record<string, { icon: typeof Info; lineClass: string; badgeClass: string; label: string }> = {
+  DEBUG: { icon: Bug,           lineClass: "log-debug", badgeClass: "bg-muted text-muted-foreground",           label: "DEBUG" },
+  INFO:  { icon: Info,          lineClass: "log-info",  badgeClass: "bg-status-info/15 text-status-info",       label: "INFO"  },
+  WARN:  { icon: AlertTriangle, lineClass: "log-warn",  badgeClass: "bg-status-warning/15 text-status-warning", label: "WARN"  },
+  ERROR: { icon: AlertCircle,   lineClass: "log-error", badgeClass: "bg-status-critical/15 text-status-critical",label: "ERROR" },
 };
 
-const modules = ["all", "auth", "payments", "students", "email", "api", "redis"];
+const LIMITS = [50, 100, 200, 500];
 
 export default function Logs() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedLevel, setSelectedLevel] = useState("all");
-  const [selectedModule, setSelectedModule] = useState("all");
-  const [expandedLog, setExpandedLog] = useState<string | null>(null);
-  const [logData, setLogData] = useState<LogEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Modal states
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
-  const [selectedLog, setSelectedLog] = useState<LogEntry | null>(null);
 
-  // Fetch logs on mount
-  useEffect(() => {
-    fetchLogs();
-  }, []);
+  const [level, setLevel] = useState<Level>("ALL");
+  const [limit, setLimit] = useState(200);
+  const [moduleFilter, setModuleFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setIsLoading(true);
-      setError(null);
-
-      const raw = await apiClient.getDevLogs({ limit: 200 });
-      type RawLog = { id?: string; timestamp?: string; level?: string; module?: string; service?: string; message?: string; metadata?: Record<string, string> };
-      const entries: LogEntry[] = (raw || []).map((log: RawLog, index: number) => {
-        let level: LogLevel = 'INFO';
-        const upperLevel = (log.level || 'info').toUpperCase();
-        if (upperLevel === 'ERROR') level = 'ERROR';
-        else if (upperLevel === 'WARN') level = 'WARN';
-
-        return {
-          id: log.id || String(index),
-          timestamp: log.timestamp || new Date().toISOString(),
-          level,
-          module: log.module || log.service || 'api',
-          message: log.message || '',
-          details: log.metadata ? JSON.stringify(log.metadata, null, 2) : undefined,
-        };
+      const data = await getLogs({
+        limit,
+        level: level !== "ALL" ? level : undefined,
       });
-      setLogData(entries);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch logs';
-      setError(message);
-      setLogData([]);
+      setLogs(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to fetch logs");
+      setLogs([]);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  };
+  }, [limit, level]);
 
-  const filteredLogs = logData.filter((log) => {
-    const matchesSearch = log.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          log.module.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (log.details?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false);
-    const matchesLevel = selectedLevel === "all" || log.level === selectedLevel;
-    const matchesModule = selectedModule === "all" || log.module === selectedModule;
-    return matchesSearch && matchesLevel && matchesModule;
+  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  useEffect(() => {
+    if (autoRefresh) {
+      autoRefreshRef.current = setInterval(fetchLogs, 5000);
+    } else {
+      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
+    }
+    return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); };
+  }, [autoRefresh, fetchLogs]);
+
+  // Derive unique modules from data
+  const allModules = ["all", ...Array.from(new Set(logs.map((l) => l.module).filter(Boolean))).sort()];
+
+  const filtered = logs.filter((l) => {
+    if (moduleFilter !== "all" && l.module !== moduleFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!l.message.toLowerCase().includes(q) && !l.module.toLowerCase().includes(q)) return false;
+    }
+    return true;
   });
 
-  const openViewModal = (log: LogEntry) => {
-    setSelectedLog(log);
-    setIsViewModalOpen(true);
+  const counts: Record<Level, number> = {
+    ALL:   logs.length,
+    DEBUG: logs.filter((l) => l.level === "DEBUG").length,
+    INFO:  logs.filter((l) => l.level === "INFO").length,
+    WARN:  logs.filter((l) => l.level === "WARN").length,
+    ERROR: logs.filter((l) => l.level === "ERROR").length,
   };
 
-  const handleExportLogs = () => {
-    const logsJson = JSON.stringify(filteredLogs, null, 2);
-    const blob = new Blob([logsJson], { type: "application/json" });
+  const handleCopy = (log: LogEntry) => {
+    const text = `[${log.timestamp}] [${log.level}] [${log.module}] ${log.message}${
+      log.metadata ? "\n" + JSON.stringify(log.metadata, null, 2) : ""
+    }`;
+    navigator.clipboard.writeText(text);
+    toast.success("Copied to clipboard");
+  };
+
+  const handleDownload = () => {
+    const blob = new Blob([JSON.stringify(filtered, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `logs-${new Date().toISOString().split("T")[0]}.json`;
+    a.download = `logs-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Logs exported as JSON");
+    toast.success("Downloaded logs.json");
   };
 
-  const handleExportCsv = () => {
-    const header = ["timestamp", "level", "module", "message", "details"].join(",");
-    const rows = filteredLogs.map((log) => {
-      const escape = (v: string) => `"${(v ?? "").replace(/"/g, '""')}"`;
-      return [
-        escape(new Date(log.timestamp).toISOString()),
-        escape(log.level),
-        escape(log.module),
-        escape(log.message),
-        escape(log.details ?? ""),
-      ].join(",");
-    });
-    const csv = [header, ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `logs-${new Date().toISOString().split("T")[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Logs exported as CSV");
-  };
-
-  const handleCopyLog = (log: LogEntry) => {
-    const logText = `[${log.timestamp}] [${log.level}] [${log.module}] ${log.message}${log.details ? `\n${log.details}` : ""}${log.stackTrace ? `\n${log.stackTrace}` : ""}`;
-    navigator.clipboard.writeText(logText);
-    toast.success("Log copied to clipboard");
-  };
-
-  const handleClearLogs = async () => {
+  const handleClear = async () => {
     try {
-      await apiClient.clearDevLogs();
-      setLogData([]);
-      setIsClearDialogOpen(false);
+      await clearLogs();
+      setLogs([]);
+      setClearDialogOpen(false);
       toast.success("Logs cleared");
-    } catch (err) {
-      toast.error("Failed to clear logs");
-      setIsClearDialogOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to clear logs");
+      setClearDialogOpen(false);
     }
   };
 
-  const handleRefreshLogs = () => {
-    fetchLogs();
-  };
-
-  const errorCount = logData.filter((l) => l.level === "ERROR").length;
-  const warnCount = logData.filter((l) => l.level === "WARN").length;
-  const infoCount = logData.filter((l) => l.level === "INFO").length;
+  const LEVEL_BTNS: Level[] = ["ALL", "DEBUG", "INFO", "WARN", "ERROR"];
 
   return (
     <DashboardLayout>
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Logs & Errors</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Real-time application logs from the backend
-          </p>
-          {error && <p className="text-sm text-status-critical mt-1">{error}</p>}
+          <h1 className="text-2xl font-bold text-foreground">Log Viewer</h1>
+          <p className="text-sm text-muted-foreground mt-1">Real-time application logs from the backend</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="gap-2"
-            onClick={handleRefreshLogs}
-            disabled={isLoading}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleDownload}>
+            <Download className="w-4 h-4" />
+            Download JSON
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn("gap-2", autoRefresh && "border-primary/50 text-primary")}
+            onClick={() => setAutoRefresh((v) => !v)}
           >
-            {isLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {isLoading ? 'Loading...' : 'Refresh'}
+            <Activity className="w-4 h-4" />
+            {autoRefresh ? "Auto-refresh ON" : "Auto-refresh"}
           </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportLogs}>
-            <Download className="w-4 h-4" />
-            Export JSON
+          <Button variant="outline" size="sm" className="gap-2" onClick={fetchLogs} disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Refresh
           </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleExportCsv}>
-            <Download className="w-4 h-4" />
-            Export CSV
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             className="gap-2 text-status-critical hover:text-status-critical"
-            onClick={() => setIsClearDialogOpen(true)}
+            onClick={() => setClearDialogOpen(true)}
           >
             <Trash2 className="w-4 h-4" />
-            Clear Logs
+            Clear
           </Button>
         </div>
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        <div className="metric-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-status-critical/15 flex items-center justify-center">
-              <AlertCircle className="w-5 h-5 text-status-critical" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{errorCount}</p>
-              <p className="text-sm text-muted-foreground">Errors</p>
-            </div>
-          </div>
+      {error && (
+        <div className="flex items-center gap-3 p-4 mb-4 rounded-lg border border-status-critical/30 bg-status-critical/10 text-status-critical text-sm">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {error}
         </div>
-        <div className="metric-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-status-warning/15 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-status-warning" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{warnCount}</p>
-              <p className="text-sm text-muted-foreground">Warnings</p>
-            </div>
-          </div>
-        </div>
-        <div className="metric-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-status-info/15 flex items-center justify-center">
-              <Info className="w-5 h-5 text-status-info" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{infoCount}</p>
-              <p className="text-sm text-muted-foreground">Info</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      )}
 
-      {/* Filters */}
-      <div className="glass-card rounded-lg p-4 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search logs..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-background"
-            />
-          </div>
-          <Select value={selectedLevel} onValueChange={setSelectedLevel}>
-            <SelectTrigger className="w-full md:w-40 bg-background">
-              <SelectValue placeholder="Log Level" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Levels</SelectItem>
-              <SelectItem value="INFO">INFO</SelectItem>
-              <SelectItem value="WARN">WARN</SelectItem>
-              <SelectItem value="ERROR">ERROR</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={selectedModule} onValueChange={setSelectedModule}>
-            <SelectTrigger className="w-full md:w-40 bg-background">
+      {/* Sticky Toolbar */}
+      <div className="sticky top-0 z-10 glass-card rounded-lg p-3 mb-4 space-y-3">
+        {/* Level filter */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {LEVEL_BTNS.map((l) => (
+            <button
+              key={l}
+              onClick={() => setLevel(l)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
+                level === l
+                  ? l === "ALL"   ? "bg-primary text-primary-foreground"
+                  : l === "ERROR" ? "bg-status-critical text-white"
+                  : l === "WARN"  ? "bg-status-warning text-black"
+                  : l === "INFO"  ? "bg-status-info text-white"
+                  : "bg-muted text-foreground"
+                  : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              {l}
+              <span className="opacity-70">({counts[l]})</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Second row: module, limit, search */}
+        <div className="flex flex-col md:flex-row gap-2">
+          <Select value={moduleFilter} onValueChange={setModuleFilter}>
+            <SelectTrigger className="w-full md:w-48 bg-background h-8 text-xs">
               <SelectValue placeholder="Module" />
             </SelectTrigger>
             <SelectContent>
-              {modules.map((module) => (
-                <SelectItem key={module} value={module}>
-                  {module === "all" ? "All Modules" : module}
-                </SelectItem>
+              {allModules.map((m) => (
+                <SelectItem key={m} value={m}>{m === "all" ? "All Modules" : m}</SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
+            <SelectTrigger className="w-full md:w-28 bg-background h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LIMITS.map((l) => (
+                <SelectItem key={l} value={String(l)}>{l} entries</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search message or module..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 bg-background text-xs"
+            />
+          </div>
         </div>
       </div>
 
-      {/* Logs Table */}
+      {/* Log List */}
       <div className="glass-card rounded-lg overflow-hidden">
-        <div className="flex items-center gap-4 px-4 py-3 border-b border-border text-xs text-muted-foreground font-medium">
-          <div className="w-44">Timestamp</div>
-          <div className="w-16">Level</div>
-          <div className="w-24">Module</div>
+        <div className="flex items-center gap-4 px-4 py-2 border-b border-border text-xs text-muted-foreground font-medium">
+          <div className="w-36">Timestamp</div>
+          <div className="w-14">Level</div>
+          <div className="w-28">Module</div>
           <div className="flex-1">Message</div>
-          <div className="w-20">Actions</div>
+          <div className="w-8" />
         </div>
-        <div className="divide-y divide-border max-h-[600px] overflow-y-auto scrollbar-thin">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground flex items-center justify-center gap-2">
-              <Loader className="w-4 h-4 animate-spin" />
-              Loading logs...
+
+        <div className="divide-y divide-border max-h-[calc(100vh-380px)] overflow-y-auto scrollbar-thin">
+          {loading ? (
+            <div className="p-10 flex flex-col items-center gap-3 text-muted-foreground">
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+              <span className="text-sm">Loading logs...</span>
             </div>
-          ) : filteredLogs.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              {logData.length === 0
-                ? "No log entries yet — errors and warnings appear here automatically"
-                : "No logs found matching your filters"}
+          ) : filtered.length === 0 ? (
+            <div className="p-10 flex flex-col items-center gap-3 text-muted-foreground">
+              <Info className="w-8 h-8 opacity-30" />
+              <span className="text-sm">
+                {logs.length === 0 ? "No log entries yet" : "No logs match your filters"}
+              </span>
             </div>
           ) : (
-            filteredLogs.map((log) => {
-              const LevelIcon = levelConfig[log.level].icon;
-              const isExpanded = expandedLog === log.id;
-              
+            filtered.map((log) => {
+              const cfg = LEVEL_CONFIG[log.level] ?? LEVEL_CONFIG.INFO;
+              const LvlIcon = cfg.icon;
+              const isExpanded = expandedId === log.id;
+              const hasMetadata = log.metadata && Object.keys(log.metadata).length > 0;
+
               return (
-                <div key={log.id}>
-                  <div className={cn("log-line", levelConfig[log.level].className)}>
-                    <div className="flex items-center gap-4">
-                      <div className="w-44 text-muted-foreground flex items-center gap-2">
-                        <Clock className="w-3 h-3" />
-                        {new Date(log.timestamp).toLocaleString('en-US', {
-                          year: 'numeric',
-                          month: '2-digit',
-                          day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                        })}
-                      </div>
-                      <div className="w-16">
-                        <span className={cn(
-                          "badge-status flex items-center gap-1",
-                          log.level === "INFO" && "bg-status-info/15 text-status-info",
-                          log.level === "WARN" && "badge-warning",
-                          log.level === "ERROR" && "badge-critical"
-                        )}>
-                          <LevelIcon className="w-3 h-3" />
-                          {log.level}
-                        </span>
-                      </div>
-                      <div className="w-24">
-                        <span className="text-primary font-medium">{log.module}</span>
-                      </div>
-                      <div 
-                        className="flex-1 text-foreground cursor-pointer hover:underline"
-                        onClick={() => setExpandedLog(isExpanded ? null : log.id)}
+                <div key={log.id} className={cn("group", cfg.lineClass)}>
+                  <div className="flex items-center gap-4 px-4 py-2 hover:bg-accent/20 transition-colors">
+                    <div className="w-36 text-xs text-muted-foreground font-mono flex-shrink-0">
+                      {new Date(log.timestamp).toLocaleTimeString("en-US", {
+                        hour: "2-digit", minute: "2-digit", second: "2-digit",
+                      })}
+                      <br />
+                      <span className="opacity-60">
+                        {new Date(log.timestamp).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+                      </span>
+                    </div>
+                    <div className="w-14 flex-shrink-0">
+                      <span className={cn("inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded", cfg.badgeClass)}>
+                        <LvlIcon className="w-2.5 h-2.5" />
+                        {log.level}
+                      </span>
+                    </div>
+                    <div className="w-28 flex-shrink-0">
+                      <span className="text-xs font-mono text-primary truncate block">{log.module}</span>
+                    </div>
+                    <div
+                      className={cn("flex-1 text-sm text-foreground truncate", hasMetadata && "cursor-pointer")}
+                      onClick={() => hasMetadata && setExpandedId(isExpanded ? null : log.id)}
+                    >
+                      {log.message}
+                    </div>
+                    <div className="w-8 flex-shrink-0 flex items-center gap-1">
+                      {hasMetadata && (
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : log.id)}
+                          className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleCopy(log)}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                       >
-                        {log.message}
-                      </div>
-                      <div className="w-20 flex items-center gap-1">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-7 w-7"
-                          onClick={() => openViewModal(log)}
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-7 w-7"
-                          onClick={() => handleCopyLog(log)}
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
-                  {isExpanded && log.details && (
-                    <div className="px-4 py-3 bg-accent/30 text-sm text-muted-foreground font-mono border-l-2 border-primary ml-4">
-                      {log.details}
+                  {isExpanded && log.metadata && (
+                    <div className="mx-4 mb-2 p-3 bg-accent/30 rounded-lg border-l-2 border-primary">
+                      <pre className="text-xs font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
+                        {JSON.stringify(log.metadata, null, 2)}
+                      </pre>
                     </div>
                   )}
                 </div>
@@ -391,115 +313,26 @@ export default function Logs() {
             })
           )}
         </div>
+
+        {!loading && filtered.length > 0 && (
+          <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">
+            Showing {filtered.length} of {logs.length} entries
+          </div>
+        )}
       </div>
 
-      {/* View Log Modal */}
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Log Details</DialogTitle>
-            <DialogDescription>
-              Full log entry information
-            </DialogDescription>
-          </DialogHeader>
-          {selectedLog && (
-            <div className="space-y-4 py-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className={cn(
-                  "badge-status flex items-center gap-1",
-                  selectedLog.level === "INFO" && "bg-status-info/15 text-status-info",
-                  selectedLog.level === "WARN" && "badge-warning",
-                  selectedLog.level === "ERROR" && "badge-critical"
-                )}>
-                  {selectedLog.level}
-                </span>
-                <span className="badge-status bg-accent text-accent-foreground">
-                  {selectedLog.module}
-                </span>
-                {selectedLog.branch && (
-                  <span className="badge-status bg-primary/15 text-primary">
-                    {selectedLog.branch}
-                  </span>
-                )}
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground">Timestamp</p>
-                <p className="font-mono text-foreground">{new Date(selectedLog.timestamp).toLocaleString('en-US', {
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                })}</p>
-              </div>
-
-              <div>
-                <p className="text-sm text-muted-foreground">Message</p>
-                <p className="font-medium text-foreground">{selectedLog.message}</p>
-              </div>
-
-              {selectedLog.details && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Details</p>
-                  <pre className="p-3 bg-accent/30 rounded-lg text-sm font-mono text-foreground overflow-x-auto">
-                    {selectedLog.details}
-                  </pre>
-                </div>
-              )}
-
-              {selectedLog.stackTrace && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Stack Trace</p>
-                  <pre className="p-3 bg-status-critical/10 rounded-lg text-sm font-mono text-status-critical overflow-x-auto">
-                    {selectedLog.stackTrace}
-                  </pre>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                {selectedLog.requestId && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Request ID</p>
-                    <p className="font-mono text-sm text-foreground">{selectedLog.requestId}</p>
-                  </div>
-                )}
-                {selectedLog.userId && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">User ID</p>
-                    <p className="font-mono text-sm text-foreground">{selectedLog.userId}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
-              Close
-            </Button>
-            <Button onClick={() => {
-              if (selectedLog) handleCopyLog(selectedLog);
-            }}>
-              <Copy className="w-4 h-4 mr-2" />
-              Copy Log
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Clear Logs Dialog */}
-      <AlertDialog open={isClearDialogOpen} onOpenChange={setIsClearDialogOpen}>
+      {/* Clear Confirm */}
+      <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Clear All Logs</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to clear all logs? This action cannot be undone and all log entries will be permanently deleted.
+              Permanently delete all log entries? This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleClearLogs} className="bg-status-critical hover:bg-status-critical/90">
+            <AlertDialogAction onClick={handleClear} className="bg-status-critical hover:bg-status-critical/90">
               Clear All Logs
             </AlertDialogAction>
           </AlertDialogFooter>

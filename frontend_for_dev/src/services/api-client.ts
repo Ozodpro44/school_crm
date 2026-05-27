@@ -1,615 +1,369 @@
-/**
- * API Client Service
- * Handles all API requests to the backend
- */
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api").replace(/\/$/, "");
 
-export interface ApiResponse<T> {
-  data: T;
-  error: string | null;
+function getToken(): string | null {
+  return localStorage.getItem("auth_token");
+}
+
+let onUnauthorized: (() => void) | undefined;
+export function setOnUnauthorized(cb: () => void) { onUnauthorized = cb; }
+export function setToken(token: string) { localStorage.setItem("auth_token", token); }
+export function clearToken() { localStorage.removeItem("auth_token"); }
+
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), 30_000);
+
+  try {
+    const res = await fetch(`${BASE_URL}${endpoint}`, { ...options, headers, signal: controller.signal });
+    clearTimeout(tid);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({})) as { error?: string };
+      const err = new Error(body.error ?? `HTTP ${res.status}`);
+      (err as Error & { status: number }).status = res.status;
+      if (res.status === 401) onUnauthorized?.();
+      throw err;
+    }
+
+    if (res.status === 204) return undefined as T;
+    return res.json();
+  } catch (e) {
+    clearTimeout(tid);
+    if (e instanceof TypeError) throw new Error("Network error: cannot reach server");
+    throw e;
+  }
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+}
+
+export async function login(email: string, password: string): Promise<{ token: string; user: AuthUser }> {
+  const res = await request<AuthUser & { token: string }>("/dev/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+  return { token: res.token, user: { id: res.id, email: res.email, fullName: res.fullName, role: res.role } };
+}
+
+export async function register(email: string, password: string, fullName: string): Promise<{ token: string; user: AuthUser }> {
+  const res = await request<AuthUser & { token: string }>("/dev/auth/register", {
+    method: "POST",
+    body: JSON.stringify({ email, password, fullName }),
+  });
+  return { token: res.token, user: { id: res.id, email: res.email, fullName: res.fullName, role: res.role } };
+}
+
+// ── Platform Stats ─────────────────────────────────────────────────────────────
+
+export interface PlatformStats {
+  totalUsers: number;
+  totalSubscriptions: number;
+  activeSubscriptions: number;
+  trialSubscriptions: number;
+  expiredSubscriptions: number;
+  pendingSubscriptions: number;
+  mrr: number;
+}
+
+export async function getPlatformStats(): Promise<PlatformStats> {
+  return request<PlatformStats>("/dev/stats");
+}
+
+// ── Health ─────────────────────────────────────────────────────────────────────
+
+export interface HealthStatus {
+  status: string;
+  version?: string;
+  uptime?: number;
+  responseTime: number;
+  services?: Record<string, string>;
+}
+
+export async function getHealth(): Promise<HealthStatus> {
+  const rootUrl = BASE_URL.replace(/\/api\/?$/, "");
+  const start = Date.now();
+  const res = await fetch(`${rootUrl}/health`);
+  const responseTime = Date.now() - start;
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  return { ...data, responseTime };
+}
+
+// ── Logs ───────────────────────────────────────────────────────────────────────
+
+export interface LogEntry {
+  id: string;
+  timestamp: string;
+  level: "DEBUG" | "INFO" | "WARN" | "ERROR";
+  module: string;
   message: string;
+  metadata?: Record<string, unknown>;
 }
 
-export class ApiClient {
-  private baseUrl: string;
-  private timeout: number;
-  private token: string | null = null;
-  private onUnauthorized: (() => void) | null = null;
+export interface LogsFilter {
+  limit?: number;
+  level?: string;
+  module?: string;
+}
 
-  constructor() {
-    this.baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
-    this.timeout = parseInt(import.meta.env.VITE_API_TIMEOUT || '30000');
-    this.loadToken();
-  }
-
-  /**
-   * Register a callback invoked when any request receives a 401 response.
-   * AuthContext uses this to trigger logout + redirect to /login.
-   */
-  setOnUnauthorized(cb: () => void): void {
-    this.onUnauthorized = cb;
-  }
-
-  /**
-   * Load token from localStorage
-   */
-  private loadToken(): void {
-    this.token = localStorage.getItem('auth_token');
-  }
-
-  /**
-   * Set token (used after login)
-   */
-  setToken(token: string): void {
-    this.token = token;
-    localStorage.setItem('auth_token', token);
-  }
-
-  /**
-   * Clear token (used on logout)
-   */
-  clearToken(): void {
-    this.token = null;
-    localStorage.removeItem('auth_token');
-  }
-
-  /**
-   * Generic fetch method with error handling
-   */
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
-
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({})) as { error?: string };
-        const error = new Error(errorData.error || `HTTP ${response.status}`);
-        (error as Error & { status: number }).status = response.status;
-        if (response.status === 401) {
-          this.onUnauthorized?.();
-        }
-        throw error;
-      }
-
-      return await response.json();
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        throw new Error('Network error: Cannot connect to server');
-      }
-      throw error;
-    }
-  }
-
-  // ==================== AUTH ====================
-
-  async login(email: string, password: string): Promise<{ token: string; user: { id: string; email: string; fullName: string; role: string } }> {
-    // Use developer login endpoint for dev dashboard
-    const response = await this.request<{ id: string; email: string; fullName: string; token: string; role: string }>('/dev/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    
-    // Transform response to match expected format
+export async function getLogs(filter: LogsFilter = {}): Promise<LogEntry[]> {
+  const p = new URLSearchParams();
+  if (filter.limit) p.set("limit", String(filter.limit));
+  if (filter.level && filter.level !== "ALL") p.set("level", filter.level);
+  if (filter.module && filter.module !== "all") p.set("module", filter.module);
+  const qs = p.toString();
+  const raw = await request<unknown[]>(`/dev/logs${qs ? `?${qs}` : ""}`);
+  return (raw ?? []).map((l: unknown, i) => {
+    const log = l as Record<string, unknown>;
+    const lvl = String(log.level ?? "INFO").toUpperCase();
     return {
-      token: response.token,
-      user: {
-        id: response.id,
-        email: response.email,
-        fullName: response.fullName,
-        role: response.role,
-      },
+      id: String(log.id ?? i),
+      timestamp: String(log.timestamp ?? new Date().toISOString()),
+      level: (["DEBUG","INFO","WARN","ERROR"].includes(lvl) ? lvl : "INFO") as LogEntry["level"],
+      module: String(log.module ?? log.service ?? "api"),
+      message: String(log.message ?? ""),
+      metadata: (log.metadata as Record<string, unknown>) ?? undefined,
     };
-  }
-
-  async register(data: {
-    email: string;
-    password: string;
-    fullName: string;
-    role: string;
-    branchId: string;
-  }): Promise<Record<string, unknown>> {
-    return this.request('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  // ==================== STUDENTS ====================
-
-  async getStudents(branchId: string): Promise<Record<string, unknown>[]> {
-    return this.request(`/students?branchId=${branchId}`, {
-      method: 'GET',
-    });
-  }
-
-  async getStudent(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/students/${id}`, {
-      method: 'GET',
-    });
-  }
-
-  async createStudent(data: {
-    fullName: string;
-    classId: string;
-    phone: string;
-    parentPhone: string;
-    monthlyPayment: number;
-    status: string;
-    branchId: string;
-    enrollmentDate?: string;
-  }): Promise<Record<string, unknown>> {
-    return this.request('/students', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateStudent(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
-    return this.request(`/students/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteStudent(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/students/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // ==================== PAYMENTS ====================
-
-  async getPayments(branchId?: string, studentId?: string, month?: string, year?: number): Promise<Record<string, unknown>[]> {
-    const params = new URLSearchParams();
-    if (branchId) params.append('branchId', branchId);
-    if (studentId) params.append('studentId', studentId);
-    if (month) params.append('month', month);
-    if (year) params.append('year', year.toString());
-
-    return this.request(`/payments?${params.toString()}`, {
-      method: 'GET',
-    });
-  }
-
-  async getPayment(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/payments/${id}`, {
-      method: 'GET',
-    });
-  }
-
-  async getPaymentSummary(branchId: string): Promise<Record<string, unknown>> {
-    return this.request(`/payments/branch/${branchId}/summary`, {
-      method: 'GET',
-    });
-  }
-
-  async createPayment(data: {
-    studentId: string;
-    amount: number;
-    month: string;
-    year: number;
-    paymentMethod: string;
-    status: string;
-    invoiceNumber?: string;
-    notes?: string;
-    paidDate?: string;
-    branchId: string;
-  }): Promise<Record<string, unknown>> {
-    return this.request('/payments', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updatePayment(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
-    return this.request(`/payments/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deletePayment(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/payments/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // ==================== BRANCHES ====================
-
-  async getBranches(): Promise<Record<string, unknown>[]> {
-    return this.request('/dev/crm/branches', {
-      method: 'GET',
-    });
-  }
-
-  async getBranch(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/dev/crm/branches/${id}`, {
-      method: 'GET',
-    });
-  }
-
-  async createBranch(data: {
-    name: string;
-    address: string;
-    phone: string;
-    monthlyPayment?: number;
-    adminId?: string;
-  }): Promise<Record<string, unknown>> {
-    return this.request('/dev/crm/branches', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateBranch(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
-    return this.request(`/dev/crm/branches/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteBranch(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/dev/crm/branches/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // ==================== CLASSES ====================
-
-  async getClasses(branchId: string): Promise<Record<string, unknown>[]> {
-    return this.request(`/classes?branchId=${branchId}`, {
-      method: 'GET',
-    });
-  }
-
-  async getClass(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/classes/${id}`, {
-      method: 'GET',
-    });
-  }
-
-  async createClass(data: {
-    name: string;
-    teacherId?: string;
-    branchId: string;
-  }): Promise<Record<string, unknown>> {
-    return this.request('/classes', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateClass(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
-    return this.request(`/classes/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteClass(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/classes/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // ==================== TEACHERS ====================
-
-  // NOTE: Teachers are managed via school CRM auth. These methods use the school
-  // CRM routes and should only be called with a school-user JWT, not the dev JWT.
-  // The dev dashboard does not have a teachers management page, so these are
-  // available if needed but should not be invoked with dev credentials.
-  async getTeachers(branchId: string): Promise<Record<string, unknown>[]> {
-    return this.request(`/dev/crm/branches/${branchId}/teachers`, {
-      method: 'GET',
-    });
-  }
-
-  async getTeacher(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/teachers/${id}`, {
-      method: 'GET',
-    });
-  }
-
-  async createTeacher(data: {
-    fullName: string;
-    subjects?: string[];
-    monthlySalary: number;
-    phone: string;
-    email: string;
-    branchId: string;
-    joinedDate?: string;
-  }): Promise<Record<string, unknown>> {
-    return this.request('/teachers', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateTeacher(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
-    return this.request(`/teachers/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteTeacher(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/teachers/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // ==================== SALARIES ====================
-
-  async getSalaries(branchId: string): Promise<Record<string, unknown>[]> {
-    return this.request(`/salaries?branchId=${branchId}`, {
-      method: 'GET',
-    });
-  }
-
-  async getSalary(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/salaries/${id}`, {
-      method: 'GET',
-    });
-  }
-
-  async createSalary(data: {
-    teacherId: string;
-    amount: number;
-    month: string;
-    year: number;
-    paymentMethod: string;
-    status: string;
-    notes?: string;
-    paidDate?: string;
-    branchId: string;
-  }): Promise<Record<string, unknown>> {
-    return this.request('/salaries', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async updateSalary(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
-    return this.request(`/salaries/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteSalary(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/salaries/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // ==================== EXPENSES ====================
-
-  async getExpenses(branchId: string): Promise<Record<string, unknown>[]> {
-    return this.request(`/expenses?branchId=${branchId}`, {
-      method: 'GET',
-    });
-  }
-
-  async getExpense(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/expenses/${id}`, {
-      method: 'GET',
-    });
-  }
-
-  async createExpense(data: {
-    title: string;
-    description?: string;
-    amount: number;
-    category: string;
-    paymentMethod: string;
-    date: string;
-    branchId: string;
-    notes?: string;
-  }): Promise<Record<string, unknown>> {
-    return this.request('/expenses', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteExpense(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/expenses/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // ==================== USERS ====================
-
-  async getUsers(): Promise<Record<string, unknown>[]> {
-    return this.request('/dev/crm/users', {
-      method: 'GET',
-    });
-  }
-
-  async getManagersByBranch(branchId: string): Promise<Record<string, unknown>[]> {
-    return this.request(`/dev/crm/users?branchId=${branchId}`, {
-      method: 'GET',
-    });
-  }
-
-  async getUser(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/dev/crm/users/${id}`, {
-      method: 'GET',
-    });
-  }
-
-  async updateUser(id: string, data: Partial<Record<string, unknown>>): Promise<Record<string, unknown>> {
-    return this.request(`/dev/crm/users/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteUser(id: string): Promise<Record<string, unknown>> {
-    return this.request(`/dev/crm/users/${id}`, {
-      method: 'DELETE',
-    });
-  }
-
-  // ==================== HEALTH ====================
-
-  async healthCheck(): Promise<Record<string, unknown>> {
-    // /health is at root level, not under /api
-    const rootUrl = this.baseUrl.replace(/\/api\/?$/, '');
-    const start = Date.now();
-    const response = await fetch(`${rootUrl}/health`);
-    const responseTime = Date.now() - start;
-    if (!response.ok) throw new Error(`Health check failed: HTTP ${response.status}`);
-    const data = await response.json();
-    // Inject client-measured latency so Analytics can display a real value
-    return { ...data, responseTime };
-  }
-
-  // ==================== DEV LOGS ====================
-
-  async getDevLogs(params?: { limit?: number; level?: string; module?: string }): Promise<Record<string, unknown>[]> {
-    const q = new URLSearchParams();
-    if (params?.limit) q.set('limit', String(params.limit));
-    if (params?.level) q.set('level', params.level);
-    if (params?.module) q.set('module', params.module);
-    const qs = q.toString() ? `?${q}` : '';
-    return this.request(`/dev/logs${qs}`, { method: 'GET' });
-  }
-
-  async clearDevLogs(): Promise<void> {
-    return this.request('/dev/logs', { method: 'DELETE' });
-  }
-
-  // ==================== DEV SETTINGS ====================
-
-  async getDevSettings(): Promise<Record<string, unknown>> {
-    return this.request('/dev/settings', { method: 'GET' });
-  }
-
-  async updateDevSettings(settings: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.request('/dev/settings', {
-      method: 'PUT',
-      body: JSON.stringify(settings),
-    });
-  }
-
-  // ==================== NOTIFICATIONS ====================
-
-  async getNotificationPreferences(): Promise<Record<string, unknown>> {
-    return this.request('/dev/notifications/preferences', { method: 'GET' });
-  }
-
-  async updateNotificationPreferences(prefs: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.request('/dev/notifications/preferences', {
-      method: 'PUT',
-      body: JSON.stringify(prefs),
-    });
-  }
-
-  async getNotificationChannels(): Promise<Record<string, unknown>> {
-    return this.request('/dev/notifications/channels', { method: 'GET' });
-  }
-
-  async updateNotificationChannels(channels: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.request('/dev/notifications/channels', {
-      method: 'PUT',
-      body: JSON.stringify(channels),
-    });
-  }
-
-  async getRecentAlerts(): Promise<Record<string, unknown>[]> {
-    try {
-      return await this.request('/dev/notifications/recent', { method: 'GET' });
-    } catch {
-      return [];
-    }
-  }
-
-  // ==================== LOGS ====================
-
-  async getLogs(limit: number = 100): Promise<Record<string, unknown>[]> {
-    return this.request(`/dev/logs?limit=${limit}`, {
-      method: 'GET',
-    });
-  }
-
-  async getLogsByModule(module: string, limit: number = 100): Promise<Record<string, unknown>[]> {
-    return this.request(`/dev/logs?module=${module}&limit=${limit}`, {
-      method: 'GET',
-    });
-  }
-
-  async getLogsByLevel(level: string, limit: number = 100): Promise<Record<string, unknown>[]> {
-    return this.request(`/dev/logs?level=${level}&limit=${limit}`, {
-      method: 'GET',
-    });
-  }
-
-  /**
-   * Ingest logs to the backend (used by Railway forwarder)
-   * Requires LOGS_TOKEN Bearer token
-   */
-  async ingestLog(
-    token: string,
-    payload: {
-      service: string;
-      level: string;
-      message: string;
-      metadata?: Record<string, string>;
-    }
-  ): Promise<Record<string, unknown>> {
-    const url = `${this.baseUrl}/logs/ingest`;
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      clearTimeout(timeoutId);
-      throw error;
-    }
-  }
+  });
 }
 
-// Singleton instance
-export const apiClient = new ApiClient();
+export async function clearLogs(): Promise<void> {
+  return request<void>("/dev/logs", { method: "DELETE" });
+}
+
+// ── Subscriptions ──────────────────────────────────────────────────────────────
+
+export interface AdminSubscription {
+  id: string;
+  userId: string;
+  planId: string;
+  branchId?: string | null;
+  status: string;
+  startDate: string;
+  endDate?: string | null;
+  renewalDate?: string | null;
+  autoRenew: boolean;
+  paymentMethod?: string | null;
+  notes?: string | null;
+  cancelledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userEmail: string;
+  userFullName: string;
+  planName: string;
+  planPrice: number;
+  billingPeriod: string;
+}
+
+export async function listSubscriptions(): Promise<AdminSubscription[]> {
+  const res = await request<AdminSubscription[]>("/dev/subscriptions");
+  return Array.isArray(res) ? res : [];
+}
+
+export async function getSubscription(id: string): Promise<AdminSubscription> {
+  return request<AdminSubscription>(`/dev/subscriptions/${id}`);
+}
+
+export async function createSubscription(req: {
+  userId: string; planId: string; branchId?: string;
+  status?: string; autoRenew?: boolean; paymentMethod?: string; notes?: string;
+}): Promise<AdminSubscription> {
+  return request<AdminSubscription>("/dev/subscriptions", { method: "POST", body: JSON.stringify(req) });
+}
+
+export async function updateSubscription(id: string, req: Partial<{
+  status: string; planId: string; autoRenew: boolean;
+  paymentMethod: string; endDate: string; renewalDate: string; notes: string;
+}>): Promise<AdminSubscription> {
+  return request<AdminSubscription>(`/dev/subscriptions/${id}`, { method: "PUT", body: JSON.stringify(req) });
+}
+
+export async function deleteSubscription(id: string): Promise<void> {
+  return request<void>(`/dev/subscriptions/${id}`, { method: "DELETE" });
+}
+
+export async function grantTrial(userId: string, days?: number, notes?: string): Promise<void> {
+  return request<void>(`/dev/subscriptions/${userId}/grant-trial`, {
+    method: "POST",
+    body: JSON.stringify({ days, notes }),
+  });
+}
+
+// ── Subscription Plans ─────────────────────────────────────────────────────────
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  billingPeriod: string;
+  maxBranches?: number;
+  maxStudents?: number;
+  maxClasses?: number;
+  features: Record<string, unknown>;
+  isActive?: boolean;
+  status?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listPlans(): Promise<SubscriptionPlan[]> {
+  const res = await request<SubscriptionPlan[]>("/dev/plans");
+  return Array.isArray(res) ? res : [];
+}
+
+export async function createPlan(req: {
+  name: string; description?: string; price: number; billingPeriod: string;
+  maxBranches?: number; maxStudents?: number; maxClasses?: number;
+  features?: Record<string, unknown>; status?: string;
+}): Promise<SubscriptionPlan> {
+  return request<SubscriptionPlan>("/dev/subscription-plans", { method: "POST", body: JSON.stringify(req) });
+}
+
+export async function updatePlan(id: string, req: Partial<{
+  name: string; description: string; price: number; billingPeriod: string;
+  maxBranches: number; maxStudents: number; maxClasses: number;
+  features: Record<string, unknown>; status: string;
+}>): Promise<SubscriptionPlan> {
+  return request<SubscriptionPlan>(`/dev/subscription-plans/${id}`, { method: "PUT", body: JSON.stringify(req) });
+}
+
+export async function deletePlan(id: string): Promise<void> {
+  return request<void>(`/dev/subscription-plans/${id}`, { method: "DELETE" });
+}
+
+// ── Payment Types ──────────────────────────────────────────────────────────────
+
+export interface PaymentType {
+  id: string;
+  code: string;
+  displayName: string;
+  description?: string;
+  isActive: boolean;
+  isSystem: boolean;
+  sortOrder: number;
+  config?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listPaymentTypes(): Promise<PaymentType[]> {
+  const res = await request<PaymentType[]>("/dev/payment-types");
+  return Array.isArray(res) ? res : [];
+}
+
+export async function createPaymentType(req: {
+  code: string; displayName: string; description?: string;
+  isActive?: boolean; sortOrder?: number; config?: Record<string, unknown>;
+}): Promise<PaymentType> {
+  return request<PaymentType>("/dev/payment-types", { method: "POST", body: JSON.stringify(req) });
+}
+
+export async function updatePaymentType(id: string, req: Partial<{
+  displayName: string; description: string; isActive: boolean; sortOrder: number;
+}>): Promise<PaymentType> {
+  return request<PaymentType>(`/dev/payment-types/${id}`, { method: "PATCH", body: JSON.stringify(req) });
+}
+
+export async function togglePaymentType(id: string): Promise<PaymentType> {
+  return request<PaymentType>(`/dev/payment-types/${id}/toggle`, { method: "POST" });
+}
+
+export async function deletePaymentType(id: string): Promise<void> {
+  return request<void>(`/dev/payment-types/${id}`, { method: "DELETE" });
+}
+
+// ── CRM Users ──────────────────────────────────────────────────────────────────
+
+export interface CRMUser {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+  branchId?: string | null;
+  createdAt?: string;
+}
+
+export async function listUsers(): Promise<CRMUser[]> {
+  try {
+    const res = await request<CRMUser[]>("/dev/users");
+    if (Array.isArray(res)) return res;
+  } catch { /* fallthrough */ }
+  const res = await request<CRMUser[]>("/dev/crm/users");
+  return Array.isArray(res) ? res : [];
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  return request<void>(`/dev/crm/users/${id}`, { method: "DELETE" });
+}
+
+// ── CRM Branches ──────────────────────────────────────────────────────────────
+
+export interface CRMBranch {
+  id: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  monthlyPayment?: number;
+  adminId?: string;
+  createdAt?: string;
+}
+
+export async function listBranches(): Promise<CRMBranch[]> {
+  const res = await request<CRMBranch[]>("/dev/crm/branches");
+  return Array.isArray(res) ? res : [];
+}
+
+export async function createBranch(req: {
+  name: string; address?: string; phone?: string; monthlyPayment?: number; adminId?: string;
+}): Promise<CRMBranch> {
+  return request<CRMBranch>("/dev/crm/branches", { method: "POST", body: JSON.stringify(req) });
+}
+
+export async function updateBranch(id: string, req: Partial<{
+  name: string; address: string; phone: string; monthlyPayment: number;
+}>): Promise<CRMBranch> {
+  return request<CRMBranch>(`/dev/crm/branches/${id}`, { method: "PUT", body: JSON.stringify(req) });
+}
+
+export async function deleteBranch(id: string): Promise<void> {
+  return request<void>(`/dev/crm/branches/${id}`, { method: "DELETE" });
+}
+
+// ── Dev Settings ──────────────────────────────────────────────────────────────
+
+export async function getDevSettings(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>("/dev/settings");
+}
+
+export async function updateDevSettings(settings: Record<string, unknown>): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>("/dev/settings", { method: "PUT", body: JSON.stringify(settings) });
+}
+
+// Legacy compat for old imports
+export const apiClient = {
+  login: (email: string, password: string) => login(email, password),
+  getDevLogs: (p?: { limit?: number; level?: string; module?: string }) => getLogs(p),
+  clearDevLogs: clearLogs,
+  getBranches: listBranches,
+  getUsers: listUsers,
+  healthCheck: getHealth,
+  getDevSettings,
+  updateDevSettings,
+  setToken,
+  clearToken,
+  setOnUnauthorized,
+};

@@ -61,10 +61,13 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.PUT("/classes/:id", h.UpdateClass)
 	r.DELETE("/classes/:id", h.DeleteClass)
 
-	// Attendance
-	r.GET("/attendance", h.GetAttendance)
-	r.POST("/attendance/bulk", h.SaveAttendance)
+	// Attendance — static sub-paths before :id wildcard
+	r.GET("/attendance/summary", h.GetAttendanceSummary)
+	r.GET("/attendance/alerts", h.GetAbsenceAlerts)
 	r.GET("/attendance/student/:studentId", h.GetStudentAttendance)
+	r.GET("/attendance", h.GetAttendance)
+	r.POST("/attendance", h.SaveAttendance)
+	r.POST("/attendance/bulk", h.SaveAttendance)
 
 	// Schedule
 	r.GET("/schedule", h.ListSchedule)
@@ -275,11 +278,14 @@ func (h *Handler) GetAttendance(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": records})
+	if records == nil {
+		records = []service.Attendance{}
+	}
+	c.JSON(http.StatusOK, records)
 }
 
 // SaveAttendance godoc
-// POST /attendance/bulk
+// POST /attendance  or  POST /attendance/bulk
 func (h *Handler) SaveAttendance(c *gin.Context) {
 	var req service.BulkAttendanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -292,7 +298,55 @@ func (h *Handler) SaveAttendance(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": records})
+	c.JSON(http.StatusOK, gin.H{"saved": len(records)})
+}
+
+// GetAttendanceSummary godoc
+// GET /attendance/summary?classId=&year=&month=
+func (h *Handler) GetAttendanceSummary(c *gin.Context) {
+	classID := c.Query("classId")
+	if classID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "classId is required"})
+		return
+	}
+	var year, month int
+	fmt.Sscanf(c.Query("year"), "%d", &year)
+	fmt.Sscanf(c.Query("month"), "%d", &month)
+	if year == 0 || month == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "year and month are required"})
+		return
+	}
+	summary, err := h.attendance.GetMonthSummary(c.Request.Context(), classID, year, month)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if summary == nil {
+		summary = []service.MonthSummary{}
+	}
+	c.JSON(http.StatusOK, summary)
+}
+
+// GetAbsenceAlerts godoc
+// GET /attendance/alerts?branchId=
+func (h *Handler) GetAbsenceAlerts(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	alerts, err := h.attendance.GetAbsenceAlerts(c.Request.Context(), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if alerts == nil {
+		alerts = []service.AbsenceAlert{}
+	}
+	c.JSON(http.StatusOK, alerts)
 }
 
 // GetStudentAttendance godoc

@@ -1,983 +1,456 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
-  Plus,
-  Edit,
-  Trash2,
-  Search,
-  MoreVertical,
-  DollarSign,
-  Layers,
-  Users,
-  AlertCircle,
-  CheckCircle2,
-  Loader2,
+  Plus, Edit, Trash2, RefreshCw, Loader2, AlertCircle,
+  Layers, CheckCircle2, XCircle, DollarSign, Users, Building2, BookOpen,
 } from "lucide-react";
-import {
-  getAllSubscriptionPlans,
-  createSubscriptionPlan,
-  updateSubscriptionPlan,
-  deleteSubscriptionPlan,
-  getUserSubscriptions,
-  createUserSubscription,
-  updateUserSubscription,
-  deleteUserSubscription,
-  getAllUsers,
-  type SubscriptionPlan as SubscriptionPlanType,
-  type UserSubscription as UserSubscriptionType,
-} from "@/services/subscription-api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import {
+  listPlans, createPlan, updatePlan, deletePlan,
+  type SubscriptionPlan,
+} from "@/services/api-client";
 
-interface User {
-  id: string;
-  fullName: string;
-  email: string;
-}
+const emptyForm = {
+  name: "",
+  description: "",
+  price: 0,
+  billingPeriod: "monthly" as "monthly" | "yearly",
+  maxBranches: 1,
+  maxStudents: 100,
+  maxClasses: 10,
+  status: "active" as "active" | "inactive",
+};
 
 export default function SubscriptionPlans() {
-  const [activeTab, setActiveTab] = useState("plans");
-  const [plans, setPlans] = useState<SubscriptionPlanType[]>([]);
-  const [subscriptions, setSubscriptions] = useState<UserSubscriptionType[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Modal states
-  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
-  const [isDeletePlanOpen, setIsDeletePlanOpen] = useState(false);
-  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
-  const [isDeleteSubOpen, setIsDeleteSubOpen] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<SubscriptionPlanType | null>(null);
-  const [editingSub, setEditingSub] = useState<UserSubscriptionType | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [selected, setSelected] = useState<SubscriptionPlan | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(emptyForm);
 
-  // Form states
-  const [planForm, setPlanForm] = useState({
-    name: "",
-    description: "",
-    price: 0,
-    billingPeriod: "monthly" as const,
-    maxBranches: 1,
-    maxStudents: 100,
-    maxClasses: 5,
-    status: "active" as "active" | "inactive",
-  });
-
-  const [subForm, setSubForm] = useState({
-    userId: "",
-    planId: "",
-    status: "active",
-    autoRenew: true,
-    paymentMethod: "click",
-  });
-
-  // Load data on mount
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-      setError(null);
-      const [plansData, subscriptionsData, usersData] = await Promise.all([
-        getAllSubscriptionPlans(),
-        getUserSubscriptions(),
-        getAllUsers(),
-      ]);
-      setPlans(plansData);
-      setSubscriptions(subscriptionsData);
-      setUsers(usersData);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to load data";
-      setError(errorMessage);
-      toast.error(errorMessage);
+      const data = await listPlans();
+      setPlans(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load plans");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async () => {
+    if (!form.name.trim()) { toast.error("Name is required"); return; }
+    setSaving(true);
+    try {
+      const created = await createPlan({
+        name: form.name,
+        description: form.description || undefined,
+        price: form.price,
+        billingPeriod: form.billingPeriod,
+        maxBranches: form.maxBranches,
+        maxStudents: form.maxStudents,
+        maxClasses: form.maxClasses,
+        status: form.status,
+        features: {},
+      });
+      setPlans((prev) => [...prev, created]);
+      setCreateOpen(false);
+      setForm(emptyForm);
+      toast.success("Plan created");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create plan");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const filteredPlans = plans.filter((plan) =>
-    plan.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredSubscriptions = subscriptions.filter((sub) => {
-    const matchesStatus = statusFilter === "all" || sub.status === statusFilter;
-    return matchesStatus;
-  });
-
-  // Plan functions
-  const handleAddPlan = () => {
-    setEditingPlan(null);
-    setPlanForm({
-      name: "",
-      description: "",
-      price: 0,
-      billingPeriod: "monthly",
-      maxBranches: 1,
-      maxStudents: 100,
-      maxClasses: 5,
-      status: "active",
-    });
-    setIsPlanModalOpen(true);
+  const handleEdit = async () => {
+    if (!selected || !form.name.trim()) { toast.error("Name is required"); return; }
+    setSaving(true);
+    try {
+      const updated = await updatePlan(selected.id, {
+        name: form.name,
+        description: form.description || undefined,
+        price: form.price,
+        billingPeriod: form.billingPeriod,
+        maxBranches: form.maxBranches,
+        maxStudents: form.maxStudents,
+        maxClasses: form.maxClasses,
+        status: form.status,
+      });
+      setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      setEditOpen(false);
+      toast.success("Plan updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update plan");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleEditPlan = (plan: SubscriptionPlanType) => {
-    setEditingPlan(plan);
-    setPlanForm({
+  const handleDelete = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      await deletePlan(selected.id);
+      setPlans((prev) => prev.filter((p) => p.id !== selected.id));
+      setDeleteOpen(false);
+      toast.success("Plan deleted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete plan");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleActive = async (plan: SubscriptionPlan) => {
+    try {
+      const newStatus = (plan.status === "active" || plan.isActive) ? "inactive" : "active";
+      const updated = await updatePlan(plan.id, { status: newStatus });
+      setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      toast.success(`Plan ${newStatus}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update plan");
+    }
+  };
+
+  const openEdit = (plan: SubscriptionPlan) => {
+    setSelected(plan);
+    setForm({
       name: plan.name,
       description: plan.description ?? "",
       price: plan.price,
-      billingPeriod: plan.billingPeriod,
+      billingPeriod: (plan.billingPeriod as "monthly" | "yearly") || "monthly",
       maxBranches: plan.maxBranches ?? 1,
       maxStudents: plan.maxStudents ?? 100,
-      maxClasses: plan.maxClasses ?? 5,
-      status: plan.status,
+      maxClasses: plan.maxClasses ?? 10,
+      status: (plan.status === "inactive" || plan.isActive === false) ? "inactive" : "active",
     });
-    setIsPlanModalOpen(true);
+    setEditOpen(true);
   };
 
-  const handleSavePlan = async () => {
-    if (!planForm.name || planForm.price < 0) {
-      toast.error("Please fill in all required fields");
-      return;
-    }
+  const isPlanActive = (plan: SubscriptionPlan) =>
+    plan.status === "active" || (plan.status == null && plan.isActive !== false);
 
-    setIsSaving(true);
-    try {
-      if (editingPlan) {
-        await updateSubscriptionPlan(editingPlan.id, planForm);
-        toast.success("Plan updated successfully");
-      } else {
-        await createSubscriptionPlan(planForm);
-        toast.success("Plan created successfully");
-      }
-      await loadData();
-      setIsPlanModalOpen(false);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to save plan";
-      toast.error(errorMessage);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDeletePlan = async () => {
-    if (!editingPlan) return;
-    setIsDeleting(true);
-    try {
-      await deleteSubscriptionPlan(editingPlan.id);
-      toast.success("Plan deleted successfully");
-      await loadData();
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to delete plan";
-      toast.error(errorMessage);
-    } finally {
-      setIsDeleting(false);
-      setIsDeletePlanOpen(false);
-    }
-  };
-
-  // Subscription functions
-  const handleAddSubscription = () => {
-    setEditingSub(null);
-    setSubForm({
-      userId: "",
-      planId: "",
-      status: "active",
-      autoRenew: true,
-      paymentMethod: "click",
-    });
-    setIsSubscriptionModalOpen(true);
-  };
-
-  const handleEditSubscription = (sub: UserSubscriptionType) => {
-    setEditingSub(sub);
-    setSubForm({
-      userId: sub.userId,
-      planId: sub.planId,
-      status: sub.status || "active",
-      autoRenew: sub.autoRenew,
-      paymentMethod: sub.paymentMethod || "click",
-    });
-    setIsSubscriptionModalOpen(true);
-  };
-
-  const handleSaveSubscription = async () => {
-    if (!subForm.userId || !subForm.planId) {
-      toast.error("Please select both user and plan");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      if (editingSub) {
-        await updateUserSubscription(editingSub.id, {
-          planId: subForm.planId,
-          status: subForm.status,
-          autoRenew: subForm.autoRenew,
-          paymentMethod: subForm.paymentMethod,
-        });
-        toast.success("Subscription updated successfully");
-      } else {
-        await createUserSubscription({
-          userId: subForm.userId,
-          planId: subForm.planId,
-          autoRenew: subForm.autoRenew,
-          paymentMethod: subForm.paymentMethod,
-        });
-        toast.success("Subscription created successfully");
-      }
-      await loadData();
-      setIsSubscriptionModalOpen(false);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to save subscription";
-      toast.error(errorMessage);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDeleteSubscription = async () => {
-    if (!editingSub) return;
-    setIsDeleting(true);
-    try {
-      await deleteUserSubscription(editingSub.id);
-      toast.success("Subscription deleted successfully");
-      await loadData();
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to delete subscription";
-      toast.error(errorMessage);
-    } finally {
-      setIsDeleting(false);
-      setIsDeleteSubOpen(false);
-    }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("uz-UZ", {
-      style: "currency",
-      currency: "UZS",
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatDate = (iso?: string) => {
-    if (!iso) return "—";
-    const d = new Date(iso);
-    if (isNaN(d.getTime()) || d.getFullYear() < 2000) return "—";
-    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-  };
-
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center space-y-4">
-            <Loader2 className="w-12 h-12 animate-spin mx-auto text-primary" />
-            <p className="text-muted-foreground">Loading subscription data...</p>
-          </div>
+  const PlanForm = () => (
+    <div className="space-y-4 py-4">
+      <div className="space-y-2">
+        <Label>Plan Name *</Label>
+        <Input
+          placeholder="e.g. Professional"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Description</Label>
+        <Input
+          placeholder="Brief plan description"
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Price ($)</Label>
+          <Input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })}
+            className="font-mono"
+          />
         </div>
-      </DashboardLayout>
-    );
-  }
+        <div className="space-y-2">
+          <Label>Billing Period</Label>
+          <Select
+            value={form.billingPeriod}
+            onValueChange={(v) => setForm({ ...form, billingPeriod: v as "monthly" | "yearly" })}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="monthly">Monthly</SelectItem>
+              <SelectItem value="yearly">Yearly</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="space-y-2">
+          <Label>Max Branches</Label>
+          <Input
+            type="number"
+            min="1"
+            value={form.maxBranches}
+            onChange={(e) => setForm({ ...form, maxBranches: parseInt(e.target.value) || 1 })}
+            className="font-mono"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Max Students</Label>
+          <Input
+            type="number"
+            min="1"
+            value={form.maxStudents}
+            onChange={(e) => setForm({ ...form, maxStudents: parseInt(e.target.value) || 1 })}
+            className="font-mono"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Max Classes</Label>
+          <Input
+            type="number"
+            min="1"
+            value={form.maxClasses}
+            onChange={(e) => setForm({ ...form, maxClasses: parseInt(e.target.value) || 1 })}
+            className="font-mono"
+          />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label>Status</Label>
+        <Select
+          value={form.status}
+          onValueChange={(v) => setForm({ ...form, status: v as "active" | "inactive" })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="inactive">Inactive</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Subscriptions</h1>
-            <p className="text-muted-foreground mt-2">
-              Manage subscription plans and user subscriptions
-            </p>
-          </div>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Subscription Plans</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {plans.length} plan{plans.length !== 1 ? "s" : ""} — {plans.filter(isPlanActive).length} active
+          </p>
         </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-destructive/10 border border-destructive/30 text-destructive px-4 py-3 rounded-lg">
-            <p className="font-semibold">Error loading data</p>
-            <p className="text-sm">{error}</p>
-          </div>
-        )}
-
-        {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="plans" className="flex items-center gap-2">
-              <Layers className="w-4 h-4" />
-              Subscription Plans
-            </TabsTrigger>
-            <TabsTrigger value="users" className="flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              User Subscriptions
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Plans Tab */}
-          <TabsContent value="plans" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1 max-w-md">
-                <Input
-                  placeholder="Search plans..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full"
-                />
-              </div>
-              <Button onClick={handleAddPlan} className="gap-2">
-                <Plus className="w-4 h-4" />
-                Add Plan
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredPlans.map((plan) => (
-                <div
-                  key={plan.id}
-                  className="border rounded-lg p-4 hover:shadow-lg transition-shadow"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-foreground text-lg">
-                        {plan.name}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">
-                        {plan.description}
-                      </p>
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEditPlan(plan)}>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => {
-                            setEditingPlan(plan);
-                            setIsDeletePlanOpen(true);
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="text-2xl font-bold text-foreground">
-                      {formatCurrency(plan.price)}
-                      <span className="text-sm text-muted-foreground ml-2">
-                        /{plan.billingPeriod}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">Branches</p>
-                        <p className="font-medium text-foreground">
-                          {plan.maxBranches}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Students</p>
-                        <p className="font-medium text-foreground">
-                          {plan.maxStudents}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Classes</p>
-                        <p className="font-medium text-foreground">
-                          {plan.maxClasses}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Status</p>
-                        <p className="font-medium text-foreground capitalize">
-                          {plan.status}
-                        </p>
-                      </div>
-                    </div>
-
-                    {plan.features && Object.keys(plan.features).length > 0 && (
-                      <div className="pt-3 border-t space-y-1">
-                        {Object.entries(plan.features || {}).map(([key, value]) => (
-                          <div
-                            key={key}
-                            className="flex items-center gap-2 text-sm"
-                          >
-                            {value ? (
-                              <CheckCircle2 className="w-4 h-4 text-green-600" />
-                            ) : (
-                              <AlertCircle className="w-4 h-4 text-muted-foreground" />
-                            )}
-                            <span className="text-muted-foreground">
-                              {key.replace(/_/g, " ")}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </TabsContent>
-
-          {/* User Subscriptions Tab */}
-          <TabsContent value="users" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex gap-2 flex-1 max-w-md">
-                <Input
-                  placeholder="Search users..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full"
-                />
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="paused">Paused</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                    <SelectItem value="expired">Expired</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={handleAddSubscription} className="gap-2">
-                <Plus className="w-4 h-4" />
-                Add Subscription
-              </Button>
-            </div>
-
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="px-4 py-3 text-left text-sm font-semibold">
-                      User
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">
-                      Plan
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">
-                      Status
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">
-                      Start Date
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold">
-                      Renewal
-                    </th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredSubscriptions.map((sub) => (
-                    <tr key={sub.id} className="border-b hover:bg-muted/30">
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="font-medium text-foreground text-sm">
-                            {sub.userFullName || "—"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {sub.userEmail}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div>
-                          <p className="text-sm text-foreground font-medium">
-                            {sub.planName || "—"}
-                          </p>
-                          <p className="text-xs text-muted-foreground capitalize">
-                            {sub.billingPeriod}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={cn(
-                            "px-2 py-1 rounded-full text-xs font-medium",
-                            sub.status === "active"
-                              ? "bg-green-100 text-green-800"
-                              : sub.status === "cancelled"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-yellow-100 text-yellow-800"
-                          )}
-                        >
-                          {sub.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-foreground text-sm">
-                        {formatDate(sub.startDate)}
-                      </td>
-                      <td className="px-4 py-3 text-foreground text-sm">
-                        {formatDate(sub.renewalDate)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleEditSubscription(sub)}
-                            >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => {
-                                setEditingSub(sub);
-                                setIsDeleteSubOpen(true);
-                              }}
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </TabsContent>
-        </Tabs>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={load} disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            Refresh
+          </Button>
+          <Button size="sm" className="gap-2" onClick={() => { setForm(emptyForm); setCreateOpen(true); }}>
+            <Plus className="w-4 h-4" />
+            New Plan
+          </Button>
+        </div>
       </div>
 
-      {/* Plan Modal */}
-      <Dialog open={isPlanModalOpen} onOpenChange={setIsPlanModalOpen}>
+      {error && (
+        <div className="flex items-center gap-3 p-4 mb-6 rounded-lg border border-status-critical/30 bg-status-critical/10 text-status-critical text-sm">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+        </div>
+      ) : plans.length === 0 ? (
+        <div className="glass-card rounded-lg p-16 flex flex-col items-center gap-3 text-muted-foreground">
+          <Layers className="w-10 h-10 opacity-30" />
+          <p className="text-sm">No plans yet. Create your first plan.</p>
+          <Button size="sm" onClick={() => { setForm(emptyForm); setCreateOpen(true); }}>
+            <Plus className="w-4 h-4 mr-2" />
+            Create Plan
+          </Button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {plans.map((plan) => {
+            const active = isPlanActive(plan);
+            const featCount = plan.features ? Object.keys(plan.features).length : 0;
+            return (
+              <div
+                key={plan.id}
+                className={cn(
+                  "glass-card rounded-lg p-5 flex flex-col gap-4 transition-all",
+                  !active && "opacity-60"
+                )}
+              >
+                {/* Card Header */}
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
+                      <Layers className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground">{plan.name}</h3>
+                      {plan.description && (
+                        <p className="text-xs text-muted-foreground">{plan.description}</p>
+                      )}
+                    </div>
+                  </div>
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full",
+                      active
+                        ? "bg-status-healthy/10 text-status-healthy border border-status-healthy/20"
+                        : "bg-muted text-muted-foreground border border-border"
+                    )}
+                  >
+                    {active ? <CheckCircle2 className="w-2.5 h-2.5" /> : <XCircle className="w-2.5 h-2.5" />}
+                    {active ? "Active" : "Inactive"}
+                  </span>
+                </div>
+
+                {/* Price */}
+                <div className="flex items-baseline gap-1">
+                  <DollarSign className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-2xl font-bold text-foreground font-mono">
+                    {plan.price.toLocaleString()}
+                  </span>
+                  <span className="text-sm text-muted-foreground">/{plan.billingPeriod}</span>
+                </div>
+
+                {/* Limits */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-accent/50 rounded-lg p-2">
+                    <Building2 className="w-3.5 h-3.5 text-muted-foreground mx-auto mb-1" />
+                    <p className="text-xs font-mono font-bold text-foreground">{plan.maxBranches ?? "∞"}</p>
+                    <p className="text-[10px] text-muted-foreground">Branches</p>
+                  </div>
+                  <div className="bg-accent/50 rounded-lg p-2">
+                    <Users className="w-3.5 h-3.5 text-muted-foreground mx-auto mb-1" />
+                    <p className="text-xs font-mono font-bold text-foreground">{plan.maxStudents ?? "∞"}</p>
+                    <p className="text-[10px] text-muted-foreground">Students</p>
+                  </div>
+                  <div className="bg-accent/50 rounded-lg p-2">
+                    <BookOpen className="w-3.5 h-3.5 text-muted-foreground mx-auto mb-1" />
+                    <p className="text-xs font-mono font-bold text-foreground">{plan.maxClasses ?? "∞"}</p>
+                    <p className="text-[10px] text-muted-foreground">Classes</p>
+                  </div>
+                </div>
+
+                {featCount > 0 && (
+                  <p className="text-xs text-muted-foreground">{featCount} feature{featCount !== 1 ? "s" : ""} configured</p>
+                )}
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 pt-2 border-t border-border">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-xs gap-1"
+                    onClick={() => openEdit(plan)}
+                  >
+                    <Edit className="w-3.5 h-3.5" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-xs gap-1"
+                    onClick={() => handleToggleActive(plan)}
+                  >
+                    {active ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    {active ? "Deactivate" : "Activate"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-status-critical hover:text-status-critical"
+                    onClick={() => { setSelected(plan); setDeleteOpen(true); }}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {editingPlan ? "Edit Plan" : "Add New Plan"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingPlan
-                ? "Update subscription plan details"
-                : "Create a new subscription plan"}
-            </DialogDescription>
+            <DialogTitle>Create Plan</DialogTitle>
+            <DialogDescription>Add a new subscription plan.</DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Plan Name *</Label>
-              <Input
-                id="name"
-                value={planForm.name}
-                onChange={(e) =>
-                  setPlanForm({ ...planForm, name: e.target.value })
-                }
-                placeholder="e.g., Professional"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Input
-                id="description"
-                value={planForm.description}
-                onChange={(e) =>
-                  setPlanForm({ ...planForm, description: e.target.value })
-                }
-                placeholder="Plan description"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="price">Price ($) *</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  value={planForm.price}
-                  onChange={(e) =>
-                    setPlanForm({
-                      ...planForm,
-                      price: parseFloat(e.target.value),
-                    })
-                  }
-                  placeholder="0.00"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="period">Billing Period</Label>
-                <Select
-                  value={planForm.billingPeriod}
-                  onValueChange={(val) =>
-                    setPlanForm({
-                      ...planForm,
-                      billingPeriod: val as "monthly" | "yearly",
-                    })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                    <SelectItem value="yearly">Yearly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="branches">Max Branches</Label>
-                <Input
-                  id="branches"
-                  type="number"
-                  value={planForm.maxBranches}
-                  onChange={(e) =>
-                    setPlanForm({
-                      ...planForm,
-                      maxBranches: parseInt(e.target.value),
-                    })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="students">Max Students</Label>
-                <Input
-                  id="students"
-                  type="number"
-                  value={planForm.maxStudents}
-                  onChange={(e) =>
-                    setPlanForm({
-                      ...planForm,
-                      maxStudents: parseInt(e.target.value),
-                    })
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="classes">Max Classes</Label>
-                <Input
-                  id="classes"
-                  type="number"
-                  value={planForm.maxClasses}
-                  onChange={(e) =>
-                    setPlanForm({
-                      ...planForm,
-                      maxClasses: parseInt(e.target.value),
-                    })
-                  }
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select
-                value={planForm.status}
-                onValueChange={(val) =>
-                  setPlanForm({
-                    ...planForm,
-                    status: val as "active" | "inactive",
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
+          <PlanForm />
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsPlanModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSavePlan} disabled={isSaving}>
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                editingPlan ? "Update" : "Create"
-              )}
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreate} disabled={saving}>
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Create
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Plan Dialog */}
-      <AlertDialog open={isDeletePlanOpen} onOpenChange={setIsDeletePlanOpen}>
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Plan</DialogTitle>
+            <DialogDescription>Update plan details.</DialogDescription>
+          </DialogHeader>
+          <PlanForm />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleEdit} disabled={saving}>
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Plan</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the "{editingPlan?.name}" plan?
-              This action cannot be undone.
+              Delete "{selected?.name}"? This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeletePlan}
-              disabled={isDeleting}
-              className="bg-destructive hover:bg-destructive/90"
+              onClick={handleDelete}
+              disabled={saving}
+              className="bg-status-critical hover:bg-status-critical/90"
             >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                "Delete"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Subscription Modal */}
-      <Dialog
-        open={isSubscriptionModalOpen}
-        onOpenChange={setIsSubscriptionModalOpen}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {editingSub ? "Edit Subscription" : "Add User Subscription"}
-            </DialogTitle>
-            <DialogDescription>
-              {editingSub
-                ? "Update subscription details"
-                : "Create a new user subscription"}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="user">User *</Label>
-              <Select
-                value={subForm.userId}
-                onValueChange={(val) =>
-                  setSubForm({ ...subForm, userId: val })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select user" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.length > 0 ? (
-                    users.map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.fullName} ({user.email})
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                      No users available
-                    </div>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="plan">Subscription Plan *</Label>
-              <Select
-                value={subForm.planId}
-                onValueChange={(val) =>
-                  setSubForm({ ...subForm, planId: val })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select plan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {plans.map((plan) => (
-                    <SelectItem key={plan.id} value={plan.id}>
-                      {plan.name} ({formatCurrency(plan.price)}/
-                      {plan.billingPeriod})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select
-                value={subForm.status}
-                onValueChange={(val) =>
-                  setSubForm({ ...subForm, status: val })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="trial">Trial</SelectItem>
-                  <SelectItem value="paused">Paused</SelectItem>
-                  <SelectItem value="cancelled">Cancelled</SelectItem>
-                  <SelectItem value="expired">Expired</SelectItem>
-                  <SelectItem value="pending_payment">Pending Payment</SelectItem>
-                  <SelectItem value="past_due">Past Due</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="payment">Payment Method</Label>
-              <Select
-                value={subForm.paymentMethod}
-                onValueChange={(val) =>
-                  setSubForm({ ...subForm, paymentMethod: val })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="click">Click.uz</SelectItem>
-                  <SelectItem value="telegram">Telegram</SelectItem>
-                  <SelectItem value="manual">Bank Transfer</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label htmlFor="autorenew">Auto Renew</Label>
-              <input
-                id="autorenew"
-                type="checkbox"
-                checked={subForm.autoRenew}
-                onChange={(e) =>
-                  setSubForm({ ...subForm, autoRenew: e.target.checked })
-                }
-                className="h-4 w-4"
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setIsSubscriptionModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSaveSubscription} disabled={isSaving}>
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                editingSub ? "Update" : "Create"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Subscription Dialog */}
-      <AlertDialog open={isDeleteSubOpen} onOpenChange={setIsDeleteSubOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Subscription</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this subscription? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteSubscription}
-              disabled={isDeleting}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              {isDeleting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                "Delete"
-              )}
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

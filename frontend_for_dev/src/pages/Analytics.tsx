@@ -1,336 +1,267 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
-  Activity,
-  TrendingUp,
-  Clock,
-  AlertTriangle,
-  Zap,
-  ArrowUpRight,
-  ArrowDownRight,
-  RefreshCw,
+  Activity, Clock, AlertTriangle, RefreshCw, Loader2, Zap,
+  AlertCircle, ArrowUpRight, ArrowDownRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-  PieChart,
-  Pie,
-  Cell,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  PieChart, Pie, Cell, BarChart, Bar,
 } from "recharts";
-import { apiClient } from "@/services/api-client";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { getLogs, getHealth, type LogEntry, type HealthStatus } from "@/services/api-client";
 
-interface LogEntry {
-  id: string;
-  level: string;
-  message: string;
-  module: string;
-  timestamp: string;
-  metadata?: Record<string, string>;
-}
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-interface HealthData {
-  status: string;
-  uptime?: number;
-  responseTime?: number;
-  activeConnections?: number;
-  memoryUsage?: number;
-  version?: string;
-}
-
-interface HourlyBucket {
-  time: string;
-  errors: number;
-  total: number;
-}
-
-const ERROR_COLORS: Record<string, string> = {
-  "500": "hsl(0, 72%, 40%)",
-  "401": "hsl(0, 72%, 51%)",
-  "404": "hsl(280, 65%, 60%)",
-  "400": "hsl(38, 92%, 50%)",
-  "Other": "hsl(215, 20%, 55%)",
-};
-
-export default function Analytics() {
-  const [health, setHealth] = useState<HealthData | null>(null);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const [healthData, logsData] = await Promise.allSettled([
-        apiClient.healthCheck(),
-        apiClient.getLogs(500),
-      ]);
-
-      if (healthData.status === "fulfilled") {
-        // healthCheck() now injects a client-measured responseTime (ms)
-        setHealth(healthData.value as HealthData);
-      }
-      if (logsData.status === "fulfilled") {
-        setLogs(Array.isArray(logsData.value) ? logsData.value as LogEntry[] : []);
-      }
-      setLastRefresh(new Date());
-    } catch {
-      toast.error("Ma'lumotlarni yuklashda xatolik");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  // Compute error rate from logs
-  const errorLogs = logs.filter((l) => l.level === "ERROR");
-  const warnLogs = logs.filter((l) => l.level === "WARN");
-  const totalLogs = logs.length;
-  const errorRate = totalLogs > 0 ? ((errorLogs.length / totalLogs) * 100).toFixed(1) : "0.0";
-
-  // Build hourly buckets from logs for the area chart (last 12 hours)
-  const hourlyData: Record<string, HourlyBucket> = {};
+function buildHourlyBuckets(logs: LogEntry[]) {
   const now = new Date();
-  for (let i = 11; i >= 0; i--) {
+  const buckets: Record<string, { hour: string; errors: number; warnings: number; total: number }> = {};
+  for (let i = 23; i >= 0; i--) {
     const h = new Date(now);
     h.setHours(now.getHours() - i, 0, 0, 0);
     const label = `${String(h.getHours()).padStart(2, "0")}:00`;
-    hourlyData[label] = { time: label, errors: 0, total: 0 };
+    buckets[label] = { hour: label, errors: 0, warnings: 0, total: 0 };
   }
-
   logs.forEach((log) => {
     const ts = new Date(log.timestamp);
-    const diffH = Math.floor((now.getTime() - ts.getTime()) / (1000 * 60 * 60));
-    if (diffH >= 0 && diffH < 12) {
+    const diffH = Math.floor((now.getTime() - ts.getTime()) / 3_600_000);
+    if (diffH >= 0 && diffH < 24) {
       const label = `${String(ts.getHours()).padStart(2, "0")}:00`;
-      if (hourlyData[label]) {
-        hourlyData[label].total++;
-        if (log.level === "ERROR") hourlyData[label].errors++;
+      if (buckets[label]) {
+        buckets[label].total++;
+        if (log.level === "ERROR") buckets[label].errors++;
+        if (log.level === "WARN")  buckets[label].warnings++;
       }
     }
   });
-  const requestsData = Object.values(hourlyData);
+  return Object.values(buckets);
+}
 
-  // Error distribution by module
-  const moduleCounts: Record<string, number> = {};
-  errorLogs.forEach((l) => {
-    const mod = l.module || "Unknown";
-    moduleCounts[mod] = (moduleCounts[mod] || 0) + 1;
-  });
-  const topModules = Object.entries(moduleCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
+function buildLevelPie(logs: LogEntry[]) {
+  const counts = { DEBUG: 0, INFO: 0, WARN: 0, ERROR: 0 };
+  logs.forEach((l) => { if (l.level in counts) counts[l.level as keyof typeof counts]++; });
+  return [
+    { name: "DEBUG", value: counts.DEBUG, color: "hsl(215,20%,55%)"    },
+    { name: "INFO",  value: counts.INFO,  color: "hsl(212,90%,58%)"    },
+    { name: "WARN",  value: counts.WARN,  color: "hsl(38,90%,50%)"     },
+    { name: "ERROR", value: counts.ERROR, color: "hsl(0,68%,50%)"      },
+  ].filter((d) => d.value > 0);
+}
 
-  const pieColors = [
-    "hsl(0, 72%, 51%)",
-    "hsl(38, 92%, 50%)",
-    "hsl(280, 65%, 60%)",
-    "hsl(0, 72%, 40%)",
-    "hsl(215, 20%, 55%)",
-  ];
-  const pieData = topModules.map(([name, value], i) => ({
-    name,
-    value,
-    color: pieColors[i % pieColors.length],
-  }));
-
-  // Top endpoints from logs
-  const endpointCounts: Record<string, { total: number; errors: number }> = {};
+function buildModuleActivity(logs: LogEntry[]) {
+  const counts: Record<string, number> = {};
   logs.forEach((l) => {
-    const ep = l.metadata?.endpoint || l.module || "unknown";
-    if (!endpointCounts[ep]) endpointCounts[ep] = { total: 0, errors: 0 };
-    endpointCounts[ep].total++;
-    if (l.level === "ERROR") endpointCounts[ep].errors++;
+    const m = l.module || "unknown";
+    counts[m] = (counts[m] || 0) + 1;
   });
-  const topEndpoints = Object.entries(endpointCounts)
-    .sort((a, b) => b[1].total - a[1].total)
-    .slice(0, 6)
-    .map(([endpoint, counts]) => ({
-      endpoint,
-      requests: counts.total,
-      errorRate: counts.total > 0 ? +((counts.errors / counts.total) * 100).toFixed(1) : 0,
-    }));
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([module, count]) => ({ module, count }));
+}
 
-  const maxRequests = topEndpoints.reduce((m, e) => Math.max(m, e.requests), 1);
+const CHART_STYLE = {
+  backgroundColor: "hsl(220,20%,8%)",
+  border: "1px solid hsl(220,18%,14%)",
+  borderRadius: "8px",
+  fontSize: "11px",
+  color: "hsl(210,18%,90%)",
+};
 
-  const uptimePercent = health?.status === "ok" || health?.status === "healthy"
-    ? "99.9%"
-    : health?.status
-    ? "degraded"
-    : "—";
+export default function Analytics() {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [health, setHealth] = useState<HealthStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [healthRes, logsRes] = await Promise.allSettled([
+        getHealth(),
+        getLogs({ limit: 500 }),
+      ]);
+      if (healthRes.status === "fulfilled") setHealth(healthRes.value);
+      if (logsRes.status === "fulfilled")  setLogs(logsRes.value);
+      setLastRefresh(new Date());
+    } catch {
+      toast.error("Failed to load analytics data");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Derived
+  const errorLogs  = logs.filter((l) => l.level === "ERROR");
+  const warnLogs   = logs.filter((l) => l.level === "WARN");
+  const totalLogs  = logs.length;
+  const errorRate  = totalLogs > 0 ? ((errorLogs.length / totalLogs) * 100).toFixed(1) : "0.0";
+
+  const hourlyData    = buildHourlyBuckets(logs);
+  const levelPieData  = buildLevelPie(logs);
+  const moduleData    = buildModuleActivity(logs);
+  const maxModule     = moduleData[0]?.count || 1;
+
+  const lastErrors = [...errorLogs].reverse().slice(0, 10);
+
+  const healthOk = health && (health.status === "ok" || health.status === "healthy" || health.status === "up");
 
   return (
     <DashboardLayout>
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">API Tahlili</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Ishlash ko'rsatkichlari va API foydalanish statistikasi
-          </p>
+          <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
+          <p className="text-sm text-muted-foreground mt-1">API performance and log analytics</p>
         </div>
-        <button
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
           onClick={fetchData}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 transition-colors text-primary text-sm"
         >
-          <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-          {loading ? "Refreshing..." : `Refreshed ${lastRefresh.toLocaleTimeString()}`}
-        </button>
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          {loading ? "Loading…" : `Refreshed ${lastRefresh.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`}
+        </Button>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="metric-card">
-          <div className="flex items-center justify-between mb-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="stat-card">
+          <div className="flex items-center justify-between">
             <Activity className="w-5 h-5 text-primary" />
-            <span className="flex items-center gap-1 text-xs text-status-healthy">
-              <TrendingUp className="w-3 h-3" /> live
+            <span className="text-xs text-status-healthy flex items-center gap-0.5">
+              <ArrowUpRight className="w-3 h-3" /> live
             </span>
           </div>
-          <p className="text-2xl font-bold text-foreground">{loading ? "—" : totalLogs.toLocaleString()}</p>
-          <p className="text-sm text-muted-foreground">Log Entries (500 latest)</p>
+          <p className="text-2xl font-bold text-foreground font-mono">{loading ? "—" : totalLogs.toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground">Log entries</p>
         </div>
-        <div className="metric-card">
-          <div className="flex items-center justify-between mb-2">
+        <div className="stat-card">
+          <div className="flex items-center justify-between">
             <Clock className="w-5 h-5 text-primary" />
             <span className="text-xs text-muted-foreground">/health</span>
           </div>
-          <p className="text-2xl font-bold text-foreground">
-            {loading ? "—" : health?.responseTime != null ? `${health.responseTime}ms` : "—"}
+          <p className={cn(
+            "text-2xl font-bold font-mono",
+            !health ? "text-foreground" :
+            health.responseTime < 200 ? "text-status-healthy" :
+            health.responseTime < 500 ? "text-status-warning" : "text-status-critical"
+          )}>
+            {loading ? "—" : health ? `${health.responseTime}ms` : "—"}
           </p>
-          <p className="text-sm text-muted-foreground">Javob vaqti (Response Time)</p>
+          <p className="text-xs text-muted-foreground">Response time</p>
         </div>
-        <div className="metric-card">
-          <div className="flex items-center justify-between mb-2">
+        <div className="stat-card">
+          <div className="flex items-center justify-between">
             <AlertTriangle className="w-5 h-5 text-status-warning" />
-            {!loading && parseFloat(errorRate) > 5 && (
-              <span className="flex items-center gap-1 text-xs text-status-critical">
-                <ArrowUpRight className="w-3 h-3" /> high
-              </span>
-            )}
-            {!loading && parseFloat(errorRate) <= 5 && (
-              <span className="flex items-center gap-1 text-xs text-status-healthy">
-                <ArrowDownRight className="w-3 h-3" /> low
-              </span>
+            {!loading && (
+              parseFloat(errorRate) > 5
+                ? <span className="text-xs text-status-critical flex items-center gap-0.5"><ArrowUpRight className="w-3 h-3" />high</span>
+                : <span className="text-xs text-status-healthy flex items-center gap-0.5"><ArrowDownRight className="w-3 h-3" />low</span>
             )}
           </div>
-          <p className="text-2xl font-bold text-foreground">{loading ? "—" : `${errorRate}%`}</p>
-          <p className="text-sm text-muted-foreground">Error Rate</p>
+          <p className={cn(
+            "text-2xl font-bold font-mono",
+            parseFloat(errorRate) > 5 ? "text-status-critical" : "text-status-healthy"
+          )}>
+            {loading ? "—" : `${errorRate}%`}
+          </p>
+          <p className="text-xs text-muted-foreground">Error rate</p>
         </div>
-        <div className="metric-card">
-          <div className="flex items-center justify-between mb-2">
+        <div className="stat-card">
+          <div className="flex items-center justify-between">
             <Zap className="w-5 h-5 text-status-healthy" />
             <span className={cn(
-              "text-xs px-2 py-0.5 rounded-full",
-              health?.status === "ok" || health?.status === "healthy"
+              "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full",
+              healthOk
                 ? "bg-status-healthy/15 text-status-healthy"
                 : "bg-status-critical/15 text-status-critical"
             )}>
-              {loading ? "..." : health?.status || "unknown"}
+              {loading ? "…" : health?.status || "—"}
             </span>
           </div>
-          <p className="text-2xl font-bold text-foreground">{loading ? "—" : uptimePercent}</p>
-          <p className="text-sm text-muted-foreground">Uptime</p>
+          <p className="text-2xl font-bold text-foreground font-mono">
+            {loading ? "—" : health?.version || (healthOk ? "99.9%" : "degraded")}
+          </p>
+          <p className="text-xs text-muted-foreground">Version / Status</p>
         </div>
       </div>
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-        {/* Log Activity Over Time */}
+        {/* Error Rate Chart */}
         <div className="xl:col-span-2 glass-card rounded-lg p-4">
-          <h3 className="font-semibold text-foreground mb-4">Log Activity (Last 12h)</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">Errors by Hour (Last 24h)</h3>
           {loading ? (
-            <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">Loading...</div>
+            <div className="h-56 flex items-center justify-center text-muted-foreground text-sm">
+              <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…
+            </div>
           ) : (
-            <div className="h-64">
+            <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={requestsData}>
+                <AreaChart data={hourlyData}>
                   <defs>
-                    <linearGradient id="totalGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(187, 85%, 53%)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(187, 85%, 53%)" stopOpacity={0} />
+                    <linearGradient id="errGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="hsl(0,68%,50%)"  stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="hsl(0,68%,50%)"  stopOpacity={0}   />
                     </linearGradient>
-                    <linearGradient id="errorsGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(0, 72%, 51%)" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="hsl(0, 72%, 51%)" stopOpacity={0} />
+                    <linearGradient id="warnGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="hsl(38,90%,50%)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(38,90%,50%)" stopOpacity={0}   />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(222, 47%, 16%)" />
-                  <XAxis dataKey="time" stroke="hsl(215, 20%, 55%)" fontSize={11} tickLine={false} />
-                  <YAxis stroke="hsl(215, 20%, 55%)" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "hsl(222, 47%, 10%)",
-                      border: "1px solid hsl(222, 47%, 16%)",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                    }}
-                  />
-                  <Area type="monotone" dataKey="total" name="Total" stroke="hsl(187, 85%, 53%)" strokeWidth={2} fill="url(#totalGradient)" />
-                  <Area type="monotone" dataKey="errors" name="Errors" stroke="hsl(0, 72%, 51%)" strokeWidth={2} fill="url(#errorsGradient)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,18%,14%)" />
+                  <XAxis dataKey="hour" stroke="hsl(215,14%,46%)" fontSize={10} tickLine={false} />
+                  <YAxis stroke="hsl(215,14%,46%)" fontSize={10} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={CHART_STYLE} />
+                  <Area type="monotone" dataKey="errors"   name="Errors"   stroke="hsl(0,68%,50%)"  strokeWidth={2} fill="url(#errGrad)"  />
+                  <Area type="monotone" dataKey="warnings" name="Warnings" stroke="hsl(38,90%,50%)" strokeWidth={2} fill="url(#warnGrad)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           )}
         </div>
 
-        {/* Error Distribution by Module */}
+        {/* Level Distribution Pie */}
         <div className="glass-card rounded-lg p-4">
-          <h3 className="font-semibold text-foreground mb-4">Errors by Module</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">Log Level Distribution</h3>
           {loading ? (
-            <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">Loading...</div>
-          ) : pieData.length === 0 ? (
-            <div className="h-48 flex flex-col items-center justify-center gap-2 text-muted-foreground">
-              <Zap className="w-8 h-8 text-status-healthy opacity-50" />
-              <p className="text-sm">No errors found</p>
+            <div className="h-44 flex items-center justify-center text-muted-foreground text-sm">
+              <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…
+            </div>
+          ) : levelPieData.length === 0 ? (
+            <div className="h-44 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <Zap className="w-8 h-8 opacity-30" />
+              <p className="text-xs">No log data</p>
             </div>
           ) : (
             <>
-              <div className="h-48">
+              <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={50}
-                      outerRadius={70}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {pieData.map((entry, index) => (
-                        <Cell key={index} fill={entry.color} />
+                    <Pie data={levelPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={65} paddingAngle={3} dataKey="value">
+                      {levelPieData.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(222, 47%, 10%)",
-                        border: "1px solid hsl(222, 47%, 16%)",
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                      }}
-                    />
+                    <Tooltip contentStyle={CHART_STYLE} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="mt-4 space-y-2">
-                {pieData.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
-                      <span className="text-muted-foreground truncate">{item.name}</span>
+              <div className="mt-2 space-y-1.5">
+                {levelPieData.map((item) => (
+                  <div key={item.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className="text-muted-foreground">{item.name}</span>
                     </div>
-                    <span className="text-foreground font-medium ml-2">{item.value}</span>
+                    <span className="font-mono font-semibold text-foreground">{item.value}</span>
                   </div>
                 ))}
               </div>
@@ -339,96 +270,112 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* Log Stats */}
-      {!loading && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="glass-card rounded-lg p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg bg-status-critical/15 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-status-critical" />
+      {/* Module Activity + Health + Recent Errors */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* Top Modules Bar Chart */}
+        <div className="xl:col-span-2 glass-card rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-4">Module Activity (Top 10)</h3>
+          {loading ? (
+            <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
+              <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…
             </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{errorLogs.length}</p>
-              <p className="text-sm text-muted-foreground">Errors</p>
+          ) : moduleData.length === 0 ? (
+            <div className="h-64 flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <Activity className="w-8 h-8 opacity-30" />
+              <p className="text-xs">No module data</p>
             </div>
-          </div>
-          <div className="glass-card rounded-lg p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg bg-status-warning/15 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-status-warning" />
+          ) : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={moduleData} layout="vertical" margin={{ left: 8, right: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,18%,14%)" horizontal={false} />
+                  <XAxis type="number" stroke="hsl(215,14%,46%)" fontSize={10} tickLine={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="module"
+                    stroke="hsl(215,14%,46%)"
+                    fontSize={10}
+                    tickLine={false}
+                    width={80}
+                    tick={{ fontFamily: "JetBrains Mono, monospace" }}
+                  />
+                  <Tooltip contentStyle={CHART_STYLE} />
+                  <Bar dataKey="count" name="Log Count" fill="hsl(152,76%,48%)" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{warnLogs.length}</p>
-              <p className="text-sm text-muted-foreground">Warnings</p>
-            </div>
-          </div>
-          <div className="glass-card rounded-lg p-4 flex items-center gap-4">
-            <div className="w-10 h-10 rounded-lg bg-status-healthy/15 flex items-center justify-center">
-              <Activity className="w-5 h-5 text-status-healthy" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{totalLogs - errorLogs.length - warnLogs.length}</p>
-              <p className="text-sm text-muted-foreground">Info / Debug</p>
-            </div>
-          </div>
+          )}
         </div>
-      )}
 
-      {/* Top Modules Table */}
-      <div className="glass-card rounded-lg overflow-hidden">
-        <div className="p-4 border-b border-border flex items-start justify-between gap-4">
-          <div>
-            <h3 className="font-semibold text-foreground">Top Log Sources</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Barcha backend modullari — dev va school CRM loglarini o'z ichiga oladi
-            </p>
+        {/* Health + Recent Errors */}
+        <div className="space-y-4">
+          {/* Health Metrics */}
+          <div className="glass-card rounded-lg p-4">
+            <h3 className="text-sm font-semibold text-foreground mb-3">Health Metrics</h3>
+            {health ? (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Status</span>
+                  <span className={cn("font-semibold font-mono", healthOk ? "text-status-healthy" : "text-status-critical")}>
+                    {health.status}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Response</span>
+                  <span className={cn(
+                    "font-mono",
+                    health.responseTime < 200 ? "text-status-healthy" :
+                    health.responseTime < 500 ? "text-status-warning" : "text-status-critical"
+                  )}>
+                    {health.responseTime}ms
+                  </span>
+                </div>
+                {health.uptime != null && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Uptime</span>
+                    <span className="font-mono text-foreground">
+                      {Math.floor(health.uptime / 3600)}h {Math.floor((health.uptime % 3600) / 60)}m
+                    </span>
+                  </div>
+                )}
+                {health.version && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Version</span>
+                    <span className="font-mono text-foreground">{health.version}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Health data unavailable</p>
+            )}
+          </div>
+
+          {/* Recent Errors */}
+          <div className="glass-card rounded-lg overflow-hidden">
+            <div className="p-3 border-b border-border flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5 text-status-critical" />
+              <h3 className="text-sm font-semibold text-foreground">Recent Errors</h3>
+              <span className="ml-auto text-xs text-muted-foreground">{errorLogs.length} total</span>
+            </div>
+            {lastErrors.length === 0 ? (
+              <div className="p-6 text-center text-xs text-muted-foreground">No errors found</div>
+            ) : (
+              <div className="divide-y divide-border max-h-64 overflow-y-auto scrollbar-thin">
+                {lastErrors.map((log) => (
+                  <div key={log.id} className="px-3 py-2">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <code className="text-[10px] font-mono text-primary">{log.module}</code>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        {new Date(log.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    </div>
+                    <p className="text-xs text-foreground line-clamp-2">{log.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-        {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">Loading...</div>
-        ) : topEndpoints.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">No log data available</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="text-xs text-muted-foreground border-b border-border">
-                  <th className="text-left py-3 px-4 font-medium">Module / Endpoint</th>
-                  <th className="text-right py-3 px-4 font-medium">Log Count</th>
-                  <th className="text-right py-3 px-4 font-medium">Error Rate</th>
-                  <th className="text-left py-3 px-4 font-medium w-48">Distribution</th>
-                </tr>
-              </thead>
-              <tbody>
-                {topEndpoints.map((endpoint) => (
-                  <tr key={endpoint.endpoint} className="data-table-row border-b border-border last:border-0">
-                    <td className="py-3 px-4">
-                      <span className="font-mono text-sm text-foreground">{endpoint.endpoint}</span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className="text-foreground">{endpoint.requests.toLocaleString()}</span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className={cn(
-                        endpoint.errorRate > 10 && "text-status-critical",
-                        endpoint.errorRate > 5 && endpoint.errorRate <= 10 && "text-status-warning",
-                        endpoint.errorRate <= 5 && "text-status-healthy"
-                      )}>
-                        {endpoint.errorRate}%
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="h-2 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full"
-                          style={{ width: `${(endpoint.requests / maxRequests) * 100}%` }}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
     </DashboardLayout>
   );

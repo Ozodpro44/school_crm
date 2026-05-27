@@ -842,6 +842,96 @@ func (s *AttendanceService) GetByStudentMonth(ctx context.Context, studentID, mo
 	return records, rows.Err()
 }
 
+type MonthSummary struct {
+	StudentID   string  `json:"studentId"`
+	StudentName string  `json:"studentName"`
+	Present     int     `json:"present"`
+	Absent      int     `json:"absent"`
+	Late        int     `json:"late"`
+	Total       int     `json:"total"`
+	PresentPct  float64 `json:"presentPct"`
+}
+
+type AbsenceAlert struct {
+	StudentID   string `json:"studentId"`
+	StudentName string `json:"studentName"`
+	Absent      int    `json:"absent"`
+}
+
+// GetMonthSummary returns per-student attendance counts for a class in a given year/month.
+func (s *AttendanceService) GetMonthSummary(ctx context.Context, classID string, year, month int) ([]MonthSummary, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	rows, err := s.db.Conn().QueryContext(ctx, `
+		SELECT
+		  st.id,
+		  st.full_name,
+		  COUNT(*) FILTER (WHERE a.status = 'present') AS present,
+		  COUNT(*) FILTER (WHERE a.status = 'absent')  AS absent,
+		  COUNT(*) FILTER (WHERE a.status = 'late')    AS late,
+		  COUNT(*)                                      AS total,
+		  ROUND(
+		    COUNT(*) FILTER (WHERE a.status = 'present') * 100.0 /
+		    NULLIF(COUNT(*), 0)
+		  , 1) AS present_pct
+		FROM students st
+		JOIN attendance a ON a.student_id = st.id
+		WHERE a.class_id = $1
+		  AND EXTRACT(year  FROM a.date) = $2
+		  AND EXTRACT(month FROM a.date) = $3
+		GROUP BY st.id, st.full_name
+		ORDER BY st.full_name`, classID, year, month)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []MonthSummary
+	for rows.Next() {
+		var m MonthSummary
+		if err := rows.Scan(&m.StudentID, &m.StudentName, &m.Present, &m.Absent, &m.Late, &m.Total, &m.PresentPct); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// GetAbsenceAlerts returns students with 3+ absences in the last 14 days for a branch.
+func (s *AttendanceService) GetAbsenceAlerts(ctx context.Context, branchID string) ([]AbsenceAlert, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	rows, err := s.db.Conn().QueryContext(ctx, `
+		SELECT
+		  st.id,
+		  st.full_name,
+		  COUNT(*) AS absent_count
+		FROM students st
+		JOIN attendance a ON a.student_id = st.id
+		WHERE a.branch_id = $1
+		  AND a.date >= CURRENT_DATE - INTERVAL '14 days'
+		  AND a.status = 'absent'
+		GROUP BY st.id, st.full_name
+		HAVING COUNT(*) >= 3
+		ORDER BY absent_count DESC, st.full_name`, branchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AbsenceAlert
+	for rows.Next() {
+		var a AbsenceAlert
+		if err := rows.Scan(&a.StudentID, &a.StudentName, &a.Absent); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // ── ScheduleSlot ───────────────────────────────────────────────────────────────
 
 type ScheduleSlot struct {
