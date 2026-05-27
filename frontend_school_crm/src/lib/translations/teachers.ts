@@ -72,4 +72,5 @@ export const teacherTranslations: Partial<Translation> = {
     "uz-latn": "Tajriba",
     en: "Experience",
   },
+  addFirstTeacher: { "uz-cyrl": "Биринчи ўқитувчингизни қўшинг", "uz-latn": "Birinchi o'qituvchingizni qo'shing", en: "Add your first teacher to get started" },
 };

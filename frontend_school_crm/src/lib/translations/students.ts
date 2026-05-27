@@ -227,5 +227,8 @@ export const studentTranslations: Partial<Translation> = {
   failedToDeleteStudents: { "uz-cyrl": "Ўқувчиларни ўчиришда хатолик", "uz-latn": "O’quvchilarni o’chirishda xatolik", en: "Failed to delete students" },
   failedToUpdateStudent: { "uz-cyrl": "Ўқувчини янгилашда хатолик", "uz-latn": "O’quvchini yangilashda xatolik", en: "Failed to update student" },
   failedToUpdateStudentStatus: { "uz-cyrl": "Ўқувчи статусини янгилашда хатолик", "uz-latn": "O’quvchi statusini yangilashda xatolik", en: "Failed to update student status" },
+  addFirstStudent: { "uz-cyrl": "Биринчи ўқувчингизни қўшинг", "uz-latn": "Birinchi o’quvchingizni qo’shing", en: "Add your first student to get started" },
+  noClassesFound: { "uz-cyrl": "Синфлар топилмади", "uz-latn": "Sinflar topilmadi", en: "No classes found" },
+  studentsWillBeMoved: { "uz-cyrl": "ўқувчи кўчирилади", "uz-latn": "o’quvchi ko’chiriladi", en: "students will be moved" },
   noPermissionToCreateOrEditStudents: { "uz-cyrl": "Ўқувчи қўшиш ёки таҳрирлаш ҳуқуқи йўқ", "uz-latn": "O’quvchi qo’shish yoki tahrirlash huquqi yo’q", en: "No permission to create or edit students" },
 };
