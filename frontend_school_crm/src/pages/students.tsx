@@ -122,7 +122,9 @@ export default function StudentsPage() {
     refetchOnWindowFocus: true,
   });
 
-  const { data: classesData } = useClassesQuery(branchId);
+  const { data: classesData, refetch: refetchClasses } = useClassesQuery(branchId, {
+    refetchOnMount: "always",
+  });
 
   const students = (studentsData?.items ?? []) as unknown as Student[];
   const total: number = studentsData?.total ?? 0;
@@ -198,8 +200,10 @@ export default function StudentsPage() {
     try {
       const lines = csvText.trim().split("\n");
       const defaultPayment = settings?.monthlyPayment || 500000;
+      const knownClasses = [...classes];
 
       let importedCount = 0;
+      let createdClassCount = 0;
       const warnings: string[] = [];
 
       for (let i = 1; i < lines.length; i++) {
@@ -251,7 +255,7 @@ export default function StudentsPage() {
 
           let classId = "";
           if (className) {
-            const classObj = classes.find(
+            const classObj = knownClasses.find(
               (c) => c.name.toLowerCase() === className.toLowerCase()
             );
 
@@ -264,7 +268,8 @@ export default function StudentsPage() {
                 });
                 classId = newClass.id;
                 // Add to classes list so future students in this import can use it
-                classes.push(newClass);
+                knownClasses.push(newClass);
+                createdClassCount++;
               } catch (classError) {
                 warnings.push(
                   `Row ${i + 1
@@ -308,7 +313,10 @@ export default function StudentsPage() {
       setImportData("");
       setIsImportDialogOpen(false);
       setPage(1);
-      qc.invalidateQueries({ queryKey: ["students"] });
+      void qc.invalidateQueries({ queryKey: ["students"] });
+      if (createdClassCount > 0) {
+        void qc.invalidateQueries({ queryKey: ["classes", branchId] });
+      }
     } catch (error) {
       notify.error(t("importError"), t("errorCheckFormat"));
       console.error(error);
@@ -441,6 +449,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     }
 
     setEditingStudent(student);
+    void refetchClasses();
     setFormData({
       fullName: student.fullName,
       classId: student.class?.id || student.classId || "",
@@ -558,6 +567,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleOpenDialog = () => {
     resetForm();
+    void refetchClasses();
     setIsDialogOpen(true);
   };
 
@@ -721,7 +731,10 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           <Button
             size="sm"
             variant="outline"
-            onClick={() => setBulkChangeClassId("")}
+            onClick={() => {
+              setBulkChangeClassId("");
+              void refetchClasses();
+            }}
           >
             {t("changeClass")}
           </Button>

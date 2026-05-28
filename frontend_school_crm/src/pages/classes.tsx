@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,6 +48,7 @@ import { EmptyState } from "@/components/EmptyState";
 
 export default function ClassesPage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const { currentBranch } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [classes, setClasses] = useState<Class[]>([]);
@@ -109,6 +111,7 @@ export default function ClassesPage() {
           listTeachers(branchId),
         ]);
         setClasses(classList);
+        qc.setQueryData(["classes", branchId], classList);
         setTeachers(teachersList);
         loadUnassignedStudents(branchId);
       } else {
@@ -148,8 +151,11 @@ export default function ClassesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    if (!canEditClasses) {
-      notify.error(t("permissionDenied"), t("noPermissionEditClasses"));
+    if (editingClass ? !canEditClasses : !canCreateClasses) {
+      notify.error(
+        t("permissionDenied"),
+        editingClass ? t("noPermissionEditClasses") : t("noPermissionCreateClasses")
+      );
       setIsSubmitting(false);
       return;
     }
@@ -166,6 +172,7 @@ export default function ClassesPage() {
           name: formData.name,
           teacherId: formData.teacherId || undefined,
         });
+        await qc.invalidateQueries({ queryKey: ["classes", branchId] });
         notify.success(t("success"), t("classUpdatedSuccess"));
       } else {
         await createClass({
@@ -173,18 +180,19 @@ export default function ClassesPage() {
           teacherId: formData.teacherId || undefined,
           branchId: branchId,
         });
+        await qc.invalidateQueries({ queryKey: ["classes", branchId] });
         notify.success(t("success"), t("classAddedSuccess"));
       }
 
       resetForm();
       await loadData();
       setIsDialogOpen(false);
-      } catch (error) {
+    } catch (error) {
       notify.error(t("error"), editingClass ? t("failedToUpdateClass") : t("failedToCreateClass"));
-      } finally {
+    } finally {
       setIsSubmitting(false);
-      }
-      };
+    }
+  };
 
   const handleEdit = (classData: Class) => {
     if (!canEditClasses) {
@@ -215,6 +223,11 @@ export default function ClassesPage() {
         setConfirmDialog(prev => ({ ...prev, isLoading: true }));
         try {
           await deleteClass(id);
+          if (currentBranch?.id) {
+            await qc.invalidateQueries({ queryKey: ["classes", currentBranch.id] });
+          } else {
+            await qc.invalidateQueries({ queryKey: ["classes"] });
+          }
           await loadData();
           notify.success(t("deleted"), t("classDeletedSuccess"));
         } catch (error) {

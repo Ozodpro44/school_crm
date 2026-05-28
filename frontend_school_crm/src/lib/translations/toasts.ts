@@ -447,6 +447,11 @@ export const toastTranslations: Partial<Translation> = {
     "uz-latn": "Sinflarni tahrirlash uchun ruxsatingiz yo'q",
     en: "You don't have permission to edit classes",
   },
+  noPermissionCreateClasses: {
+    "uz-cyrl": "Синфларни яратиш учун рухсатингиз йўқ",
+    "uz-latn": "Sinflarni yaratish uchun ruxsatingiz yo'q",
+    en: "You don't have permission to create classes",
+  },
   
   failedToLoadManagers: {
     "uz-cyrl": "Менежерларни юклаш муваффақиятсиз бўлди",
