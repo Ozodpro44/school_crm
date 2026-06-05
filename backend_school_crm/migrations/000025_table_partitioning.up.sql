@@ -1,146 +1,146 @@
--- P5.4: Partition payments, attendance, and audit_logs by year.
---
--- Strategy: create new partitioned shadow tables, copy data, swap via rename.
--- This is a zero-downtime migration pattern:
---   1. Create payments_partitioned (partitioned)
---   2. Attach yearly partition children
---   3. Copy data (in batches outside this migration — see runbook)
---   4. Rename in a transaction: payments → payments_old, payments_partitioned → payments
---
--- For Railway / small databases: run step 4 during a low-traffic window.
--- The copy step is handled by a separate script to avoid long-running transactions.
---
--- This migration only creates the shadow tables + 2024–2026 partitions.
--- The actual swap is in 000025_swap.sql (run after data copy is verified).
+-- -- P5.4: Partition payments, attendance, and audit_logs by year.
+-- --
+-- -- Strategy: create new partitioned shadow tables, copy data, swap via rename.
+-- -- This is a zero-downtime migration pattern:
+-- --   1. Create payments_partitioned (partitioned)
+-- --   2. Attach yearly partition children
+-- --   3. Copy data (in batches outside this migration — see runbook)
+-- --   4. Rename in a transaction: payments → payments_old, payments_partitioned → payments
+-- --
+-- -- For Railway / small databases: run step 4 during a low-traffic window.
+-- -- The copy step is handled by a separate script to avoid long-running transactions.
+-- --
+-- -- This migration only creates the shadow tables + 2024–2026 partitions.
+-- -- The actual swap is in 000025_swap.sql (run after data copy is verified).
 
--- ── payments_partitioned ───────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS payments_partitioned (
-    id               TEXT          NOT NULL,
-    student_id       UUID          NOT NULL,
-    amount           NUMERIC(12,2) NOT NULL,
-    month            VARCHAR(2)    NOT NULL,
-    year             SMALLINT      NOT NULL,
-    payment_method   TEXT          NOT NULL,
-    status           TEXT          NOT NULL,
-    invoice_number   TEXT,
-    notes            TEXT,
-    paid_date        TIMESTAMPTZ,
-    branch_id        UUID          NOT NULL,
-    created_by       UUID,
-    financial_month_id UUID,
-    created_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (id, year)
-) PARTITION BY RANGE (year);
+-- -- ── payments_partitioned ───────────────────────────────────────────────────────
+-- CREATE TABLE IF NOT EXISTS payments_partitioned (
+--     id               TEXT          NOT NULL,
+--     student_id       UUID          NOT NULL,
+--     amount           NUMERIC(12,2) NOT NULL,
+--     month            VARCHAR(2)    NOT NULL,
+--     year             SMALLINT      NOT NULL,
+--     payment_method   TEXT          NOT NULL,
+--     status           TEXT          NOT NULL,
+--     invoice_number   TEXT,
+--     notes            TEXT,
+--     paid_date        TIMESTAMPTZ,
+--     branch_id        UUID          NOT NULL,
+--     created_by       UUID,
+--     financial_month_id UUID,
+--     created_at       TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+--     PRIMARY KEY (id, year)
+-- ) PARTITION BY RANGE (year);
 
-CREATE TABLE IF NOT EXISTS payments_2023 PARTITION OF payments_partitioned
-    FOR VALUES FROM (2023) TO (2024);
-CREATE TABLE IF NOT EXISTS payments_2024 PARTITION OF payments_partitioned
-    FOR VALUES FROM (2024) TO (2025);
-CREATE TABLE IF NOT EXISTS payments_2025 PARTITION OF payments_partitioned
-    FOR VALUES FROM (2025) TO (2026);
-CREATE TABLE IF NOT EXISTS payments_2026 PARTITION OF payments_partitioned
-    FOR VALUES FROM (2026) TO (2027);
+-- CREATE TABLE IF NOT EXISTS payments_2023 PARTITION OF payments_partitioned
+--     FOR VALUES FROM (2023) TO (2024);
+-- CREATE TABLE IF NOT EXISTS payments_2024 PARTITION OF payments_partitioned
+--     FOR VALUES FROM (2024) TO (2025);
+-- CREATE TABLE IF NOT EXISTS payments_2025 PARTITION OF payments_partitioned
+--     FOR VALUES FROM (2025) TO (2026);
+-- CREATE TABLE IF NOT EXISTS payments_2026 PARTITION OF payments_partitioned
+--     FOR VALUES FROM (2026) TO (2027);
 
--- Indexes on each partition are inherited automatically in PG14+
-CREATE INDEX IF NOT EXISTS idx_pp_branch_year_month_status
-    ON payments_partitioned (branch_id, year, month, status);
-CREATE INDEX IF NOT EXISTS idx_pp_student_year_month
-    ON payments_partitioned (student_id, year, month);
-CREATE INDEX IF NOT EXISTS idx_pp_created_at
-    ON payments_partitioned (created_at DESC);
+-- -- Indexes on each partition are inherited automatically in PG14+
+-- CREATE INDEX IF NOT EXISTS idx_pp_branch_year_month_status
+--     ON payments_partitioned (branch_id, year, month, status);
+-- CREATE INDEX IF NOT EXISTS idx_pp_student_year_month
+--     ON payments_partitioned (student_id, year, month);
+-- CREATE INDEX IF NOT EXISTS idx_pp_created_at
+--     ON payments_partitioned (created_at DESC);
 
--- ── attendance_partitioned ─────────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS attendance_partitioned (
-    id         TEXT         NOT NULL,
-    branch_id  UUID         NOT NULL,
-    class_id   UUID         NOT NULL,
-    student_id UUID         NOT NULL,
-    date       DATE         NOT NULL,
-    status     TEXT         NOT NULL,
-    note       TEXT,
-    created_by UUID,
-    created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (id, date)
-) PARTITION BY RANGE (date);
+-- -- ── attendance_partitioned ─────────────────────────────────────────────────────
+-- CREATE TABLE IF NOT EXISTS attendance_partitioned (
+--     id         TEXT         NOT NULL,
+--     branch_id  UUID         NOT NULL,
+--     class_id   UUID         NOT NULL,
+--     student_id UUID         NOT NULL,
+--     date       DATE         NOT NULL,
+--     status     TEXT         NOT NULL,
+--     note       TEXT,
+--     created_by UUID,
+--     created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+--     updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+--     PRIMARY KEY (id, date)
+-- ) PARTITION BY RANGE (date);
 
--- Monthly partitions for attendance (higher churn than payments)
-CREATE TABLE IF NOT EXISTS attendance_2024_h1 PARTITION OF attendance_partitioned
-    FOR VALUES FROM ('2024-01-01') TO ('2024-07-01');
-CREATE TABLE IF NOT EXISTS attendance_2024_h2 PARTITION OF attendance_partitioned
-    FOR VALUES FROM ('2024-07-01') TO ('2025-01-01');
-CREATE TABLE IF NOT EXISTS attendance_2025_h1 PARTITION OF attendance_partitioned
-    FOR VALUES FROM ('2025-01-01') TO ('2025-07-01');
-CREATE TABLE IF NOT EXISTS attendance_2025_h2 PARTITION OF attendance_partitioned
-    FOR VALUES FROM ('2025-07-01') TO ('2026-01-01');
-CREATE TABLE IF NOT EXISTS attendance_2026_h1 PARTITION OF attendance_partitioned
-    FOR VALUES FROM ('2026-01-01') TO ('2026-07-01');
-CREATE TABLE IF NOT EXISTS attendance_2026_h2 PARTITION OF attendance_partitioned
-    FOR VALUES FROM ('2026-07-01') TO ('2027-01-01');
+-- -- Monthly partitions for attendance (higher churn than payments)
+-- CREATE TABLE IF NOT EXISTS attendance_2024_h1 PARTITION OF attendance_partitioned
+--     FOR VALUES FROM ('2024-01-01') TO ('2024-07-01');
+-- CREATE TABLE IF NOT EXISTS attendance_2024_h2 PARTITION OF attendance_partitioned
+--     FOR VALUES FROM ('2024-07-01') TO ('2025-01-01');
+-- CREATE TABLE IF NOT EXISTS attendance_2025_h1 PARTITION OF attendance_partitioned
+--     FOR VALUES FROM ('2025-01-01') TO ('2025-07-01');
+-- CREATE TABLE IF NOT EXISTS attendance_2025_h2 PARTITION OF attendance_partitioned
+--     FOR VALUES FROM ('2025-07-01') TO ('2026-01-01');
+-- CREATE TABLE IF NOT EXISTS attendance_2026_h1 PARTITION OF attendance_partitioned
+--     FOR VALUES FROM ('2026-01-01') TO ('2026-07-01');
+-- CREATE TABLE IF NOT EXISTS attendance_2026_h2 PARTITION OF attendance_partitioned
+--     FOR VALUES FROM ('2026-07-01') TO ('2027-01-01');
 
-CREATE INDEX IF NOT EXISTS idx_ap_class_date
-    ON attendance_partitioned (class_id, date DESC);
-CREATE INDEX IF NOT EXISTS idx_ap_student_date
-    ON attendance_partitioned (student_id, date);
+-- CREATE INDEX IF NOT EXISTS idx_ap_class_date
+--     ON attendance_partitioned (class_id, date DESC);
+-- CREATE INDEX IF NOT EXISTS idx_ap_student_date
+--     ON attendance_partitioned (student_id, date);
 
--- ── audit_logs_partitioned ─────────────────────────────────────────────────────
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables
-             WHERE table_schema='public' AND table_name='audit_logs') THEN
+-- -- ── audit_logs_partitioned ─────────────────────────────────────────────────────
+-- DO $$
+-- BEGIN
+--   IF EXISTS (SELECT 1 FROM information_schema.tables
+--              WHERE table_schema='public' AND table_name='audit_logs') THEN
 
-    EXECUTE $q$
-      CREATE TABLE IF NOT EXISTS audit_logs_partitioned (
-          id         TEXT        NOT NULL,
-          branch_id  UUID        NOT NULL,
-          user_id    UUID,
-          action     TEXT        NOT NULL,
-          resource   TEXT,
-          details    JSONB,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          PRIMARY KEY (id, created_at)
-      ) PARTITION BY RANGE (created_at)
-    $q$;
+--     EXECUTE $q$
+--       CREATE TABLE IF NOT EXISTS audit_logs_partitioned (
+--           id         TEXT        NOT NULL,
+--           branch_id  UUID        NOT NULL,
+--           user_id    UUID,
+--           action     TEXT        NOT NULL,
+--           resource   TEXT,
+--           details    JSONB,
+--           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+--           PRIMARY KEY (id, created_at)
+--       ) PARTITION BY RANGE (created_at)
+--     $q$;
 
-    EXECUTE $q$
-      CREATE TABLE IF NOT EXISTS audit_logs_2024 PARTITION OF audit_logs_partitioned
-          FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')
-    $q$;
-    EXECUTE $q$
-      CREATE TABLE IF NOT EXISTS audit_logs_2025 PARTITION OF audit_logs_partitioned
-          FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')
-    $q$;
-    EXECUTE $q$
-      CREATE TABLE IF NOT EXISTS audit_logs_2026 PARTITION OF audit_logs_partitioned
-          FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')
-    $q$;
+--     EXECUTE $q$
+--       CREATE TABLE IF NOT EXISTS audit_logs_2024 PARTITION OF audit_logs_partitioned
+--           FOR VALUES FROM ('2024-01-01') TO ('2025-01-01')
+--     $q$;
+--     EXECUTE $q$
+--       CREATE TABLE IF NOT EXISTS audit_logs_2025 PARTITION OF audit_logs_partitioned
+--           FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')
+--     $q$;
+--     EXECUTE $q$
+--       CREATE TABLE IF NOT EXISTS audit_logs_2026 PARTITION OF audit_logs_partitioned
+--           FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')
+--     $q$;
 
-    EXECUTE $q$
-      CREATE INDEX IF NOT EXISTS idx_alp_branch_created
-          ON audit_logs_partitioned (branch_id, created_at DESC)
-    $q$;
-  END IF;
-END$$;
+--     EXECUTE $q$
+--       CREATE INDEX IF NOT EXISTS idx_alp_branch_created
+--           ON audit_logs_partitioned (branch_id, created_at DESC)
+--     $q$;
+--   END IF;
+-- END$$;
 
--- ── Partition maintenance function ─────────────────────────────────────────────
--- Call this each January to add next year's partition children.
--- Example: SELECT create_yearly_payment_partition(2027);
-CREATE OR REPLACE FUNCTION create_yearly_payment_partition(p_year INT) RETURNS void AS $$
-BEGIN
-  EXECUTE format(
-    'CREATE TABLE IF NOT EXISTS payments_%s PARTITION OF payments_partitioned
-     FOR VALUES FROM (%s) TO (%s)',
-    p_year, p_year, p_year + 1
-  );
-END;
-$$ LANGUAGE plpgsql;
+-- -- ── Partition maintenance function ─────────────────────────────────────────────
+-- -- Call this each January to add next year's partition children.
+-- -- Example: SELECT create_yearly_payment_partition(2027);
+-- CREATE OR REPLACE FUNCTION create_yearly_payment_partition(p_year INT) RETURNS void AS $$
+-- BEGIN
+--   EXECUTE format(
+--     'CREATE TABLE IF NOT EXISTS payments_%s PARTITION OF payments_partitioned
+--      FOR VALUES FROM (%s) TO (%s)',
+--     p_year, p_year, p_year + 1
+--   );
+-- END;
+-- $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION create_audit_log_partition(p_year INT) RETURNS void AS $$
-BEGIN
-  EXECUTE format(
-    'CREATE TABLE IF NOT EXISTS audit_logs_%s PARTITION OF audit_logs_partitioned
-     FOR VALUES FROM (''%s-01-01'') TO (''%s-01-01'')',
-    p_year, p_year, p_year + 1
-  );
-END;
-$$ LANGUAGE plpgsql;
+-- CREATE OR REPLACE FUNCTION create_audit_log_partition(p_year INT) RETURNS void AS $$
+-- BEGIN
+--   EXECUTE format(
+--     'CREATE TABLE IF NOT EXISTS audit_logs_%s PARTITION OF audit_logs_partitioned
+--      FOR VALUES FROM (''%s-01-01'') TO (''%s-01-01'')',
+--     p_year, p_year, p_year + 1
+--   );
+-- END;
+-- $$ LANGUAGE plpgsql;

@@ -10,9 +10,9 @@ type Config struct {
 	SentryDSN   string
 
 	// Upstream service addresses
-	MonolithURL        string // e.g. http://backend:8082
-	AuthServiceURL     string // e.g. http://auth_service:8081
-	PaymentServiceURL  string // e.g. http://payment_service:8083 (P3.5)
+	MonolithURL            string // e.g. http://backend:8082
+	AuthServiceURL         string // e.g. http://auth_service:8081
+	PaymentServiceURL      string // e.g. http://payment_service:8083 (P3.5)
 	UserServiceURL         string // e.g. http://user_service:8084         (P4.1)
 	StudentServiceURL      string // e.g. http://student_service:8085       (P4.2)
 	TeacherServiceURL      string // e.g. http://teacher_service:8086       (P5.1)
@@ -22,14 +22,14 @@ type Config struct {
 
 func Load() *Config {
 	return &Config{
-		Port:           getEnv("PORT", "8080"),
-		JWTSecret:      os.Getenv("JWT_SECRET"),
-		Environment:    getEnv("ENVIRONMENT", "development"),
-		RedisURL:       os.Getenv("REDIS_URL"),
-		SentryDSN:      os.Getenv("SENTRY_DSN"),
-		MonolithURL:       getEnv("MONOLITH_URL", "http://backend:8082"),
-		AuthServiceURL:    getEnv("AUTH_SERVICE_URL", "http://auth_service:8081"),
-		PaymentServiceURL: getEnv("PAYMENT_SERVICE_URL", "http://payment_service:8083"),
+		Port:                   getEnv("PORT", "8080"),
+		JWTSecret:              os.Getenv("JWT_SECRET"),
+		Environment:            getEnv("ENVIRONMENT", "development"),
+		RedisURL:               os.Getenv("REDIS_URL"),
+		SentryDSN:              os.Getenv("SENTRY_DSN"),
+		MonolithURL:            getEnv("MONOLITH_URL", "http://backend:8082"),
+		AuthServiceURL:         getEnv("AUTH_SERVICE_URL", "http://auth_service:8081"),
+		PaymentServiceURL:      getEnv("PAYMENT_SERVICE_URL", "http://payment_service:8083"),
 		UserServiceURL:         getEnv("USER_SERVICE_URL", "http://user_service:8084"),
 		StudentServiceURL:      getEnv("STUDENT_SERVICE_URL", "http://student_service:8085"),
 		TeacherServiceURL:      getEnv("TEACHER_SERVICE_URL", "http://teacher_service:8086"),
