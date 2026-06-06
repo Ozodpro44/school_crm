@@ -217,7 +217,41 @@ export const studentTranslations: Partial<Translation> = {
 
   noPayments: {
     "uz-cyrl": "Ҳеч қандай тўлов йўқ",
-    "uz-latn": "Hech qanday to‘lov yo‘q",
+    "uz-latn": "Hech qanday to’lov yo’q",
     en: "No payments",
+  },
+
+  importStudentsFromCSV: {
+    "uz-cyrl": "CSV дан ўқувчиларни импорт қилиш",
+    "uz-latn": "CSV dan o’quvchilarni import qilish",
+    en: "Import Students from CSV",
+  },
+  importing: { "uz-cyrl": "Импорт қилинмоқда...", "uz-latn": "Import qilinmoqda...", en: "Importing..." },
+  importComplete: { "uz-cyrl": "Импорт тугади", "uz-latn": "Import tugadi", en: "Import Complete" },
+  importError: { "uz-cyrl": "Импорт хатоси", "uz-latn": "Import xatosi", en: "Import Error" },
+  noPermissionToCreateOrEditStudents: {
+    "uz-cyrl": "Ўқувчи яратиш ёки таҳрирлаш учун рухсатингиз йўқ",
+    "uz-latn": "O’quvchi yaratish yoki tahrirlash uchun ruxsatingiz yo’q",
+    en: "You don’t have permission to create or edit students",
+  },
+  studentCreatedSuccessfully: {
+    "uz-cyrl": "Ўқувчи муваффақиятли яратилди",
+    "uz-latn": "O’quvchi muvaffaqiyatli yaratildi",
+    en: "Student created successfully",
+  },
+  studentUpdatedSuccessfully: {
+    "uz-cyrl": "Ўқувчи маълумотлари муваффақиятли янгиланди",
+    "uz-latn": "O’quvchi ma’lumotlari muvaffaqiyatli yangilandi",
+    en: "Student updated successfully",
+  },
+  failedToDeleteStudents: {
+    "uz-cyrl": "Ўқувчиларни ўчиришда хатолик",
+    "uz-latn": "O’quvchilarni o’chirishda xatolik",
+    en: "Failed to delete students",
+  },
+  failedToUpdateStudentStatus: {
+    "uz-cyrl": "Ўқувчи ҳолатини янгилашда хатолик",
+    "uz-latn": "O’quvchi holatini yangilashda xatolik",
+    en: "Failed to update student status",
   },
 };

@@ -114,4 +114,33 @@ export const classTranslations: Partial<Translation> = {
     "uz-latn": "Sinflarga qaytish",
     en: "Back to Classes"
   },
+
+  deleteClass: { "uz-cyrl": "Синфни ўчириш", "uz-latn": "Sinfni o'chirish", en: "Delete Class" },
+  confirmDeleteClass: {
+    "uz-cyrl": "Бу синфни ўчиришни хоҳлайсизми? Барча ўқувчилар синфсиз қолади.",
+    "uz-latn": "Bu sinfni o'chirishni xohlaysizmi? Barcha o'quvchilar sinfisiz qoladi.",
+    en: "Are you sure you want to delete this class? All students will be unassigned.",
+  },
+  removeStudent: { "uz-cyrl": "Ўқувчини олиб ташлаш", "uz-latn": "O'quvchini olib tashlash", en: "Remove Student" },
+  confirmRemoveStudent: {
+    "uz-cyrl": "Ушбу ўқувчини синфдан олиб ташламоқчимисиз?",
+    "uz-latn": "Ushbu o'quvchini sinfdan olib tashlamoqchimisiz?",
+    en: "Are you sure you want to remove this student from the class?",
+  },
+  willBeAddedTo: { "uz-cyrl": "Қуйидаги синфга қўшилади:", "uz-latn": "Quyidagi sinfga qo'shiladi:", en: "Will be added to:" },
+  noPermissionAssignStudents: {
+    "uz-cyrl": "Ўқувчиларни синфга бириктириш учун рухсатингиз йўқ",
+    "uz-latn": "O'quvchilarni sinfga biriktirish uchun ruxsatingiz yo'q",
+    en: "You don't have permission to assign students to classes",
+  },
+  noPermissionDeleteClasses: {
+    "uz-cyrl": "Синфларни ўчириш учун рухсатингиз йўқ",
+    "uz-latn": "Sinflarni o'chirish uchun ruxsatingiz yo'q",
+    en: "You don't have permission to delete classes",
+  },
+  noPermissionRemoveStudents: {
+    "uz-cyrl": "Ўқувчиларни синфдан олиб ташлаш учун рухсатингиз йўқ",
+    "uz-latn": "O'quvchilarni sinfdan olib tashlash uchun ruxsatingiz yo'q",
+    en: "You don't have permission to remove students from classes",
+  },
 };

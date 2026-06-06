@@ -174,4 +174,9 @@ export const miscTranslations: Partial<Translation> = {
   loading: { "uz-cyrl": "Юкланмоқда...", "uz-latn": "Yuklanmoqda...", en: "Loading..." },
   pleaseWait: { "uz-cyrl": "Илтимос, кутинг", "uz-latn": "Iltimos, kuting", en: "Please wait" },
   processing: { "uz-cyrl": "Ишланмоқда...", "uz-latn": "Ishlanmoqda...", en: "Processing..." },
+
+  // Dashboard stats
+  activeTeachers: { "uz-cyrl": "Фаол ўқитувчилар", "uz-latn": "Faol o'qituvchilar", en: "Active Teachers" },
+  incomeVsExpenses: { "uz-cyrl": "Даромад ва Харажатлар", "uz-latn": "Daromad va Xarajatlar", en: "Income vs Expenses" },
+  ushbuOyUchun: { "uz-cyrl": "Ушбу ой учун", "uz-latn": "Ushbu oy uchun", en: "For this month" },
 };

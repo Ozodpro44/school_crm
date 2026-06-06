@@ -20,7 +20,7 @@ func RegisterPaymentRoutes(router *gin.RouterGroup, paymentService *service.Paym
 	payments.GET("", middleware.PermissionChecker(userService, "canViewPayments"), listPayments(paymentService, branchService, userService))
 	payments.GET("/consolidated/data", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentsConsolidatedData(paymentService, branchService, userService, studentService, classService))
 	payments.PUT("/:id", middleware.PermissionChecker(userService, "canEditPayments"), updatePayment(paymentService, branchService, userService))
-	payments.DELETE("/:id", middleware.PermissionChecker(userService, "canEditPayments"), deletePayment(paymentService, branchService, userService))
+	payments.DELETE("/:id", middleware.PermissionChecker(userService, "canDeletePayments"), deletePayment(paymentService, branchService, userService))
 	payments.GET("/branch/:branchId/summary", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentSummary(paymentService, branchService))
 	payments.GET("/payments/:branchId/indicators", middleware.PermissionChecker(userService, "canViewPayments"), getPaymentIndicators(paymentService))
 	// Student payment history - separate endpoint for viewing all payments for a student
@@ -401,10 +401,17 @@ func searchStudentsWithPaymentStatus(paymentService *service.PaymentService, bra
 			return
 		}
 
-		// Get all students for the branch (fetch with large limit to handle all pagination locally)
+		// Get all students for the branch
 		students, _, err := studentService.GetByBranchID(c.Request.Context(), branchID, 1, 10000)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get students"})
+			return
+		}
+
+		// Fetch all payments for the branch/month in a single query (avoids N+1)
+		paymentsByStudent, err := paymentService.GetAllByBranchAndPeriod(c.Request.Context(), branchID, currentMonth, currentYear)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get payments"})
 			return
 		}
 
@@ -412,11 +419,7 @@ func searchStudentsWithPaymentStatus(paymentService *service.PaymentService, bra
 		filteredStudents := []StudentPaymentStatus{}
 
 		for _, student := range students {
-			// Get payments for this student in the current month
-			payments, err := paymentService.GetByStudentIDAndPeriod(c.Request.Context(), student.ID, currentMonth, currentYear)
-			if err != nil {
-				continue
-			}
+			payments := paymentsByStudent[student.ID]
 
 			// Calculate total paid amount
 			totalPaid := 0.0
@@ -535,38 +538,47 @@ func getPaymentsConsolidatedData(paymentService *service.PaymentService, branchS
 			return
 		}
 
-		// Get students to find class IDs and build student lookup
-		students, _, err := studentService.GetByBranchID(c.Request.Context(), branchID, 1, 10000)
-		if err != nil {
+		// Fetch students and all classes in parallel to avoid serial DB calls
+		type studentResult struct {
+			students []models.Student
+			err      error
+		}
+		type classResult struct {
+			classes []models.Class
+			err     error
+		}
+		studentsCh := make(chan studentResult, 1)
+		classesCh := make(chan classResult, 1)
+
+		reqCtx := c.Request.Context()
+		go func() {
+			s, _, e := studentService.GetByBranchID(reqCtx, branchID, 1, 10000)
+			studentsCh <- studentResult{s, e}
+		}()
+		go func() {
+			cl, e := classService.GetByBranchID(reqCtx, branchID)
+			classesCh <- classResult{cl, e}
+		}()
+
+		sRes := <-studentsCh
+		cRes := <-classesCh
+
+		if sRes.err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get students"})
 			return
 		}
+		students := sRes.students
 
-		// Build a map of unique class IDs and a set of student IDs from the payments
-		classIDMap := make(map[string]bool)
+		// Build class name map from single bulk fetch (no per-class DB calls)
+		classNameMap := make(map[string]string)
+		for _, cl := range cRes.classes {
+			classNameMap[cl.ID] = cl.Name
+		}
+
+		// Build set of student IDs from payment results
 		studentIDSet := make(map[string]bool)
 		for _, payment := range result.Items {
 			studentIDSet[payment.StudentID] = true
-			// Find student to get their class ID
-			for _, student := range students {
-				if student.ID == payment.StudentID && student.ClassID != "" {
-					classIDMap[student.ClassID] = true
-					break
-				}
-			}
-		}
-
-		// Build a map of class ID to class name for quick lookup
-		classNameMap := make(map[string]string)
-
-		// Fetch full class details for all unique classes first
-		for classID := range classIDMap {
-			classData, err := classService.GetByID(c.Request.Context(), classID)
-			if err == nil && classData != nil {
-				classNameMap[classID] = classData.Name
-			} else {
-				classNameMap[classID] = "N/A"
-			}
 		}
 
 		// Build student info list for only the students in the payment results

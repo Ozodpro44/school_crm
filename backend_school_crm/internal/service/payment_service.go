@@ -294,6 +294,32 @@ func (s *PaymentService) GetByStudentIDAndPeriod(ctx context.Context, studentID,
 	return payments, rows.Err()
 }
 
+// GetAllByBranchAndPeriod fetches all payments for a branch in a given month/year in a single query.
+// Use this instead of per-student GetByStudentIDAndPeriod to avoid N+1 queries.
+func (s *PaymentService) GetAllByBranchAndPeriod(ctx context.Context, branchID, month string, year int) (map[string][]models.Payment, error) {
+	query := `SELECT id, student_id, amount, month, year, payment_method, status, invoice_number, notes, paid_date, branch_id, created_by, created_at
+	         FROM payments
+	         WHERE branch_id = $1 AND month = $2 AND year = $3`
+
+	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string][]models.Payment)
+	for rows.Next() {
+		var p models.Payment
+		if err := rows.Scan(&p.ID, &p.StudentID, &p.Amount, &p.Month, &p.Year,
+			&p.PaymentMethod, &p.Status, &p.InvoiceNumber, &p.Notes, &p.PaidDate,
+			&p.BranchID, &p.CreatedBy, &p.CreatedAt); err != nil {
+			return nil, err
+		}
+		result[p.StudentID] = append(result[p.StudentID], p)
+	}
+	return result, rows.Err()
+}
+
 func (s *PaymentService) GetCurrentMonthYear() (string, string) {
 	now := time.Now().UTC()
 	month := fmt.Sprintf("%02d", now.Month())

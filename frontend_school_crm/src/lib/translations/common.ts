@@ -1810,6 +1810,20 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Izohlar",
     en: "Notes",
   },
+
+  // Common UI actions
+  clear: { "uz-cyrl": "Тозалаш", "uz-latn": "Tozalash", en: "Clear" },
+  added: { "uz-cyrl": "қўшилди", "uz-latn": "qo'shildi", en: "added to" },
+  searching: { "uz-cyrl": "Қидирилмоқда...", "uz-latn": "Qidirilmoqda...", en: "Searching..." },
+  recording: { "uz-cyrl": "Қайд этилмоқда...", "uz-latn": "Qayd etilmoqda...", en: "Recording..." },
+  switching: { "uz-cyrl": "Ўзгартирилмоқда...", "uz-latn": "O'zgartirilmoqda...", en: "Switching..." },
+  movedTo: { "uz-cyrl": "га кўчирилди", "uz-latn": "ga ko'chirildi", en: "moved to" },
+
+  // Date/report labels
+  monthYear: { "uz-cyrl": "Ой/Йил", "uz-latn": "Oy/Yil", en: "Month/Year" },
+  due: { "uz-cyrl": "Тўланиши керак", "uz-latn": "To'lanishi kerak", en: "Due" },
+  exportOptions: { "uz-cyrl": "Экспорт параметрлари", "uz-latn": "Eksport parametrlari", en: "Export Options" },
+  studentName: { "uz-cyrl": "Ўқувчи исми", "uz-latn": "O'quvchi ismi", en: "Student Name" },
   };
 
 

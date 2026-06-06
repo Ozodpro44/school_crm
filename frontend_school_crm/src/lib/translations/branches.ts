@@ -121,4 +121,9 @@ export const branchTranslations: Partial<Translation> = {
     "uz-latn": "Oylik to'lov 0 dan katta bo'lishi kerak",
     en: "Monthly payment must be greater than 0",
   },
+  managerBranchNote: {
+    "uz-cyrl": "Менежер фақат тайинланган филиалини бошқара олади",
+    "uz-latn": "Menejer faqat tayinlangan filialini boshqara oladi",
+    en: "Manager can only manage their assigned branch",
+  },
 };

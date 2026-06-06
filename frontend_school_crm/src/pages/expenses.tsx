@@ -52,7 +52,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DialogFooter } from "@/components/ui/dialog";
@@ -114,6 +113,27 @@ export default function ExpensesPage() {
     areAllSelected,
     areSomeSelected,
   } = useMultiSelect<Expense>();
+
+  const getDefaultExpenseDate = (branch?: Branch | null): string => {
+    const data = branch ?? branchData;
+    if (!data?.currentFinancialMonth) {
+      return new Date().toISOString().split("T")[0];
+    }
+    const { month: branchMonth, year: branchYear } = data.currentFinancialMonth;
+    const now = new Date();
+    const realMonth = now.getMonth() + 1;
+    const realYear = now.getFullYear();
+    // Branch is behind the real calendar — use last day of branch month
+    if (branchYear < realYear || (branchYear === realYear && branchMonth < realMonth)) {
+      // new Date(year, monthIndex, 0) → last day of previous month; branchMonth is 1-based
+      const lastDay = new Date(branchYear, branchMonth, 0);
+      const y = lastDay.getFullYear();
+      const m = String(lastDay.getMonth() + 1).padStart(2, "0");
+      const d = String(lastDay.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+    return now.toISOString().split("T")[0];
+  };
 
   const [formData, setFormData] = useState({
     category: "",
@@ -605,14 +625,12 @@ export default function ExpensesPage() {
   };
 
   const resetForm = () => {
-    // Set date to today
-    const today = new Date().toISOString().split("T")[0];
     setFormData({
       category: "",
       description: "",
       amount: "",
       paymentMethod: "cash",
-      date: today,
+      date: getDefaultExpenseDate(),
       notes: "",
     });
     setEditingExpense(null);
@@ -1067,7 +1085,7 @@ export default function ExpensesPage() {
                       handleClearSearch();
                     }
                   }}
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       handleSearch();
                     }

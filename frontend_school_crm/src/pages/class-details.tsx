@@ -175,46 +175,38 @@ export default function ClassDetailsPage() {
       const branchId = localStorage.getItem("selectedBranchId");
       if (!branchId) return;
 
-      // Load class from API
-      const classList = await apiListClasses(branchId);
+      // Fetch all independent data in parallel
+      const [classList, studentsResponse, teachersList, branch, paymentsResponse] =
+        await Promise.all([
+          apiListClasses(branchId),
+          apiListStudents(branchId, 1, 10000),
+          apiListTeachers(branchId),
+          getBranch(branchId),
+          apiListPayments({ branchId, limit: 10000, page: 1 }),
+        ]);
+
       const classDataFetched = classList.find((c) => c.id === id);
 
       if (classDataFetched) {
-        setClassData(classDataFetched);
-        setAllClasses(classList);
-
-        // Load students from API (fetch all with large limit)
-        const studentsResponse = await apiListStudents(branchId, 1, 10000);
         const allStudents = studentsResponse.data || [];
-        setStudents(allStudents);
         const studentsInClass = allStudents.filter(
           (s) => s.classId === classDataFetched.id,
         );
-        setClassStudents(studentsInClass);
-
-        // Load teachers from API
-        const teachersList = await apiListTeachers(branchId);
-        setTeachers(teachersList);
-
-        // Load branch data to get current financial month
-        const branch = await getBranch(branchId);
-        setBranchData(branch);
-
-        // Load payments from API - fetch all payments without month filter
-        // to ensure payment status is calculated correctly across all months
-        const paymentsResponse = await apiListPayments({
-          branchId,
-          limit: 10000,
-          page: 1,
-        });
         const paymentsList = Array.isArray(paymentsResponse)
           ? paymentsResponse
           : paymentsResponse?.data || [];
+
+        setClassData(classDataFetched);
+        setAllClasses(classList);
+        setStudents(allStudents);
+        setClassStudents(studentsInClass);
+        setTeachers(teachersList);
+        setBranchData(branch);
         setPayments(paymentsList);
 
         if (classDataFetched.teacherId) {
           const teacher = teachersList.find(
-            (t) => t.id === classDataFetched.teacherId,
+            (tch) => tch.id === classDataFetched.teacherId,
           );
           setTeacherName(teacher?.fullName || "Unknown");
         } else {

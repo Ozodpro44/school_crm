@@ -468,4 +468,28 @@ export const toastTranslations: Partial<Translation> = {
     "uz-latn": "Xarajatlarni o'chirish muvaffaqiyatsiz bo'ldi",
     en: "Failed to delete expenses",
   },
+
+  // Auth / profile
+  invalidResponse: {
+    "uz-cyrl": "Сервердан нотўғри жавоб",
+    "uz-latn": "Serverdan noto'g'ri javob",
+    en: "Invalid response from server",
+  },
+  passwordUpdatedSuccess: {
+    "uz-cyrl": "Парол муваффақиятли янгиланди",
+    "uz-latn": "Parol muvaffaqiyatli yangilandi",
+    en: "Password updated successfully",
+  },
+  passwordUpdateError: {
+    "uz-cyrl": "Паролни янгилашда хатолик",
+    "uz-latn": "Parolni yangilashda xatolik",
+    en: "Failed to update password",
+  },
+
+  // Branch admin
+  failedToCreateAdmin: {
+    "uz-cyrl": "Администраторни яратишда хатолик",
+    "uz-latn": "Administratorni yaratishda xatolik",
+    en: "Failed to create admin",
+  },
 };
