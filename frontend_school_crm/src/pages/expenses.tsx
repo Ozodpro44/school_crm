@@ -56,6 +56,7 @@ import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DialogFooter } from "@/components/ui/dialog";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function ExpensesPage() {
   const router = useRouter();
@@ -178,14 +179,15 @@ export default function ExpensesPage() {
     if (!router.isReady) return;
 
     const { page, limit, search, category, paymentMethod, month, year } = router.query;
+    const saved = loadPageFilters("expenses", { search: "", category: "all", paymentMethod: "all", limit: 10 });
+
     if (page) setCurrentPage(parseInt(page as string) || 1);
-    if (limit) setItemsPerPage(parseInt(limit as string) || 10);
-    if (search) {
-      setSearchTerm(search as string);
-      setSearchInput(search as string);
-    }
-    if (category) setFilterCategory(category as string);
-    if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
+    setItemsPerPage(limit ? (parseInt(limit as string) || 10) : Number(saved.limit) || 10);
+    const initSearch = (search as string) ?? String(saved.search);
+    setSearchTerm(initSearch);
+    setSearchInput(initSearch);
+    setFilterCategory((category as string) ?? String(saved.category));
+    setFilterPaymentMethod((paymentMethod as string) ?? String(saved.paymentMethod));
     if (month) setSelectedMonth(month as string);
     if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
 
@@ -197,6 +199,10 @@ export default function ExpensesPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
+
+  useEffect(() => {
+    savePageFilters("expenses", { search: searchTerm, category: filterCategory, paymentMethod: filterPaymentMethod, limit: itemsPerPage });
+  }, [searchTerm, filterCategory, filterPaymentMethod, itemsPerPage]);
 
   // Refetch when branch changes
   useEffect(() => {

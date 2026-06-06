@@ -42,6 +42,7 @@ import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { createClass, updateClass, deleteClass, listClasses, listTeachers, listStudents, updateStudent } from "@/lib/api";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function ClassesPage() {
   const router = useRouter();
@@ -49,7 +50,9 @@ export default function ClassesPage() {
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState<string>(() =>
+    String(loadPageFilters("classes", { search: "" }).search)
+  );
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<Class | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -125,6 +128,10 @@ export default function ClassesPage() {
     setIsLoading(true);
     loadData();
   }, []);
+
+  useEffect(() => {
+    savePageFilters("classes", { search: searchTerm });
+  }, [searchTerm]);
 
   useEffect(() => {
     // Listen for branch changes

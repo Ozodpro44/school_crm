@@ -69,6 +69,7 @@ import { formatNumberWithSpaces, removeNumberFormatting, toTitleCase } from "@/l
 import { useSettings } from "@/hooks/use-settings";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function PaymentsPage() {
   const router = useRouter();
@@ -411,25 +412,24 @@ export default function PaymentsPage() {
 
     const { page, limit, search, status, month, year, paymentMethod, classId } = router.query;
 
-    // Set state from URL params
+    const saved = loadPageFilters("payments", { search: "", status: "all", paymentMethod: "all", classId: "all", limit: 10 });
+
     if (page) setCurrentPage(parseInt(page as string) || 1);
-    if (limit) setItemsPerPage(parseInt(limit as string) || 10);
-    if (search) {
-      setSearchTerm(search as string);
-      setSearchInput(search as string);
-    }
-    if (status) setFilterStatus(status as string);
-    if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
-    if (classId) setFilterClassId(classId as string);
+    const initLimit = limit ? (parseInt(limit as string) || 10) : Number(saved.limit) || 10;
+    setItemsPerPage(initLimit);
+    const initSearch = (search as string) ?? String(saved.search);
+    const initStatus = (status as string) ?? String(saved.status);
+    const initPaymentMethod = (paymentMethod as string) ?? String(saved.paymentMethod);
+    const initClassId = (classId as string) ?? String(saved.classId);
+    setSearchTerm(initSearch);
+    setSearchInput(initSearch);
+    setFilterStatus(initStatus);
+    setFilterPaymentMethod(initPaymentMethod);
+    setFilterClassId(initClassId);
     const initMonth = (month as string) || selectedMonth;
     const initYear = parseInt(year as string) || selectedYear || new Date().getFullYear();
     if (month) setSelectedMonth(initMonth);
     if (year) setSelectedYear(initYear);
-
-    const initSearch = (search as string) || "";
-    const initStatus = (status as string) || "all";
-    const initPaymentMethod = (paymentMethod as string) || "all";
-    const initClassId = (classId as string) || "all";
 
     // Load initial data with URL params passed directly as overrides (avoids stale closure issues)
     setIsLoading(true);
@@ -441,6 +441,10 @@ export default function PaymentsPage() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
+
+  useEffect(() => {
+    savePageFilters("payments", { search: searchTerm, status: filterStatus, paymentMethod: filterPaymentMethod, classId: filterClassId, limit: itemsPerPage });
+  }, [searchTerm, filterStatus, filterPaymentMethod, filterClassId, itemsPerPage]);
 
   // Reload data when branch changes
   useEffect(() => {

@@ -59,6 +59,7 @@ import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber, toTi
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useSettings } from "@/hooks/use-settings";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function StudentsPage() {
   const router = useRouter();
@@ -135,13 +136,16 @@ export default function StudentsPage() {
 
     const { page: qPage, limit: qLimit, search: qSearch, status: qStatus, classId: qClassId, paymentStatus: qPaymentStatus } = router.query;
 
-    const initSearch = (qSearch as string) || "";
-    const initStatus = (qStatus as string) || "all";
-    const initClassId = (qClassId as string) || "all";
-    const initPaymentStatus = (qPaymentStatus as string) || "all";
+    const saved = loadPageFilters("students", { search: "", status: "all", classId: "all", paymentStatus: "all", limit: 10 });
+
+    const initSearch = (qSearch as string) ?? String(saved.search);
+    const initStatus = (qStatus as string) ?? String(saved.status);
+    const initClassId = (qClassId as string) ?? String(saved.classId);
+    const initPaymentStatus = (qPaymentStatus as string) ?? String(saved.paymentStatus);
 
     if (qPage) setPage(parseInt(qPage as string) || 1);
-    if (qLimit) setLimit(parseInt(qLimit as string) || 10);
+    const initLimit = qLimit ? (parseInt(qLimit as string) || 10) : Number(saved.limit) || 10;
+    setLimit(initLimit);
     setSearchTerm(initSearch);
     setSearchInput(initSearch);
     setFilterStatus(initStatus);
@@ -156,6 +160,10 @@ export default function StudentsPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
+
+  useEffect(() => {
+    savePageFilters("students", { search: searchTerm, status: filterStatus, classId: filterClass, paymentStatus: filterPaymentStatus, limit });
+  }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, limit]);
 
   const waitForSelectedBranchId = async () => {
     let retries = 0;

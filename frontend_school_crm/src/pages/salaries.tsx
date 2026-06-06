@@ -21,12 +21,13 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { salariesDB, teachersDB, usersDB, monthArchivesDB, branchesDB } from "@/lib/storage";
+import { usersDB } from "@/lib/storage";
 import { Salary, PaymentStatus, Teacher, PaymentMethod, Branch } from "@/types";
 import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
-import { listSalaries, getBranch } from "@/lib/api";
+import { listSalaries, getBranch, createSalary, updateSalary, deleteSalary, listTeachers } from "@/lib/api";
+import { savePageFilters, loadPageFilters, urlHasFilters } from "@/lib/page-filters";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -37,19 +38,25 @@ import { searchMatchesCrossScript } from "@/lib/transliterate";
 
 export default function SalariesPage() {
   const router = useRouter();
-  const { settings } = useSettings();
+  useSettings();
   const [isLoading, setIsLoading] = useState(true);
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState<string>(() =>
+    String(loadPageFilters("salaries", { search: "", status: "all", limit: 10 }).search)
+  );
+  const [filterStatus, setFilterStatus] = useState<string>(() =>
+    String(loadPageFilters("salaries", { search: "", status: "all", limit: 10 }).status)
+  );
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState<number>(() =>
+    Number(loadPageFilters("salaries", { search: "", status: "all", limit: 10 }).limit) || 10
+  );
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const language = useLanguage();
   const { toast } = useToast();
@@ -72,12 +79,6 @@ export default function SalariesPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<number>(0);
 
-  const isMonthVisible = (month: string, year: number): boolean => {
-    // The backend API handles filtering of archived months per branch
-    // So we allow all months here and let the backend handle visibility
-    return true;
-  };
-
   const [formData, setFormData] = useState({
     teacherId: "",
     amount: "",
@@ -89,12 +90,19 @@ export default function SalariesPage() {
   });
 
   useEffect(() => {
-    // Set currentPage from URL query params
     if (router.isReady) {
       const page = router.query.page ? parseInt(router.query.page as string, 10) : 1;
       setCurrentPage(Math.max(1, page));
+      if (urlHasFilters(router.query as Record<string, string | undefined>, ["search", "status"])) {
+        if (router.query.search) setSearchTerm(router.query.search as string);
+        if (router.query.status) setFilterStatus(router.query.status as string);
+      }
     }
-  }, [router.isReady, router.query.page]);
+  }, [router.isReady]);
+
+  useEffect(() => {
+    savePageFilters("salaries", { search: searchTerm, status: filterStatus, limit: itemsPerPage });
+  }, [searchTerm, filterStatus, itemsPerPage]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -153,12 +161,13 @@ export default function SalariesPage() {
           setSelectedYear(currentYear);
         }
 
-        // Fetch salaries from API filtered by branch and month
-        const data = await listSalaries(branchId, targetMonth, targetYear);
+        const [data, teachersList] = await Promise.all([
+          listSalaries(branchId, targetMonth, targetYear),
+          listTeachers(branchId),
+        ]);
         setSalaries(data);
+        setTeachers(teachersList);
       }
-
-      setTeachers(teachersDB.getAll());
     } catch (error) {
       console.error("Failed to load salaries:", error);
       toast({
@@ -169,22 +178,17 @@ export default function SalariesPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     const user = getCurrentUser();
-    if (!user) {
-      setIsSubmitting(false);
-      return;
-    }
+    if (!user) { setIsSubmitting(false); return; }
+    const branchId = localStorage.getItem("selectedBranchId") || user.branchId || "";
 
     try {
       if (editingSalaryId) {
-        salariesDB.update(editingSalaryId, {
-          teacherId: formData.teacherId,
+        await updateSalary(editingSalaryId, {
           amount: parseFloat(formData.amount),
-          month: formData.month,
-          year: parseInt(formData.year),
           status: formData.status,
           paymentMethod: formData.paymentMethod,
           notes: formData.notes || undefined,
@@ -192,7 +196,7 @@ export default function SalariesPage() {
         });
         setEditingSalaryId(null);
       } else {
-        salariesDB.create({
+        await createSalary({
           teacherId: formData.teacherId,
           amount: parseFloat(formData.amount),
           month: formData.month,
@@ -201,12 +205,11 @@ export default function SalariesPage() {
           paymentMethod: formData.paymentMethod,
           notes: formData.notes || undefined,
           paidDate: formData.status === "paid" ? new Date().toISOString() : undefined,
-          branchId: user.branchId || "",
+          branchId,
         });
       }
-
       resetForm();
-      loadData();
+      await loadData();
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Failed to save salary:", error);
@@ -220,13 +223,14 @@ export default function SalariesPage() {
     }
   };
 
-  const handleMarkPaid = (id: string) => {
-    salariesDB.update(id, {
-      status: "paid",
-      paidDate: new Date().toISOString(),
-    });
-    loadData();
-    toast({ title: t("success") || "Success", description: "Salary marked as paid", variant: "success" });
+  const handleMarkPaid = async (id: string) => {
+    try {
+      await updateSalary(id, { status: "paid", paidDate: new Date().toISOString() });
+      await loadData();
+      toast({ title: t("success") || "Success", description: "Salary marked as paid", variant: "success" });
+    } catch {
+      toast({ title: t("error"), description: "Failed to mark as paid", variant: "destructive" });
+    }
   };
 
   const handleEdit = (salary: Salary) => {
@@ -251,7 +255,7 @@ export default function SalariesPage() {
     if (deleteConfirmId) {
       setIsDeleteLoading(true);
       try {
-        salariesDB.delete(deleteConfirmId);
+        await deleteSalary(deleteConfirmId);
         await loadData();
         toast({ title: t("deleted") || "Deleted", description: t("salaryRecordDeleted"), variant: "success" });
       } catch (error) {
@@ -674,7 +678,7 @@ export default function SalariesPage() {
                 className="pl-10"
               />
             </div>
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setCurrentPage(1); }}>
               <SelectTrigger className="w-full sm:w-[180px]">
                 <SelectValue />
               </SelectTrigger>
@@ -682,6 +686,17 @@ export default function SalariesPage() {
                 <SelectItem value="all">{t("allStatus")}</SelectItem>
                 <SelectItem value="paid">{t("paid")}</SelectItem>
                 <SelectItem value="partial">{t("partialPaid")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={String(itemsPerPage)} onValueChange={(v) => { setItemsPerPage(Number(v)); setCurrentPage(1); }}>
+              <SelectTrigger className="w-full sm:w-[120px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="10">10</SelectItem>
+                <SelectItem value="25">25</SelectItem>
+                <SelectItem value="50">50</SelectItem>
+                <SelectItem value="100">100</SelectItem>
               </SelectContent>
             </Select>
           </div>

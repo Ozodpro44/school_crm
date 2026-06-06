@@ -26,12 +26,15 @@ import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber } fro
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { createTeacher, updateTeacher, deleteTeacher, listTeachers, listClasses } from "@/lib/api";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function TeachersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState<string>(() =>
+    String(loadPageFilters("teachers", { search: "" }).search)
+  );
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -59,10 +62,13 @@ export default function TeachersPage() {
   });
 
   useEffect(() => {
-    const user = getCurrentUser();
     setIsLoading(true);
     loadData();
   }, []);
+
+  useEffect(() => {
+    savePageFilters("teachers", { search: searchTerm });
+  }, [searchTerm]);
 
   // Reload data when branch changes
   useEffect(() => {
@@ -89,9 +95,11 @@ export default function TeachersPage() {
     try {
       const branchId = localStorage.getItem("selectedBranchId");
       if (branchId) {
-        const teacherList = await listTeachers(branchId);
+        const [teacherList, classList] = await Promise.all([
+          listTeachers(branchId),
+          listClasses(branchId),
+        ]);
         setTeachers(teacherList);
-        const classList = await listClasses(branchId);
         setClasses(classList);
       }
     } catch (error) {
