@@ -719,6 +719,10 @@ export default function PaymentsPage() {
           paymentMethod: paymentToEdit.paymentMethod,
           notes: paymentToEdit.notes || "",
         });
+        const studentInfo = studentInfoMap.get(paymentToEdit.studentId);
+        if (studentInfo) {
+          setSelectedStudentInfo({ id: paymentToEdit.studentId, ...studentInfo });
+        }
         setIsDialogOpen(true);
         return;
       }
@@ -738,6 +742,10 @@ export default function PaymentsPage() {
       paymentMethod: originalPayment.paymentMethod,
       notes: originalPayment.notes || "",
     });
+    const studentInfo = studentInfoMap.get(originalPayment.studentId);
+    if (studentInfo) {
+      setSelectedStudentInfo({ id: originalPayment.studentId, ...studentInfo });
+    }
     setIsDialogOpen(true);
   };
 
