@@ -35,6 +35,24 @@ type CreatePaymentRequest struct {
 	BranchID      string     `json:"branchId" binding:"required"`
 }
 
+func (s *PaymentService) getStudentMonthlyPayment(ctx context.Context, studentID string) (float64, error) {
+	var monthlyPayment float64
+	err := s.db.GetConn().QueryRowContext(ctx,
+		`SELECT monthly_payment FROM students WHERE id = $1`, studentID,
+	).Scan(&monthlyPayment)
+	return monthlyPayment, err
+}
+
+func (s *PaymentService) getSumPaidForPeriod(ctx context.Context, studentID, month string, year int, excludeID string) (float64, error) {
+	var sum float64
+	err := s.db.GetConn().QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(amount), 0) FROM payments
+		 WHERE student_id = $1 AND month = $2 AND year = $3 AND id != $4`,
+		studentID, month, year, excludeID,
+	).Scan(&sum)
+	return sum, err
+}
+
 func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, createdBy string) (*models.Payment, error) {
 	// Check if student already has a paid payment for this month/year
 	existingPayments, err := s.GetByStudentIDAndPeriod(ctx, req.StudentID, req.Month, req.Year)
@@ -47,6 +65,23 @@ func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, 
 		if p.Status == "paid" {
 			return nil, fmt.Errorf("student already has a paid payment for %s/%d", req.Month, req.Year)
 		}
+	}
+
+	// Check that total payments for the period do not exceed the student's monthly payment
+	monthlyPayment, err := s.getStudentMonthlyPayment(ctx, req.StudentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get student monthly payment: %w", err)
+	}
+	alreadyPaid, err := s.getSumPaidForPeriod(ctx, req.StudentID, req.Month, req.Year, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to sum existing payments: %w", err)
+	}
+	if monthlyPayment > 0 && alreadyPaid+req.Amount > monthlyPayment {
+		remaining := monthlyPayment - alreadyPaid
+		if remaining < 0 {
+			remaining = 0
+		}
+		return nil, fmt.Errorf("amount exceeds remaining balance for %s/%d (remaining: %.2f)", req.Month, req.Year, remaining)
 	}
 
 	payment := &models.Payment{
@@ -329,12 +364,40 @@ func (s *PaymentService) GetCurrentMonthYear() (string, string) {
 
 func (s *PaymentService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Payment, error) {
 	// Check if payment exists
-	_, err := s.GetByID(ctx, id)
+	existing, err := s.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
 	updates = utils.ConvertKeysToSnakeCase(updates)
+
+	// Validate new amount against monthly payment limit
+	if rawAmount, ok := updates["amount"]; ok {
+		var newAmount float64
+		switch v := rawAmount.(type) {
+		case float64:
+			newAmount = v
+		case int:
+			newAmount = float64(v)
+		}
+		if newAmount > 0 {
+			monthlyPayment, err := s.getStudentMonthlyPayment(ctx, existing.StudentID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get student monthly payment: %w", err)
+			}
+			otherPaid, err := s.getSumPaidForPeriod(ctx, existing.StudentID, existing.Month, existing.Year, id)
+			if err != nil {
+				return nil, fmt.Errorf("failed to sum existing payments: %w", err)
+			}
+			if monthlyPayment > 0 && otherPaid+newAmount > monthlyPayment {
+				remaining := monthlyPayment - otherPaid
+				if remaining < 0 {
+					remaining = 0
+				}
+				return nil, fmt.Errorf("amount exceeds remaining balance for %s/%d (remaining: %.2f)", existing.Month, existing.Year, remaining)
+			}
+		}
+	}
 	if paymentMethodValue, ok := updates["payment_method"].(string); ok {
 		updates["payment_method"] = normalizeStudentPaymentMethod(paymentMethodValue)
 	}
