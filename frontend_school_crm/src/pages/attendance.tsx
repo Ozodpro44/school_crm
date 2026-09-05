@@ -180,7 +180,11 @@ export default function AttendancePage() {
       setTeachers(teacherList);
       setSelectedDeviceId((prev) => prev || (deviceList[0]?.id ?? ""));
     } catch (error) {
-      toast({ title: t("error"), description: t("failedToLoadDevices"), variant: "destructive" });
+      toast({
+        title: t("error"),
+        description: error instanceof Error ? error.message : t("failedToLoadDevices"),
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -191,7 +195,11 @@ export default function AttendancePage() {
       const list = await listHikvisionEmployees(deviceId);
       setEmployees(list);
     } catch (error) {
-      toast({ title: t("error"), description: t("failedToLoadEmployees"), variant: "destructive" });
+      toast({
+        title: t("error"),
+        description: error instanceof Error ? error.message : t("failedToLoadEmployees"),
+        variant: "destructive",
+      });
     }
   };
 
@@ -206,7 +214,11 @@ export default function AttendancePage() {
       setRecords(list);
       setRecordsLoaded(true);
     } catch (error) {
-      toast({ title: t("error"), description: t("failedToLoadAttendance"), variant: "destructive" });
+      toast({
+        title: t("error"),
+        description: error instanceof Error ? error.message : t("failedToLoadAttendance"),
+        variant: "destructive",
+      });
     } finally {
       setRecordsLoading(false);
     }
@@ -237,7 +249,11 @@ export default function AttendancePage() {
       setDevices((prev) => [...prev, device]);
       setSelectedDeviceId(device.id);
     } catch (error) {
-      toast({ title: t("error"), description: t("failedToAddDevice"), variant: "destructive" });
+      toast({
+        title: t("error"),
+        description: error instanceof Error ? error.message : t("failedToAddDevice"),
+        variant: "destructive",
+      });
     } finally {
       setIsSubmittingDevice(false);
     }
@@ -261,7 +277,11 @@ export default function AttendancePage() {
       toast({ title: t("success"), description: t("pushConfigured"), variant: "success" });
       setPushDialogDevice(null);
     } catch (error) {
-      toast({ title: t("error"), description: t("failedToConfigurePush"), variant: "destructive" });
+      toast({
+        title: t("error"),
+        description: error instanceof Error ? error.message : t("failedToConfigurePush"),
+        variant: "destructive",
+      });
     } finally {
       setIsSubmittingPush(false);
     }
@@ -286,7 +306,11 @@ export default function AttendancePage() {
       setIsEmployeeDialogOpen(false);
       await loadEmployees(selectedDeviceId);
     } catch (error) {
-      toast({ title: t("error"), description: t("failedToAddEmployee"), variant: "destructive" });
+      toast({
+        title: t("error"),
+        description: error instanceof Error ? error.message : t("failedToAddEmployee"),
+        variant: "destructive",
+      });
     } finally {
       setIsSubmittingEmployee(false);
     }
@@ -306,7 +330,11 @@ export default function AttendancePage() {
       setFaceDialogEmployee(null);
       setFacePhoto(null);
     } catch (error) {
-      toast({ title: t("error"), description: t("failedToUploadFace"), variant: "destructive" });
+      toast({
+        title: t("error"),
+        description: error instanceof Error ? error.message : t("failedToUploadFace"),
+        variant: "destructive",
+      });
     } finally {
       setIsUploadingFace(false);
     }
@@ -320,7 +348,11 @@ export default function AttendancePage() {
       toast({ title: t("success"), description: t("employeeRemoved"), variant: "success" });
       await loadEmployees(selectedDeviceId);
     } catch (error) {
-      toast({ title: t("error"), description: t("failedToRemoveEmployee"), variant: "destructive" });
+      toast({
+        title: t("error"),
+        description: error instanceof Error ? error.message : t("failedToRemoveEmployee"),
+        variant: "destructive",
+      });
     } finally {
       setRemovingEmployeeId(null);
     }
