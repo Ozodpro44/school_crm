@@ -332,6 +332,12 @@ func (c *HikvisionClient) ConfigureHTTPHost(hostID int, targetHost string, port 
 // "badJsonFormat", the device literally trying (and failing) to parse it as
 // JSON. UploadFace below already sent its metadata part as JSON for the same
 // reason; this just brings CreateUser/DeleteUser in line with it.
+//
+// Per GET .../UserInfo/capabilities, this device's own JSON parser is
+// stricter than the JSON spec: "enable" is documented as the string enum
+// "true,false", not a real boolean, and Valid additionally requires a
+// "timeType" field (only "local" is offered) that a real boolean "enable"
+// silently omitting would still leave incomplete.
 func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 	now := time.Now()
 	tenYears := now.AddDate(10, 0, 0)
@@ -342,18 +348,20 @@ func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 			Name       string `json:"name"`
 			UserType   string `json:"userType"`
 			Valid      struct {
-				Enable    bool   `json:"enable"`
+				Enable    string `json:"enable"` // "true" / "false" — a string, not a JSON boolean
 				BeginTime string `json:"beginTime"`
 				EndTime   string `json:"endTime"`
+				TimeType  string `json:"timeType"`
 			} `json:"Valid"`
 		} `json:"UserInfo"`
 	}{}
 	payload.UserInfo.EmployeeNo = employeeNo
 	payload.UserInfo.Name = fullName
 	payload.UserInfo.UserType = "normal"
-	payload.UserInfo.Valid.Enable = true
+	payload.UserInfo.Valid.Enable = "true"
 	payload.UserInfo.Valid.BeginTime = now.Format("2006-01-02T15:04:05")
 	payload.UserInfo.Valid.EndTime = tenYears.Format("2006-01-02T15:04:05")
+	payload.UserInfo.Valid.TimeType = "local"
 
 	body, err := json.Marshal(payload)
 	if err != nil {
