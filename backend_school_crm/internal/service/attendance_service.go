@@ -141,7 +141,11 @@ func (s *AttendanceService) ConfigurePush(ctx context.Context, deviceID, publicH
 
 	client := NewHikvisionClient(device.Host, device.Username, device.Password)
 	urlPath := fmt.Sprintf("/api/hikvision/webhook/%s/%s", device.ID, device.WebhookToken)
-	return client.ConfigureHTTPHost(1, publicHost, publicPort, urlPath, useHTTPS)
+	// Slot 1 on this device family is commonly the factory EHome/Hik-Connect
+	// cloud registration (used by the Hikvision mobile app for remote
+	// access) — overwriting it could silently break that. Slot 2 is free to
+	// use for our own webhook.
+	return client.ConfigureHTTPHost(2, publicHost, publicPort, urlPath, useHTTPS)
 }
 
 // -------------------------------------------------------------- Employees --

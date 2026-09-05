@@ -273,29 +273,38 @@ func (c *HikvisionClient) ConfigureHTTPHost(hostID int, targetHost string, port 
 		protocol = "HTTPS"
 	}
 
-	// This device's capabilities (GET .../httpHosts/capabilities) don't
-	// advertise JSON as a push payload format at all, matching the fact
-	// that its own HTTP API always answers in XML regardless of what's
-	// requested (see the client-level comment above) — so the event push
-	// body must be XML too, and the webhook side parses XML accordingly
-	// (see ProcessWebhookEvent). The capabilities also list <heartbeat>
-	// as a required sibling of <eventMode>, which the previous body omitted.
+	// Mirrors the exact structure of a live, already-accepted entry read back
+	// from GET .../httpHosts on this device (host slot #2 — an unrelated
+	// leftover config, but proof of what this firmware validates as OK):
+	// parameterFormatType is present but empty (this device doesn't seem to
+	// actually use it — the webhook side sniffs and handles either XML or
+	// JSON, see ProcessWebhookEvent, so we don't need to pin it down here),
+	// and each AccessControllerEvent list entry carries empty minorAlarm /
+	// minorException / minorOperation / minorEvent filter tags plus
+	// pictureURLType — all absent from our previous body, which is the most
+	// likely reason the device kept rejecting it as "Invalid Content" citing
+	// the generic name "type" for the incomplete Event block.
 	body := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <HttpHostNotification version="2.0" xmlns="http://www.isapi.org/ver20/XMLSchema">
   <id>%d</id>
   <url>%s</url>
   <protocolType>%s</protocolType>
-  <parameterFormatType>XML</parameterFormatType>
+  <parameterFormatType/>
   <addressingFormatType>%s</addressingFormatType>
   %s
   <portNo>%d</portNo>
   <httpAuthenticationMethod>none</httpAuthenticationMethod>
   <SubscribeEvent>
-    <heartbeat>15</heartbeat>
+    <heartbeat>30</heartbeat>
     <eventMode>list</eventMode>
     <EventList>
       <Event>
         <type>AccessControllerEvent</type>
+        <minorAlarm/>
+        <minorException/>
+        <minorOperation/>
+        <minorEvent/>
+        <pictureURLType>binary</pictureURLType>
       </Event>
       <Event>
         <type>LocalUserChange</type>
@@ -316,24 +325,42 @@ func (c *HikvisionClient) ConfigureHTTPHost(hostID int, targetHost string, port 
 
 // CreateUser enrolls a person on the device under employeeNo, without a
 // face template yet — call UploadFace afterwards to attach their photo.
+//
+// Unlike the older /ISAPI/Event/* endpoints (which this device only accepts
+// as XML — see ConfigureHTTPHost), the newer /ISAPI/AccessControl/* family
+// expects JSON: sending XML here gets rejected with "Invalid Format" /
+// "badJsonFormat", the device literally trying (and failing) to parse it as
+// JSON. UploadFace below already sent its metadata part as JSON for the same
+// reason; this just brings CreateUser/DeleteUser in line with it.
 func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 	now := time.Now()
 	tenYears := now.AddDate(10, 0, 0)
 
-	body := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<UserInfo>
-  <employeeNo>%s</employeeNo>
-  <name>%s</name>
-  <userType>normal</userType>
-  <Valid>
-    <enable>true</enable>
-    <beginTime>%s</beginTime>
-    <endTime>%s</endTime>
-  </Valid>
-</UserInfo>`, xmlEscape(employeeNo), xmlEscape(fullName),
-		now.Format("2006-01-02T15:04:05"), tenYears.Format("2006-01-02T15:04:05"))
+	payload := struct {
+		UserInfo struct {
+			EmployeeNo string `json:"employeeNo"`
+			Name       string `json:"name"`
+			UserType   string `json:"userType"`
+			Valid      struct {
+				Enable    bool   `json:"enable"`
+				BeginTime string `json:"beginTime"`
+				EndTime   string `json:"endTime"`
+			} `json:"Valid"`
+		} `json:"UserInfo"`
+	}{}
+	payload.UserInfo.EmployeeNo = employeeNo
+	payload.UserInfo.Name = fullName
+	payload.UserInfo.UserType = "normal"
+	payload.UserInfo.Valid.Enable = true
+	payload.UserInfo.Valid.BeginTime = now.Format("2006-01-02T15:04:05")
+	payload.UserInfo.Valid.EndTime = tenYears.Format("2006-01-02T15:04:05")
 
-	status, respBody, err := c.request(http.MethodPost, "/ISAPI/AccessControl/UserInfo/Record", []byte(body), "application/xml")
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	status, respBody, err := c.request(http.MethodPost, "/ISAPI/AccessControl/UserInfo/Record", body, "application/json")
 	if err != nil {
 		return err
 	}
@@ -341,17 +368,27 @@ func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 }
 
 // DeleteUser removes a person (and, per ISAPI semantics, their enrolled
-// face/card credentials) from the device.
+// face/card credentials) from the device. JSON body — see CreateUser.
 func (c *HikvisionClient) DeleteUser(employeeNo string) error {
-	body := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<UserInfoDetail>
-  <mode>byEmployeeNo</mode>
-  <EmployeeNoList>
-    <EmployeeNo>%s</EmployeeNo>
-  </EmployeeNoList>
-</UserInfoDetail>`, xmlEscape(employeeNo))
+	payload := struct {
+		UserInfoDetail struct {
+			Mode           string `json:"mode"`
+			EmployeeNoList []struct {
+				EmployeeNo string `json:"employeeNo"`
+			} `json:"EmployeeNoList"`
+		} `json:"UserInfoDetail"`
+	}{}
+	payload.UserInfoDetail.Mode = "byEmployeeNo"
+	payload.UserInfoDetail.EmployeeNoList = []struct {
+		EmployeeNo string `json:"employeeNo"`
+	}{{EmployeeNo: employeeNo}}
 
-	status, respBody, err := c.request(http.MethodPut, "/ISAPI/AccessControl/UserInfoDetail/Delete", []byte(body), "application/xml")
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	status, respBody, err := c.request(http.MethodPut, "/ISAPI/AccessControl/UserInfoDetail/Delete", body, "application/json")
 	if err != nil {
 		return err
 	}
