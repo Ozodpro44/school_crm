@@ -273,17 +273,25 @@ func (c *HikvisionClient) ConfigureHTTPHost(hostID int, targetHost string, port 
 		protocol = "HTTPS"
 	}
 
+	// This device's capabilities (GET .../httpHosts/capabilities) don't
+	// advertise JSON as a push payload format at all, matching the fact
+	// that its own HTTP API always answers in XML regardless of what's
+	// requested (see the client-level comment above) — so the event push
+	// body must be XML too, and the webhook side parses XML accordingly
+	// (see ProcessWebhookEvent). The capabilities also list <heartbeat>
+	// as a required sibling of <eventMode>, which the previous body omitted.
 	body := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <HttpHostNotification version="2.0" xmlns="http://www.isapi.org/ver20/XMLSchema">
   <id>%d</id>
   <url>%s</url>
   <protocolType>%s</protocolType>
-  <parameterFormatType>JSON</parameterFormatType>
+  <parameterFormatType>XML</parameterFormatType>
   <addressingFormatType>%s</addressingFormatType>
   %s
   <portNo>%d</portNo>
   <httpAuthenticationMethod>none</httpAuthenticationMethod>
   <SubscribeEvent>
+    <heartbeat>15</heartbeat>
     <eventMode>list</eventMode>
     <EventList>
       <Event>

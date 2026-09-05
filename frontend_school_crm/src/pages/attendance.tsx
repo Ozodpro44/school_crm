@@ -109,6 +109,7 @@ export default function AttendancePage() {
     fullName: "",
     teacherId: "",
   });
+  const [newEmployeePhoto, setNewEmployeePhoto] = useState<File | null>(null);
 
   // Upload face dialog
   const [faceDialogEmployee, setFaceDialogEmployee] = useState<HikvisionEmployee | null>(null);
@@ -287,21 +288,39 @@ export default function AttendancePage() {
     }
   };
 
-  const resetEmployeeForm = () =>
+  const resetEmployeeForm = () => {
     setEmployeeForm({ employeeNo: "", fullName: "", teacherId: "" });
+    setNewEmployeePhoto(null);
+  };
 
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDeviceId) return;
     setIsSubmittingEmployee(true);
     try {
-      await addHikvisionEmployee({
+      const employee = await addHikvisionEmployee({
         deviceId: selectedDeviceId,
         employeeNo: employeeForm.employeeNo,
         fullName: employeeForm.fullName,
         teacherId: employeeForm.teacherId || null,
       });
-      toast({ title: t("success"), description: t("employeeAdded"), variant: "success" });
+
+      if (newEmployeePhoto) {
+        try {
+          await uploadHikvisionEmployeeFace(employee.id, newEmployeePhoto);
+          toast({ title: t("success"), description: t("employeeAdded"), variant: "success" });
+        } catch (photoError) {
+          toast({
+            title: t("warning"),
+            description: `${t("employeeAdded")}. ${t("photoUploadFailedNote")}${
+              photoError instanceof Error ? ` (${photoError.message})` : ""
+            }`,
+          });
+        }
+      } else {
+        toast({ title: t("success"), description: t("employeeAdded"), variant: "success" });
+      }
+
       resetEmployeeForm();
       setIsEmployeeDialogOpen(false);
       await loadEmployees(selectedDeviceId);
@@ -715,6 +734,18 @@ export default function AttendancePage() {
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="newEmployeePhoto">{t("facePhotoOptional")}</Label>
+                      <Input
+                        id="newEmployeePhoto"
+                        type="file"
+                        accept="image/jpeg,image/jpg"
+                        onChange={(e) => setNewEmployeePhoto(e.target.files?.[0] ?? null)}
+                      />
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {t("facePhotoOptionalHint")}
+                      </p>
                     </div>
                     <div className="flex justify-end gap-3 pt-2">
                       <Button

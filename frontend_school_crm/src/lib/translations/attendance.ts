@@ -108,6 +108,21 @@ export const attendanceTranslations: Partial<Translation> = {
     "uz-latn": "Xodimni qo'shib bo'lmadi",
     en: "Failed to add employee",
   },
+  facePhotoOptional: {
+    "uz-cyrl": "Юз расми (ихтиёрий)",
+    "uz-latn": "Yuz rasmi (ixtiyoriy)",
+    en: "Face photo (optional)",
+  },
+  facePhotoOptionalHint: {
+    "uz-cyrl": "Танишни дарҳол ёқиш учун аниқ, олдиндан олинган JPEG расм танланг. Буни кейинроқ ҳам қўшишингиз мумкин.",
+    "uz-latn": "Tanishni darhol yoqish uchun aniq, oldindan olingan JPEG rasm tanlang. Buni keyinroq ham qo'shishingiz mumkin.",
+    en: "Choose a clear, front-facing JPEG to enable recognition right away. You can also add it later.",
+  },
+  photoUploadFailedNote: {
+    "uz-cyrl": "Ходим қўшилди, лекин расмни юклаб бўлмади — рўйхатдаги «Юклаш» тугмаси орқали қайта уриниб кўринг",
+    "uz-latn": "Xodim qo'shildi, lekin rasmni yuklab bo'lmadi — ro'yxatdagi «Yuklash» tugmasi orqali qayta urinib ko'ring",
+    en: "Employee added, but the photo upload failed — try again from the Upload button in the list",
+  },
 
   uploadFace: { "uz-cyrl": "Юз расмини юклаш", "uz-latn": "Yuz rasmini yuklash", en: "Upload Face" },
   uploadFaceDescription: {

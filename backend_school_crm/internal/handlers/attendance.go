@@ -199,8 +199,10 @@ func listAttendance(s *service.AttendanceService) gin.HandlerFunc {
 }
 
 // hikvisionWebhook receives the device's push notification: multipart/form-data
-// with a JSON part describing the access-control event (and sometimes a
-// captured face image, which we ignore here). It always replies 200 so the
+// with an XML or JSON part describing the access-control event (and
+// sometimes a captured face image, which we ignore here — our devices are
+// configured with parameterFormatType=XML, but JSON is accepted too in case
+// a different device model is added later). It always replies 200 so the
 // device doesn't endlessly retry, even when the token doesn't match or the
 // event turns out not to be a recordable one.
 func hikvisionWebhook(s *service.AttendanceService) gin.HandlerFunc {
@@ -227,14 +229,15 @@ func hikvisionWebhook(s *service.AttendanceService) gin.HandlerFunc {
 				if err != nil {
 					break
 				}
-				if strings.Contains(part.Header.Get("Content-Type"), "json") {
+				partType := part.Header.Get("Content-Type")
+				if strings.Contains(partType, "json") || strings.Contains(partType, "xml") {
 					data, _ := io.ReadAll(part)
 					_ = s.ProcessWebhookEvent(c.Request.Context(), deviceID, data)
 				}
 				part.Close()
 			}
 		} else {
-			// Some events may arrive as plain JSON instead of multipart.
+			// Some events may arrive as a plain XML or JSON body instead of multipart.
 			data, _ := io.ReadAll(c.Request.Body)
 			_ = s.ProcessWebhookEvent(c.Request.Context(), deviceID, data)
 		}

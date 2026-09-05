@@ -1,9 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"time"
@@ -239,25 +241,39 @@ func (s *AttendanceService) ListEmployeesByDevice(ctx context.Context, deviceID 
 
 // -------------------------------------------------------------- Webhook ----
 
-// webhookEventPayload matches the JSON body Hikvision POSTs for
-// AccessControllerEvent notifications (we configure parameterFormatType=JSON).
+// webhookEventPayload matches the push body Hikvision POSTs for
+// AccessControllerEvent notifications. We configure parameterFormatType=XML
+// (this device's capabilities don't advertise JSON support at all, matching
+// its API always answering in XML — see hikvision_client.go), so the tags
+// that matter are the xml ones; the json tags are kept as a fallback for any
+// other device model that might genuinely support parameterFormatType=JSON,
+// where the field names differ (major/minor vs. majorEventType/subEventType).
 type webhookEventPayload struct {
-	DateTime              string `json:"dateTime"`
+	XMLName               xml.Name `xml:"EventNotificationAlert" json:"-"`
+	DateTime              string   `xml:"dateTime" json:"dateTime"`
 	AccessControllerEvent struct {
-		EmployeeNoString string `json:"employeeNoString"`
-		Name             string `json:"name"`
-		Major            int    `json:"major"`
-		Minor            int    `json:"minor"`
-	} `json:"AccessControllerEvent"`
+		EmployeeNoString string `xml:"employeeNoString" json:"employeeNoString"`
+		Name             string `xml:"name" json:"name"`
+		Major            int    `xml:"majorEventType" json:"major"`
+		Minor            int    `xml:"subEventType" json:"minor"`
+	} `xml:"AccessControllerEvent" json:"AccessControllerEvent"`
 }
 
 // ProcessWebhookEvent handles one push notification from the device. Only
 // successful face-recognition matches (minorEvent 75) are turned into
 // attendance records; everything else (heartbeats, failed attempts, door
 // status) is acknowledged and ignored.
-func (s *AttendanceService) ProcessWebhookEvent(ctx context.Context, deviceID string, rawJSON []byte) error {
+func (s *AttendanceService) ProcessWebhookEvent(ctx context.Context, deviceID string, raw []byte) error {
 	var payload webhookEventPayload
-	if err := json.Unmarshal(rawJSON, &payload); err != nil {
+	trimmed := bytes.TrimSpace(raw)
+
+	var err error
+	if bytes.HasPrefix(trimmed, []byte("<")) {
+		err = xml.Unmarshal(trimmed, &payload)
+	} else {
+		err = json.Unmarshal(trimmed, &payload)
+	}
+	if err != nil {
 		return fmt.Errorf("invalid event payload: %w", err)
 	}
 
