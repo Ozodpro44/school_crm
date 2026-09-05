@@ -433,6 +433,12 @@ func (c *HikvisionClient) DeleteUser(employeeNo string) error {
 
 // UploadFace attaches a face photo (JPEG, ideally <=200KB, a clear frontal
 // shot) to an already-created employeeNo so the terminal can recognize them.
+//
+// ?format=json is appended here too, same rationale as CreateUser: this
+// firmware defaults several ISAPI resources to XML parsing regardless of
+// the request's own Content-Type (multipart here, with an embedded JSON
+// part), and only the query parameter reliably switches that on a
+// per-request basis.
 func (c *HikvisionClient) UploadFace(employeeNo string, jpegData []byte) error {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
@@ -463,7 +469,7 @@ func (c *HikvisionClient) UploadFace(employeeNo string, jpegData []byte) error {
 		return err
 	}
 
-	status, respBody, err := c.request(http.MethodPost, "/ISAPI/Intelligent/FDLib/FaceDataRecord", buf.Bytes(), writer.FormDataContentType())
+	status, respBody, err := c.request(http.MethodPost, "/ISAPI/Intelligent/FDLib/FaceDataRecord?format=json", buf.Bytes(), writer.FormDataContentType())
 	if err != nil {
 		return err
 	}
