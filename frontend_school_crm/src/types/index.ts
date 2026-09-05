@@ -213,6 +213,7 @@ export interface HikvisionEmployee {
   employeeNo: string;
   fullName: string;
   teacherId?: string | null;
+  photoUrl?: string; // temporary signed link to the photo in storage, when one has been uploaded
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

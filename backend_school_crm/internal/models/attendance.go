@@ -28,6 +28,8 @@ type HikvisionEmployee struct {
 	EmployeeNo string    `json:"employeeNo" db:"employee_no"`
 	FullName   string    `json:"fullName" db:"full_name"`
 	TeacherID  *string   `json:"teacherId" db:"teacher_id"`
+	PhotoKey   *string   `json:"-" db:"photo_key"`          // bucket object key; internal only
+	PhotoURL   *string   `json:"photoUrl,omitempty" db:"-"` // temporary signed link, resolved per request
 	IsActive   bool      `json:"isActive" db:"is_active"`
 	CreatedAt  time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt  time.Time `json:"updatedAt" db:"updated_at"`

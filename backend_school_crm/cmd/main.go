@@ -100,7 +100,12 @@ func main() {
 	reportService := service.NewReportService(database)
 	subscriptionService := service.NewSubscriptionService(database)
 	developerService := service.NewDeveloperService(database)
-	attendanceService := service.NewAttendanceService(database)
+
+	// Storage bucket for employee face photos (optional — nil when no bucket
+	// credentials are found in the environment; see storage_service.go for
+	// the exact variable names it checks).
+	storageService := service.NewStorageServiceFromEnv()
+	attendanceService := service.NewAttendanceService(database, storageService)
 
 	// Initialize Click.uz service (using environment variables or defaults)
 	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")

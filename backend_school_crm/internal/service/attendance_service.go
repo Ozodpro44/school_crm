@@ -8,6 +8,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,15 +16,36 @@ import (
 	"github.com/school-crm/backend/internal/models"
 )
 
+// photoURLTTL is how long a generated employee-photo link stays valid. It's
+// regenerated fresh on every list/get call, so this only needs to outlive
+// one page load, not the photo's actual lifetime.
+const photoURLTTL = 24 * time.Hour
+
 // AttendanceService wires the CRM's database to one or more Hikvision
 // face-recognition terminals: registering devices, syncing employees onto
 // them, and turning the events they report into check-in/check-out records.
 type AttendanceService struct {
-	db *db.Database
+	db      *db.Database
+	storage *StorageService // nil when no bucket is configured — photos then only live on the device
 }
 
-func NewAttendanceService(database *db.Database) *AttendanceService {
-	return &AttendanceService{db: database}
+func NewAttendanceService(database *db.Database, storage *StorageService) *AttendanceService {
+	return &AttendanceService{db: database, storage: storage}
+}
+
+// resolvePhotoURL fills in e.PhotoURL from e.PhotoKey when a bucket is
+// configured. Failures are logged, not returned — a broken photo link should
+// never take down the employee list.
+func (s *AttendanceService) resolvePhotoURL(e *models.HikvisionEmployee) {
+	if s.storage == nil || e.PhotoKey == nil || *e.PhotoKey == "" {
+		return
+	}
+	url, err := s.storage.PresignedGetURL(*e.PhotoKey, photoURLTTL)
+	if err != nil {
+		log.Printf("warning: failed to build photo URL for employee %s: %v", e.ID, err)
+		return
+	}
+	e.PhotoURL = &url
 }
 
 // ---------------------------------------------------------------- Devices --
@@ -171,7 +193,9 @@ func (s *AttendanceService) AddEmployee(ctx context.Context, req *AddEmployeeReq
 }
 
 // UploadEmployeeFace attaches a photo to an already-enrolled employee so the
-// terminal can actually recognize their face.
+// terminal can actually recognize their face, and — when a storage bucket is
+// configured — also keeps a permanent copy there so the CRM can display it
+// even if the device is later reset or replaced.
 func (s *AttendanceService) UploadEmployeeFace(ctx context.Context, employeeID string, jpegData []byte) error {
 	emp, err := s.GetEmployee(ctx, employeeID)
 	if err != nil {
@@ -182,7 +206,24 @@ func (s *AttendanceService) UploadEmployeeFace(ctx context.Context, employeeID s
 		return err
 	}
 	client := NewHikvisionClient(device.Host, device.Username, device.Password)
-	return client.UploadFace(emp.EmployeeNo, jpegData)
+	if err := client.UploadFace(emp.EmployeeNo, jpegData); err != nil {
+		return err
+	}
+
+	// Storing the photo in the bucket is best-effort: the face is already
+	// enrolled on the device (the part that matters for attendance), so a
+	// bucket hiccup here shouldn't fail the whole request.
+	if s.storage != nil {
+		key := fmt.Sprintf("employee-photos/%s/%s.jpg", emp.ID, uuid.New().String())
+		if err := s.storage.UploadObject(ctx, key, "image/jpeg", jpegData); err != nil {
+			log.Printf("warning: failed to store employee photo in bucket: %v", err)
+		} else if _, err := s.db.GetConn().ExecContext(ctx,
+			`UPDATE hikvision_employees SET photo_key = $1, updated_at = $2 WHERE id = $3`,
+			key, time.Now().UTC(), emp.ID); err != nil {
+			log.Printf("warning: failed to save employee photo key: %v", err)
+		}
+	}
+	return nil
 }
 
 // RemoveEmployee deletes the person from the device first, then from our
@@ -210,18 +251,22 @@ func (s *AttendanceService) RemoveEmployee(ctx context.Context, employeeID strin
 func (s *AttendanceService) GetEmployee(ctx context.Context, id string) (*models.HikvisionEmployee, error) {
 	e := &models.HikvisionEmployee{}
 	err := s.db.GetConn().QueryRowContext(ctx, `
-		SELECT id, device_id, employee_no, full_name, teacher_id, is_active, created_at, updated_at
+		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, is_active, created_at, updated_at
 		FROM hikvision_employees WHERE id = $1`, id).Scan(
-		&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.IsActive, &e.CreatedAt, &e.UpdatedAt)
+		&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.IsActive, &e.CreatedAt, &e.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("employee not found")
 	}
-	return e, err
+	if err != nil {
+		return nil, err
+	}
+	s.resolvePhotoURL(e)
+	return e, nil
 }
 
 func (s *AttendanceService) ListEmployeesByDevice(ctx context.Context, deviceID string) ([]models.HikvisionEmployee, error) {
 	rows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT id, device_id, employee_no, full_name, teacher_id, is_active, created_at, updated_at
+		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, is_active, created_at, updated_at
 		FROM hikvision_employees WHERE device_id = $1 ORDER BY full_name`, deviceID)
 	if err != nil {
 		return nil, err
@@ -231,9 +276,10 @@ func (s *AttendanceService) ListEmployeesByDevice(ctx context.Context, deviceID 
 	var out []models.HikvisionEmployee
 	for rows.Next() {
 		var e models.HikvisionEmployee
-		if err := rows.Scan(&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.IsActive, &e.CreatedAt, &e.UpdatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.IsActive, &e.CreatedAt, &e.UpdatedAt); err != nil {
 			return nil, err
 		}
+		s.resolvePhotoURL(&e)
 		out = append(out, e)
 	}
 	return out, rows.Err()

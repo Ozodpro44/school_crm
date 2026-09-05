@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -38,6 +39,7 @@ import {
   LogIn,
   LogOut as LogOutIcon,
   Search,
+  User,
 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -802,7 +804,17 @@ export default function AttendancePage() {
                             className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50"
                           >
                             <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">
-                              {employee.fullName}
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-8 w-8">
+                                  {employee.photoUrl && (
+                                    <AvatarImage src={employee.photoUrl} alt={employee.fullName} />
+                                  )}
+                                  <AvatarFallback>
+                                    <User className="w-4 h-4 text-slate-400" />
+                                  </AvatarFallback>
+                                </Avatar>
+                                {employee.fullName}
+                              </div>
                             </td>
                             <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
                               {employee.employeeNo}
