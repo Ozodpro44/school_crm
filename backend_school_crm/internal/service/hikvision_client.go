@@ -333,45 +333,28 @@ func (c *HikvisionClient) ConfigureHTTPHost(hostID int, targetHost string, port 
 // JSON. UploadFace below already sent its metadata part as JSON for the same
 // reason; this just brings CreateUser/DeleteUser in line with it.
 //
-// Per the FULL GET .../UserInfo/capabilities dump, this schema uses two
-// visibly different notations for "boolean-ish" fields, and they mean
-// different things:
-//   - "hasFace": {"@opt": [true, false]}   — a real @opt array of actual
-//     JSON booleans → the field itself is a genuine JSON boolean.
-//   - "enable": "true,false"               — a bare, unwrapped STRING
-//     containing the two allowed values, exactly like "userType":
-//     {"@opt": "normal,visitor,blackList"} lists its allowed strings.
-//     "closeDelayEnabled" and "localUIRight" use this same bare-string
-//     shape. There is no {"@opt": ...} wrapper around it, unlike every
-//     genuinely string-enumerated field elsewhere in this schema — which
-//     means Hikvision is (inconsistently) using it here to say "the value
-//     is the literal string true or false", not a real boolean.
+// Adding ?format=json (see below) was the fix that actually mattered: it
+// took the device from a generic, content-blind "badJsonFormat" (identical
+// no matter what the body said — strong evidence it was still being parsed
+// as XML) to a specific "badJsonContent" naming the exact offending field.
+// With a string "true"/"false" for "enable", that field is exactly the one
+// named as bad — so despite the capabilities dump using a bare, unwrapped
+// "true,false" for "enable" (vs. an explicit {"@opt": [true, false]} array
+// for hasFace/hasCard), the device wants a real JSON boolean here after
+// all; apparently that bare-string notation is just an older/inconsistent
+// part of this schema. Real bool it is.
 //
-// A prior version of this method changed "enable" to a real Go bool
-// (JSON true/false) on the theory that "true,false" here just meant
-// "this is a boolean type". That was deployed and confirmed live and did
-// not change the device's response at all (byte-for-byte identical
-// badJsonFormat), which on its own doesn't prove either reading, but
-// combined with the hasFace/hasCard counter-example above — where a real
-// boolean IS spelled out with an explicit @opt array — the bare-string
-// "true,false" reading is the better-supported one. Back to a string.
-//
-// Also per the same capabilities dump, this endpoint's JSON parser only
-// answering in "badJsonFormat" for what may well be missing-field errors
-// (there's no separate "missing parameter" subStatusCode in evidence),
-// this now also sends "doorRight"/"RightPlan" — both present in the
-// schema as top-level UserInfo fields — since a great many public
-// DS-K1T3xx integration examples include them on every UserInfo/Record
-// create call, not just when actually customizing access rights.
-//
-// "timeType" is also required per capabilities (only "local" is offered).
+// Also per the capabilities dump, "doorRight"/"RightPlan" are sent too —
+// both present in the schema as top-level UserInfo fields, and included on
+// nearly every public DS-K1T3xx UserInfo/Record example, not just when
+// actually customizing access rights. "timeType" is required per
+// capabilities as well (only "local" is offered).
 //
 // Finally, ?format=json is appended to the URL: several Hikvision ISAPI
 // resources only switch their body parser to JSON when this query
 // parameter is present, otherwise defaulting to XML parsing regardless of
-// Content-Type — which would explain why every previous JSON-body change
-// here produced the exact same error text, if the device was silently
-// still trying (and failing) to read our body as XML the whole time.
+// Content-Type — confirmed here by the error changing shape the moment it
+// was added.
 func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 	now := time.Now()
 	tenYears := now.AddDate(10, 0, 0)
@@ -382,7 +365,7 @@ func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 			Name       string `json:"name"`
 			UserType   string `json:"userType"`
 			Valid      struct {
-				Enable    string `json:"enable"` // literal string "true"/"false" — see comment above
+				Enable    bool   `json:"enable"`
 				BeginTime string `json:"beginTime"`
 				EndTime   string `json:"endTime"`
 				TimeType  string `json:"timeType"`
@@ -397,7 +380,7 @@ func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 	payload.UserInfo.EmployeeNo = employeeNo
 	payload.UserInfo.Name = fullName
 	payload.UserInfo.UserType = "normal"
-	payload.UserInfo.Valid.Enable = "true"
+	payload.UserInfo.Valid.Enable = true
 	payload.UserInfo.Valid.BeginTime = now.Format("2006-01-02T15:04:05")
 	payload.UserInfo.Valid.EndTime = tenYears.Format("2006-01-02T15:04:05")
 	payload.UserInfo.Valid.TimeType = "local"
