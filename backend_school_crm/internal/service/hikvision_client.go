@@ -333,19 +333,45 @@ func (c *HikvisionClient) ConfigureHTTPHost(hostID int, targetHost string, port 
 // JSON. UploadFace below already sent its metadata part as JSON for the same
 // reason; this just brings CreateUser/DeleteUser in line with it.
 //
-// Per GET .../UserInfo/capabilities, Valid additionally requires a
-// "timeType" field (only "local" is offered).
+// Per the FULL GET .../UserInfo/capabilities dump, this schema uses two
+// visibly different notations for "boolean-ish" fields, and they mean
+// different things:
+//   - "hasFace": {"@opt": [true, false]}   — a real @opt array of actual
+//     JSON booleans → the field itself is a genuine JSON boolean.
+//   - "enable": "true,false"               — a bare, unwrapped STRING
+//     containing the two allowed values, exactly like "userType":
+//     {"@opt": "normal,visitor,blackList"} lists its allowed strings.
+//     "closeDelayEnabled" and "localUIRight" use this same bare-string
+//     shape. There is no {"@opt": ...} wrapper around it, unlike every
+//     genuinely string-enumerated field elsewhere in this schema — which
+//     means Hikvision is (inconsistently) using it here to say "the value
+//     is the literal string true or false", not a real boolean.
 //
-// An earlier version of this method also sent "enable" as the string
-// "true"/"false", reasoning that capabilities documented it as the bare
-// value list "true,false" rather than an {"@opt": ...} wrapper like
-// timeType's. That fix was deployed and confirmed live, but the device kept
-// rejecting the request with the exact same badJsonFormat error — which,
-// for a strict/non-conformant JSON parser, is exactly the symptom of a type
-// mismatch (a JSON string where a JSON boolean is expected), not a missing
-// or misnamed field. "true,false" without the @opt wrapper most likely was
-// just Hikvision's shorthand for "this is a boolean field", not an
-// instruction to quote the value. Reverting to a real JSON boolean here.
+// A prior version of this method changed "enable" to a real Go bool
+// (JSON true/false) on the theory that "true,false" here just meant
+// "this is a boolean type". That was deployed and confirmed live and did
+// not change the device's response at all (byte-for-byte identical
+// badJsonFormat), which on its own doesn't prove either reading, but
+// combined with the hasFace/hasCard counter-example above — where a real
+// boolean IS spelled out with an explicit @opt array — the bare-string
+// "true,false" reading is the better-supported one. Back to a string.
+//
+// Also per the same capabilities dump, this endpoint's JSON parser only
+// answering in "badJsonFormat" for what may well be missing-field errors
+// (there's no separate "missing parameter" subStatusCode in evidence),
+// this now also sends "doorRight"/"RightPlan" — both present in the
+// schema as top-level UserInfo fields — since a great many public
+// DS-K1T3xx integration examples include them on every UserInfo/Record
+// create call, not just when actually customizing access rights.
+//
+// "timeType" is also required per capabilities (only "local" is offered).
+//
+// Finally, ?format=json is appended to the URL: several Hikvision ISAPI
+// resources only switch their body parser to JSON when this query
+// parameter is present, otherwise defaulting to XML parsing regardless of
+// Content-Type — which would explain why every previous JSON-body change
+// here produced the exact same error text, if the device was silently
+// still trying (and failing) to read our body as XML the whole time.
 func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 	now := time.Now()
 	tenYears := now.AddDate(10, 0, 0)
@@ -356,27 +382,37 @@ func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 			Name       string `json:"name"`
 			UserType   string `json:"userType"`
 			Valid      struct {
-				Enable    bool   `json:"enable"`
+				Enable    string `json:"enable"` // literal string "true"/"false" — see comment above
 				BeginTime string `json:"beginTime"`
 				EndTime   string `json:"endTime"`
 				TimeType  string `json:"timeType"`
 			} `json:"Valid"`
+			DoorRight string `json:"doorRight"`
+			RightPlan []struct {
+				DoorNo         int    `json:"doorNo"`
+				PlanTemplateNo string `json:"planTemplateNo"`
+			} `json:"RightPlan"`
 		} `json:"UserInfo"`
 	}{}
 	payload.UserInfo.EmployeeNo = employeeNo
 	payload.UserInfo.Name = fullName
 	payload.UserInfo.UserType = "normal"
-	payload.UserInfo.Valid.Enable = true
+	payload.UserInfo.Valid.Enable = "true"
 	payload.UserInfo.Valid.BeginTime = now.Format("2006-01-02T15:04:05")
 	payload.UserInfo.Valid.EndTime = tenYears.Format("2006-01-02T15:04:05")
 	payload.UserInfo.Valid.TimeType = "local"
+	payload.UserInfo.DoorRight = "1"
+	payload.UserInfo.RightPlan = []struct {
+		DoorNo         int    `json:"doorNo"`
+		PlanTemplateNo string `json:"planTemplateNo"`
+	}{{DoorNo: 1, PlanTemplateNo: "1"}}
 
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 
-	status, respBody, err := c.request(http.MethodPost, "/ISAPI/AccessControl/UserInfo/Record", body, "application/json")
+	status, respBody, err := c.request(http.MethodPost, "/ISAPI/AccessControl/UserInfo/Record?format=json", body, "application/json")
 	if err != nil {
 		return err
 	}
@@ -384,7 +420,8 @@ func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 }
 
 // DeleteUser removes a person (and, per ISAPI semantics, their enrolled
-// face/card credentials) from the device. JSON body — see CreateUser.
+// face/card credentials) from the device. JSON body — see CreateUser
+// (including the ?format=json rationale).
 func (c *HikvisionClient) DeleteUser(employeeNo string) error {
 	payload := struct {
 		UserInfoDetail struct {
@@ -404,7 +441,7 @@ func (c *HikvisionClient) DeleteUser(employeeNo string) error {
 		return err
 	}
 
-	status, respBody, err := c.request(http.MethodPut, "/ISAPI/AccessControl/UserInfoDetail/Delete", body, "application/json")
+	status, respBody, err := c.request(http.MethodPut, "/ISAPI/AccessControl/UserInfoDetail/Delete?format=json", body, "application/json")
 	if err != nil {
 		return err
 	}
