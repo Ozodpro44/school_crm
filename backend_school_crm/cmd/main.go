@@ -100,6 +100,7 @@ func main() {
 	reportService := service.NewReportService(database)
 	subscriptionService := service.NewSubscriptionService(database)
 	developerService := service.NewDeveloperService(database)
+	attendanceService := service.NewAttendanceService(database)
 
 	// Initialize Click.uz service (using environment variables or defaults)
 	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
@@ -149,13 +150,13 @@ func main() {
 		uptimeSeconds := int64(math.Round(time.Since(startTime).Seconds()))
 
 		c.JSON(http.StatusOK, gin.H{
-			"status":          "healthy",
-			"environment":     cfg.Environment,
-			"uptime_seconds":  uptimeSeconds,
+			"status":         "healthy",
+			"environment":    cfg.Environment,
+			"uptime_seconds": uptimeSeconds,
 			"database": gin.H{
-				"status":              "connected",
-				"open_connections":    dbStats.OpenConnections,
-				"idle_connections":    dbStats.Idle,
+				"status":               "connected",
+				"open_connections":     dbStats.OpenConnections,
+				"idle_connections":     dbStats.Idle,
 				"max_open_connections": dbStats.MaxOpenConnections,
 			},
 			"redis": gin.H{
@@ -230,6 +231,9 @@ func main() {
 	// Settings
 	handlers.RegisterSettingsRoutes(protected, branchService, userService)
 
+	// Hikvision face-recognition attendance (device/employee management + reports)
+	handlers.RegisterAttendanceRoutes(protected, attendanceService)
+
 	// SUBSCRIPTIONS DISABLED
 	// Subscriptions (protected routes only, plans is public)
 	// handlers.RegisterSubscriptionProtectedRoutes(protected, subscriptionService, userService)
@@ -239,6 +243,9 @@ func main() {
 	// Payment webhooks (public, no auth required)
 	handlers.RegisterClickUzWebhooks(router.Group("/api"), clickUzService)
 	handlers.RegisterTelegramPaymentWebhooks(router.Group("/api"), telegramPaymentService)
+
+	// Hikvision device webhook (public, authenticated by a per-device token in the URL)
+	handlers.RegisterHikvisionWebhookRoutes(router.Group("/api"), attendanceService)
 
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
