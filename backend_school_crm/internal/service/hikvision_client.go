@@ -333,11 +333,19 @@ func (c *HikvisionClient) ConfigureHTTPHost(hostID int, targetHost string, port 
 // JSON. UploadFace below already sent its metadata part as JSON for the same
 // reason; this just brings CreateUser/DeleteUser in line with it.
 //
-// Per GET .../UserInfo/capabilities, this device's own JSON parser is
-// stricter than the JSON spec: "enable" is documented as the string enum
-// "true,false", not a real boolean, and Valid additionally requires a
-// "timeType" field (only "local" is offered) that a real boolean "enable"
-// silently omitting would still leave incomplete.
+// Per GET .../UserInfo/capabilities, Valid additionally requires a
+// "timeType" field (only "local" is offered).
+//
+// An earlier version of this method also sent "enable" as the string
+// "true"/"false", reasoning that capabilities documented it as the bare
+// value list "true,false" rather than an {"@opt": ...} wrapper like
+// timeType's. That fix was deployed and confirmed live, but the device kept
+// rejecting the request with the exact same badJsonFormat error — which,
+// for a strict/non-conformant JSON parser, is exactly the symptom of a type
+// mismatch (a JSON string where a JSON boolean is expected), not a missing
+// or misnamed field. "true,false" without the @opt wrapper most likely was
+// just Hikvision's shorthand for "this is a boolean field", not an
+// instruction to quote the value. Reverting to a real JSON boolean here.
 func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 	now := time.Now()
 	tenYears := now.AddDate(10, 0, 0)
@@ -348,7 +356,7 @@ func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 			Name       string `json:"name"`
 			UserType   string `json:"userType"`
 			Valid      struct {
-				Enable    string `json:"enable"` // "true" / "false" — a string, not a JSON boolean
+				Enable    bool   `json:"enable"`
 				BeginTime string `json:"beginTime"`
 				EndTime   string `json:"endTime"`
 				TimeType  string `json:"timeType"`
@@ -358,7 +366,7 @@ func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 	payload.UserInfo.EmployeeNo = employeeNo
 	payload.UserInfo.Name = fullName
 	payload.UserInfo.UserType = "normal"
-	payload.UserInfo.Valid.Enable = "true"
+	payload.UserInfo.Valid.Enable = true
 	payload.UserInfo.Valid.BeginTime = now.Format("2006-01-02T15:04:05")
 	payload.UserInfo.Valid.EndTime = tenYears.Format("2006-01-02T15:04:05")
 	payload.UserInfo.Valid.TimeType = "local"
