@@ -31,7 +31,7 @@ export async function getStudentsConsolidatedData(
  * Handles all HTTP requests with authentication, error handling, and data marshalling
  */
 
-import { Branch } from "@/types";
+import { Branch, HikvisionDevice, HikvisionEmployee, AttendanceRecord } from "@/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://incredible-love-production-0008.up.railway.app/api";
 
@@ -1488,4 +1488,151 @@ export async function healthCheck(): Promise<{ status: string }> {
   } catch {
     return { status: "error" };
   }
+}
+
+// ============================================================================
+// HIKVISION FACE-ID ATTENDANCE (admin only — backend enforces this too)
+// ============================================================================
+
+/**
+ * Make an authenticated multipart/form-data request. Unlike apiRequest, this
+ * does NOT force a JSON Content-Type — the browser sets the correct
+ * multipart boundary itself as long as we leave Content-Type unset.
+ */
+async function apiUpload<T>(endpoint: string, formData: FormData): Promise<T> {
+  const token = getAuthToken();
+  const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
+
+  const headers: HeadersInit = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  if (branchId) {
+    headers["X-Branch-ID"] = branchId;
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `API Error: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export interface CreateHikvisionDeviceRequest {
+  branchId: string;
+  name: string;
+  host: string;
+  username?: string;
+  password: string;
+}
+
+export interface ConfigureHikvisionPushRequest {
+  publicHost: string;
+  publicPort: number;
+  useHttps: boolean;
+}
+
+export interface AddHikvisionEmployeeRequest {
+  deviceId: string;
+  employeeNo: string;
+  fullName: string;
+  teacherId?: string | null;
+}
+
+export interface HikvisionAttendanceFilter {
+  deviceId?: string;
+  employeeId?: string;
+  from?: string; // "YYYY-MM-DD"
+  to?: string; // "YYYY-MM-DD"
+}
+
+/**
+ * Register a new Hikvision device for a branch. The backend dials the
+ * device itself to validate the credentials before saving, so this call
+ * only succeeds when made from a machine that can actually reach the
+ * device's local network (see the hikvision-cli tool for devices behind a
+ * NAT the cloud backend can't reach).
+ */
+export async function createHikvisionDevice(
+  request: CreateHikvisionDeviceRequest
+): Promise<HikvisionDevice> {
+  return apiRequest<HikvisionDevice>("/hikvision/devices", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export async function listHikvisionDevices(branchId: string): Promise<HikvisionDevice[]> {
+  const response = await apiRequest<HikvisionDevice[]>(`/hikvision/devices?branchId=${branchId}`);
+  return Array.isArray(response) ? response : [];
+}
+
+/**
+ * Tell the device to push face-recognition events to this backend's public
+ * webhook URL (publicHost/publicPort — e.g. the Railway domain on port 443
+ * with useHttps: true).
+ */
+export async function configureHikvisionPush(
+  deviceId: string,
+  request: ConfigureHikvisionPushRequest
+): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/hikvision/devices/${deviceId}/configure-push`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export async function addHikvisionEmployee(
+  request: AddHikvisionEmployeeRequest
+): Promise<HikvisionEmployee> {
+  return apiRequest<HikvisionEmployee>("/hikvision/employees", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export async function listHikvisionEmployees(deviceId: string): Promise<HikvisionEmployee[]> {
+  const response = await apiRequest<HikvisionEmployee[]>(`/hikvision/employees?deviceId=${deviceId}`);
+  return Array.isArray(response) ? response : [];
+}
+
+/**
+ * Upload a JPEG face photo for an already-created employee so the device
+ * can recognize them.
+ */
+export async function uploadHikvisionEmployeeFace(
+  employeeId: string,
+  photo: File
+): Promise<{ message: string }> {
+  const formData = new FormData();
+  formData.append("photo", photo);
+  return apiUpload<{ message: string }>(`/hikvision/employees/${employeeId}/face`, formData);
+}
+
+export async function removeHikvisionEmployee(employeeId: string): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/hikvision/employees/${employeeId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listHikvisionAttendance(
+  filter: HikvisionAttendanceFilter = {}
+): Promise<AttendanceRecord[]> {
+  const params = new URLSearchParams();
+  if (filter.deviceId) params.set("deviceId", filter.deviceId);
+  if (filter.employeeId) params.set("employeeId", filter.employeeId);
+  if (filter.from) params.set("from", filter.from);
+  if (filter.to) params.set("to", filter.to);
+  const query = params.toString();
+  const response = await apiRequest<AttendanceRecord[]>(
+    `/hikvision/attendance${query ? `?${query}` : ""}`
+  );
+  return Array.isArray(response) ? response : [];
 }

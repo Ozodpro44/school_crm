@@ -232,7 +232,9 @@ func main() {
 	handlers.RegisterSettingsRoutes(protected, branchService, userService)
 
 	// Hikvision face-recognition attendance (device/employee management + reports)
-	handlers.RegisterAttendanceRoutes(protected, attendanceService)
+	// Admin-only: RegisterAttendanceRoutes applies its own RoleChecker(admin)
+	// middleware to the whole /hikvision group.
+	handlers.RegisterAttendanceRoutes(protected, attendanceService, userService)
 
 	// SUBSCRIPTIONS DISABLED
 	// Subscriptions (protected routes only, plans is public)

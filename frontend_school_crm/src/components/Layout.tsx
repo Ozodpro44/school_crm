@@ -30,6 +30,7 @@ import {
   UserCog,
   Calendar,
   Clock,
+  Fingerprint,
 } from "lucide-react";
 import { getCurrentUser, logout, hasPermission } from "@/lib/auth";
 import { User, Language } from "@/types";
@@ -158,6 +159,12 @@ export function Layout({ children }: LayoutProps) {
       name: t("settings"),
       href: "/settings",
       icon: Settings,
+      show: user?.role === "admin",
+    },
+    {
+      name: t("attendance"),
+      href: "/attendance",
+      icon: Fingerprint,
       show: user?.role === "admin",
     },
     { name: t("help"), href: "/help", icon: HelpCircle, show: true },

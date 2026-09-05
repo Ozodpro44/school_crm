@@ -193,6 +193,44 @@ export interface Settings {
   createdDate: string;
 }
 
+// Hikvision face-recognition attendance integration (admin-only)
+export type AttendanceEventType = "check_in" | "check_out";
+
+export interface HikvisionDevice {
+  id: string;
+  branchId: string;
+  name: string;
+  host: string;
+  username: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HikvisionEmployee {
+  id: string;
+  deviceId: string;
+  employeeNo: string;
+  fullName: string;
+  teacherId?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AttendanceRecord {
+  id: string;
+  deviceId: string;
+  employeeId?: string | null;
+  employeeNo: string;
+  employeeName: string;
+  eventTime: string;
+  eventType: AttendanceEventType;
+  minorEvent?: number | null;
+  source: string;
+  createdAt: string;
+}
+
 export interface Translation {
   [key: string]: {
     "uz-cyrl": string;

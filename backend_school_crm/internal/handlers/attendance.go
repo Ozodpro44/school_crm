@@ -9,14 +9,22 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/service"
 )
 
 // RegisterAttendanceRoutes registers the authenticated CRM-side endpoints
 // for managing Hikvision devices, syncing employees onto them, and viewing
 // attendance. Mount it on the same protected group as the other resources.
-func RegisterAttendanceRoutes(router *gin.RouterGroup, attendanceService *service.AttendanceService) {
+//
+// The whole /hikvision group is admin-only: connecting a device (and every
+// employee/attendance operation under it) exposes device credentials and
+// building access, so only the "admin" role may reach it, same as
+// /branches/:id/switch-month.
+func RegisterAttendanceRoutes(router *gin.RouterGroup, attendanceService *service.AttendanceService, userService *service.UserService) {
 	hikvision := router.Group("/hikvision")
+	hikvision.Use(middleware.RoleChecker(userService, models.RoleAdmin))
 
 	hikvision.POST("/devices", createDevice(attendanceService))
 	hikvision.GET("/devices", listDevices(attendanceService))
