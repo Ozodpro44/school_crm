@@ -110,6 +110,64 @@ func (s *AttendanceService) GetDevice(ctx context.Context, id string) (*models.H
 	return d, err
 }
 
+// UpdateDeviceHost changes a device's registered host/IP:port. Needed when a
+// terminal behind a home/school router with a dynamic public IP gets a new
+// one after a power cycle or the ISP reassigning it — confirmed happening to
+// Wonder Kids' terminal (moved from 87.237.234.127:8081 to
+// 185.213.230.149:8081 after a restart, with the port-forward rule itself
+// unchanged). Re-validates the new address against the device with its
+// existing credentials before saving, so a typo or wrong IP is caught
+// immediately rather than quietly breaking every subsequent request.
+func (s *AttendanceService) UpdateDeviceHost(ctx context.Context, deviceID, newHost string) error {
+	device, err := s.GetDevice(ctx, deviceID)
+	if err != nil {
+		return err
+	}
+
+	client := NewHikvisionClient(newHost, device.Username, device.Password)
+	if _, err := client.GetDeviceInfo(); err != nil {
+		return fmt.Errorf("could not connect to device at new host: %w", err)
+	}
+
+	_, err = s.db.GetConn().ExecContext(ctx,
+		`UPDATE hikvision_devices SET host = $1, updated_at = $2 WHERE id = $3`,
+		newHost, time.Now().UTC(), deviceID)
+	return err
+}
+
+// UpdateDeviceCredentials changes a device's stored admin username/password.
+// Needed when the device's actual live credentials no longer match what's
+// saved in the database — confirmed happening to Wonder Kids' terminal:
+// after the same disruption that changed its public IP, the device came
+// back up answering to an OLDER password than the one on file (the device
+// itself was reachable the whole time — CreateUser/UploadFace/UpdateDeviceHost
+// all failed with 401, not a connection error, once the new host/DDNS domain
+// was reachable). Deliberately does NOT reuse the device's currently-stored
+// host for validation — it's called with an explicit host precisely because
+// the stored one may also be stale, and validating a new password against a
+// wrong host would misreport a credentials problem as a connectivity one (or
+// vice versa). Re-validates host+username+password together against the
+// device before saving anything, so a typo in either is caught immediately.
+func (s *AttendanceService) UpdateDeviceCredentials(ctx context.Context, deviceID, host, username, password string) error {
+	device, err := s.GetDevice(ctx, deviceID)
+	if err != nil {
+		return err
+	}
+	if host == "" {
+		host = device.Host
+	}
+
+	client := NewHikvisionClient(host, username, password)
+	if _, err := client.GetDeviceInfo(); err != nil {
+		return fmt.Errorf("could not authenticate at %s with the given username/password: %w", host, err)
+	}
+
+	_, err = s.db.GetConn().ExecContext(ctx,
+		`UPDATE hikvision_devices SET host = $1, username = $2, password = $3, updated_at = $4 WHERE id = $5`,
+		host, username, password, time.Now().UTC(), deviceID)
+	return err
+}
+
 // ListActiveDevices returns every active device across all branches — used
 // by the background attendance poller in cmd/main.go, which polls every
 // device's own event log on a timer regardless of which branch it belongs

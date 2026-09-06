@@ -80,6 +80,8 @@ func main() {
 	switch os.Args[1] {
 	case "add-device":
 		cmdAddDevice(ctx, attendanceService, os.Args[2:])
+	case "update-device":
+		cmdUpdateDevice(ctx, attendanceService, os.Args[2:])
 	case "list-devices":
 		cmdListDevices(ctx, attendanceService, os.Args[2:])
 	case "configure-push":
@@ -105,6 +107,7 @@ func printUsage() {
 
 Usage:
   go run ./cmd/hikvision-cli add-device      -branch <branchID> -name <name> -host <ip> -user <username> -pass <password>
+  go run ./cmd/hikvision-cli update-device   -device <deviceID> -host <newIp> [-user <newUser> -pass <newPass>]
   go run ./cmd/hikvision-cli list-devices    -branch <branchID>
   go run ./cmd/hikvision-cli configure-push  -device <deviceID> -host <publicHost> -port <port> [-https]
   go run ./cmd/hikvision-cli add-employee    -device <deviceID> -no <employeeNo> -name <fullName> [-teacher <teacherID>]
@@ -146,6 +149,46 @@ func cmdAddDevice(ctx context.Context, s *service.AttendanceService, args []stri
 		log.Fatalf("failed to add device: %v", err)
 	}
 	printJSON(device)
+}
+
+// cmdUpdateDevice re-points an existing device record at a new host/IP —
+// needed when a terminal behind a router with a dynamic public IP gets a
+// new one (e.g. after a power cycle). Validates the new address against the
+// device with its existing credentials before saving.
+//
+// If -pass is also given, it validates and saves new credentials at the
+// same time (via UpdateDeviceCredentials instead of UpdateDeviceHost) —
+// needed because a device can come back up reachable at its new host but
+// answering to a DIFFERENT admin password than what's on file (seen on
+// Wonder Kids' terminal: same disruption that changed the IP also left it
+// on an older password). Every other command's 401 is the symptom to
+// watch for — re-run this with -pass once you've confirmed, by logging
+// into the device's own web UI, which password it currently accepts.
+func cmdUpdateDevice(ctx context.Context, s *service.AttendanceService, args []string) {
+	fs := flag.NewFlagSet("update-device", flag.ExitOnError)
+	device := fs.String("device", "", "device ID")
+	host := fs.String("host", "", "new device IP (or IP:port), e.g. 185.213.230.149:8081")
+	user := fs.String("user", "", "new device username — only needed if it changed too (defaults to admin when -pass is set)")
+	pass := fs.String("pass", "", "new device password — set this whenever the device's live admin password no longer matches what's on file (401 errors from other commands are the symptom)")
+	_ = fs.Parse(args)
+	if *device == "" || *host == "" {
+		log.Fatal("device and host are required")
+	}
+	if *pass != "" {
+		u := *user
+		if u == "" {
+			u = "admin"
+		}
+		if err := s.UpdateDeviceCredentials(ctx, *device, *host, u, *pass); err != nil {
+			log.Fatalf("failed to update device: %v", err)
+		}
+		fmt.Println("device host and credentials updated successfully")
+		return
+	}
+	if err := s.UpdateDeviceHost(ctx, *device, *host); err != nil {
+		log.Fatalf("failed to update device: %v", err)
+	}
+	fmt.Println("device host updated successfully")
 }
 
 func cmdListDevices(ctx context.Context, s *service.AttendanceService, args []string) {

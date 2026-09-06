@@ -20,9 +20,18 @@ import (
 // HikvisionClient talks to a single Hikvision ISAPI-compliant access control
 // terminal (tested against a DS-K1T343MWX) over its local HTTP interface.
 //
-// The device authenticates with HTTP Digest (RFC 2617) and, on this
-// firmware, always answers with XML regardless of "?format=json" — so this
-// client speaks XML natively rather than assuming JSON support.
+// The device authenticates with HTTP Digest (RFC 2617). On this firmware,
+// every endpoint below parses the request body as XML — regardless of
+// Content-Type — UNLESS the URL carries "?format=json", in which case it
+// expects (and returns) JSON instead. This was found the hard way: omitting
+// "?format=json" while sending a JSON body produces the same generic
+// "badJsonFormat" error as sending malformed XML, which looks identical to a
+// content bug and cost a lot of debugging time on CreateUser/UploadFace
+// before the pattern was clear. Every call in this file that sends JSON
+// appends "?format=json" for exactly this reason — SearchAccessEvents was
+// the last holdout still sending bare XML and hit the same error once the
+// device/credentials problems around it were fixed and requests started
+// actually reaching it.
 type HikvisionClient struct {
 	baseURL  string
 	username string
@@ -513,6 +522,25 @@ type acsEventSearchResponse struct {
 	} `xml:"InfoList>AcsEventInfo"`
 }
 
+// acsEventSearchResponseJSON is the ?format=json shape of the same response
+// — same "AcsEvent" wrapper and InfoList, just JSON instead of XML. Kept as
+// a separate type (rather than dual-tagging one struct) because the XML
+// variant nests InfoList under an extra AcsEventInfo element that the JSON
+// variant doesn't have.
+type acsEventSearchResponseJSON struct {
+	AcsEvent struct {
+		NumOfMatches int `json:"numOfMatches"`
+		TotalMatches int `json:"totalMatches"`
+		InfoList     []struct {
+			Time             string `json:"time"`
+			EmployeeNoString string `json:"employeeNoString"`
+			Name             string `json:"name"`
+			Major            int    `json:"major"`
+			Minor            int    `json:"minor"`
+		} `json:"InfoList"`
+	} `json:"AcsEvent"`
+}
+
 // SearchAccessEvents fetches access-control events in [start,end). Used as a
 // once-in-a-while backfill/fallback in case a push notification is ever
 // missed (e.g. brief network outage) — the primary path is the webhook.
@@ -520,18 +548,30 @@ func (c *HikvisionClient) SearchAccessEvents(start, end time.Time, maxResults in
 	if maxResults <= 0 {
 		maxResults = 200
 	}
-	body := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
-<AcsEventCond>
-  <searchID>%s</searchID>
-  <searchResultPosition>0</searchResultPosition>
-  <maxResults>%d</maxResults>
-  <major>5</major>
-  <minor>0</minor>
-  <startTime>%s</startTime>
-  <endTime>%s</endTime>
-</AcsEventCond>`, randomHex(8), maxResults, start.Format("2006-01-02T15:04:05"), end.Format("2006-01-02T15:04:05"))
 
-	status, respBody, err := c.request(http.MethodPost, "/ISAPI/AccessControl/AcsEvent", []byte(body), "application/xml")
+	payload := struct {
+		AcsEventCond struct {
+			SearchID             string `json:"searchID"`
+			SearchResultPosition int    `json:"searchResultPosition"`
+			MaxResults           int    `json:"maxResults"`
+			Major                int    `json:"major"`
+			Minor                int    `json:"minor"`
+			StartTime            string `json:"startTime"`
+			EndTime              string `json:"endTime"`
+		} `json:"AcsEventCond"`
+	}{}
+	payload.AcsEventCond.SearchID = randomHex(8)
+	payload.AcsEventCond.MaxResults = maxResults
+	payload.AcsEventCond.Major = 5
+	payload.AcsEventCond.StartTime = start.Format("2006-01-02T15:04:05")
+	payload.AcsEventCond.EndTime = end.Format("2006-01-02T15:04:05")
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	status, respBody, err := c.request(http.MethodPost, "/ISAPI/AccessControl/AcsEvent?format=json", body, "application/json")
 	if err != nil {
 		return nil, err
 	}
@@ -539,24 +579,48 @@ func (c *HikvisionClient) SearchAccessEvents(start, end time.Time, maxResults in
 		return nil, err
 	}
 
-	var parsed acsEventSearchResponse
-	if err := xml.Unmarshal(respBody, &parsed); err != nil {
-		return nil, fmt.Errorf("parsing AcsEvent response: %w", err)
+	parseTime := func(raw string) time.Time {
+		t, err := time.Parse("2006-01-02T15:04:05", strings.SplitN(raw, "+", 2)[0])
+		if err != nil {
+			t, _ = time.Parse(time.RFC3339, raw)
+		}
+		return t
 	}
 
-	events := make([]AccessEvent, 0, len(parsed.InfoList))
-	for _, item := range parsed.InfoList {
-		t, err := time.Parse("2006-01-02T15:04:05", strings.SplitN(item.Time, "+", 2)[0])
-		if err != nil {
-			t, _ = time.Parse(time.RFC3339, item.Time)
+	events := make([]AccessEvent, 0, maxResults)
+	trimmed := bytes.TrimSpace(respBody)
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		// ?format=json response: JSON body, same "AcsEvent" wrapper.
+		var parsed acsEventSearchResponseJSON
+		if err := json.Unmarshal(respBody, &parsed); err != nil {
+			return nil, fmt.Errorf("parsing AcsEvent response: %w", err)
 		}
-		events = append(events, AccessEvent{
-			Time:             t,
-			EmployeeNoString: item.EmployeeNoString,
-			Name:             item.Name,
-			Major:            item.Major,
-			Minor:            item.Minor,
-		})
+		for _, item := range parsed.AcsEvent.InfoList {
+			events = append(events, AccessEvent{
+				Time:             parseTime(item.Time),
+				EmployeeNoString: item.EmployeeNoString,
+				Name:             item.Name,
+				Major:            item.Major,
+				Minor:            item.Minor,
+			})
+		}
+	} else {
+		// Defensive fallback in case this firmware ever answers a
+		// ?format=json request with XML anyway (seen elsewhere on this
+		// device) — same data, just XML-tagged.
+		var parsed acsEventSearchResponse
+		if err := xml.Unmarshal(respBody, &parsed); err != nil {
+			return nil, fmt.Errorf("parsing AcsEvent response: %w", err)
+		}
+		for _, item := range parsed.InfoList {
+			events = append(events, AccessEvent{
+				Time:             parseTime(item.Time),
+				EmployeeNoString: item.EmployeeNoString,
+				Name:             item.Name,
+				Major:            item.Major,
+				Minor:            item.Minor,
+			})
+		}
 	}
 	return events, nil
 }
