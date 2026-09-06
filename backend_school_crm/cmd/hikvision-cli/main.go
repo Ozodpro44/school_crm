@@ -5,8 +5,19 @@
 // endpoints in internal/handlers/attendance.go: the CRM backend is deployed
 // on Railway (cloud), but the Hikvision terminal lives on the school's
 // private LAN (e.g. 192.168.0.115) with no port forwarding set up — so the
-// cloud backend cannot open a connection to the device (the reverse
-// direction, device -> cloud webhook, works fine and needs nothing here).
+// cloud backend cannot open a connection to the device.
+//
+// The reverse direction (device -> cloud webhook, set up by configure-push
+// below) works for terminals whose network allows outbound internet access.
+// Some don't — only an inbound port-forward exists (e.g. for the admin UI),
+// with no outbound route at all — and pushed notifications then never
+// arrive no matter how correctly configure-push is set up. This was
+// confirmed on Wonder Kids' terminal: neither a direct HTTPS connection nor
+// a raw TCP proxy to our backend ever reached the webhook. watch-events
+// below is the fallback for exactly that case: instead of waiting for the
+// device to push events out, it polls the device's own event log from a
+// machine on its LAN and writes straight to the database — that machine has
+// the internet access the terminal doesn't.
 //
 // This CLI reuses the exact same internal/service.AttendanceService used by
 // the API, but you run it on a machine that IS on the device's network
@@ -24,6 +35,7 @@
 //	go run ./cmd/hikvision-cli upload-face     -employee <employeeID> -photo <path-to.jpg>
 //	go run ./cmd/hikvision-cli remove-employee -employee <employeeID>
 //	go run ./cmd/hikvision-cli list-employees  -device <deviceID>
+//	go run ./cmd/hikvision-cli watch-events    -device <deviceID> [-interval <seconds>]
 package main
 
 import (
@@ -33,6 +45,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/school-crm/backend/internal/db"
@@ -59,7 +72,10 @@ func main() {
 	}
 	defer database.Close()
 
-	attendanceService := service.NewAttendanceService(database)
+	// NewStorageServiceFromEnv returns nil (not an error) when no bucket env
+	// vars are set — fine here, this CLI's commands don't need it, but the
+	// constructor now requires a *StorageService argument regardless.
+	attendanceService := service.NewAttendanceService(database, service.NewStorageServiceFromEnv())
 
 	switch os.Args[1] {
 	case "add-device":
@@ -76,6 +92,8 @@ func main() {
 		cmdRemoveEmployee(ctx, attendanceService, os.Args[2:])
 	case "list-employees":
 		cmdListEmployees(ctx, attendanceService, os.Args[2:])
+	case "watch-events":
+		cmdWatchEvents(ctx, attendanceService, os.Args[2:])
 	default:
 		printUsage()
 		os.Exit(1)
@@ -92,7 +110,8 @@ Usage:
   go run ./cmd/hikvision-cli add-employee    -device <deviceID> -no <employeeNo> -name <fullName> [-teacher <teacherID>]
   go run ./cmd/hikvision-cli upload-face     -employee <employeeID> -photo <path-to.jpg>
   go run ./cmd/hikvision-cli remove-employee -employee <employeeID>
-  go run ./cmd/hikvision-cli list-employees  -device <deviceID>`)
+  go run ./cmd/hikvision-cli list-employees  -device <deviceID>
+  go run ./cmd/hikvision-cli watch-events    -device <deviceID> [-interval <seconds>]`)
 }
 
 func printJSON(v interface{}) {
@@ -228,4 +247,35 @@ func cmdListEmployees(ctx context.Context, s *service.AttendanceService, args []
 		log.Fatalf("failed to list employees: %v", err)
 	}
 	printJSON(employees)
+}
+
+// cmdWatchEvents runs forever, polling the device's own event log and
+// writing any new successful face scans straight to the database. Leave
+// this running (e.g. in a terminal window, or as a background service) on a
+// machine that stays on the same LAN as the terminal — this is the only way
+// attendance events reach the CRM for terminals that can't push events out
+// over the internet themselves (see the doc comment at the top of this
+// file).
+func cmdWatchEvents(ctx context.Context, s *service.AttendanceService, args []string) {
+	fs := flag.NewFlagSet("watch-events", flag.ExitOnError)
+	device := fs.String("device", "", "device ID")
+	interval := fs.Int("interval", 15, "seconds between polls")
+	_ = fs.Parse(args)
+	if *device == "" {
+		log.Fatal("device is required")
+	}
+	if *interval < 3 {
+		log.Fatal("interval must be at least 3 seconds (don't hammer the device)")
+	}
+
+	fmt.Printf("watching device %s for new attendance events every %ds — leave this running; press Ctrl+C to stop\n", *device, *interval)
+	for {
+		n, err := s.PollAndRecordEvents(ctx, *device)
+		if err != nil {
+			log.Printf("poll error (will retry): %v", err)
+		} else if n > 0 {
+			log.Printf("recorded %d new attendance event(s)", n)
+		}
+		time.Sleep(time.Duration(*interval) * time.Second)
+	}
 }

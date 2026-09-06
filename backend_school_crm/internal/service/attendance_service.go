@@ -110,6 +110,33 @@ func (s *AttendanceService) GetDevice(ctx context.Context, id string) (*models.H
 	return d, err
 }
 
+// ListActiveDevices returns every active device across all branches — used
+// by the background attendance poller in cmd/main.go, which polls every
+// device's own event log on a timer regardless of which branch it belongs
+// to (see runAttendancePoller and PollAndRecordEvents below for why polling
+// exists at all: some terminals can't push events to us, but since we can
+// already reach them directly for CreateUser/UploadFace/ConfigurePush,
+// polling from right here works just as well and needs no local machine).
+func (s *AttendanceService) ListActiveDevices(ctx context.Context) ([]models.HikvisionDevice, error) {
+	rows, err := s.db.GetConn().QueryContext(ctx, `
+		SELECT id, branch_id, name, host, username, password, webhook_token, is_active, created_at, updated_at
+		FROM hikvision_devices WHERE is_active = true`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []models.HikvisionDevice
+	for rows.Next() {
+		var d models.HikvisionDevice
+		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
 func (s *AttendanceService) ListDevicesByBranch(ctx context.Context, branchID string) ([]models.HikvisionDevice, error) {
 	rows, err := s.db.GetConn().QueryContext(ctx, `
 		SELECT id, branch_id, name, host, username, password, webhook_token, is_active, created_at, updated_at
@@ -337,26 +364,141 @@ func (s *AttendanceService) ProcessWebhookEvent(ctx context.Context, deviceID st
 		eventTime = time.Now().UTC()
 	}
 
+	_, err = s.recordFaceEvent(ctx, deviceID, ace.EmployeeNoString, ace.Minor, eventTime, "push")
+	return err
+}
+
+// recordFaceEvent inserts one successful face-recognition scan into
+// attendance_records, deduped by (device, employeeNo, eventTime) so the same
+// physical scan is never recorded twice — which matters once events can
+// arrive by two different paths (push webhook and PollAndRecordEvents below)
+// that could otherwise both see it. Returns whether a new row was inserted.
+func (s *AttendanceService) recordFaceEvent(ctx context.Context, deviceID, employeeNoString string, minor int, eventTime time.Time, source string) (bool, error) {
+	var dupCount int
+	if err := s.db.GetConn().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM attendance_records WHERE device_id = $1 AND employee_no = $2 AND event_time = $3`,
+		deviceID, employeeNoString, eventTime).Scan(&dupCount); err != nil {
+		return false, err
+	}
+	if dupCount > 0 {
+		return false, nil
+	}
+
 	var employeeID *string
 	var id string
 	row := s.db.GetConn().QueryRowContext(ctx,
 		`SELECT id FROM hikvision_employees WHERE device_id = $1 AND employee_no = $2`,
-		deviceID, ace.EmployeeNoString)
+		deviceID, employeeNoString)
 	if err := row.Scan(&id); err == nil {
 		employeeID = &id
 	}
 
-	eventType, err := s.nextEventType(ctx, deviceID, ace.EmployeeNoString, eventTime)
+	eventType, err := s.nextEventType(ctx, deviceID, employeeNoString, eventTime)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	minor := ace.Minor
 	_, err = s.db.GetConn().ExecContext(ctx, `
 		INSERT INTO attendance_records (id, device_id, employee_id, employee_no, event_time, event_type, minor_event, source, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,'push',$8)`,
-		uuid.New().String(), deviceID, employeeID, ace.EmployeeNoString, eventTime, eventType, minor, time.Now().UTC())
-	return err
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		uuid.New().String(), deviceID, employeeID, employeeNoString, eventTime, eventType, minor, source, time.Now().UTC())
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// PollAndRecordEvents fetches access-control events straight from the
+// device's own log and records any new successful face scans. This exists
+// for terminals that (unlike what ConfigurePush assumes) cannot reach our
+// webhook over the internet at all — e.g. a terminal on a school LAN with no
+// outbound route, only an inbound port-forward for the admin UI. In that
+// case push notifications never arrive no matter how ConfigurePush is
+// configured.
+//
+// This can be driven from two places, and which one applies depends on
+// whether *we* can reach the device: cmd/hikvision-cli's watch-events
+// command (a machine on the device's own LAN, for a device with no inbound
+// port-forward at all — the backend can't dial it either); or, when the
+// device DOES have some port forwarded and is reachable from the internet
+// (confirmed for Wonder Kids' terminal, since CreateUser/UploadFace/
+// ConfigurePush all already call it successfully from Railway), the
+// in-process RunEventPoller below, which needs no separate machine at all.
+//
+// Each call picks up from the latest attendance_records.event_time already
+// on file for this device (or 24h ago if there is none yet), so calling it
+// repeatedly in a loop is safe and won't reprocess old events; recordFaceEvent
+// also dedupes in case both paths ever end up covering the same device.
+func (s *AttendanceService) PollAndRecordEvents(ctx context.Context, deviceID string) (int, error) {
+	device, err := s.GetDevice(ctx, deviceID)
+	if err != nil {
+		return 0, err
+	}
+
+	since := time.Now().UTC().Add(-24 * time.Hour)
+	var lastTime sql.NullTime
+	if err := s.db.GetConn().QueryRowContext(ctx,
+		`SELECT MAX(event_time) FROM attendance_records WHERE device_id = $1`, deviceID).Scan(&lastTime); err == nil && lastTime.Valid {
+		since = lastTime.Time
+	}
+
+	client := NewHikvisionClient(device.Host, device.Username, device.Password)
+	events, err := client.SearchAccessEvents(since, time.Now().UTC(), 200)
+	if err != nil {
+		return 0, err
+	}
+
+	recorded := 0
+	for _, ev := range events {
+		if ev.EmployeeNoString == "" || ev.Minor != MinorEventFaceSuccess {
+			continue
+		}
+		inserted, err := s.recordFaceEvent(ctx, deviceID, ev.EmployeeNoString, ev.Minor, ev.Time, "poll")
+		if err != nil {
+			return recorded, err
+		}
+		if inserted {
+			recorded++
+		}
+	}
+	return recorded, nil
+}
+
+// RunEventPoller runs PollAndRecordEvents for every active device on a fixed
+// interval, forever (or until ctx is cancelled). Meant to be started once at
+// backend startup with `go attendanceService.RunEventPoller(ctx, 20*time.Second)`
+// — see cmd/main.go. One device erroring (unreachable, wrong credentials,
+// temporarily offline) is logged and skipped; it never stops the others from
+// being polled on the next tick.
+func (s *AttendanceService) RunEventPoller(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.pollAllDevicesOnce(ctx)
+		}
+	}
+}
+
+func (s *AttendanceService) pollAllDevicesOnce(ctx context.Context) {
+	devices, err := s.ListActiveDevices(ctx)
+	if err != nil {
+		log.Printf("attendance poller: failed to list devices: %v", err)
+		return
+	}
+	for _, d := range devices {
+		n, err := s.PollAndRecordEvents(ctx, d.ID)
+		if err != nil {
+			log.Printf("attendance poller: device %q (%s): %v", d.Name, d.ID, err)
+			continue
+		}
+		if n > 0 {
+			log.Printf("attendance poller: device %q (%s): recorded %d new event(s)", d.Name, d.ID, n)
+		}
+	}
 }
 
 // nextEventType is a simple, dependable default when the device isn't

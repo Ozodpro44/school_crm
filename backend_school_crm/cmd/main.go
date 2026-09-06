@@ -107,6 +107,17 @@ func main() {
 	storageService := service.NewStorageServiceFromEnv()
 	attendanceService := service.NewAttendanceService(database, storageService)
 
+	// Background poller for Hikvision terminals that can't push attendance
+	// events to us over the internet (e.g. Wonder Kids' terminal — only an
+	// inbound port-forward exists on its network, confirmed by testing both
+	// a direct HTTPS connection and a raw TCP proxy: neither ever reached
+	// our webhook). Since we CAN already reach such devices directly for
+	// CreateUser/UploadFace/ConfigurePush, polling their event log from
+	// right here works too and needs no separate machine on their LAN — see
+	// AttendanceService.RunEventPoller / PollAndRecordEvents. Runs
+	// alongside the HTTP server for the life of the process.
+	go attendanceService.RunEventPoller(context.Background(), 20*time.Second)
+
 	// Initialize Click.uz service (using environment variables or defaults)
 	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
 	if clickMerchantID == "" {
