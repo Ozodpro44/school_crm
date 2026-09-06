@@ -47,6 +47,20 @@ func NewHikvisionClient(host, username, password string) *HikvisionClient {
 	}
 }
 
+// SetTimeout overrides this client's per-request HTTP timeout (default 20s,
+// set in NewHikvisionClient). PollAndRecordEvents uses this to give AcsEvent
+// log searches more time: production logs showed them timing out at 20s
+// (Wonder Kids' terminal, "context deadline exceeded ... awaiting headers")
+// while every other endpoint (CreateUser, UploadFace, ConfigureHTTPHost,
+// GetDeviceInfo) responds well within it — searching the event log is
+// evidently slower on this device. Safe to raise for background/polling
+// callers where waiting longer costs nothing; a user-facing request
+// triggered directly from the UI should keep the shorter default so a
+// genuinely unreachable device fails fast instead of hanging the request.
+func (c *HikvisionClient) SetTimeout(d time.Duration) {
+	c.http.Timeout = d
+}
+
 // ---- Digest authentication -------------------------------------------------
 
 func parseDigestChallenge(header string) map[string]string {

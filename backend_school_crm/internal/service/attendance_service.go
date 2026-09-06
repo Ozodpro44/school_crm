@@ -443,6 +443,7 @@ func (s *AttendanceService) PollAndRecordEvents(ctx context.Context, deviceID st
 	}
 
 	client := NewHikvisionClient(device.Host, device.Username, device.Password)
+	client.SetTimeout(60 * time.Second) // AcsEvent searches run measurably slower than this device's other endpoints — see SetTimeout's doc comment
 	events, err := client.SearchAccessEvents(since, time.Now().UTC(), 200)
 	if err != nil {
 		return 0, err
