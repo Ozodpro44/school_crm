@@ -99,11 +99,41 @@ func randomHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-func (c *HikvisionClient) buildDigestHeader(method, uriPath, wwwAuthenticate string) (string, error) {
+// negotiateQop picks a qop mode this client actually implements out of the
+// (possibly comma-separated, e.g. "auth,auth-int") list the device offered.
+// Found necessary because a naive strings.Contains(qop, "auth") matches
+// "auth-int" too (it contains "auth" as a substring) — which silently made
+// every challenge look like plain "auth" even when the device offered ONLY
+// "auth-int". That mismatch is exactly why SearchAccessEvents' every request
+// got rejected with a flat 401 while every other endpoint kept working: this
+// device's digest realm apparently requires body-integrity protection
+// (auth-int) specifically for the AcsEvent search endpoint, and the client
+// was claiming qop=auth (no body hash) regardless, which the device never
+// offered and so never accepted.
+func negotiateQop(offered string) string {
+	hasAuth, hasAuthInt := false, false
+	for _, tok := range strings.Split(offered, ",") {
+		switch strings.TrimSpace(tok) {
+		case "auth":
+			hasAuth = true
+		case "auth-int":
+			hasAuthInt = true
+		}
+	}
+	if hasAuth {
+		return "auth"
+	}
+	if hasAuthInt {
+		return "auth-int"
+	}
+	return ""
+}
+
+func (c *HikvisionClient) buildDigestHeader(method, uriPath string, body []byte, wwwAuthenticate string) (string, error) {
 	challenge := parseDigestChallenge(wwwAuthenticate)
 	realm := challenge["realm"]
 	nonce := challenge["nonce"]
-	qop := challenge["qop"]
+	qop := negotiateQop(challenge["qop"])
 	opaque := challenge["opaque"]
 
 	if realm == "" || nonce == "" {
@@ -111,24 +141,30 @@ func (c *HikvisionClient) buildDigestHeader(method, uriPath, wwwAuthenticate str
 	}
 
 	ha1 := md5Hex(fmt.Sprintf("%s:%s:%s", c.username, realm, c.password))
-	ha2 := md5Hex(fmt.Sprintf("%s:%s", method, uriPath))
+
+	// RFC 2617: auth-int folds an MD5 of the request body into HA2; plain
+	// auth (and the no-qop legacy case) doesn't touch the body at all.
+	var ha2 string
+	if qop == "auth-int" {
+		ha2 = md5Hex(fmt.Sprintf("%s:%s:%s", method, uriPath, md5Hex(string(body))))
+	} else {
+		ha2 = md5Hex(fmt.Sprintf("%s:%s", method, uriPath))
+	}
 
 	nc := "00000001"
 	cnonce := randomHex(8)
 
 	var response string
-	// qop can be a comma-separated list (e.g. "auth,auth-int"); we only
-	// implement plain "auth".
-	if strings.Contains(qop, "auth") {
-		response = md5Hex(fmt.Sprintf("%s:%s:%s:%s:auth:%s", ha1, nonce, nc, cnonce, ha2))
+	if qop == "auth" || qop == "auth-int" {
+		response = md5Hex(fmt.Sprintf("%s:%s:%s:%s:%s:%s", ha1, nonce, nc, cnonce, qop, ha2))
 	} else {
 		response = md5Hex(fmt.Sprintf("%s:%s:%s", ha1, nonce, ha2))
 	}
 
 	header := fmt.Sprintf(`Digest username="%s", realm="%s", nonce="%s", uri="%s", response="%s"`,
 		c.username, realm, nonce, uriPath, response)
-	if strings.Contains(qop, "auth") {
-		header += fmt.Sprintf(`, qop=auth, nc=%s, cnonce="%s"`, nc, cnonce)
+	if qop == "auth" || qop == "auth-int" {
+		header += fmt.Sprintf(`, qop=%s, nc=%s, cnonce="%s"`, qop, nc, cnonce)
 	}
 	if opaque != "" {
 		header += fmt.Sprintf(`, opaque="%s"`, opaque)
@@ -182,7 +218,7 @@ func (c *HikvisionClient) request(method, path string, body []byte, contentType 
 		return 0, nil, err
 	}
 
-	authHeader, err := c.buildDigestHeader(method, u.RequestURI(), wwwAuth)
+	authHeader, err := c.buildDigestHeader(method, u.RequestURI(), body, wwwAuth)
 	if err != nil {
 		return 0, nil, err
 	}
