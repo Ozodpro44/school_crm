@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"io"
+	"log"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -45,6 +46,26 @@ func RegisterAttendanceRoutes(router *gin.RouterGroup, attendanceService *servic
 // per-device secret token since the device can't log in like a CRM user.
 func RegisterHikvisionWebhookRoutes(router *gin.RouterGroup, attendanceService *service.AttendanceService) {
 	router.POST("/hikvision/webhook/:deviceId/:token", hikvisionWebhook(attendanceService))
+}
+
+// RegisterHikCentralWebhookRoutes registers a SEPARATE public endpoint for
+// HikCentral Professional's own Open API event subscription
+// (eventSubscriptionByEventTypes) to call — set up on Ozodbek's Windows PC,
+// which sits on the SAME LAN as the terminal. That's the whole point of
+// this route existing next to hikvisionWebhook above rather than reusing
+// it: HikCentral only ever calls OUT to us (outbound HTTPS from the
+// school's network), so it never runs into the ISP's inbound block that
+// stopped the terminal's own direct push and stopped Railway from polling
+// the terminal directly.
+//
+// Deliberately a distinct path (not just a query param on the existing
+// one) so Railway's logs make it obvious which integration a given request
+// came from while we're still figuring out HikCentral's exact payload
+// shape. Reuses the same per-device WebhookToken as hikvisionWebhook —
+// see cmd/hikvision-cli's show-webhook-url -hikcentral for how to fetch
+// the full URL to paste into HikCentral's subscription config.
+func RegisterHikCentralWebhookRoutes(router *gin.RouterGroup, attendanceService *service.AttendanceService) {
+	router.POST("/hikvision/hikcentral-webhook/:deviceId/:token", hikCentralWebhook(attendanceService))
 }
 
 func createDevice(s *service.AttendanceService) gin.HandlerFunc {
@@ -241,6 +262,35 @@ func hikvisionWebhook(s *service.AttendanceService) gin.HandlerFunc {
 			data, _ := io.ReadAll(c.Request.Body)
 			_ = s.ProcessWebhookEvent(c.Request.Context(), deviceID, data)
 		}
+
+		c.Status(http.StatusOK)
+	}
+}
+
+// hikCentralWebhook receives events HikCentral Professional's Open API
+// pushes after an eventSubscriptionByEventTypes subscription is registered
+// for this device. We haven't captured a real payload from it yet, so this
+// deliberately does NOT try to parse it into an attendance record — doing
+// that from a guessed field layout risks silently writing wrong check-in
+// times/names, which is worse than writing nothing. It authenticates the
+// call and logs the raw body in full so the first real delivery can be
+// read straight out of Railway's logs; once we've seen one, the parsing
+// (and the write into attendance records, mirroring recordFaceEvent) gets
+// filled in against the real shape instead of documentation guesses.
+func hikCentralWebhook(s *service.AttendanceService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		deviceID := c.Param("deviceId")
+		token := c.Param("token")
+
+		device, err := s.GetDevice(c.Request.Context(), deviceID)
+		if err != nil || device.WebhookToken != token {
+			c.Status(http.StatusOK)
+			return
+		}
+
+		body, _ := io.ReadAll(c.Request.Body)
+		log.Printf("hikcentral webhook: device=%s content-type=%s body=%s",
+			deviceID, c.GetHeader("Content-Type"), string(body))
 
 		c.Status(http.StatusOK)
 	}

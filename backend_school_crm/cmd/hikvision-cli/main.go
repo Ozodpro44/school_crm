@@ -36,6 +36,7 @@
 //	go run ./cmd/hikvision-cli remove-employee -employee <employeeID>
 //	go run ./cmd/hikvision-cli list-employees  -device <deviceID>
 //	go run ./cmd/hikvision-cli watch-events    -device <deviceID> [-interval <seconds>]
+//	go run ./cmd/hikvision-cli show-webhook-url -device <deviceID> [-hikcentral]
 package main
 
 import (
@@ -45,6 +46,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -96,6 +98,8 @@ func main() {
 		cmdListEmployees(ctx, attendanceService, os.Args[2:])
 	case "watch-events":
 		cmdWatchEvents(ctx, attendanceService, os.Args[2:])
+	case "show-webhook-url":
+		cmdShowWebhookURL(ctx, attendanceService, os.Args[2:])
 	default:
 		printUsage()
 		os.Exit(1)
@@ -114,7 +118,8 @@ Usage:
   go run ./cmd/hikvision-cli upload-face     -employee <employeeID> -photo <path-to.jpg>
   go run ./cmd/hikvision-cli remove-employee -employee <employeeID>
   go run ./cmd/hikvision-cli list-employees  -device <deviceID>
-  go run ./cmd/hikvision-cli watch-events    -device <deviceID> [-interval <seconds>]`)
+  go run ./cmd/hikvision-cli watch-events    -device <deviceID> [-interval <seconds>]
+  go run ./cmd/hikvision-cli show-webhook-url -device <deviceID> [-hikcentral]`)
 }
 
 func printJSON(v interface{}) {
@@ -219,6 +224,39 @@ func cmdConfigurePush(ctx context.Context, s *service.AttendanceService, args []
 		log.Fatalf("failed to configure push: %v", err)
 	}
 	fmt.Println("push notifications configured successfully")
+}
+
+// cmdShowWebhookURL prints the exact webhook URL for a device — the same
+// deviceID/WebhookToken pair ConfigurePush already sends to the device
+// itself (see the urlPath built in AttendanceService.ConfigurePush). Needed
+// because WebhookToken is deliberately excluded from every JSON API
+// response (models.HikvisionDevice tags it `json:"-"`, since it's a bearer
+// secret anyone with it could POST fake attendance events with) — so the
+// database, via this CLI, is the only place to read it back.
+//
+// Use -hikcentral when pasting the URL into HikCentral Professional's own
+// Open API event-subscription setup (System > Advanced > Third-Party
+// Integration) instead of a device's own push config — it hits a separate
+// route so the two integrations can be told apart in logs and neither can
+// be confused for a device sending directly.
+func cmdShowWebhookURL(ctx context.Context, s *service.AttendanceService, args []string) {
+	fs := flag.NewFlagSet("show-webhook-url", flag.ExitOnError)
+	device := fs.String("device", "", "device ID")
+	base := fs.String("base", "https://incredible-love-production-0008.up.railway.app", "backend's public base URL")
+	hikcentral := fs.Bool("hikcentral", false, "print the HikCentral-callback path instead of the direct-device one")
+	_ = fs.Parse(args)
+	if *device == "" {
+		log.Fatal("device is required")
+	}
+	d, err := s.GetDevice(ctx, *device)
+	if err != nil {
+		log.Fatalf("failed to get device: %v", err)
+	}
+	kind := "webhook"
+	if *hikcentral {
+		kind = "hikcentral-webhook"
+	}
+	fmt.Printf("%s/api/hikvision/%s/%s/%s\n", strings.TrimRight(*base, "/"), kind, d.ID, d.WebhookToken)
 }
 
 func cmdAddEmployee(ctx context.Context, s *service.AttendanceService, args []string) {

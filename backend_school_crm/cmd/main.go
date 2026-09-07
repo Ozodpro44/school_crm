@@ -265,6 +265,11 @@ func main() {
 	// Hikvision device webhook (public, authenticated by a per-device token in the URL)
 	handlers.RegisterHikvisionWebhookRoutes(router.Group("/api"), attendanceService)
 
+	// HikCentral Professional's Open API event-subscription callback (public,
+	// same per-device token scheme) — see RegisterHikCentralWebhookRoutes for
+	// why this is a separate route rather than reusing the one above.
+	handlers.RegisterHikCentralWebhookRoutes(router.Group("/api"), attendanceService)
+
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	log.Printf("Starting server on %s", addr)
