@@ -8,6 +8,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -80,7 +81,10 @@ func (s *AuthGRPCServer) ValidateToken(_ context.Context, req *authv1.ValidateTo
 func (s *AuthGRPCServer) GetUserByID(ctx context.Context, req *authv1.GetUserByIDRequest) (*authv1.GetUserByIDResponse, error) {
 	user, err := s.authSvc.GetByID(ctx, req.GetUserId())
 	if err != nil {
-		return nil, status.Errorf(codes.NotFound, "user not found: %v", err)
+		if errors.Is(err, service.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "user not found")
+		}
+		return nil, status.Errorf(codes.Internal, "get user: %v", err)
 	}
 	return &authv1.GetUserByIDResponse{
 		User: &authv1.AuthUser{

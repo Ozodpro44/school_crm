@@ -67,6 +67,8 @@ type Attendance struct {
 // ── Errors ────────────────────────────────────────────────────────────────────
 
 var ErrNotFound = errors.New("not found")
+var ErrScheduleConflict = errors.New("schedule conflict")
+var ErrInvalidInput = errors.New("invalid input")
 
 // ── StudentService ────────────────────────────────────────────────────────────
 
@@ -597,6 +599,7 @@ type ConsolidatedFilter struct {
 	Search        string
 	Status        string
 	ClassID       string
+	NoClass       bool // when true: WHERE class_id IS NULL
 	PaymentStatus string
 	Month         string
 	Year          string
@@ -647,7 +650,9 @@ func (s *StudentService) ConsolidatedData(ctx context.Context, f ConsolidatedFil
 		args = append(args, f.Status)
 		n++
 	}
-	if f.ClassID != "" {
+	if f.NoClass {
+		where += " AND s.class_id IS NULL"
+	} else if f.ClassID != "" {
 		where += fmt.Sprintf(" AND s.class_id = $%d", n)
 		args = append(args, f.ClassID)
 		n++
@@ -1064,6 +1069,7 @@ func (s *AttendanceService) GetAbsenceAlerts(ctx context.Context, branchID strin
 		FROM students st
 		JOIN attendance a ON a.student_id = st.id
 		WHERE a.branch_id = $1
+		  AND st.status = 'active'
 		  AND a.date >= CURRENT_DATE - INTERVAL '14 days'
 		  AND a.status = 'absent'
 		GROUP BY st.id, st.full_name
@@ -1170,12 +1176,71 @@ func (s *ScheduleService) GetByBranch(ctx context.Context, branchID string) ([]S
 }
 
 func (s *ScheduleService) Upsert(ctx context.Context, req *UpsertScheduleRequest) (*ScheduleSlot, error) {
+	if req.StartTime >= req.EndTime {
+		return nil, fmt.Errorf("%w: startTime must be before endTime", ErrInvalidInput)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+
+	// Serialize conflict-checking + write per (branch, day) so two concurrent
+	// upserts can't both pass the overlap check and then both insert.
+	lockKey := fmt.Sprintf("schedule-conflict:%s:%d", req.BranchID, req.DayOfWeek)
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, lockKey); err != nil {
+		return nil, fmt.Errorf("acquire schedule lock: %w", err)
+	}
+
+	// Guard against double-booking: the only thing the old ON CONFLICT key
+	// (class_id, day_of_week, start_time) prevented was an exact re-post of
+	// the same class/day/start — it never checked whether the same teacher
+	// or room was already booked for an overlapping time range on another
+	// class. NOT (class_id=$4 AND start_time=$5) excludes the very row this
+	// upsert is about to replace.
+	if req.TeacherID != nil && *req.TeacherID != "" {
+		var conflictID string
+		err := tx.QueryRowContext(ctx, `
+			SELECT id FROM class_schedule
+			WHERE branch_id = $1 AND day_of_week = $2 AND teacher_id = $3
+			  AND NOT (class_id = $4 AND start_time = $5)
+			  AND start_time < $6 AND $5 < end_time
+			LIMIT 1`,
+			req.BranchID, req.DayOfWeek, *req.TeacherID, req.ClassID, req.StartTime, req.EndTime,
+		).Scan(&conflictID)
+		if err == nil {
+			return nil, fmt.Errorf("%w: teacher already has a class scheduled at this time", ErrScheduleConflict)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
+	if req.Room != "" {
+		var conflictID string
+		err := tx.QueryRowContext(ctx, `
+			SELECT id FROM class_schedule
+			WHERE branch_id = $1 AND day_of_week = $2 AND room = $3
+			  AND NOT (class_id = $4 AND start_time = $5)
+			  AND start_time < $6 AND $5 < end_time
+			LIMIT 1`,
+			req.BranchID, req.DayOfWeek, req.Room, req.ClassID, req.StartTime, req.EndTime,
+		).Scan(&conflictID)
+		if err == nil {
+			return nil, fmt.Errorf("%w: room already booked at this time", ErrScheduleConflict)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
+
 	now := time.Now()
 	id := uuid.New().String()
 	var slot ScheduleSlot
-	err := s.db.Conn().QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		INSERT INTO class_schedule (id, branch_id, class_id, teacher_id, day_of_week, start_time, end_time, room, subject, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
 		ON CONFLICT (class_id, day_of_week, start_time) DO UPDATE SET
@@ -1190,6 +1255,9 @@ func (s *ScheduleService) Upsert(ctx context.Context, req *UpsertScheduleRequest
 		&slot.StartTime, &slot.EndTime, &slot.Room, &slot.Subject, &slot.CreatedAt, &slot.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("upsert schedule: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return &slot, nil
 }
@@ -1273,7 +1341,7 @@ func (s *AssignmentService) ListByBranch(ctx context.Context, branchID, classID 
 		SELECT a.id, a.branch_id, a.class_id, COALESCE(c.name,'') AS class_name, a.teacher_id,
 		       a.subject, a.title, a.description, a.due_date::text, a.created_by,
 		       COUNT(s.id) AS total_students,
-		       COUNT(sub.id) FILTER (WHERE sub.status IN ('submitted','late')) AS submitted_count,
+		       COUNT(sub.id) FILTER (WHERE sub.status IN ('submitted','late','graded')) AS submitted_count,
 		       a.created_at, a.updated_at
 		FROM assignments a
 		LEFT JOIN classes c ON c.id = a.class_id

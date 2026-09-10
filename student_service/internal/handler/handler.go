@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -559,6 +560,14 @@ func (h *Handler) UpsertSchedule(c *gin.Context) {
 	}
 	slot, err := h.schedule.Upsert(c.Request.Context(), &req)
 	if err != nil {
+		if errors.Is(err, service.ErrScheduleConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, service.ErrInvalidInput) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -717,6 +726,11 @@ func (h *Handler) ConsolidatedData(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
+	classID := c.Query("classId")
+	noClass := classID == "unassigned"
+	if noClass {
+		classID = ""
+	}
 	result, err := h.students.ConsolidatedData(c.Request.Context(), service.ConsolidatedFilter{
 		BranchID:      branchID,
 		Page:          c.DefaultQuery("page", "1"),
@@ -724,7 +738,8 @@ func (h *Handler) ConsolidatedData(c *gin.Context) {
 		Cursor:        c.Query("cursor"),
 		Search:        c.Query("search"),
 		Status:        c.Query("status"),
-		ClassID:       c.Query("classId"),
+		ClassID:       classID,
+		NoClass:       noClass,
 		PaymentStatus: c.Query("paymentStatus"),
 		Month:         c.Query("month"),
 		Year:          c.Query("year"),

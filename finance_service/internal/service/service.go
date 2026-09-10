@@ -48,6 +48,7 @@ type ExpenseSummary struct {
 }
 
 var ErrNotFound = errors.New("not found")
+var ErrInvalidInput = errors.New("invalid input")
 
 // ── ExpenseService ─────────────────────────────────────────────────────────────
 
@@ -431,6 +432,12 @@ func NewBudgetService(database *db.DB) *BudgetService {
 func (s *BudgetService) Upsert(ctx context.Context, req *UpsertBudgetRequest) (*BudgetEntry, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+
+	// GetByBranch's actual-spend join matches on a zero-padded "01".."12"
+	// string; anything else (e.g. "9") silently never matches an expense row.
+	if n, err := strconv.Atoi(req.Month); err != nil || n < 1 || n > 12 || len(req.Month) != 2 {
+		return nil, fmt.Errorf("%w: month must be a zero-padded 01-12 string, got %q", ErrInvalidInput, req.Month)
+	}
 
 	now := time.Now().UTC()
 	var entry BudgetEntry

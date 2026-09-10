@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ type Teacher struct {
 	BranchID      string     `json:"branchId"`
 	UserID        *string    `json:"userId,omitempty"`
 	JoinedDate    *time.Time `json:"joinedDate,omitempty"`
+	IsActive      bool       `json:"isActive"`
 	CreatedAt     time.Time  `json:"createdAt"`
 	UpdatedAt     time.Time  `json:"updatedAt"`
 }
@@ -51,6 +53,9 @@ type Salary struct {
 }
 
 var ErrNotFound = errors.New("not found")
+var ErrInvalidInput = errors.New("invalid input")
+var ErrDuplicate = errors.New("duplicate")
+var ErrAlreadyPaid = errors.New("salary already paid")
 
 // ── TeacherService ─────────────────────────────────────────────────────────────
 
@@ -107,11 +112,11 @@ func (s *TeacherService) GetAll(ctx context.Context, branchID string) ([]Teacher
 	rows, err := s.db.Conn().QueryContext(ctx, `
 		SELECT t.id, t.full_name, t.monthly_salary,
 		       COALESCE(t.phone,''), COALESCE(t.email,''), t.branch_id,
-		       t.user_id, t.joined_date, t.created_at, t.updated_at,
+		       t.user_id, t.joined_date, t.is_active, t.created_at, t.updated_at,
 		       COALESCE(array_agg(ts.subject) FILTER (WHERE ts.subject IS NOT NULL), '{}')
 		FROM teachers t
 		LEFT JOIN teacher_subjects ts ON ts.teacher_id = t.id
-		WHERE t.branch_id = $1
+		WHERE t.branch_id = $1 AND t.is_active = true
 		GROUP BY t.id ORDER BY t.full_name
 		LIMIT 1000`, branchID)
 	if err != nil {
@@ -123,7 +128,7 @@ func (s *TeacherService) GetAll(ctx context.Context, branchID string) ([]Teacher
 	for rows.Next() {
 		var t Teacher
 		if err := rows.Scan(&t.ID, &t.FullName, &t.MonthlySalary,
-			&t.Phone, &t.Email, &t.BranchID, &t.UserID, &t.JoinedDate, &t.CreatedAt, &t.UpdatedAt,
+			&t.Phone, &t.Email, &t.BranchID, &t.UserID, &t.JoinedDate, &t.IsActive, &t.CreatedAt, &t.UpdatedAt,
 			pq.Array(&t.Subjects)); err != nil {
 			return nil, err
 		}
@@ -140,14 +145,14 @@ func (s *TeacherService) GetByID(ctx context.Context, id string) (*Teacher, erro
 	err := s.db.Conn().QueryRowContext(ctx, `
 		SELECT t.id, t.full_name, t.monthly_salary,
 		       COALESCE(t.phone,''), COALESCE(t.email,''), t.branch_id,
-		       t.user_id, t.joined_date, t.created_at, t.updated_at,
+		       t.user_id, t.joined_date, t.is_active, t.created_at, t.updated_at,
 		       COALESCE(array_agg(ts.subject) FILTER (WHERE ts.subject IS NOT NULL), '{}')
 		FROM teachers t
 		LEFT JOIN teacher_subjects ts ON ts.teacher_id = t.id
 		WHERE t.id = $1
 		GROUP BY t.id`, id,
 	).Scan(&t.ID, &t.FullName, &t.MonthlySalary,
-		&t.Phone, &t.Email, &t.BranchID, &t.UserID, &t.JoinedDate, &t.CreatedAt, &t.UpdatedAt,
+		&t.Phone, &t.Email, &t.BranchID, &t.UserID, &t.JoinedDate, &t.IsActive, &t.CreatedAt, &t.UpdatedAt,
 		pq.Array(&t.Subjects))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -196,6 +201,7 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 		Email:         req.Email,
 		BranchID:      req.BranchID,
 		JoinedDate:    req.JoinedDate,
+		IsActive:      true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -360,17 +366,22 @@ func (s *TeacherService) Delete(ctx context.Context, id, branchID string) error 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// branch_id in the WHERE clause too, not just the pre-check above — the
-	// pre-check and this statement aren't atomic with each other, so this is
-	// what actually guarantees a cross-branch delete can't slip through.
-	res, err := tx.ExecContext(ctx, "DELETE FROM teachers WHERE id = $1 AND branch_id = $2", id, branchID)
+	// Soft-delete only: teachers.id is referenced by salaries.teacher_id
+	// (ON DELETE CASCADE), so a hard DELETE here would silently destroy that
+	// teacher's entire paid/unpaid salary history. Deactivating instead keeps
+	// the financial record intact and out of active rosters (GetAll filters
+	// on is_active). branch_id in the WHERE clause too, not just the
+	// pre-check above — the pre-check and this statement aren't atomic with
+	// each other, so this is what actually guarantees a cross-branch delete
+	// can't slip through.
+	res, err := tx.ExecContext(ctx, "UPDATE teachers SET is_active = false WHERE id = $1 AND branch_id = $2", id, branchID)
 	if err != nil {
 		return err
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return ErrNotFound
 	}
-	// Remove linked user account if present
+	// Revoke login access by removing the linked user account, if present.
 	if t.UserID != nil {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM users WHERE id = $1", *t.UserID); err != nil {
 			return err
@@ -405,6 +416,31 @@ func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, cr
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
+	if n, err := strconv.Atoi(req.Month); err != nil || n < 1 || n > 12 || len(req.Month) != 2 {
+		return nil, fmt.Errorf("%w: month must be a zero-padded 01-12 string, got %q", ErrInvalidInput, req.Month)
+	}
+	currentYear := time.Now().Year()
+	if req.Year < 2000 || req.Year > currentYear+1 {
+		return nil, fmt.Errorf("%w: year %d is out of range", ErrInvalidInput, req.Year)
+	}
+
+	// A salary must belong to the same branch as the teacher it's paid to —
+	// otherwise a caller with access to branch B could record a salary for a
+	// branch-A teacher tagged branch_id=B, corrupting both branches' totals
+	// and hiding the record from the teacher's real branch history.
+	var teacherBranch string
+	if err := s.db.Conn().QueryRowContext(ctx,
+		"SELECT branch_id FROM teachers WHERE id = $1 AND is_active = true", req.TeacherID,
+	).Scan(&teacherBranch); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("%w: teacher not found", ErrInvalidInput)
+		}
+		return nil, err
+	}
+	if teacherBranch != req.BranchID {
+		return nil, fmt.Errorf("%w: teacher does not belong to branchId", ErrInvalidInput)
+	}
+
 	sal := &Salary{
 		ID:            uuid.New().String(),
 		TeacherID:     req.TeacherID,
@@ -427,6 +463,10 @@ func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, cr
 		sal.Status, sal.Notes, sal.PaidDate, sal.BranchID, sal.CreatedBy, sal.CreatedAt,
 	)
 	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return nil, fmt.Errorf("%w: a salary for this teacher/month/year already exists", ErrDuplicate)
+		}
 		return nil, err
 	}
 	return sal, nil
@@ -490,6 +530,27 @@ func (s *SalaryService) GetByBranch(ctx context.Context, branchID, month string,
 // Update applies a partial update, scoped to branchID directly in the SQL —
 // see TeacherService.Update's comment for why.
 func (s *SalaryService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Salary, error) {
+	existing, err := s.GetByIDScoped(ctx, id, branchID)
+	if err != nil {
+		return nil, err
+	}
+	// A "paid" salary is a reconciled financial record — allow annotating it
+	// (notes) or moving it off "paid" (e.g. to "unpaid") to correct a
+	// mistake, but not silently changing the amount or paid_date while it
+	// stays marked paid, which would edit a reconciled figure in place.
+	if existing.Status == "paid" {
+		newStatus, changingStatus := fields["status"]
+		stayingPaid := !changingStatus || newStatus == "paid"
+		if stayingPaid {
+			if _, ok := fields["amount"]; ok {
+				return nil, fmt.Errorf("%w: cannot change the amount of a salary already marked paid", ErrAlreadyPaid)
+			}
+			if _, ok := fields["paid_date"]; ok {
+				return nil, fmt.Errorf("%w: cannot change the paid_date of a salary already marked paid", ErrAlreadyPaid)
+			}
+		}
+	}
+
 	allowed := map[string]bool{
 		"amount": true, "payment_method": true, "status": true, "notes": true, "paid_date": true,
 	}

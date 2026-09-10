@@ -16,6 +16,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+var ErrNotFound = errors.New("user not found")
+
 // ── Models ─────────────────────────────────────────────────────────────────────
 
 type User struct {
@@ -169,7 +171,7 @@ func (s *AuthService) GetByID(ctx context.Context, id string) (*User, error) {
 	).Scan(&u.ID, &u.Email, &u.Role, &u.FullName, &branchID, &u.CreatedAt)
 
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, errors.New("user not found")
+		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err

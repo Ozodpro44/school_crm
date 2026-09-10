@@ -76,7 +76,7 @@ type CreatePaymentRequest struct {
 }
 
 type UpdatePaymentRequest struct {
-	Amount        *float64   `json:"amount"`
+	Amount        *float64   `json:"amount"         binding:"omitempty,gt=0"`
 	PaymentMethod *string    `json:"paymentMethod"`
 	Status        *string    `json:"status"`
 	Notes         *string    `json:"notes"`
@@ -179,6 +179,14 @@ func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, 
 func (s *PaymentService) create(ctx context.Context, req *CreatePaymentRequest, createdBy string) (*Payment, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+
+	locked, err := s.monthLocked(ctx, req.BranchID, req.Month, req.Year)
+	if err != nil {
+		return nil, err
+	}
+	if locked {
+		return nil, ErrMonthLocked
+	}
 
 	tx, err := s.db.Conn().BeginTx(ctx, nil)
 	if err != nil {
@@ -986,7 +994,8 @@ func (s *PaymentService) SearchStudents(ctx context.Context, f SearchStudentsFil
 		       COALESCE(s.phone,''), s.monthly_payment, s.status,
 		       COALESCE(pa.amount_paid, 0) AS amount_paid,
 		       CASE
-		           WHEN COALESCE(pa.amount_paid, 0) >= s.monthly_payment AND s.monthly_payment > 0 THEN 'paid'
+		           WHEN s.monthly_payment = 0 THEN 'paid'
+		           WHEN COALESCE(pa.amount_paid, 0) >= s.monthly_payment THEN 'paid'
 		           WHEN COALESCE(pa.amount_paid, 0) > 0 THEN 'partial'
 		           ELSE 'not_paid'
 		       END AS payment_status,

@@ -62,11 +62,29 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 // pinned to their own branch (from the verified JWT), and only a
 // platform-level role may request an explicit branchId or all branches.
 func (h *Handler) ListUsers(c *gin.Context) {
+	// Query param first (not the JWT header) so a multi-branch manager who
+	// switched branches client-side — the JWT's own branch_id never changes
+	// on switch — sees the branch they actually picked, same as
+	// GetSettings/UpdateSettings and notification_service's requestBranchID.
+	// HasBranchAccess is what actually authorizes it; the param alone is
+	// never trusted.
 	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-User-Branch-ID")
+	}
 	callerRole := c.GetHeader("X-User-Role")
 	if !isSuperRole(callerRole) {
-		branchID = c.GetHeader("X-User-Branch-ID")
 		if branchID == "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "no branch associated with this account"})
+			return
+		}
+		allowed, err := h.branches.HasBranchAccess(c.Request.Context(),
+			c.GetHeader("X-User-ID"), callerRole, branchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !allowed {
 			c.JSON(http.StatusForbidden, gin.H{"error": "no branch associated with this account"})
 			return
 		}
@@ -436,9 +454,28 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 	targetID := c.Param("userId")
 	callerID := c.GetHeader("X-User-ID")
 	callerRole := c.GetHeader("X-User-Role")
-	if !canReassignRole(callerRole) && callerID != targetID {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to view these permissions"})
-		return
+	if callerID != targetID {
+		if !canReassignRole(callerRole) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to view these permissions"})
+			return
+		}
+		// canReassignRole only checks the caller's role, not whether target
+		// is even in a branch the caller administers — without this, a
+		// branch-scoped admin could view (and, via UpdatePermissions, grant)
+		// permissions for a user in an entirely different branch.
+		target, err := h.users.GetByID(c.Request.Context(), targetID)
+		if err != nil {
+			if err == service.ErrNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !canAccessUser(callerID, callerRole, c.GetHeader("X-User-Branch-ID"), target) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
 	}
 	p, err := h.permissions.GetByUserID(c.Request.Context(), targetID)
 	if err != nil {
@@ -456,8 +493,25 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 // permissions — self-granting is exactly the privilege-escalation path this
 // closes, matching canReassignRole's restriction on role changes.
 func (h *Handler) UpdatePermissions(c *gin.Context) {
-	if !canReassignRole(c.GetHeader("X-User-Role")) {
+	callerRole := c.GetHeader("X-User-Role")
+	if !canReassignRole(callerRole) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to change permissions"})
+		return
+	}
+	targetID := c.Param("userId")
+	target, err := h.users.GetByID(c.Request.Context(), targetID)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	// See GetPermissions: canReassignRole alone doesn't confirm target is in
+	// a branch the caller administers.
+	if !canAccessUser(c.GetHeader("X-User-ID"), callerRole, c.GetHeader("X-User-Branch-ID"), target) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 	var body map[string]interface{}
@@ -465,7 +519,7 @@ func (h *Handler) UpdatePermissions(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	p, err := h.permissions.Upsert(c.Request.Context(), c.Param("userId"), body)
+	p, err := h.permissions.Upsert(c.Request.Context(), targetID, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
