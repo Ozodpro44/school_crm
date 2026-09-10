@@ -3,10 +3,10 @@
 package proxy
 
 import (
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -31,8 +31,15 @@ func New(target string) (*httputil.ReverseProxy, error) {
 	proxy.Director = func(req *http.Request) {
 		director(req)
 		req.Header.Set("X-Forwarded-Host", req.Host)
-		if clientIP := req.Header.Get("X-Real-IP"); clientIP == "" {
-			req.Header.Set("X-Real-IP", strings.Split(req.RemoteAddr, ":")[0])
+		// Always overwrite from RemoteAddr — never trust a client-supplied
+		// X-Real-IP, or a client could spoof the IP that downstream
+		// audit/rate-limit logic sees. net.SplitHostPort (not strings.Split
+		// on ":") is required here: an IPv6 RemoteAddr like "[::1]:1234"
+		// contains colons in the address itself.
+		if host, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
+			req.Header.Set("X-Real-IP", host)
+		} else {
+			req.Header.Set("X-Real-IP", req.RemoteAddr)
 		}
 	}
 

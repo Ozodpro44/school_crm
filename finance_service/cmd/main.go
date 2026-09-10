@@ -17,6 +17,7 @@ import (
 	financegrpc "github.com/school-crm/finance-service/internal/grpc"
 	"github.com/school-crm/finance-service/internal/handler"
 	"github.com/school-crm/finance-service/internal/logger"
+	"github.com/school-crm/finance-service/internal/middleware"
 	"github.com/school-crm/finance-service/internal/service"
 )
 
@@ -60,12 +61,14 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(logger.RequestLogger())
-	r.Use(corsMiddleware())
+	r.Use(corsMiddleware(cfg.CORSOrigins))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "finance_service"})
 	})
-	handler.New(expenseSvc, budgetSvc).Register(r.Group("/api/v1"))
+	api := r.Group("/api/v1")
+	api.Use(middleware.JWTAuth(cfg.JWTSecret))
+	handler.New(expenseSvc, budgetSvc).Register(api)
 
 	httpSrv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.Port),
@@ -93,9 +96,20 @@ func main() {
 	slog.Info("stopped", "service", "finance_service")
 }
 
-func corsMiddleware() gin.HandlerFunc {
+// corsMiddleware only reflects Origin back when it's on the configured
+// allowlist — never a bare "*". See api_gateway/internal/router's
+// corsMiddleware for the rationale.
+func corsMiddleware(allowedOrigins []string) gin.HandlerFunc {
+	allowed := make(map[string]bool, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allowed[o] = true
+	}
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if allowed[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+		}
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization,X-User-ID")
 		if c.Request.Method == http.MethodOptions {

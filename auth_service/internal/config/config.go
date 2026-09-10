@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 type Config struct {
 	Port        string
@@ -13,6 +16,10 @@ type Config struct {
 	ResendFrom   string
 	// gRPC listen address (for ValidateToken / GetUserByID)
 	GRPCPort string
+	// CORSOrigins is the allowlist of frontend origins permitted to call this
+	// API directly. Set via CORS_ORIGINS (comma-separated) in production —
+	// the default only covers local dev.
+	CORSOrigins []string
 }
 
 func Load() *Config {
@@ -25,8 +32,21 @@ func Load() *Config {
 		Environment:  getEnv("ENVIRONMENT", "development"),
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
 		ResendFrom:   os.Getenv("RESEND_FROM"),
+		CORSOrigins:  parseCSV(getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001")),
 	}
 	return cfg
+}
+
+// parseCSV splits a comma-separated env value into trimmed, non-empty parts.
+func parseCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (c *Config) Validate() []string {

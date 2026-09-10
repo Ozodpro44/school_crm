@@ -9,12 +9,12 @@ import (
 )
 
 type Handler struct {
-	students  *service.StudentService
-	classes   *service.ClassService
-	attendance *service.AttendanceService
-	schedule  *service.ScheduleService
+	students    *service.StudentService
+	classes     *service.ClassService
+	attendance  *service.AttendanceService
+	schedule    *service.ScheduleService
 	assignments *service.AssignmentService
-	notes     *service.StudentNotesService
+	notes       *service.StudentNotesService
 }
 
 func New(
@@ -91,6 +91,9 @@ func (h *Handler) ListStudents(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
 		return
 	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	classID := c.Query("classId")
 	noClass := classID == "unassigned"
 	if noClass {
@@ -115,16 +118,19 @@ func (h *Handler) ListStudents(c *gin.Context) {
 
 func (h *Handler) CreateStudent(c *gin.Context) {
 	var body struct {
-		FullName       string   `json:"fullName"       binding:"required"`
-		Phone          string   `json:"phone"`
-		ParentPhone    string   `json:"parentPhone"`
-		ClassID        *string  `json:"classId"`
-		MonthlyPayment float64  `json:"monthlyPayment" binding:"required,gt=0"`
-		Status         string   `json:"status"         binding:"required"`
-		BranchID       string   `json:"branchId"       binding:"required"`
+		FullName       string  `json:"fullName"       binding:"required"`
+		Phone          string  `json:"phone"`
+		ParentPhone    string  `json:"parentPhone"`
+		ClassID        *string `json:"classId"`
+		MonthlyPayment float64 `json:"monthlyPayment" binding:"required,gt=0"`
+		Status         string  `json:"status"         binding:"required"`
+		BranchID       string  `json:"branchId"       binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.requireBranchAccess(c, body.BranchID) {
 		return
 	}
 	st, err := h.students.Create(c.Request.Context(), &service.Student{
@@ -144,8 +150,57 @@ func (h *Handler) CreateStudent(c *gin.Context) {
 	c.JSON(http.StatusCreated, st)
 }
 
+// requestBranchID resolves which branch a request targets: an explicit
+// branchId query param wins (a manager/admin who legitimately administers
+// several branches picks among them client-side — branch switching in the
+// frontend does not reissue a JWT, so the token's own branch_id stays fixed
+// to the user's home branch and can't be used to infer which branch they
+// currently mean). Falls back to X-User-Branch-ID, set by api_gateway's
+// JWTAuth middleware from the verified JWT, when no explicit choice is given.
+//
+// Resolving a branch here is NOT an authorization decision — every caller
+// of this function MUST also call requireBranchAccess (or the resource's
+// own scoped fetch, e.g. GetByIDScoped, which checks branch match) before
+// using the resolved value. Trusting it on its own is exactly what the
+// list endpoints in this file used to do — c.Query("branchId") straight
+// into the DB filter — letting any authenticated caller of any role read
+// another branch's data by editing the query string.
+func requestBranchID(c *gin.Context) string {
+	if v := c.Query("branchId"); v != "" {
+		return v
+	}
+	return c.GetHeader("X-User-Branch-ID")
+}
+
+// requireBranchAccess checks that the caller (identified by the
+// JWT-verified X-User-ID/X-User-Role headers) is authorized for branchID —
+// granted if it's their own branch, they're linked to it via
+// branch_managers, they're its admin, or their role is developer/
+// super_admin. Writes a response and returns false if not authorized.
+func (h *Handler) requireBranchAccess(c *gin.Context, branchID string) bool {
+	allowed, err := h.students.HasBranchAccess(c.Request.Context(),
+		c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return false
+	}
+	if !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this branch"})
+		return false
+	}
+	return true
+}
+
 func (h *Handler) GetStudent(c *gin.Context) {
-	st, err := h.students.GetByID(c.Request.Context(), c.Param("id"))
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	st, err := h.students.GetByIDScoped(c.Request.Context(), c.Param("id"), branchID)
 	if err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "student not found"})
@@ -158,12 +213,20 @@ func (h *Handler) GetStudent(c *gin.Context) {
 }
 
 func (h *Handler) UpdateStudent(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	var body map[string]interface{}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	st, err := h.students.Update(c.Request.Context(), c.Param("id"), body)
+	st, err := h.students.Update(c.Request.Context(), c.Param("id"), branchID, body)
 	if err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "student not found"})
@@ -177,9 +240,21 @@ func (h *Handler) UpdateStudent(c *gin.Context) {
 }
 
 func (h *Handler) DeleteStudent(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	id := c.Param("id")
-	st, _ := h.students.GetByID(c.Request.Context(), id)
-	if err := h.students.Delete(c.Request.Context(), id); err != nil {
+	st, _ := h.students.GetByIDScoped(c.Request.Context(), id, branchID)
+	if err := h.students.Delete(c.Request.Context(), id, branchID); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "student not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -195,6 +270,9 @@ func (h *Handler) ListClasses(c *gin.Context) {
 	branchID := c.Query("branchId")
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	classes, err := h.classes.GetAll(c.Request.Context(), branchID)
@@ -215,6 +293,9 @@ func (h *Handler) CreateClass(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !h.requireBranchAccess(c, body.BranchID) {
+		return
+	}
 	cl, err := h.classes.Create(c.Request.Context(), body.Name, body.BranchID, body.TeacherID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -224,7 +305,15 @@ func (h *Handler) CreateClass(c *gin.Context) {
 }
 
 func (h *Handler) GetClass(c *gin.Context) {
-	cl, err := h.classes.GetByID(c.Request.Context(), c.Param("id"))
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	cl, err := h.classes.GetByIDScoped(c.Request.Context(), c.Param("id"), branchID)
 	if err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
@@ -237,12 +326,20 @@ func (h *Handler) GetClass(c *gin.Context) {
 }
 
 func (h *Handler) UpdateClass(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	var body map[string]interface{}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	cl, err := h.classes.Update(c.Request.Context(), c.Param("id"), body)
+	cl, err := h.classes.Update(c.Request.Context(), c.Param("id"), branchID, body)
 	if err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
@@ -255,7 +352,19 @@ func (h *Handler) UpdateClass(c *gin.Context) {
 }
 
 func (h *Handler) DeleteClass(c *gin.Context) {
-	if err := h.classes.Delete(c.Request.Context(), c.Param("id")); err != nil {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.classes.Delete(c.Request.Context(), c.Param("id"), branchID); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -292,6 +401,9 @@ func (h *Handler) SaveAttendance(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !h.requireBranchAccess(c, req.BranchID) {
+		return
+	}
 	createdBy := c.GetHeader("X-User-ID")
 	records, err := h.attendance.Save(c.Request.Context(), &req, createdBy)
 	if err != nil {
@@ -309,6 +421,14 @@ func (h *Handler) GetAttendanceSummary(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "classId is required"})
 		return
 	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	var year, month int
 	fmt.Sscanf(c.Query("year"), "%d", &year)
 	fmt.Sscanf(c.Query("month"), "%d", &month)
@@ -316,7 +436,7 @@ func (h *Handler) GetAttendanceSummary(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "year and month are required"})
 		return
 	}
-	summary, err := h.attendance.GetMonthSummary(c.Request.Context(), classID, year, month)
+	summary, err := h.attendance.GetMonthSummary(c.Request.Context(), classID, branchID, year, month)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -330,12 +450,12 @@ func (h *Handler) GetAttendanceSummary(c *gin.Context) {
 // GetAbsenceAlerts godoc
 // GET /attendance/alerts?branchId=
 func (h *Handler) GetAbsenceAlerts(c *gin.Context) {
-	branchID := c.Query("branchId")
-	if branchID == "" {
-		branchID = c.GetHeader("X-Branch-ID")
-	}
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	alerts, err := h.attendance.GetAbsenceAlerts(c.Request.Context(), branchID)
@@ -352,12 +472,20 @@ func (h *Handler) GetAbsenceAlerts(c *gin.Context) {
 // GetStudentAttendance godoc
 // GET /attendance/student/:studentId?month=&year=
 func (h *Handler) GetStudentAttendance(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	var year int
 	if y := c.Query("year"); y != "" {
 		_, _ = fmt.Sscanf(y, "%d", &year)
 	}
 	records, err := h.attendance.GetByStudentMonth(c.Request.Context(),
-		c.Param("studentId"), c.Query("month"), year)
+		c.Param("studentId"), branchID, c.Query("month"), year)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -367,12 +495,20 @@ func (h *Handler) GetStudentAttendance(c *gin.Context) {
 
 // GetStudentAttendanceByID serves GET /students/:id/attendance?year=&month=
 func (h *Handler) GetStudentAttendanceByID(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	var year int
 	if y := c.Query("year"); y != "" {
 		_, _ = fmt.Sscanf(y, "%d", &year)
 	}
 	records, err := h.attendance.GetByStudentMonth(c.Request.Context(),
-		c.Param("id"), c.Query("month"), year)
+		c.Param("id"), branchID, c.Query("month"), year)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -401,6 +537,9 @@ func (h *Handler) ListSchedule(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId or classId required"})
 		return
 	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	slots, err := h.schedule.GetByBranch(c.Request.Context(), branchID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -413,6 +552,9 @@ func (h *Handler) UpsertSchedule(c *gin.Context) {
 	var req service.UpsertScheduleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.requireBranchAccess(c, req.BranchID) {
 		return
 	}
 	slot, err := h.schedule.Upsert(c.Request.Context(), &req)
@@ -430,6 +572,9 @@ func (h *Handler) DeleteSchedule(c *gin.Context) {
 	}
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	if err := h.schedule.Delete(c.Request.Context(), c.Param("id"), branchID); err != nil {
@@ -450,6 +595,9 @@ func (h *Handler) ListAssignments(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
 		return
 	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	list, err := h.assignments.ListByBranch(c.Request.Context(), branchID, c.Query("classId"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -462,6 +610,9 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 	var req service.CreateAssignmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.requireBranchAccess(c, req.BranchID) {
 		return
 	}
 	a, err := h.assignments.Create(c.Request.Context(), &req, c.GetHeader("X-User-ID"))
@@ -481,6 +632,9 @@ func (h *Handler) DeleteAssignment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
 		return
 	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	if err := h.assignments.Delete(c.Request.Context(), c.Param("id"), branchID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
@@ -489,7 +643,15 @@ func (h *Handler) DeleteAssignment(c *gin.Context) {
 }
 
 func (h *Handler) GetSubmissions(c *gin.Context) {
-	subs, err := h.assignments.GetSubmissions(c.Request.Context(), c.Param("id"))
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	subs, err := h.assignments.GetSubmissions(c.Request.Context(), c.Param("id"), branchID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -498,14 +660,26 @@ func (h *Handler) GetSubmissions(c *gin.Context) {
 }
 
 func (h *Handler) UpdateSubmission(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	var req service.UpdateSubmissionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	sub, err := h.assignments.UpdateSubmission(c.Request.Context(),
-		c.Param("subId"), &req, c.GetHeader("X-User-ID"))
+		c.Param("subId"), branchID, &req, c.GetHeader("X-User-ID"))
 	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "submission not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -519,6 +693,9 @@ func (h *Handler) StudentProgress(c *gin.Context) {
 	}
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	subs, err := h.assignments.GetStudentProgress(c.Request.Context(), c.Param("studentId"), branchID)
@@ -535,6 +712,9 @@ func (h *Handler) ConsolidatedData(c *gin.Context) {
 	branchID := c.Query("branchId")
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	result, err := h.students.ConsolidatedData(c.Request.Context(), service.ConsolidatedFilter{
@@ -562,6 +742,9 @@ func (h *Handler) SearchWithPayments(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
 		return
 	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	year := 0
 	if y := c.Query("year"); y != "" {
 		_, _ = fmt.Sscanf(y, "%d", &year)
@@ -582,17 +765,13 @@ func (h *Handler) SearchWithPayments(c *gin.Context) {
 
 // ── Student Notes ─────────────────────────────────────────────────────────────
 
-func branchIDFromCtx(c *gin.Context) string {
-	if b := c.Query("branchId"); b != "" {
-		return b
-	}
-	return c.GetHeader("X-Branch-ID")
-}
-
 func (h *Handler) ListNotes(c *gin.Context) {
-	branchID := branchIDFromCtx(c)
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	notes, err := h.notes.ListNotes(c.Request.Context(), branchID, c.Param("id"))
@@ -604,9 +783,12 @@ func (h *Handler) ListNotes(c *gin.Context) {
 }
 
 func (h *Handler) AddNote(c *gin.Context) {
-	branchID := branchIDFromCtx(c)
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	var req struct {
@@ -626,9 +808,12 @@ func (h *Handler) AddNote(c *gin.Context) {
 }
 
 func (h *Handler) DeleteNote(c *gin.Context) {
-	branchID := branchIDFromCtx(c)
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	if err := h.notes.DeleteNote(c.Request.Context(), branchID, c.Param("noteId")); err != nil {
@@ -639,9 +824,12 @@ func (h *Handler) DeleteNote(c *gin.Context) {
 }
 
 func (h *Handler) ListContactLog(c *gin.Context) {
-	branchID := branchIDFromCtx(c)
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	entries, err := h.notes.ListContactLog(c.Request.Context(), branchID, c.Param("id"))
@@ -653,9 +841,12 @@ func (h *Handler) ListContactLog(c *gin.Context) {
 }
 
 func (h *Handler) AddContactLog(c *gin.Context) {
-	branchID := branchIDFromCtx(c)
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	var req service.CreateContactLogRequest
@@ -673,9 +864,12 @@ func (h *Handler) AddContactLog(c *gin.Context) {
 }
 
 func (h *Handler) DeleteContactLog(c *gin.Context) {
-	branchID := branchIDFromCtx(c)
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	if err := h.notes.DeleteContactLog(c.Request.Context(), branchID, c.Param("logId")); err != nil {

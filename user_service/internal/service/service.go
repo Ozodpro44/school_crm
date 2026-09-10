@@ -8,28 +8,31 @@ package service
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/school-crm/user-service/internal/db"
 )
 
 // ── Models ─────────────────────────────────────────────────────────────────────
 
 type User struct {
-	ID         string     `json:"id"`
-	Email      string     `json:"email"`
-	FullName   string     `json:"fullName"`
-	Role       string     `json:"role"`
-	BranchID   *string    `json:"branchId,omitempty"`
-	Phone      *string    `json:"phone,omitempty"`
-	AvatarURL  *string    `json:"avatarUrl,omitempty"`
-	Language   string     `json:"language"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	UpdatedAt  time.Time  `json:"updatedAt"`
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`
+	FullName  string    `json:"fullName"`
+	Role      string    `json:"role"`
+	BranchID  *string   `json:"branchId,omitempty"`
+	Phone     *string   `json:"phone,omitempty"`
+	AvatarURL *string   `json:"avatarUrl,omitempty"`
+	Language  string    `json:"language"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 type FinancialMonth struct {
@@ -51,34 +54,34 @@ type Branch struct {
 }
 
 type Permission struct {
-	ID                      string `json:"id"`
-	UserID                  string `json:"userId"`
-	CanViewStudents         bool   `json:"canViewStudents"`
-	CanCreateStudents       bool   `json:"canCreateStudents"`
-	CanEditStudents         bool   `json:"canEditStudents"`
-	CanDeleteStudents       bool   `json:"canDeleteStudents"`
-	CanViewTeachers         bool   `json:"canViewTeachers"`
-	CanCreateTeachers       bool   `json:"canCreateTeachers"`
-	CanEditTeachers         bool   `json:"canEditTeachers"`
-	CanDeleteTeachers       bool   `json:"canDeleteTeachers"`
-	CanViewClasses          bool   `json:"canViewClasses"`
-	CanCreateClasses        bool   `json:"canCreateClasses"`
-	CanEditClasses          bool   `json:"canEditClasses"`
-	CanViewPayments         bool   `json:"canViewPayments"`
-	CanCreatePayments       bool   `json:"canCreatePayments"`
-	CanEditPayments         bool   `json:"canEditPayments"`
-	CanViewSalaries         bool   `json:"canViewSalaries"`
-	CanCreateSalaries       bool   `json:"canCreateSalaries"`
-	CanEditSalaries         bool   `json:"canEditSalaries"`
-	CanViewExpenses         bool   `json:"canViewExpenses"`
-	CanCreateExpenses       bool   `json:"canCreateExpenses"`
-	CanEditExpenses         bool   `json:"canEditExpenses"`
-	CanDeleteExpenses       bool   `json:"canDeleteExpenses"`
-	CanViewReports          bool   `json:"canViewReports"`
-	CanViewSettings         bool   `json:"canViewSettings"`
-	CanEditSettings         bool   `json:"canEditSettings"`
-	CanViewSubscriptions    bool   `json:"canViewSubscriptions"`
-	CanManageSubscriptions  bool   `json:"canManageSubscriptions"`
+	ID                     string `json:"id"`
+	UserID                 string `json:"userId"`
+	CanViewStudents        bool   `json:"canViewStudents"`
+	CanCreateStudents      bool   `json:"canCreateStudents"`
+	CanEditStudents        bool   `json:"canEditStudents"`
+	CanDeleteStudents      bool   `json:"canDeleteStudents"`
+	CanViewTeachers        bool   `json:"canViewTeachers"`
+	CanCreateTeachers      bool   `json:"canCreateTeachers"`
+	CanEditTeachers        bool   `json:"canEditTeachers"`
+	CanDeleteTeachers      bool   `json:"canDeleteTeachers"`
+	CanViewClasses         bool   `json:"canViewClasses"`
+	CanCreateClasses       bool   `json:"canCreateClasses"`
+	CanEditClasses         bool   `json:"canEditClasses"`
+	CanViewPayments        bool   `json:"canViewPayments"`
+	CanCreatePayments      bool   `json:"canCreatePayments"`
+	CanEditPayments        bool   `json:"canEditPayments"`
+	CanViewSalaries        bool   `json:"canViewSalaries"`
+	CanCreateSalaries      bool   `json:"canCreateSalaries"`
+	CanEditSalaries        bool   `json:"canEditSalaries"`
+	CanViewExpenses        bool   `json:"canViewExpenses"`
+	CanCreateExpenses      bool   `json:"canCreateExpenses"`
+	CanEditExpenses        bool   `json:"canEditExpenses"`
+	CanDeleteExpenses      bool   `json:"canDeleteExpenses"`
+	CanViewReports         bool   `json:"canViewReports"`
+	CanViewSettings        bool   `json:"canViewSettings"`
+	CanEditSettings        bool   `json:"canEditSettings"`
+	CanViewSubscriptions   bool   `json:"canViewSubscriptions"`
+	CanManageSubscriptions bool   `json:"canManageSubscriptions"`
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────────
@@ -112,7 +115,10 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*User, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return &u, err
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
 }
 
 func (s *UserService) GetAll(ctx context.Context, branchID string) ([]User, error) {
@@ -156,10 +162,14 @@ func (s *UserService) GetAll(ctx context.Context, branchID string) ([]User, erro
 	return users, rows.Err()
 }
 
+// Update applies self-service profile fields only. role and branch_id are
+// deliberately excluded — they control authorization and tenant scoping, so
+// reassigning them goes through UpdateRoleBranch, which the handler gates to
+// admin-level callers. Without this split, any caller hitting this generic
+// map-driven update could PUT {"role":"super_admin"} on themselves.
 func (s *UserService) Update(ctx context.Context, id string, fields map[string]interface{}) (*User, error) {
 	allowed := map[string]bool{
 		"full_name": true, "phone": true, "avatar_url": true, "language": true,
-		"role": true, "branch_id": true,
 	}
 
 	parts := []string{}
@@ -192,17 +202,109 @@ func (s *UserService) Update(ctx context.Context, id string, fields map[string]i
 	return s.GetByID(ctx, id)
 }
 
+// validRoles are the roles reassignable via UpdateRoleBranch. "developer" and
+// "super_admin" are platform-level roles granted out-of-band, not through
+// this endpoint.
+var validRoles = map[string]bool{
+	"admin": true, "branch_admin": true, "manager": true, "accountant": true, "teacher": true,
+}
+
+// UpdateRoleBranch reassigns a user's role and/or branch_id. This is
+// deliberately separate from Update: the caller (handler.UpdateUser) must
+// verify the requester holds an admin-level role before invoking it — this
+// method itself only validates that a requested role is one of the known
+// values, it does not re-check authorization.
+func (s *UserService) UpdateRoleBranch(ctx context.Context, id string, role, branchID *string) (*User, error) {
+	parts := []string{}
+	args := []interface{}{}
+	n := 1
+
+	if role != nil {
+		if !validRoles[*role] {
+			return nil, fmt.Errorf("invalid role: %s", *role)
+		}
+		parts = append(parts, fmt.Sprintf("role = $%d", n))
+		args = append(args, *role)
+		n++
+	}
+	if branchID != nil {
+		parts = append(parts, fmt.Sprintf("branch_id = $%d", n))
+		args = append(args, *branchID)
+		n++
+	}
+	if len(parts) == 0 {
+		return s.GetByID(ctx, id)
+	}
+	parts = append(parts, fmt.Sprintf("updated_at = $%d", n))
+	args = append(args, time.Now().UTC())
+	n++
+	args = append(args, id)
+
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	_, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE users SET "+strings.Join(parts, ", ")+" WHERE id = $"+fmt.Sprintf("%d", n), args...)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetByID(ctx, id)
+}
+
 func (s *UserService) Delete(ctx context.Context, id string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	_, err := s.db.Conn().ExecContext(ctx, "DELETE FROM users WHERE id = $1", id)
-	return err
+	res, err := s.db.Conn().ExecContext(ctx, "DELETE FROM users WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ── BranchService ─────────────────────────────────────────────────────────────
 
 type BranchService struct {
 	db *db.DB
+}
+
+// HasBranchAccess reports whether userID (JWT-verified, with role) may
+// access branchID. developer/super_admin bypass entirely (platform-level
+// roles). Otherwise granted if the user's own branch matches, they're
+// linked to it via branch_managers, or they're its admin.
+//
+// This exists because branch switching in the frontend does not reissue a
+// JWT — the token's own branch_id stays fixed to the user's home branch,
+// while a manager/admin who legitimately administers several branches picks
+// among them client-side and sends that choice as a plain branchId query
+// param. UpdateSettings previously trusted that value with no check at
+// all, letting any authenticated caller overwrite another branch's name/
+// monthly payment/currency by editing the query string.
+func (s *BranchService) HasBranchAccess(ctx context.Context, userID, role, branchID string) (bool, error) {
+	if role == "developer" || role == "super_admin" {
+		return true, nil
+	}
+	if userID == "" || branchID == "" {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	var exists bool
+	err := s.db.Conn().QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM users WHERE id = $1 AND branch_id = $2
+			UNION ALL
+			SELECT 1 FROM branch_managers WHERE manager_id = $1 AND branch_id = $2
+			UNION ALL
+			SELECT 1 FROM branches WHERE id = $2 AND admin_id = $1
+		)`, userID, branchID).Scan(&exists)
+	return exists, err
 }
 
 func NewBranchService(database *db.DB) *BranchService {
@@ -348,8 +450,18 @@ func (s *BranchService) Update(ctx context.Context, id string, fields map[string
 func (s *BranchService) Delete(ctx context.Context, id string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	_, err := s.db.Conn().ExecContext(ctx, "DELETE FROM branches WHERE id = $1", id)
-	return err
+	res, err := s.db.Conn().ExecContext(ctx, "DELETE FROM branches WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // SwitchMonth closes the current open financial month and opens the next one.
@@ -413,14 +525,61 @@ func (s *BranchService) SwitchMonth(ctx context.Context, branchID string) (*Bran
 // ── PermissionService ─────────────────────────────────────────────────────────
 
 type PermissionService struct {
-	db *db.DB
+	db    *db.DB
+	redis *redis.Client
 }
 
-func NewPermissionService(database *db.DB) *PermissionService {
-	return &PermissionService{db: database}
+func NewPermissionService(database *db.DB, redisClient *redis.Client) *PermissionService {
+	return &PermissionService{db: database, redis: redisClient}
 }
 
+const permissionCacheTTL = 60 * time.Second
+
+func permissionCacheKey(userID string) string { return "crm:permissions:" + userID }
+
+// GetByUserID is called on every CheckPermission gRPC call (authorization
+// checks from other services) plus the REST GetPermissions endpoint — a hot
+// path doing a full DB round trip per check with Redis already provisioned
+// and otherwise unused. A cache miss or Redis error falls through to the
+// real query; caching here is an optimization, never a hard dependency.
 func (s *PermissionService) GetByUserID(ctx context.Context, userID string) (*Permission, error) {
+	if s.redis != nil {
+		if cached, err := s.redis.Get(ctx, permissionCacheKey(userID)).Result(); err == nil {
+			if cached == "null" {
+				return nil, nil // cached "no permission row" result
+			}
+			var p Permission
+			if jsonErr := json.Unmarshal([]byte(cached), &p); jsonErr == nil {
+				return &p, nil
+			}
+			slog.Warn("permission cache entry unmarshal failed, falling through", "user_id", userID, "error", err)
+		} else if err != redis.Nil {
+			slog.Warn("permission cache read failed, falling through", "user_id", userID, "error", err)
+		}
+	}
+
+	p, err := s.getByUserIDUncached(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if s.redis != nil {
+		var toCache []byte
+		if p == nil {
+			toCache = []byte("null")
+		} else if encoded, jsonErr := json.Marshal(p); jsonErr == nil {
+			toCache = encoded
+		}
+		if toCache != nil {
+			if setErr := s.redis.Set(ctx, permissionCacheKey(userID), toCache, permissionCacheTTL).Err(); setErr != nil {
+				slog.Warn("permission cache write failed", "user_id", userID, "error", setErr)
+			}
+		}
+	}
+	return p, nil
+}
+
+func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID string) (*Permission, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
@@ -450,7 +609,10 @@ func (s *PermissionService) GetByUserID(ctx context.Context, userID string) (*Pe
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil // no row = no custom permissions (use defaults)
 	}
-	return &p, err
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
 }
 
 func (s *PermissionService) Upsert(ctx context.Context, userID string, fields map[string]interface{}) (*Permission, error) {
@@ -508,6 +670,15 @@ func (s *PermissionService) Upsert(ctx context.Context, userID string, fields ma
 		"UPDATE permissions SET "+strings.Join(parts, ", ")+" WHERE user_id = $"+fmt.Sprintf("%d", n), args...)
 	if err != nil {
 		return nil, err
+	}
+	// Without this, the GetByUserID call above (at the top of Upsert, before
+	// any write happened) already populated the cache with the pre-update
+	// value, and the read below would return that stale entry for the rest
+	// of its TTL instead of what was just written.
+	if s.redis != nil {
+		if err := s.redis.Del(ctx, permissionCacheKey(userID)).Err(); err != nil {
+			slog.Warn("permission cache invalidation failed", "user_id", userID, "error", err)
+		}
 	}
 	return s.GetByUserID(ctx, userID)
 }

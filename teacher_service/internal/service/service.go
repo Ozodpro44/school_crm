@@ -58,10 +58,48 @@ type TeacherService struct {
 	db *db.DB
 }
 
+// HasBranchAccess reports whether userID (JWT-verified, with role) may
+// access branchID. developer/super_admin bypass entirely (platform-level
+// roles). Otherwise granted if the user's own branch matches, they're
+// linked to it via branch_managers, or they're its admin.
+//
+// This exists because branch switching in the frontend does not reissue a
+// JWT — the token's own branch_id stays fixed to the user's home branch,
+// while a manager/admin who legitimately administers several branches picks
+// among them client-side and sends that choice as a plain branchId query
+// param. Blindly trusting that query param (the previous behavior on
+// ListTeachers/ListSalaries/TeacherSalaryHistory) let ANY authenticated
+// caller — including a teacher — read another branch's teacher/salary data
+// by editing the query string.
+func (s *TeacherService) HasBranchAccess(ctx context.Context, userID, role, branchID string) (bool, error) {
+	if role == "developer" || role == "super_admin" {
+		return true, nil
+	}
+	if userID == "" || branchID == "" {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	var exists bool
+	err := s.db.Conn().QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM users WHERE id = $1 AND branch_id = $2
+			UNION ALL
+			SELECT 1 FROM branch_managers WHERE manager_id = $1 AND branch_id = $2
+			UNION ALL
+			SELECT 1 FROM branches WHERE id = $2 AND admin_id = $1
+		)`, userID, branchID).Scan(&exists)
+	return exists, err
+}
+
 func NewTeacherService(database *db.DB) *TeacherService {
 	return &TeacherService{db: database}
 }
 
+// GetAll returns every teacher for a branch. This intentionally has no
+// pagination parameter — the frontend renders the full roster in one page —
+// but a hard cap keeps a single pathological branch from turning this into
+// an unbounded scan; 1000 teachers is far beyond any real school's roster.
 func (s *TeacherService) GetAll(ctx context.Context, branchID string) ([]Teacher, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
@@ -74,7 +112,8 @@ func (s *TeacherService) GetAll(ctx context.Context, branchID string) ([]Teacher
 		FROM teachers t
 		LEFT JOIN teacher_subjects ts ON ts.teacher_id = t.id
 		WHERE t.branch_id = $1
-		GROUP BY t.id ORDER BY t.full_name`, branchID)
+		GROUP BY t.id ORDER BY t.full_name
+		LIMIT 1000`, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +152,26 @@ func (s *TeacherService) GetByID(ctx context.Context, id string) (*Teacher, erro
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return &t, err
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+// GetByIDScoped is GetByID with a branch_id check, for HTTP entry points
+// reachable by a client-supplied ID: without it, any caller who knows/
+// guesses a teacher UUID could read another branch's teacher record.
+// Returns ErrNotFound (not a distinct "forbidden") on a branch mismatch so
+// callers can't use it to probe whether an ID exists elsewhere.
+func (s *TeacherService) GetByIDScoped(ctx context.Context, id, branchID string) (*Teacher, error) {
+	t, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if t.BranchID != branchID {
+		return nil, ErrNotFound
+	}
+	return t, nil
 }
 
 type CreateTeacherRequest struct {
@@ -191,7 +249,10 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 	return t, tx.Commit()
 }
 
-func (s *TeacherService) Update(ctx context.Context, id string, fields map[string]interface{}) (*Teacher, error) {
+// Update applies a partial update, scoped to branchID directly in the SQL
+// (not just a pre-check) so it's safe even under a concurrent branch
+// reassignment: the WHERE clause itself decides whether the row is touched.
+func (s *TeacherService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Teacher, error) {
 	allowed := map[string]bool{
 		"full_name": true, "monthly_salary": true,
 		"phone": true, "email": true, "joined_date": true,
@@ -235,6 +296,20 @@ func (s *TeacherService) Update(ctx context.Context, id string, fields map[strin
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Verify branch ownership up front, inside the transaction, even when
+	// this update only touches subjects — otherwise a subjects-only request
+	// (no columns in `allowed`) would skip the teachers UPDATE entirely and
+	// go straight to mutating teacher_subjects for an arbitrary id with no
+	// branch check at all.
+	var ownerBranch string
+	err = tx.QueryRowContext(ctx, "SELECT branch_id FROM teachers WHERE id = $1", id).Scan(&ownerBranch)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && ownerBranch != branchID) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	if len(parts) > 0 {
 		parts = append(parts, fmt.Sprintf("updated_at = $%d", n))
 		args = append(args, time.Now().UTC())
@@ -270,8 +345,8 @@ func (s *TeacherService) Update(ctx context.Context, id string, fields map[strin
 	return s.GetByID(ctx, id)
 }
 
-func (s *TeacherService) Delete(ctx context.Context, id string) error {
-	t, err := s.GetByID(ctx, id)
+func (s *TeacherService) Delete(ctx context.Context, id, branchID string) error {
+	t, err := s.GetByIDScoped(ctx, id, branchID)
 	if err != nil {
 		return err
 	}
@@ -285,8 +360,15 @@ func (s *TeacherService) Delete(ctx context.Context, id string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, "DELETE FROM teachers WHERE id = $1", id); err != nil {
+	// branch_id in the WHERE clause too, not just the pre-check above — the
+	// pre-check and this statement aren't atomic with each other, so this is
+	// what actually guarantees a cross-branch delete can't slip through.
+	res, err := tx.ExecContext(ctx, "DELETE FROM teachers WHERE id = $1 AND branch_id = $2", id, branchID)
+	if err != nil {
 		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return ErrNotFound
 	}
 	// Remove linked user account if present
 	if t.UserID != nil {
@@ -350,7 +432,10 @@ func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, cr
 	return sal, nil
 }
 
-func (s *SalaryService) GetByTeacher(ctx context.Context, teacherID string) ([]Salary, error) {
+// GetByTeacher returns a teacher's salary history, scoped to branchID so a
+// caller can't read another branch's salary history by guessing a teacher
+// UUID.
+func (s *SalaryService) GetByTeacher(ctx context.Context, teacherID, branchID string) ([]Salary, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
@@ -359,8 +444,8 @@ func (s *SalaryService) GetByTeacher(ctx context.Context, teacherID string) ([]S
 		       s.payment_method, s.status, s.notes, s.paid_date, s.branch_id, s.created_by, s.created_at
 		FROM salaries s
 		LEFT JOIN teachers t ON t.id = s.teacher_id
-		WHERE s.teacher_id = $1
-		ORDER BY s.year DESC, s.month DESC`, teacherID)
+		WHERE s.teacher_id = $1 AND s.branch_id = $2
+		ORDER BY s.year DESC, s.month DESC`, teacherID, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -376,18 +461,25 @@ func (s *SalaryService) GetByBranch(ctx context.Context, branchID, month string,
 	args := []interface{}{branchID}
 	n := 2
 	if month != "" {
-		where += fmt.Sprintf(" AND s.month = $%d", n); args = append(args, month); n++
+		where += fmt.Sprintf(" AND s.month = $%d", n)
+		args = append(args, month)
+		n++
 	}
 	if year > 0 {
-		where += fmt.Sprintf(" AND s.year = $%d", n); args = append(args, year); n++
+		where += fmt.Sprintf(" AND s.year = $%d", n)
+		args = append(args, year)
+		n++
 	}
 
+	// Without a month/year filter this returns every salary record ever
+	// created for the branch — cap it so a long-lived branch's full history
+	// can't turn an unfiltered call into an unbounded scan.
 	rows, err := s.db.Conn().QueryContext(ctx, `
 		SELECT s.id, s.teacher_id, COALESCE(t.full_name,''), s.amount, s.month, s.year,
 		       s.payment_method, s.status, s.notes, s.paid_date, s.branch_id, s.created_by, s.created_at
 		FROM salaries s
 		LEFT JOIN teachers t ON t.id = s.teacher_id
-		`+where+` ORDER BY t.full_name, s.year DESC, s.month DESC`, args...)
+		`+where+` ORDER BY t.full_name, s.year DESC, s.month DESC LIMIT 2000`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -395,7 +487,9 @@ func (s *SalaryService) GetByBranch(ctx context.Context, branchID, month string,
 	return scanSalaries(rows)
 }
 
-func (s *SalaryService) Update(ctx context.Context, id string, fields map[string]interface{}) (*Salary, error) {
+// Update applies a partial update, scoped to branchID directly in the SQL —
+// see TeacherService.Update's comment for why.
+func (s *SalaryService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Salary, error) {
 	allowed := map[string]bool{
 		"amount": true, "payment_method": true, "status": true, "notes": true, "paid_date": true,
 	}
@@ -411,26 +505,39 @@ func (s *SalaryService) Update(ctx context.Context, id string, fields map[string
 		n++
 	}
 	if len(parts) == 0 {
-		return s.getByID(ctx, id)
+		return s.GetByIDScoped(ctx, id, branchID)
 	}
-	args = append(args, id)
+	args = append(args, id, branchID)
 
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	_, err := s.db.Conn().ExecContext(ctx,
-		"UPDATE salaries SET "+strings.Join(parts, ", ")+" WHERE id = $"+fmt.Sprintf("%d", n), args...)
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE salaries SET "+strings.Join(parts, ", ")+
+			" WHERE id = $"+fmt.Sprintf("%d", n)+" AND branch_id = $"+fmt.Sprintf("%d", n+1), args...)
 	if err != nil {
 		return nil, err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return nil, ErrNotFound
 	}
 	return s.getByID(ctx, id)
 }
 
-func (s *SalaryService) Delete(ctx context.Context, id string) error {
+// Delete removes a salary record, scoped to branchID directly in the DELETE
+// statement — see TeacherService.Delete's comment for why.
+func (s *SalaryService) Delete(ctx context.Context, id, branchID string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	_, err := s.db.Conn().ExecContext(ctx, "DELETE FROM salaries WHERE id = $1", id)
-	return err
+	res, err := s.db.Conn().ExecContext(ctx,
+		"DELETE FROM salaries WHERE id = $1 AND branch_id = $2", id, branchID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *SalaryService) getByID(ctx context.Context, id string) (*Salary, error) {
@@ -450,7 +557,24 @@ func (s *SalaryService) getByID(ctx context.Context, id string) (*Salary, error)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return &sal, err
+	if err != nil {
+		return nil, err
+	}
+	return &sal, nil
+}
+
+// GetByIDScoped is getByID with a branch_id check, for HTTP entry points
+// reachable by a client-supplied ID — see TeacherService.GetByIDScoped for
+// why this exists separately.
+func (s *SalaryService) GetByIDScoped(ctx context.Context, id, branchID string) (*Salary, error) {
+	sal, err := s.getByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if sal.BranchID != branchID {
+		return nil, ErrNotFound
+	}
+	return sal, nil
 }
 
 func scanSalaries(rows *sql.Rows) ([]Salary, error) {

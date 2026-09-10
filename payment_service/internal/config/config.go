@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 type Config struct {
 	Port        string
@@ -12,6 +15,10 @@ type Config struct {
 	// Student service gRPC address — used for P3.4 when student_service is extracted.
 	// Until then payment_service queries the shared DB directly.
 	StudentServiceAddr string
+	// CORSOrigins is the allowlist of frontend origins permitted to call
+	// this API directly. Set via CORS_ORIGINS (comma-separated) in
+	// production — the default only covers local dev.
+	CORSOrigins []string
 }
 
 func Load() *Config {
@@ -23,6 +30,7 @@ func Load() *Config {
 		JWTSecret:          os.Getenv("JWT_SECRET"),
 		Environment:        getEnv("ENVIRONMENT", "development"),
 		StudentServiceAddr: os.Getenv("STUDENT_SERVICE_ADDR"), // e.g. student_service:50052
+		CORSOrigins:        parseCSV(getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001")),
 	}
 }
 
@@ -45,4 +53,16 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// parseCSV splits a comma-separated env value into trimmed, non-empty parts.
+func parseCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

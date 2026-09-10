@@ -9,6 +9,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -54,6 +55,39 @@ type ExpenseService struct {
 	db *db.DB
 }
 
+// HasBranchAccess reports whether userID (JWT-verified, with role) may
+// access branchID. developer/super_admin bypass entirely (platform-level
+// roles). Otherwise granted if the user's own branch matches, they're
+// linked to it via branch_managers, or they're its admin.
+//
+// This exists because branch switching in the frontend does not reissue a
+// JWT — the token's own branch_id stays fixed to the user's home branch,
+// while a manager/admin who legitimately administers several branches picks
+// among them client-side and sends that choice as a plain branchId query
+// param. Blindly trusting that query param let ANY authenticated caller —
+// including a teacher — read another branch's expense data by editing the
+// query string.
+func (s *ExpenseService) HasBranchAccess(ctx context.Context, userID, role, branchID string) (bool, error) {
+	if role == "developer" || role == "super_admin" {
+		return true, nil
+	}
+	if userID == "" || branchID == "" {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	var exists bool
+	err := s.db.Read().QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM users WHERE id = $1 AND branch_id = $2
+			UNION ALL
+			SELECT 1 FROM branch_managers WHERE manager_id = $1 AND branch_id = $2
+			UNION ALL
+			SELECT 1 FROM branches WHERE id = $2 AND admin_id = $1
+		)`, userID, branchID).Scan(&exists)
+	return exists, err
+}
+
 func NewExpenseService(database *db.DB) *ExpenseService {
 	return &ExpenseService{db: database}
 }
@@ -87,20 +121,29 @@ func (s *ExpenseService) List(ctx context.Context, f ListFilter) (*ExpenseListRe
 	n := 2
 
 	if f.Category != "" {
-		where += fmt.Sprintf(" AND category = $%d", n); args = append(args, f.Category); n++
+		where += fmt.Sprintf(" AND category = $%d", n)
+		args = append(args, f.Category)
+		n++
 	}
 	if f.PaymentMethod != "" {
-		where += fmt.Sprintf(" AND payment_method = $%d", n); args = append(args, f.PaymentMethod); n++
+		where += fmt.Sprintf(" AND payment_method = $%d", n)
+		args = append(args, f.PaymentMethod)
+		n++
 	}
 	if f.Month != "" {
-		where += fmt.Sprintf(" AND EXTRACT(month FROM date) = $%d", n); args = append(args, f.Month); n++
+		where += fmt.Sprintf(" AND EXTRACT(month FROM date) = $%d", n)
+		args = append(args, f.Month)
+		n++
 	}
 	if f.Year != "" {
-		where += fmt.Sprintf(" AND EXTRACT(year FROM date) = $%d", n); args = append(args, f.Year); n++
+		where += fmt.Sprintf(" AND EXTRACT(year FROM date) = $%d", n)
+		args = append(args, f.Year)
+		n++
 	}
 	if f.Search != "" {
 		where += fmt.Sprintf(" AND LOWER(title) LIKE LOWER($%d)", n)
-		args = append(args, "%"+f.Search+"%"); n++
+		args = append(args, "%"+f.Search+"%")
+		n++
 	}
 
 	var total int
@@ -145,10 +188,14 @@ func (s *ExpenseService) Summary(ctx context.Context, branchID, month, year stri
 	args := []interface{}{branchID}
 	n := 2
 	if month != "" {
-		where += fmt.Sprintf(" AND EXTRACT(month FROM date) = $%d", n); args = append(args, month); n++
+		where += fmt.Sprintf(" AND EXTRACT(month FROM date) = $%d", n)
+		args = append(args, month)
+		n++
 	}
 	if year != "" {
-		where += fmt.Sprintf(" AND EXTRACT(year FROM date) = $%d", n); args = append(args, year); n++
+		where += fmt.Sprintf(" AND EXTRACT(year FROM date) = $%d", n)
+		args = append(args, year)
+		n++
 	}
 
 	rows, err := s.db.Read().QueryContext(ctx,
@@ -212,8 +259,15 @@ func (s *ExpenseService) ConsolidatedData(ctx context.Context, branchID, month, 
 		return nil, err
 	}
 
-	summary, _ := s.Summary(ctx, branchID, month, year)
-	list.Indicators = summary
+	// A failed summary must not silently report empty indicators — the list
+	// itself already succeeded and is the primary payload, so log rather
+	// than fail the whole request, but the failure has to be visible.
+	summary, err := s.Summary(ctx, branchID, month, year)
+	if err != nil {
+		slog.Warn("consolidated data: expense summary failed", "branch_id", branchID, "error", err)
+	} else {
+		list.Indicators = summary
+	}
 	return list, nil
 }
 
@@ -231,7 +285,26 @@ func (s *ExpenseService) GetByID(ctx context.Context, id string) (*Expense, erro
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return &e, err
+	if err != nil {
+		return nil, err
+	}
+	return &e, nil
+}
+
+// GetByIDScoped is GetByID with a branch_id check, for HTTP entry points
+// reachable by a client-supplied ID: without it, any caller who knows/
+// guesses an expense UUID could read another branch's financial record.
+// Returns ErrNotFound (not a distinct "forbidden") on a branch mismatch so
+// callers can't use it to probe whether an ID exists elsewhere.
+func (s *ExpenseService) GetByIDScoped(ctx context.Context, id, branchID string) (*Expense, error) {
+	e, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if e.BranchID != branchID {
+		return nil, ErrNotFound
+	}
+	return e, nil
 }
 
 func (s *ExpenseService) Create(ctx context.Context, e *Expense) (*Expense, error) {
@@ -253,10 +326,22 @@ func (s *ExpenseService) Create(ctx context.Context, e *Expense) (*Expense, erro
 	return e, nil
 }
 
-func (s *ExpenseService) Update(ctx context.Context, id string, fields map[string]interface{}) (*Expense, error) {
+// Update applies a partial update, scoped to branchID directly in the SQL
+// (not just a pre-check) so it's safe even under a concurrent branch
+// reassignment: the WHERE clause itself decides whether the row is touched.
+// A branch mismatch or missing id both surface as ErrNotFound. amount is
+// validated here too — Create enforces gt=0 via a binding tag, but this
+// generic map-driven update previously bypassed that entirely.
+func (s *ExpenseService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Expense, error) {
 	allowed := map[string]bool{
 		"title": true, "description": true, "amount": true, "category": true,
 		"payment_method": true, "date": true, "notes": true,
+	}
+	if amt, ok := fields["amount"]; ok {
+		f, ok := amt.(float64)
+		if !ok || f <= 0 {
+			return nil, fmt.Errorf("amount must be a positive number")
+		}
 	}
 	parts := []string{}
 	args := []interface{}{}
@@ -270,26 +355,40 @@ func (s *ExpenseService) Update(ctx context.Context, id string, fields map[strin
 		n++
 	}
 	if len(parts) == 0 {
-		return s.GetByID(ctx, id)
+		return s.GetByIDScoped(ctx, id, branchID)
 	}
-	args = append(args, id)
+	args = append(args, id, branchID)
 
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	_, err := s.db.Write().ExecContext(ctx,
-		"UPDATE expenses SET "+strings.Join(parts, ", ")+" WHERE id = $"+fmt.Sprintf("%d", n), args...)
+	res, err := s.db.Write().ExecContext(ctx,
+		"UPDATE expenses SET "+strings.Join(parts, ", ")+
+			" WHERE id = $"+strconv.Itoa(n)+" AND branch_id = $"+strconv.Itoa(n+1), args...)
 	if err != nil {
 		return nil, err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return nil, ErrNotFound
 	}
 	return s.GetByID(ctx, id)
 }
 
-func (s *ExpenseService) Delete(ctx context.Context, id string) error {
+// Delete removes an expense, scoped to branchID directly in the DELETE
+// statement — see Update's comment on why the filter belongs in the SQL
+// rather than a separate pre-check.
+func (s *ExpenseService) Delete(ctx context.Context, id, branchID string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	_, err := s.db.Write().ExecContext(ctx, "DELETE FROM expenses WHERE id = $1", id)
-	return err
+	res, err := s.db.Write().ExecContext(ctx,
+		"DELETE FROM expenses WHERE id = $1 AND branch_id = $2", id, branchID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ── BudgetService ──────────────────────────────────────────────────────────────

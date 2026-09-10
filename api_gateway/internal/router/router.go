@@ -27,11 +27,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
 	sentrygin "github.com/getsentry/sentry-go/gin"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/school-crm/api-gateway/internal/config"
 	"github.com/school-crm/api-gateway/internal/logger"
 	"github.com/school-crm/api-gateway/internal/middleware"
@@ -39,6 +41,18 @@ import (
 )
 
 func New(cfg *config.Config) (*gin.Engine, error) {
+	if cfg.RedisURL != "" {
+		opts, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			return nil, err
+		}
+		rdb := redis.NewClient(opts)
+		if err := rdb.Ping(context.Background()).Err(); err != nil {
+			slog.Warn("redis ping failed — rate limiting and logout revocation will fail open", "error", err)
+		}
+		middleware.InitRedis(rdb)
+	}
+
 	monolithProxy, err := proxy.New(cfg.MonolithURL)
 	if err != nil {
 		return nil, err
@@ -81,7 +95,7 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
 	r.Use(middleware.RequestID())
 	r.Use(logger.RequestLogger())
-	r.Use(corsMiddleware())
+	r.Use(corsMiddleware(cfg.CORSOrigins))
 
 	// ── Health ────────────────────────────────────────────────────────────────
 	r.GET("/health", func(c *gin.Context) {
@@ -89,8 +103,11 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	})
 
 	// ── Public auth routes (no JWT required) — P2.4 ──────────────────────────
-	// These are forwarded to auth_service unchanged.
+	// These are forwarded to auth_service unchanged. Rate-limited per IP since
+	// they're unauthenticated and are exactly what credential-stuffing / OTP
+	// brute-force targets.
 	authPublic := r.Group("/api/v1/auth")
+	authPublic.Use(middleware.RateLimiter(10, time.Minute))
 	{
 		authPublic.POST("/login", gin.WrapH(proxy.Handler(authProxy)))
 		authPublic.POST("/register", gin.WrapH(proxy.Handler(authProxy)))
@@ -104,6 +121,7 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	// These mirror every /api/v1/* group so the gateway works regardless of
 	// which prefix the frontend sends. Remove once NEXT_PUBLIC_API_URL is fixed.
 	authLegacy := r.Group("/api/auth")
+	authLegacy.Use(middleware.RateLimiter(10, time.Minute))
 	{
 		authLegacy.POST("/login", gin.WrapH(proxy.Handler(authProxy)))
 		authLegacy.POST("/register", gin.WrapH(proxy.Handler(authProxy)))
@@ -322,13 +340,32 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 
 // ── Consolidated fan-out helpers (P4.4) ──────────────────────────────────────
 
-// fetchJSON performs a GET against serviceBase+path and decodes the JSON body.
-func fetchJSON(ctx context.Context, serviceBase, path string, out interface{}) error {
+// fanOutClient is shared by every fetchJSON call instead of http.DefaultClient
+// so these fan-out requests get the same connection pooling/reuse tuning as
+// the reverse proxies in internal/proxy — http.DefaultClient's zero-value
+// Transport has no such tuning and opens a fresh connection pattern per host.
+var fanOutClient = &http.Client{
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 20,
+		IdleConnTimeout:     90 * time.Second,
+		TLSHandshakeTimeout: 10 * time.Second,
+	},
+}
+
+// fetchJSON performs a GET against serviceBase+path and decodes the JSON
+// body. authHeader is forwarded as-is (the caller's own Authorization header)
+// since student_service/payment_service require a valid JWT — without
+// forwarding it, every fan-out call is rejected with 401 by the upstream.
+func fetchJSON(ctx context.Context, serviceBase, path, authHeader string, out interface{}) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, serviceBase+path, nil)
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	if authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
+	resp, err := fanOutClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -357,15 +394,16 @@ func consolidatedStudents(c *gin.Context, studentSvcURL string) {
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
+	authHeader := c.GetHeader("Authorization")
 
 	go func() {
 		var data interface{}
-		err := fetchJSON(ctx, studentSvcURL, "/api/v1/students?branchId="+branchID, &data)
+		err := fetchJSON(ctx, studentSvcURL, "/api/v1/students?branchId="+branchID, authHeader, &data)
 		studentCh <- result{data, err}
 	}()
 	go func() {
 		var data interface{}
-		err := fetchJSON(ctx, studentSvcURL, "/api/v1/classes?branchId="+branchID, &data)
+		err := fetchJSON(ctx, studentSvcURL, "/api/v1/classes?branchId="+branchID, authHeader, &data)
 		classCh <- result{data, err}
 	}()
 
@@ -399,6 +437,7 @@ func consolidatedPayments(c *gin.Context, paymentSvcURL, studentSvcURL string) {
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
 	defer cancel()
+	authHeader := c.GetHeader("Authorization")
 
 	go func() {
 		path := "/api/v1/payments?branchId=" + branchID
@@ -409,12 +448,12 @@ func consolidatedPayments(c *gin.Context, paymentSvcURL, studentSvcURL string) {
 			path += "&year=" + year
 		}
 		var data interface{}
-		err := fetchJSON(ctx, paymentSvcURL, path, &data)
+		err := fetchJSON(ctx, paymentSvcURL, path, authHeader, &data)
 		paymentCh <- result{data, err}
 	}()
 	go func() {
 		var data interface{}
-		err := fetchJSON(ctx, studentSvcURL, "/api/v1/students?branchId="+branchID+"&limit=200", &data)
+		err := fetchJSON(ctx, studentSvcURL, "/api/v1/students?branchId="+branchID+"&limit=200", authHeader, &data)
 		studentCh <- result{data, err}
 	}()
 
@@ -428,9 +467,21 @@ func consolidatedPayments(c *gin.Context, paymentSvcURL, studentSvcURL string) {
 	c.JSON(http.StatusOK, gin.H{"payments": pr.data, "students": sr.data})
 }
 
-func corsMiddleware() gin.HandlerFunc {
+// corsMiddleware only reflects Origin back when it's on the configured
+// allowlist — never a bare "*". A bearer-token API serving arbitrary origins
+// lets any site's JS attach a token it obtained and call the API on the
+// victim's behalf; restricting to known frontend origins closes that.
+func corsMiddleware(allowedOrigins []string) gin.HandlerFunc {
+	allowed := make(map[string]bool, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allowed[o] = true
+	}
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if allowed[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+		}
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization,X-Branch-ID,X-Request-ID")
 		if c.Request.Method == "OPTIONS" {

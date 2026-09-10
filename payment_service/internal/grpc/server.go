@@ -133,16 +133,11 @@ func (s *PaymentGRPCServer) ListPayments(ctx context.Context, req *ListPaymentsR
 // CheckSubscriptionActive returns whether a student has an active subscription.
 // Used by other services (e.g. student_service, notification_service) to check access.
 func (s *PaymentGRPCServer) CheckSubscriptionActive(ctx context.Context, req *CheckSubscriptionRequest) (*CheckSubscriptionResponse, error) {
-	subs, err := s.svc.ListSubscriptions(ctx, req.BranchID, "active")
+	active, planID, err := s.svc.HasActiveSubscription(ctx, req.BranchID, req.StudentID)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "check subscription: %v", err)
 	}
-	for _, sub := range subs {
-		if sub.StudentID == req.StudentID {
-			return &CheckSubscriptionResponse{Active: true, PlanID: sub.PlanID}, nil
-		}
-	}
-	return &CheckSubscriptionResponse{Active: false}, nil
+	return &CheckSubscriptionResponse{Active: active, PlanID: planID}, nil
 }
 
 // Serve starts listening on addr and blocks until the server stops.

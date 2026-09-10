@@ -16,6 +16,28 @@ func NewPaymentHandler(svc *service.PaymentService) *PaymentHandler {
 	return &PaymentHandler{svc: svc}
 }
 
+// requireBranchAccess checks that the caller (identified by the JWT-verified
+// X-User-ID/X-User-Role headers) is authorized for branchID, and writes a
+// response and returns false if not. branchId being a client-supplied query
+// param (not just the trusted X-User-Branch-ID header) is intentional here —
+// branch switching in the frontend doesn't reissue a JWT, so a
+// manager/admin who legitimately administers several branches must be able
+// to request any of them. What must never happen is skipping the check
+// entirely, which is what every one of these endpoints did before.
+func (h *PaymentHandler) requireBranchAccess(c *gin.Context, branchID string) bool {
+	allowed, err := h.svc.HasBranchAccess(c.Request.Context(),
+		c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return false
+	}
+	if !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this branch"})
+		return false
+	}
+	return true
+}
+
 func (h *PaymentHandler) Register(r *gin.RouterGroup) {
 	r.GET("/payments", h.List)
 	r.POST("/payments", h.Create)
@@ -39,6 +61,9 @@ func (h *PaymentHandler) List(c *gin.Context) {
 	branchID := c.Query("branchId")
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 
@@ -70,6 +95,9 @@ func (h *PaymentHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !h.requireBranchAccess(c, req.BranchID) {
+		return
+	}
 
 	createdBy := c.GetHeader("X-User-ID")
 	payment, err := h.svc.Create(c.Request.Context(), &req, createdBy)
@@ -94,22 +122,59 @@ func (h *PaymentHandler) GetByID(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	allowed, err := h.svc.HasBranchAccess(c.Request.Context(),
+		c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), payment.BranchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !allowed {
+		// 404, not 403 — don't reveal that a payment with this ID exists in
+		// another branch.
+		c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
+		return
+	}
 	c.JSON(http.StatusOK, payment)
 }
 
 // Update godoc
 // PUT /api/v1/payments/:id
 func (h *PaymentHandler) Update(c *gin.Context) {
+	id := c.Param("id")
+	existing, err := h.svc.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	allowed, err := h.svc.HasBranchAccess(c.Request.Context(),
+		c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), existing.BranchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
+		return
+	}
+
 	var req service.UpdatePaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	payment, err := h.svc.Update(c.Request.Context(), c.Param("id"), &req)
+	payment, err := h.svc.Update(c.Request.Context(), id, &req)
 	if err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
+			return
+		}
+		if err == service.ErrMonthLocked {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -124,10 +189,32 @@ func (h *PaymentHandler) Update(c *gin.Context) {
 // DELETE /api/v1/payments/:id
 func (h *PaymentHandler) Delete(c *gin.Context) {
 	id := c.Param("id")
-	p, _ := h.svc.GetByID(c.Request.Context(), id)
+	p, err := h.svc.GetByID(c.Request.Context(), id)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	allowed, err := h.svc.HasBranchAccess(c.Request.Context(),
+		c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), p.BranchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
+		return
+	}
 	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
+			return
+		}
+		if err == service.ErrMonthLocked {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -153,6 +240,9 @@ func (h *PaymentHandler) BulkCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !h.requireBranchAccess(c, body.BranchID) {
+		return
+	}
 
 	createdBy := c.GetHeader("X-User-ID")
 	results := h.svc.BulkCreate(c.Request.Context(), body.BranchID, body.DefaultMethod, body.Entries, createdBy)
@@ -165,6 +255,9 @@ func (h *PaymentHandler) Summary(c *gin.Context) {
 	branchID := c.Query("branchId")
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	yearInt, _ := strconv.Atoi(c.Query("year"))
@@ -180,7 +273,28 @@ func (h *PaymentHandler) Summary(c *gin.Context) {
 // StudentHistory godoc
 // GET /api/v1/payments/student/:studentId/history
 func (h *PaymentHandler) StudentHistory(c *gin.Context) {
-	payments, err := h.svc.StudentHistory(c.Request.Context(), c.Param("studentId"))
+	studentID := c.Param("studentId")
+	branchID, err := h.svc.StudentBranch(c.Request.Context(), studentID)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "student not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	allowed, err := h.svc.HasBranchAccess(c.Request.Context(),
+		c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !allowed {
+		c.JSON(http.StatusNotFound, gin.H{"error": "student not found"})
+		return
+	}
+
+	payments, err := h.svc.StudentHistory(c.Request.Context(), studentID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -194,6 +308,9 @@ func (h *PaymentHandler) ConsolidatedData(c *gin.Context) {
 	branchID := c.Query("branchId")
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	resp, err := h.svc.ConsolidatedData(
@@ -224,6 +341,9 @@ func (h *PaymentHandler) SearchStudents(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
 		return
 	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "200"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	resp, err := h.svc.SearchStudents(c.Request.Context(), service.SearchStudentsFilter{
@@ -249,6 +369,9 @@ func (h *PaymentHandler) ListSubscriptions(c *gin.Context) {
 	branchID := c.Query("branchId")
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 

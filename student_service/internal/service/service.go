@@ -43,13 +43,13 @@ type StudentListResponse struct {
 }
 
 type Class struct {
-	ID           string     `json:"id"`
-	Name         string     `json:"name"`
-	TeacherID    *string    `json:"teacherId,omitempty"`
-	BranchID     string     `json:"branchId"`
-	StudentCount int        `json:"studentCount"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	TeacherID    *string   `json:"teacherId,omitempty"`
+	BranchID     string    `json:"branchId"`
+	StudentCount int       `json:"studentCount"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 type Attendance struct {
@@ -74,19 +74,68 @@ type StudentService struct {
 	db *db.DB
 }
 
+// HasBranchAccess reports whether userID (JWT-verified, with role) may
+// access branchID. developer/super_admin bypass entirely (platform-level
+// roles). Otherwise granted if the user's own branch matches, they're
+// linked to it via branch_managers, or they're its admin.
+//
+// This exists because branch switching in the frontend does not reissue a
+// JWT — the token's own branch_id stays fixed to the user's home branch,
+// while a manager/admin who legitimately administers several branches picks
+// among them client-side and sends that choice as a plain branchId query
+// param. Blindly trusting that query param (the previous behavior on
+// ListStudents/ListClasses/ConsolidatedData/SearchWithPayments) let ANY
+// authenticated caller — including a teacher — read another branch's data
+// by editing the query string. Blindly preferring the JWT's own branch_id
+// instead would break the legitimate multi-branch case, so this checks
+// authorization for whichever branchId was actually requested.
+func (s *StudentService) HasBranchAccess(ctx context.Context, userID, role, branchID string) (bool, error) {
+	if role == "developer" || role == "super_admin" {
+		return true, nil
+	}
+	if userID == "" || branchID == "" {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	var exists bool
+	err := s.db.Conn().QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM users WHERE id = $1 AND branch_id = $2
+			UNION ALL
+			SELECT 1 FROM branch_managers WHERE manager_id = $1 AND branch_id = $2
+			UNION ALL
+			SELECT 1 FROM branches WHERE id = $2 AND admin_id = $1
+		)`, userID, branchID).Scan(&exists)
+	return exists, err
+}
+
 func NewStudentService(database *db.DB) *StudentService {
 	return &StudentService{db: database}
 }
 
 type ListFilter struct {
-	BranchID      string
-	Search        string
-	Status        string
-	ClassID       string
-	NoClass       bool   // when true: WHERE class_id IS NULL
-	Page          string
-	Limit         string
-	Cursor        string // keyset cursor on full_name
+	BranchID string
+	Search   string
+	Status   string
+	ClassID  string
+	NoClass  bool // when true: WHERE class_id IS NULL
+	Page     string
+	Limit    string
+	Cursor   string // keyset cursor on full_name
+}
+
+// CountActive returns the number of active students in a branch. Backs the
+// gRPC GetActiveStudentCount RPC.
+func (s *StudentService) CountActive(ctx context.Context, branchID string) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	var count int
+	err := s.db.Conn().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM students WHERE branch_id = $1 AND status = 'active'`, branchID,
+	).Scan(&count)
+	return count, err
 }
 
 func (s *StudentService) List(ctx context.Context, f ListFilter) (*StudentListResponse, error) {
@@ -109,19 +158,26 @@ func (s *StudentService) List(ctx context.Context, f ListFilter) (*StudentListRe
 	n := 2
 
 	if f.Status != "" {
-		where += fmt.Sprintf(" AND s.status = $%d", n); args = append(args, f.Status); n++
+		where += fmt.Sprintf(" AND s.status = $%d", n)
+		args = append(args, f.Status)
+		n++
 	}
 	if f.NoClass {
 		where += " AND s.class_id IS NULL"
 	} else if f.ClassID != "" {
-		where += fmt.Sprintf(" AND s.class_id = $%d", n); args = append(args, f.ClassID); n++
+		where += fmt.Sprintf(" AND s.class_id = $%d", n)
+		args = append(args, f.ClassID)
+		n++
 	}
 	if f.Search != "" {
 		where += fmt.Sprintf(" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)", n, n)
-		args = append(args, "%"+f.Search+"%"); n++
+		args = append(args, "%"+f.Search+"%")
+		n++
 	}
 	if useCursor {
-		where += fmt.Sprintf(" AND s.full_name > $%d", n); args = append(args, f.Cursor); n++
+		where += fmt.Sprintf(" AND s.full_name > $%d", n)
+		args = append(args, f.Cursor)
+		n++
 	}
 
 	var total int
@@ -218,6 +274,22 @@ func (s *StudentService) GetByID(ctx context.Context, id string) (*Student, erro
 	return &st, nil
 }
 
+// GetByIDScoped is GetByID with a branch_id filter, for HTTP entry points
+// (GetStudent) reachable by a client-supplied ID: without the filter, any
+// caller who knows/guesses a UUID could read another branch's student
+// record. Returns ErrNotFound (not a distinct "forbidden") on a branch
+// mismatch so callers can't use it to probe whether an ID exists elsewhere.
+func (s *StudentService) GetByIDScoped(ctx context.Context, id, branchID string) (*Student, error) {
+	st, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if st.BranchID != branchID {
+		return nil, ErrNotFound
+	}
+	return st, nil
+}
+
 func (s *StudentService) Create(ctx context.Context, st *Student) (*Student, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
@@ -240,7 +312,11 @@ func (s *StudentService) Create(ctx context.Context, st *Student) (*Student, err
 	return st, nil
 }
 
-func (s *StudentService) Update(ctx context.Context, id string, fields map[string]interface{}) (*Student, error) {
+// Update applies a partial update, scoped to branchID directly in the SQL
+// (not just a pre-check) so it's safe even under a concurrent branch
+// reassignment: the WHERE clause itself is what decides whether the row is
+// touched. A branch mismatch or missing id both surface as ErrNotFound.
+func (s *StudentService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Student, error) {
 	allowed := map[string]bool{
 		"full_name": true, "phone": true, "parent_phone": true, "class_id": true,
 		"monthly_payment": true, "status": true, "enrollment_date": true,
@@ -257,29 +333,43 @@ func (s *StudentService) Update(ctx context.Context, id string, fields map[strin
 		n++
 	}
 	if len(parts) == 0 {
-		return s.GetByID(ctx, id)
+		return s.GetByIDScoped(ctx, id, branchID)
 	}
 	parts = append(parts, fmt.Sprintf("updated_at = $%d", n))
 	args = append(args, time.Now().UTC())
 	n++
-	args = append(args, id)
+	args = append(args, id, branchID)
 
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	_, err := s.db.Conn().ExecContext(ctx,
-		"UPDATE students SET "+strings.Join(parts, ", ")+" WHERE id = $"+strconv.Itoa(n), args...)
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE students SET "+strings.Join(parts, ", ")+
+			" WHERE id = $"+strconv.Itoa(n)+" AND branch_id = $"+strconv.Itoa(n+1), args...)
 	if err != nil {
 		return nil, err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return nil, ErrNotFound
 	}
 	return s.GetByID(ctx, id)
 }
 
-func (s *StudentService) Delete(ctx context.Context, id string) error {
+// Delete removes a student, scoped to branchID directly in the DELETE
+// statement — see Update's comment on why the filter belongs in the SQL
+// rather than a separate pre-check.
+func (s *StudentService) Delete(ctx context.Context, id, branchID string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	_, err := s.db.Conn().ExecContext(ctx, "DELETE FROM students WHERE id = $1", id)
-	return err
+	res, err := s.db.Conn().ExecContext(ctx,
+		"DELETE FROM students WHERE id = $1 AND branch_id = $2", id, branchID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ── ClassService ──────────────────────────────────────────────────────────────
@@ -331,17 +421,53 @@ func (s *ClassService) GetByID(ctx context.Context, id string) (*Class, error) {
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	return &c, err
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
 }
 
+// GetByIDScoped is GetByID with a branch_id filter — see StudentService's
+// GetByIDScoped for why this exists separately from the plain GetByID.
+func (s *ClassService) GetByIDScoped(ctx context.Context, id, branchID string) (*Class, error) {
+	c, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if c.BranchID != branchID {
+		return nil, ErrNotFound
+	}
+	return c, nil
+}
+
+// Create inserts a class, guarding against a duplicate name within the
+// branch. The duplicate check and insert run inside one transaction,
+// serialized by a Postgres advisory lock keyed on name+branch — without
+// this, two concurrent requests could both pass the COUNT check before
+// either INSERTs, creating two classes with the same name (no DB-level
+// unique constraint backs this). Mirrors PaymentService.Create's dedupe
+// lock.
 func (s *ClassService) Create(ctx context.Context, name, branchID string, teacherID *string) (*Class, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	// Duplicate name guard
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+
+	lockKey := fmt.Sprintf("class-dedupe:%s:%s", branchID, name)
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`, lockKey); err != nil {
+		return nil, fmt.Errorf("acquire dedupe lock: %w", err)
+	}
+
 	var count int
-	_ = s.db.Conn().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM classes WHERE name=$1 AND branch_id=$2`, name, branchID).Scan(&count)
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM classes WHERE name=$1 AND branch_id=$2`, name, branchID,
+	).Scan(&count); err != nil {
+		return nil, fmt.Errorf("check existing class: %w", err)
+	}
 	if count > 0 {
 		return nil, fmt.Errorf("a class named %q already exists in this branch", name)
 	}
@@ -354,15 +480,23 @@ func (s *ClassService) Create(ctx context.Context, name, branchID string, teache
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}
-	_, err := s.db.Conn().ExecContext(ctx,
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO classes (id, name, teacher_id, branch_id, created_at, updated_at)
 		 VALUES ($1,$2,$3,$4,$5,$6)`,
 		c.ID, c.Name, c.TeacherID, c.BranchID, c.CreatedAt, c.UpdatedAt,
-	)
-	return c, err
+	); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	return c, nil
 }
 
-func (s *ClassService) Update(ctx context.Context, id string, fields map[string]interface{}) (*Class, error) {
+// Update applies a partial update, scoped to branchID directly in the SQL —
+// see StudentService.Update's comment for why.
+func (s *ClassService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Class, error) {
 	allowed := map[string]bool{"name": true, "teacher_id": true}
 	parts := []string{}
 	args := []interface{}{}
@@ -376,29 +510,42 @@ func (s *ClassService) Update(ctx context.Context, id string, fields map[string]
 		n++
 	}
 	if len(parts) == 0 {
-		return s.GetByID(ctx, id)
+		return s.GetByIDScoped(ctx, id, branchID)
 	}
 	parts = append(parts, fmt.Sprintf("updated_at = $%d", n))
 	args = append(args, time.Now().UTC())
 	n++
-	args = append(args, id)
+	args = append(args, id, branchID)
 
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	_, err := s.db.Conn().ExecContext(ctx,
-		"UPDATE classes SET "+strings.Join(parts, ", ")+" WHERE id = $"+strconv.Itoa(n), args...)
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE classes SET "+strings.Join(parts, ", ")+
+			" WHERE id = $"+strconv.Itoa(n)+" AND branch_id = $"+strconv.Itoa(n+1), args...)
 	if err != nil {
 		return nil, err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return nil, ErrNotFound
 	}
 	return s.GetByID(ctx, id)
 }
 
-func (s *ClassService) Delete(ctx context.Context, id string) error {
+// Delete removes a class, scoped to branchID directly in the DELETE
+// statement — see StudentService.Delete's comment for why.
+func (s *ClassService) Delete(ctx context.Context, id, branchID string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	_, err := s.db.Conn().ExecContext(ctx, "DELETE FROM classes WHERE id = $1", id)
-	return err
+	res, err := s.db.Conn().ExecContext(ctx,
+		"DELETE FROM classes WHERE id = $1 AND branch_id = $2", id, branchID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // ── ConsolidatedData ──────────────────────────────────────────────────────────
@@ -414,18 +561,18 @@ type StudentPaymentInfo struct {
 }
 
 type StudentListItem struct {
-	ID             string             `json:"id"`
-	FullName       string             `json:"fullName"`
-	Phone          string             `json:"phone"`
-	ParentPhone    string             `json:"parentPhone"`
-	MonthlyPayment float64            `json:"monthlyPayment"`
-	Status         string             `json:"status"`
-	BranchID       string             `json:"branchId"`
-	ClassID        string             `json:"classId,omitempty"`
-	Class          *StudentClassInfo  `json:"class,omitempty"`
+	ID             string              `json:"id"`
+	FullName       string              `json:"fullName"`
+	Phone          string              `json:"phone"`
+	ParentPhone    string              `json:"parentPhone"`
+	MonthlyPayment float64             `json:"monthlyPayment"`
+	Status         string              `json:"status"`
+	BranchID       string              `json:"branchId"`
+	ClassID        string              `json:"classId,omitempty"`
+	Class          *StudentClassInfo   `json:"class,omitempty"`
 	Payment        *StudentPaymentInfo `json:"payment,omitempty"`
-	CreatedAt      time.Time          `json:"createdAt"`
-	UpdatedAt      time.Time          `json:"updatedAt"`
+	CreatedAt      time.Time           `json:"createdAt"`
+	UpdatedAt      time.Time           `json:"updatedAt"`
 }
 
 type ClassItem struct {
@@ -800,7 +947,10 @@ func (s *AttendanceService) GetByClassDate(ctx context.Context, classID, date st
 	return records, rows.Err()
 }
 
-func (s *AttendanceService) GetByStudentMonth(ctx context.Context, studentID, month string, year int) ([]Attendance, error) {
+// GetByStudentMonth returns attendance for a student, scoped to branchID so
+// a caller can't read another branch's attendance record by guessing a
+// student UUID.
+func (s *AttendanceService) GetByStudentMonth(ctx context.Context, studentID, branchID, month string, year int) ([]Attendance, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
@@ -813,17 +963,17 @@ func (s *AttendanceService) GetByStudentMonth(ctx context.Context, studentID, mo
 			SELECT id, branch_id, class_id, student_id, date::text,
 			       status, COALESCE(note,''), created_by, created_at
 			FROM attendance
-			WHERE student_id=$1
-			ORDER BY date`, studentID)
+			WHERE student_id=$1 AND branch_id=$2
+			ORDER BY date`, studentID, branchID)
 	} else {
 		rows, err = s.db.Conn().QueryContext(ctx, `
 			SELECT id, branch_id, class_id, student_id, date::text,
 			       status, COALESCE(note,''), created_by, created_at
 			FROM attendance
-			WHERE student_id=$1
-			  AND EXTRACT(month FROM date)=$2::int
-			  AND EXTRACT(year  FROM date)=$3
-			ORDER BY date`, studentID, month, year)
+			WHERE student_id=$1 AND branch_id=$2
+			  AND EXTRACT(month FROM date)=$3::int
+			  AND EXTRACT(year  FROM date)=$4
+			ORDER BY date`, studentID, branchID, month, year)
 	}
 	if err != nil {
 		return nil, err
@@ -859,7 +1009,10 @@ type AbsenceAlert struct {
 }
 
 // GetMonthSummary returns per-student attendance counts for a class in a given year/month.
-func (s *AttendanceService) GetMonthSummary(ctx context.Context, classID string, year, month int) ([]MonthSummary, error) {
+// GetMonthSummary returns per-student attendance stats for a class, scoped
+// to branchID so a caller can't read another branch's attendance summary by
+// guessing a class UUID.
+func (s *AttendanceService) GetMonthSummary(ctx context.Context, classID, branchID string, year, month int) ([]MonthSummary, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
@@ -877,11 +1030,11 @@ func (s *AttendanceService) GetMonthSummary(ctx context.Context, classID string,
 		  , 1) AS present_pct
 		FROM students st
 		JOIN attendance a ON a.student_id = st.id
-		WHERE a.class_id = $1
-		  AND EXTRACT(year  FROM a.date) = $2
-		  AND EXTRACT(month FROM a.date) = $3
+		WHERE a.class_id = $1 AND a.branch_id = $2
+		  AND EXTRACT(year  FROM a.date) = $3
+		  AND EXTRACT(month FROM a.date) = $4
 		GROUP BY st.id, st.full_name
-		ORDER BY st.full_name`, classID, year, month)
+		ORDER BY st.full_name`, classID, branchID, year, month)
 	if err != nil {
 		return nil, err
 	}
@@ -1154,13 +1307,25 @@ func (s *AssignmentService) ListByBranch(ctx context.Context, branchID, classID 
 	return list, rows.Err()
 }
 
+// Create inserts an assignment and a submission row per active student in
+// the class, in one transaction — previously these were two separate
+// statements, so a failure in the submissions INSERT left a committed
+// assignment with zero submissions (inconsistent state, since a graded
+// assignment with no submission rows is meaningless in this data model).
 func (s *AssignmentService) Create(ctx context.Context, req *CreateAssignmentRequest, createdByID string) (*Assignment, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+
 	id := uuid.New().String()
 	now := time.Now()
 	var a Assignment
-	err := s.db.Conn().QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		INSERT INTO assignments (id, branch_id, class_id, teacher_id, subject, title, description, due_date, created_by, created_at, updated_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8::date,$9,$10,$10)
 		RETURNING id, branch_id, class_id, teacher_id, subject, title, description, due_date::text, created_by, created_at, updated_at
@@ -1170,7 +1335,7 @@ func (s *AssignmentService) Create(ctx context.Context, req *CreateAssignmentReq
 	if err != nil {
 		return nil, err
 	}
-	_, err = s.db.Conn().ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO assignment_submissions (id, assignment_id, student_id)
 		SELECT gen_random_uuid(), $1, s.id
 		FROM students s WHERE s.class_id=$2 AND s.status='active'
@@ -1178,6 +1343,9 @@ func (s *AssignmentService) Create(ctx context.Context, req *CreateAssignmentReq
 	`, id, req.ClassID)
 	if err != nil {
 		return nil, fmt.Errorf("create submissions: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return &a, nil
 }
@@ -1196,7 +1364,11 @@ func (s *AssignmentService) Delete(ctx context.Context, id, branchID string) err
 	return nil
 }
 
-func (s *AssignmentService) GetSubmissions(ctx context.Context, assignmentID string) ([]AssignmentSubmission, error) {
+// GetSubmissions returns submissions for an assignment, scoped to branchID
+// via a join to assignments (assignment_submissions has no branch_id of its
+// own) so a caller can't read another branch's grades/feedback by guessing
+// an assignment UUID.
+func (s *AssignmentService) GetSubmissions(ctx context.Context, assignmentID, branchID string) ([]AssignmentSubmission, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 	rows, err := s.db.Conn().QueryContext(ctx, `
@@ -1205,8 +1377,9 @@ func (s *AssignmentService) GetSubmissions(ctx context.Context, assignmentID str
 		       sub.created_at, sub.updated_at
 		FROM assignment_submissions sub
 		JOIN students s ON s.id = sub.student_id
-		WHERE sub.assignment_id=$1 ORDER BY s.full_name
-	`, assignmentID)
+		JOIN assignments a ON a.id = sub.assignment_id
+		WHERE sub.assignment_id=$1 AND a.branch_id=$2 ORDER BY s.full_name
+	`, assignmentID, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -1227,7 +1400,11 @@ func (s *AssignmentService) GetSubmissions(ctx context.Context, assignmentID str
 	return subs, rows.Err()
 }
 
-func (s *AssignmentService) UpdateSubmission(ctx context.Context, subID string, req *UpdateSubmissionRequest, gradedByID string) (*AssignmentSubmission, error) {
+// UpdateSubmission grades/updates a submission, scoped to branchID via a
+// subquery against assignments (assignment_submissions has no branch_id of
+// its own) — otherwise any caller who knows a submission UUID could
+// overwrite another branch's grade/feedback.
+func (s *AssignmentService) UpdateSubmission(ctx context.Context, subID, branchID string, req *UpdateSubmissionRequest, gradedByID string) (*AssignmentSubmission, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 	now := time.Now()
@@ -1245,13 +1422,16 @@ func (s *AssignmentService) UpdateSubmission(ctx context.Context, subID string, 
 			status=$1, grade=$2, feedback=$3,
 			submitted_at=COALESCE(submitted_at,$4),
 			graded_at=$5, graded_by=$6, updated_at=$7
-		WHERE id=$8
+		WHERE id=$8 AND assignment_id IN (SELECT id FROM assignments WHERE branch_id=$9)
 		RETURNING id, assignment_id, student_id, status, grade, feedback, submitted_at, graded_at, graded_by, created_at, updated_at
-	`, req.Status, req.Grade, req.Feedback, submittedAt, gradedAt, gradedByID, now, subID,
+	`, req.Status, req.Grade, req.Feedback, submittedAt, gradedAt, gradedByID, now, subID, branchID,
 	).Scan(&sub.ID, &sub.AssignmentID, &sub.StudentID,
 		&sub.Status, &sub.Grade, &sub.Feedback,
 		&sub.SubmittedAt, &sub.GradedAt, &sub.GradedBy,
 		&sub.CreatedAt, &sub.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 type Config struct {
 	Port        string
@@ -8,6 +11,11 @@ type Config struct {
 	Environment string
 	RedisURL    string
 	SentryDSN   string
+	// CORSOrigins is the allowlist of frontend origins permitted to call this
+	// API. Set via CORS_ORIGINS (comma-separated) in production — the
+	// default only covers local dev (frontend_school_crm:3000,
+	// frontend_for_dev:3001).
+	CORSOrigins []string
 
 	// Upstream service addresses
 	MonolithURL            string // e.g. http://backend:8082
@@ -35,7 +43,20 @@ func Load() *Config {
 		TeacherServiceURL:      getEnv("TEACHER_SERVICE_URL", "http://teacher_service:8086"),
 		FinanceServiceURL:      getEnv("FINANCE_SERVICE_URL", "http://finance_service:8087"),
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://notification_service:8088"),
+		CORSOrigins:            parseCSV(getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001")),
 	}
+}
+
+// parseCSV splits a comma-separated env value into trimmed, non-empty parts.
+func parseCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (c *Config) Validate() []string {

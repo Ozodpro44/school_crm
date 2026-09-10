@@ -12,11 +12,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"github.com/school-crm/user-service/internal/config"
 	"github.com/school-crm/user-service/internal/db"
 	usergrpc "github.com/school-crm/user-service/internal/grpc"
 	"github.com/school-crm/user-service/internal/handler"
 	"github.com/school-crm/user-service/internal/logger"
+	"github.com/school-crm/user-service/internal/middleware"
 	"github.com/school-crm/user-service/internal/service"
 )
 
@@ -42,9 +44,26 @@ func main() {
 	defer database.Close()
 	slog.Info("database connected")
 
+	// Redis backs the permission cache (CheckPermission is on the hot path
+	// for every authorization check other services make over gRPC). Not
+	// fatal if unreachable — PermissionService falls through to Postgres.
+	var rdb *redis.Client
+	if opt, err := redis.ParseURL(cfg.RedisURL); err != nil {
+		slog.Warn("parse redis url — permission caching disabled", "error", err)
+	} else {
+		rdb = redis.NewClient(opt)
+		if err := rdb.Ping(context.Background()).Err(); err != nil {
+			slog.Warn("connect redis — permission caching disabled", "error", err)
+			rdb = nil
+		} else {
+			defer rdb.Close()
+			slog.Info("redis connected")
+		}
+	}
+
 	userSvc := service.NewUserService(database)
 	branchSvc := service.NewBranchService(database)
-	permSvc := service.NewPermissionService(database)
+	permSvc := service.NewPermissionService(database, rdb)
 
 	grpcSrv := usergrpc.NewUserGRPCServer(userSvc, branchSvc, permSvc)
 	go func() {
@@ -61,14 +80,16 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(logger.RequestLogger())
-	r.Use(corsMiddleware())
+	r.Use(corsMiddleware(cfg.CORSOrigins))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "user_service"})
 	})
 
+	api := r.Group("/api/v1")
+	api.Use(middleware.JWTAuth(cfg.JWTSecret))
 	h := handler.New(userSvc, branchSvc, permSvc, database.Conn())
-	h.Register(r.Group("/api/v1"))
+	h.Register(api)
 
 	httpSrv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.Port),
@@ -98,9 +119,20 @@ func main() {
 	slog.Info("stopped", "service", "user_service")
 }
 
-func corsMiddleware() gin.HandlerFunc {
+// corsMiddleware only reflects Origin back when it's on the configured
+// allowlist — never a bare "*". See api_gateway/internal/router's
+// corsMiddleware for the rationale.
+func corsMiddleware(allowedOrigins []string) gin.HandlerFunc {
+	allowed := make(map[string]bool, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allowed[o] = true
+	}
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
+		origin := c.GetHeader("Origin")
+		if allowed[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Vary", "Origin")
+		}
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization,X-User-ID")
 		if c.Request.Method == http.MethodOptions {

@@ -18,6 +18,44 @@ func New(expenses *service.ExpenseService, budgets *service.BudgetService) *Hand
 	return &Handler{expenses: expenses, budgets: budgets}
 }
 
+// requestBranchID resolves which branch a request targets: an explicit
+// branchId query param wins (a manager/admin who legitimately administers
+// several branches picks among them client-side — branch switching in the
+// frontend does not reissue a JWT, so the token's own branch_id stays fixed
+// to the user's home branch and can't be used to infer which branch they
+// currently mean). Falls back to X-User-Branch-ID, set by api_gateway's
+// JWTAuth middleware (and this service's own, see middleware.JWTAuth), when
+// no explicit choice is given.
+//
+// Resolving a branch here is NOT an authorization decision — every caller
+// of this function MUST also call requireBranchAccess before using the
+// resolved value.
+func requestBranchID(c *gin.Context) string {
+	if v := c.Query("branchId"); v != "" {
+		return v
+	}
+	return c.GetHeader("X-User-Branch-ID")
+}
+
+// requireBranchAccess checks that the caller (identified by the
+// JWT-verified X-User-ID/X-User-Role headers) is authorized for branchID —
+// granted if it's their own branch, they're linked to it via
+// branch_managers, they're its admin, or their role is developer/
+// super_admin. Writes a response and returns false if not authorized.
+func (h *Handler) requireBranchAccess(c *gin.Context, branchID string) bool {
+	allowed, err := h.expenses.HasBranchAccess(c.Request.Context(),
+		c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return false
+	}
+	if !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this branch"})
+		return false
+	}
+	return true
+}
+
 func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/expenses", h.ListExpenses)
 	r.POST("/expenses", h.CreateExpense)
@@ -34,9 +72,12 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 }
 
 func (h *Handler) ConsolidatedData(c *gin.Context) {
-	branchID := c.Query("branchId")
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	resp, err := h.expenses.ConsolidatedData(
@@ -58,9 +99,12 @@ func (h *Handler) ConsolidatedData(c *gin.Context) {
 }
 
 func (h *Handler) ListExpenses(c *gin.Context) {
-	branchID := c.Query("branchId")
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	page, _ := strconv.Atoi(c.Query("page"))
@@ -97,6 +141,9 @@ func (h *Handler) CreateExpense(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !h.requireBranchAccess(c, body.BranchID) {
+		return
+	}
 	createdBy := c.GetHeader("X-User-ID")
 	e, err := h.expenses.Create(c.Request.Context(), &service.Expense{
 		Title:         body.Title,
@@ -117,7 +164,15 @@ func (h *Handler) CreateExpense(c *gin.Context) {
 }
 
 func (h *Handler) GetExpense(c *gin.Context) {
-	e, err := h.expenses.GetByID(c.Request.Context(), c.Param("id"))
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	e, err := h.expenses.GetByIDScoped(c.Request.Context(), c.Param("id"), branchID)
 	if err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "expense not found"})
@@ -130,12 +185,20 @@ func (h *Handler) GetExpense(c *gin.Context) {
 }
 
 func (h *Handler) UpdateExpense(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
 	var body map[string]interface{}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	e, err := h.expenses.Update(c.Request.Context(), c.Param("id"), body)
+	e, err := h.expenses.Update(c.Request.Context(), c.Param("id"), branchID, body)
 	if err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "expense not found"})
@@ -148,7 +211,19 @@ func (h *Handler) UpdateExpense(c *gin.Context) {
 }
 
 func (h *Handler) DeleteExpense(c *gin.Context) {
-	if err := h.expenses.Delete(c.Request.Context(), c.Param("id")); err != nil {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.expenses.Delete(c.Request.Context(), c.Param("id"), branchID); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "expense not found"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -156,9 +231,12 @@ func (h *Handler) DeleteExpense(c *gin.Context) {
 }
 
 func (h *Handler) ExpenseSummary(c *gin.Context) {
-	branchID := c.Query("branchId")
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	summary, err := h.expenses.Summary(c.Request.Context(), branchID, c.Query("month"), c.Query("year"))
@@ -172,9 +250,12 @@ func (h *Handler) ExpenseSummary(c *gin.Context) {
 // ── Budget handlers ────────────────────────────────────────────────────────────
 
 func (h *Handler) ListBudgets(c *gin.Context) {
-	branchID := c.Query("branchId")
+	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	now := time.Now()
@@ -199,6 +280,9 @@ func (h *Handler) UpsertBudget(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !h.requireBranchAccess(c, req.BranchID) {
+		return
+	}
 	entry, err := h.budgets.Upsert(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -214,6 +298,9 @@ func (h *Handler) DeleteBudget(c *gin.Context) {
 	yearStr := c.Query("year")
 	if branchID == "" || category == "" || month == "" || yearStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId, category, month, year required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
 	year, err := strconv.Atoi(yearStr)
