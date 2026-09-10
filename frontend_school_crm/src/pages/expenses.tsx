@@ -134,6 +134,11 @@ export default function ExpensesPage() {
     date: new Date().toISOString().split("T")[0],
     notes: "",
   });
+  const [formErrors, setFormErrors] = useState<{
+    category?: string;
+    description?: string;
+    amount?: string;
+  }>({});
 
   const categories = [
     "Utilities",
@@ -495,6 +500,22 @@ export default function ExpensesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // None of these were ever checked before: category/description (the
+    // expense's title) could be submitted empty, and amount could be
+    // blank/negative/zero — parseFloat of an empty string is NaN, sent
+    // straight to the API.
+    const errors: typeof formErrors = {};
+    if (!formData.category) errors.category = t("fieldRequired");
+    if (!formData.description.trim()) errors.description = t("fieldRequired");
+    if (!formData.amount.trim() || !(parseFloat(formData.amount) > 0)) {
+      errors.amount = formData.amount.trim() ? t("mustBePositive") : t("fieldRequired");
+    }
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
     setIsSubmitting(true);
 
     const user = getCurrentUser();
@@ -622,6 +643,7 @@ export default function ExpensesPage() {
       notes: "",
     });
     setEditingExpense(null);
+    setFormErrors({});
   };
 
   const getPaymentMethodIcon = (method: PaymentMethod) => {
@@ -726,18 +748,20 @@ export default function ExpensesPage() {
           <Button
             size="sm"
             variant="ghost"
+            aria-label={t("edit")}
             onClick={(e) => { e.stopPropagation(); handleEdit(expense); }}
             disabled={!canEditExpenses}
-            title={canEditExpenses ? "" : "No permission"}
+            title={canEditExpenses ? "" : t("noPermission")}
           >
             <Edit2 className="w-4 h-4" />
           </Button>
           <Button
             size="sm"
             variant="ghost"
+            aria-label={t("delete")}
             onClick={(e) => { e.stopPropagation(); handleDelete(expense.id); }}
             disabled={!canDeleteExpenses}
-            title={canDeleteExpenses ? "" : "No permission"}
+            title={canDeleteExpenses ? "" : t("noPermission")}
           >
             <Trash2 className="w-4 h-4 text-red-500" />
           </Button>
@@ -800,11 +824,12 @@ export default function ExpensesPage() {
                 <Label htmlFor="category">{t("category")} *</Label>
                 <Select
                   value={formData.category}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, category: value })
-                  }
+                  onValueChange={(value) => {
+                    setFormData({ ...formData, category: value });
+                    if (formErrors.category) setFormErrors((er) => ({ ...er, category: undefined }));
+                  }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={formErrors.category ? "border-red-500 focus:ring-red-500" : ""}>
                     <SelectValue placeholder={t("selectCategory")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -818,6 +843,9 @@ export default function ExpensesPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {formErrors.category && (
+                  <p className="text-xs text-red-500">{formErrors.category}</p>
+                )}
               </div>
 
               <Field
@@ -825,11 +853,13 @@ export default function ExpensesPage() {
                 label={`${t("amount")} *`}
                 type="number"
                 value={formData.amount}
+                error={formErrors.amount}
                 placeholder="0"
                 step="0.01"
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, amount: e.target.value })
-                }
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, amount: e.target.value });
+                  if (formErrors.amount) setFormErrors((er) => ({ ...er, amount: undefined }));
+                }}
               />
 
               <div className="space-y-1.5">
@@ -865,11 +895,13 @@ export default function ExpensesPage() {
                 id="description"
                 label={`${t("description")} *`}
                 value={formData.description}
+                error={formErrors.description}
                 placeholder={t("briefDescription")}
                 className="md:col-span-2"
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, description: e.target.value });
+                  if (formErrors.description) setFormErrors((er) => ({ ...er, description: undefined }));
+                }}
               />
 
               <Field
@@ -996,6 +1028,7 @@ export default function ExpensesPage() {
                         </span>
                         <button
                           onClick={() => handleDeleteBudget(b.category)}
+                          aria-label={t("delete")}
                           className="text-slate-300 hover:text-red-500 transition-colors"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -1205,10 +1238,10 @@ export default function ExpensesPage() {
                     </Badge>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(expense)} disabled={!canEditExpenses}>
+                    <Button size="icon" variant="ghost" aria-label={t("edit")} className="h-7 w-7" onClick={() => handleEdit(expense)} disabled={!canEditExpenses}>
                       <Edit2 className="w-3.5 h-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(expense.id)} disabled={!canDeleteExpenses}>
+                    <Button size="icon" variant="ghost" aria-label={t("delete")} className="h-7 w-7" onClick={() => handleDelete(expense.id)} disabled={!canDeleteExpenses}>
                       <Trash2 className="w-3.5 h-3.5 text-red-500" />
                     </Button>
                   </div>

@@ -513,10 +513,14 @@ export default function ClassesPage() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="targetClass">{t("selectClass")} *</Label>
+                  {/* Radix's Select isn't a native <select> — a `required`
+                      prop here has no effect at all (no HTML5 validation to
+                      hook into). The actual requirement is enforced below:
+                      the submit button stays disabled and handleAddStudents
+                      bails out while selectedClassId is empty. */}
                   <Select
                     value={selectedClassId}
                     onValueChange={setSelectedClassId}
-                    required
                   >
                     <SelectTrigger>
                       <SelectValue placeholder={t("chooseClassPlaceholder")} />

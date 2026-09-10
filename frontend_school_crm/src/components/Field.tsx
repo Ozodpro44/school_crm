@@ -45,12 +45,16 @@ export function Field(props: FieldProps) {
       {as === "textarea" ? (
         <Textarea
           id={id}
+          required={required}
+          aria-invalid={!!error}
           className={cn(error && "border-red-500 focus-visible:ring-red-500")}
           {...rest}
         />
       ) : (
         <Input
           id={id}
+          required={required}
+          aria-invalid={!!error}
           className={cn(error && "border-red-500 focus-visible:ring-red-500")}
           {...rest}
         />

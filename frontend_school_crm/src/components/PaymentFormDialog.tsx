@@ -271,6 +271,15 @@ export function PaymentFormDialog({
     const monthlyPaymentValue = getMonthlyPayment(formData.studentId);
     const newAmount = parseFloat(formData.amount);
 
+    // Without this, a blank/non-numeric amount produced NaN, and
+    // `NaN > monthlyPaymentValue` is always false — so the overpayment
+    // guards below silently passed a NaN (or a negative amount, which is
+    // also never > a positive balance) straight through to the API.
+    if (!formData.amount || !Number.isFinite(newAmount) || newAmount <= 0) {
+      setIsSubmitting(false);
+      return;
+    }
+
     if (isEditing && editPayment) {
       const paidTotalExcludingCurrent = existingPayments
         .filter(
@@ -545,6 +554,15 @@ export function PaymentFormDialog({
           label={`${t("amount")} *`}
           type="text"
           value={formatNumberWithSpaces(formData.amount)}
+          error={
+            formSubmitted
+              ? !formData.amount
+                ? t("fieldRequired")
+                : !(parseFloat(formData.amount) > 0)
+                ? t("mustBePositive")
+                : undefined
+              : undefined
+          }
           onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
             setFormData((prev) => ({ ...prev, amount: removeNumberFormatting(e.target.value) }))
           }

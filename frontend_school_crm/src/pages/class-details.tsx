@@ -157,16 +157,26 @@ export default function ClassDetailsPage() {
     return getCurrentMonthPaymentStatus(studentId) === "paid";
   };
 
+  // Guards a rapid class/branch switch: without it, an older still-in-flight
+  // loadData() call could resolve after a newer one and overwrite the
+  // screen with the previous class's data.
+  const loadRequestIdRef = useRef(0);
+
   useEffect(() => {
     if (!id || !currentBranch?.id) return;
 
     setIsLoading(true);
-    loadData().finally(() => {
-      setIsLoading(false);
+    const myId = ++loadRequestIdRef.current;
+    loadData(myId).finally(() => {
+      if (myId === loadRequestIdRef.current) setIsLoading(false);
     });
   }, [id, currentBranch?.id]);
 
-  const loadData = async () => {
+  const loadData = async (myId?: number) => {
+    // Callers refreshing after a mutation (remove student, delete class,
+    // etc.) don't pass myId — they claim the latest id themselves, so their
+    // result is always applied (it always was the most recent request).
+    const requestId = myId ?? ++loadRequestIdRef.current;
     try {
       const branchId = currentBranch?.id;
       if (!branchId) return;
@@ -179,6 +189,7 @@ export default function ClassDetailsPage() {
       ]);
 
       const classDataFetched = classList.find((c) => c.id === id);
+      if (requestId !== loadRequestIdRef.current) return;
 
       if (classDataFetched) {
         setClassData(classDataFetched);
@@ -196,6 +207,7 @@ export default function ClassDetailsPage() {
           apiListStudents(branchId, 1, 300, { classId: classDataFetched.id }),
           apiListPayments({ branchId, month: currentMonth, year: currentYear, limit: 500, page: 1 }),
         ]);
+        if (requestId !== loadRequestIdRef.current) return;
 
         const classStudentsList = studentsResponse.data || [];
         setStudents(classStudentsList);
@@ -218,6 +230,7 @@ export default function ClassDetailsPage() {
         setClassData(null);
       }
     } catch (error) {
+      if (requestId !== loadRequestIdRef.current) return;
       console.error("Failed to load class data:", error);
       setClassData(null);
     }
@@ -463,6 +476,7 @@ export default function ClassDetailsPage() {
         <Button
           variant="ghost"
           size="icon"
+          aria-label={t("back")}
           onClick={() => router.push("/classes")}
         >
           <ArrowLeft className="w-4 h-4" />

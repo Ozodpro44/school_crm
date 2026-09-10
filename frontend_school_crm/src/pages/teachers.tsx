@@ -81,6 +81,7 @@ export default function TeachersPage() {
     phone?: string;
     email?: string;
     password?: string;
+    monthlySalary?: string;
   }>({});
 
   const clearFieldError = (field: keyof typeof formErrors) => {
@@ -112,6 +113,11 @@ export default function TeachersPage() {
       errors.password = t("fieldRequired");
     else if (!editingTeacher && formData.password.length < 6)
       errors.password = t("passwordMinLength");
+    // Previously unvalidated: parseFloat of a blank/negative monthlySalary
+    // (e.g. "" or "-1000") is NaN or negative, sent straight to the API.
+    if (!formData.monthlySalary.trim() || !(parseFloat(formData.monthlySalary) > 0)) {
+      errors.monthlySalary = formData.monthlySalary.trim() ? t("mustBePositive") : t("fieldRequired");
+    }
 
     if (Object.keys(errors).length > 0) { setFormErrors(errors); return; }
     if (!(editingTeacher ? canEditTeachers : canCreateTeachers)) {
@@ -176,12 +182,19 @@ export default function TeachersPage() {
     if (!canDeleteTeachers) { notify.error(t("permissionDenied")); return; }
     const ids = getSelectedIds();
     if (!ids.length || !confirm(`Delete ${ids.length} teachers?`)) return;
-    try {
-      await Promise.all(ids.map((id) => deleteMutation.mutateAsync(id)));
-      clearSelection();
+    // allSettled, not all: a single rejection in Promise.all jumped straight
+    // to catch with one generic toast and skipped clearSelection() — rows
+    // that HAD deleted successfully stayed marked "selected" in the UI.
+    const results = await Promise.allSettled(ids.map((id) => deleteMutation.mutateAsync(id)));
+    const failedCount = results.filter((r) => r.status === "rejected").length;
+    const succeededCount = ids.length - failedCount;
+    clearSelection();
+    if (failedCount === 0) {
       notify.success(t("deleted"), `${ids.length} teachers deleted`);
-    } catch {
+    } else if (succeededCount === 0) {
       notify.error(t("error"), t("failedToDeleteTeachers"));
+    } else {
+      notify.error(t("error"), `${succeededCount}/${ids.length} deleted — ${failedCount} failed`);
     }
   };
 
@@ -330,8 +343,8 @@ export default function TeachersPage() {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, phone: e.target.value }); clearFieldError("phone"); }}
             />
             <Field id="monthlySalary" label={t("salary")} required
-              value={formatNumberWithSpaces(formData.monthlySalary)} placeholder="10 000"
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, monthlySalary: removeNumberFormatting(e.target.value) })}
+              value={formatNumberWithSpaces(formData.monthlySalary)} error={formErrors.monthlySalary} placeholder="10 000"
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, monthlySalary: removeNumberFormatting(e.target.value) }); clearFieldError("monthlySalary"); }}
             />
             <Field id="subjects" as="textarea"
               label={`${t("subjects")} (${t("commaSeparated")}) *`}

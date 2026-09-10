@@ -109,6 +109,7 @@ export function BulkPaymentDialog({
   const [isBulkPaymentOpen, setIsBulkPaymentOpen] = useState(false);
   const [bulkSearchTerm, setBulkSearchTerm] = useState("");
   const [isBulkSearching, setIsBulkSearching] = useState(false);
+  const [isBulkPaymentProcessing, setIsBulkPaymentProcessing] = useState(false);
   const [bulkStudentsList, setBulkStudentsList] = useState<BulkStudent[]>([]);
   const [bulkPaymentData, setBulkPaymentData] = useState({
     month: getDefaultMonth(),
@@ -125,9 +126,16 @@ export function BulkPaymentDialog({
   };
 
   const handleBulkPayment = async () => {
+    // Without this guard, a double-click or slow network let a second full
+    // batch of payment creates fire before the first finished — invoice
+    // numbers are randomly generated per request, so the backend has
+    // nothing to dedupe on, making this a real double-charge risk.
+    if (isBulkPaymentProcessing) return;
     if (selectedStudentIds.length === 0) return;
     const user = getCurrentUser();
     if (!user) return;
+    setIsBulkPaymentProcessing(true);
+    try {
     const skipped: string[] = [];
     const created: string[] = [];
 
@@ -220,6 +228,9 @@ export function BulkPaymentDialog({
       year: defaultYear,
       paymentMethod: "cash",
     });
+    } finally {
+      setIsBulkPaymentProcessing(false);
+    }
   };
 
   // Load students when bulk payment dialog opens or search term changes
@@ -514,11 +525,11 @@ export function BulkPaymentDialog({
             <Button
               onClick={handleBulkPayment}
               disabled={
-                selectedStudentIds.length === 0 || !bulkPaymentData.month
+                selectedStudentIds.length === 0 || !bulkPaymentData.month || isBulkPaymentProcessing
               }
               className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
             >
-              {t("markPaid")} ({selectedStudentIds.length})
+              {isBulkPaymentProcessing ? t("processing") : `${t("markPaid")} (${selectedStudentIds.length})`}
             </Button>
           </div>
         </div>

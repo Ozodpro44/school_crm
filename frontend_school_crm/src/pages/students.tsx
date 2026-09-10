@@ -117,7 +117,6 @@ export default function StudentsPage() {
   const {
     data: studentsData,
     isLoading,
-    isFetching: isListLoading,
   } = useStudentsConsolidatedQuery(branchId, page, limit, queryFilters, {
     refetchOnWindowFocus: true,
   });
@@ -154,6 +153,7 @@ export default function StudentsPage() {
     phone?: string;
     parentPhone?: string;
     monthlyPayment?: string;
+    classId?: string;
   }>({});
 
   const clearFieldError = (field: keyof typeof formErrors) => {
@@ -391,6 +391,18 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     } else if (!isValidUzbekPhone(formData.parentPhone)) {
       errors.parentPhone = t("invalidPhone");
     }
+    // classId is marked required (*) in the form below but was never
+    // actually checked here — a student could be created/edited with no
+    // class at all. monthlyPayment left blank still auto-fills from the
+    // branch default further down (that convenience is intentional and
+    // preserved), but an explicitly-entered value must be positive — a
+    // negative one (e.g. "-5000") previously passed straight through:
+    // parseInt("-5000") is truthy, so the `|| defaultMonthlyPayment`
+    // fallback never caught it.
+    if (!formData.classId) errors.classId = t("fieldRequired");
+    if (formData.monthlyPayment.trim() && !(parseInt(formData.monthlyPayment) > 0)) {
+      errors.monthlyPayment = t("mustBePositive");
+    }
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       return;
@@ -404,8 +416,9 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     }
 
     const defaultMonthlyPayment = settings?.monthlyPayment || 500000;
-    const monthlyPayment =
-      parseInt(formData.monthlyPayment) || defaultMonthlyPayment;
+    const monthlyPayment = formData.monthlyPayment.trim()
+      ? parseInt(formData.monthlyPayment)
+      : defaultMonthlyPayment;
 
     try {
       if (editingStudent) {
@@ -505,15 +518,32 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     const ids = getSelectedIds();
     setIsBulkDeleteLoading(true);
     try {
-      await Promise.all(ids.map((id) => apiDeleteStudent(id)));
+      // allSettled, not all: a single rejection in Promise.all jumps straight
+      // to catch without invalidating the query cache, so students that DID
+      // delete successfully (their requests already resolved independently)
+      // kept showing in the table until an unrelated refetch happened.
+      const results = await Promise.allSettled(ids.map((id) => apiDeleteStudent(id)));
+      const failedCount = results.filter((r) => r.status === "rejected").length;
+      const succeededCount = ids.length - failedCount;
+
       clearSelection();
-      qc.invalidateQueries({ queryKey: ["students"] });
-      setPage(1);
-      notify.success(t("deleted"), `${ids.length} ${t("students")} ${t("deletedSuccessfully")}`);
-      setBulkDeleteConfirmOpen(false);
-    } catch (error) {
-      console.error("Failed to delete students:", error);
-      notify.error(t("error"), t("failedToDeleteStudents"));
+      if (succeededCount > 0) {
+        qc.invalidateQueries({ queryKey: ["students"] });
+        setPage(1);
+      }
+
+      if (failedCount === 0) {
+        notify.success(t("deleted"), `${ids.length} ${t("students")} ${t("deletedSuccessfully")}`);
+        setBulkDeleteConfirmOpen(false);
+      } else if (succeededCount === 0) {
+        notify.error(t("error"), t("failedToDeleteStudents"));
+      } else {
+        notify.error(
+          t("error"),
+          `${succeededCount}/${ids.length} ${t("deletedSuccessfully")} — ${failedCount} ${t("failedToDeleteStudents")}`
+        );
+        setBulkDeleteConfirmOpen(false);
+      }
     } finally {
       setIsBulkDeleteLoading(false);
     }
@@ -528,15 +558,38 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     const ids = getSelectedIds();
     if (ids.length === 0 || !bulkChangeClassId) return;
 
-    await Promise.all(ids.map((id) => apiUpdateStudent(id, { classId: bulkChangeClassId })));
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => apiUpdateStudent(id, { classId: bulkChangeClassId }))
+      );
+      const failedCount = results.filter((r) => r.status === "rejected").length;
+      const succeededCount = ids.length - failedCount;
 
-    clearSelection();
-    qc.invalidateQueries({ queryKey: ["students"] });
-    setIsBulkChangeClassOpen(false);
-    setBulkChangeClassId("");
-    notify.success(t("updated"), `${ids.length} ${t("students")} ${t("movedTo")} ${getClassName(
-        bulkChangeClassId
-      )}`);
+      clearSelection();
+      if (succeededCount > 0) {
+        qc.invalidateQueries({ queryKey: ["students"] });
+      }
+      setIsBulkChangeClassOpen(false);
+      setBulkChangeClassId("");
+
+      if (failedCount === 0) {
+        notify.success(t("updated"), `${ids.length} ${t("students")} ${t("movedTo")} ${getClassName(
+            bulkChangeClassId
+          )}`);
+      } else {
+        notify.error(
+          t("error"),
+          `${succeededCount}/${ids.length} ${t("movedTo")} ${getClassName(bulkChangeClassId)}`
+        );
+      }
+    } catch (error) {
+      // Promise.allSettled never rejects — this only catches a bug elsewhere
+      // in this function, but previously there was no handler at all, so a
+      // rejection here surfaced as an unhandled promise rejection with the
+      // dialog stuck open and no feedback to the user.
+      console.error("Failed to change class for students:", error);
+      notify.error(t("error"), t("failedToUpdateStudentStatus"));
+    }
   };
 
   const handleMarkLeft = (id: string) => {
@@ -696,6 +749,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           <Button
             size="icon"
             variant="ghost"
+            aria-label={t("edit")}
             onClick={(e) => { e.stopPropagation(); handleEdit(student); }}
             disabled={!canEditStudents}
           >
@@ -705,6 +759,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
             <Button
               size="icon"
               variant="ghost"
+              aria-label={t("markAsLeft")}
               onClick={(e) => { e.stopPropagation(); canEditStudents && handleMarkLeft(student.id); }}
               disabled={!canEditStudents}
             >
@@ -714,6 +769,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           <Button
             size="icon"
             variant="ghost"
+            aria-label={t("delete")}
             onClick={(e) => { e.stopPropagation(); canDeleteStudents && handleDelete(student.id); }}
             disabled={!canDeleteStudents}
           >
@@ -976,12 +1032,13 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                 <Label htmlFor="classId">{t("selectClass")} *</Label>
                 <Select
                   value={formData.classId}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, classId: value })
-                  }
+                  onValueChange={(value) => {
+                    setFormData({ ...formData, classId: value });
+                    clearFieldError("classId");
+                  }}
                   required
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={formErrors.classId ? "border-red-500 focus:ring-red-500" : ""}>
                     <SelectValue placeholder={t("selectClass")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -992,6 +1049,9 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     ))}
                   </SelectContent>
                 </Select>
+                {formErrors.classId && (
+                  <p className="text-xs text-red-500">{formErrors.classId}</p>
+                )}
               </div>
 
               <Field
@@ -1048,10 +1108,12 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                 min="0"
                 step="500"
                 value={formData.monthlyPayment}
+                error={formErrors.monthlyPayment}
                 placeholder="0"
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, monthlyPayment: e.target.value })
-                }
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, monthlyPayment: e.target.value });
+                  clearFieldError("monthlyPayment");
+                }}
               />
             </div>
           </FormDialog>
@@ -1112,7 +1174,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           <DataTable
             columns={columns}
             data={students}
-            loading={isLoading || isListLoading}
+            loading={isLoading}
             selectable
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
@@ -1226,6 +1288,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     <Button
                       size="sm"
                       variant="destructive"
+                      aria-label={t("delete")}
                       onClick={() => canDeleteStudents && handleDelete(student.id)}
                       disabled={!canDeleteStudents}
                     >

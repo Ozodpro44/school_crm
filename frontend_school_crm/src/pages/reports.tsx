@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,7 +31,8 @@ import {
   getForecastData,
   type ForecastData,
 } from "@/lib/api";
-import { Payment, Salary, Branch } from "@/types";
+import { Payment, Salary, Branch, Class, Student } from "@/types";
+import type { User as ApiUser } from "@/lib/api";
 import { Download, FileText, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Loader2, TrendingUp, TrendingDown, DollarSign, Users, Printer, FileDown } from "lucide-react";
 import { EmptyState } from "@/components/EmptyState";
 import { useLanguage } from "@/hooks/use-language";
@@ -60,13 +61,13 @@ export default function ReportsPage() {
   const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [users, setUsers] = useState<ApiUser[]>([]);
   const [reportData, setReportData] = useState<any[]>([]);
   const [summary, setSummary] = useState({ total: 0, count: 0, avg: 0 });
   const [branchData, setBranchData] = useState<Branch | null>(null);
-  const [paymentMethodsData, setPaymentMethodsData] = useState<any[]>([]);
+  const [paymentMethodsData, setPaymentMethodsData] = useState<{ name: string; value: number }[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [forecastData, setForecastData] = useState<ForecastData | null>(null);
   const language = useLanguage();
@@ -74,6 +75,14 @@ export default function ReportsPage() {
   const notify = useNotify();
   const canViewReports = hasPermission("canViewReports");
   const currentUser = getCurrentUser();
+
+  // Guards against a stale, still-in-flight report request (from an older
+  // filter/page selection) resolving after a newer one and overwriting the
+  // screen with outdated data. requestIdRef gates every state commit below;
+  // abortControllerRef additionally cancels the older request's polling
+  // loop outright instead of just letting it run to a discarded result.
+  const requestIdRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!canViewReports) {
@@ -98,15 +107,26 @@ export default function ReportsPage() {
     }
   }, [branchData]);
 
+  // Reset to page 1 whenever a filter (not the page itself, and not the
+  // branch — handled by the branch effect above) changes. Previously this
+  // lived in the same effect as the page-change dependency below: setting
+  // page here re-triggered that effect, which saw page !== 1 and called
+  // setPage(1) again — so navigating to page 2+ immediately snapped back to
+  // page 1, and pagination could never advance.
   useEffect(() => {
-    // Reset to first page when filters change (but not when page changes)
-    if (page !== 1) {
-      setPage(1);
-      return; // Don't generate report yet, wait for page to be set
-    }
-    // Generate report when filters or page changes
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit]);
+
+  // Generate the report whenever the page or any filter changes. Also
+  // depends on currentBranch?.id directly — previously an admin switching
+  // branches with every other filter unchanged wouldn't re-trigger this at
+  // all, leaving the previous branch's data on screen.
+  useEffect(() => {
+    if (!currentBranch?.id) return;
     generateReport();
-  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit, page]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit, page, currentBranch?.id]);
 
   const setDefaultDates = () => {
     // Use branch's current financial month if available, fallback to current date
@@ -200,6 +220,15 @@ export default function ReportsPage() {
   };
 
   const generateReport = async () => {
+    // Cancel whatever the previous call was still polling for, and claim a
+    // fresh request id — every sub-function below checks this before
+    // touching state, so a response that arrives after a newer request has
+    // already started is dropped instead of overwriting the screen.
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const myId = ++requestIdRef.current;
+
     setIsFetching(true);
     try {
       switch (reportType) {
@@ -208,46 +237,46 @@ export default function ReportsPage() {
             setReportData([]);
             return;
           }
-          await generatePaymentReport();
+          await generatePaymentReport(myId, controller.signal);
           break;
         case "salary":
           if (!paymentMonth || !paymentYear) {
             setReportData([]);
             return;
           }
-          await generateSalaryReport();
+          await generateSalaryReport(myId, controller.signal);
           break;
         case "debtors":
           if (!debtorMonth || !debtorYear) {
             setReportData([]);
             return;
           }
-          generateDebtorsReport();
+          await generateDebtorsReport(myId, controller.signal);
           break;
         case "income":
           if (!paymentMonth || !paymentYear) {
             setReportData([]);
             return;
           }
-          await generateIncomeReport();
+          await generateIncomeReport(myId, controller.signal);
           break;
         case "expenses":
           if (!paymentMonth || !paymentYear) {
             setReportData([]);
             return;
           }
-          await generateExpensesReport();
+          await generateExpensesReport(myId, controller.signal);
           break;
         case "forecast":
-          await generateForecastReport();
+          await generateForecastReport(myId);
           break;
       }
     } finally {
-      setIsFetching(false);
+      if (myId === requestIdRef.current) setIsFetching(false);
     }
   };
 
-  const generatePaymentReport = async () => {
+  const generatePaymentReport = async (myId: number, signal: AbortSignal) => {
     try {
       const branchId = currentBranch?.id;
       if (!branchId) {
@@ -266,7 +295,8 @@ export default function ReportsPage() {
         classId: classId !== "all" ? classId : "",
         page,
         limit,
-      });
+      }, { signal });
+      if (myId !== requestIdRef.current) return;
 
       const items = result?.items ?? result ?? [];
       const response = { data: Array.isArray(items) ? items : [], total: result?.total ?? 0, totalPages: Math.ceil((result?.total ?? 0) / limit) };
@@ -310,13 +340,14 @@ export default function ReportsPage() {
       setTotal(response.total);
       setTotalPages(response.totalPages);
     } catch (error) {
+      if (myId !== requestIdRef.current || (error as Error)?.name === "AbortError") return;
       console.error("Failed to generate payment report:", error);
       notify.error(t("error"), t("failedToGeneratePaymentReport"));
       setReportData([]);
     }
   };
 
-  const generateSalaryReport = async () => {
+  const generateSalaryReport = async (myId: number, signal: AbortSignal) => {
     try {
       const branchId = currentBranch?.id;
       if (!branchId) {
@@ -337,7 +368,8 @@ export default function ReportsPage() {
         startDate: new Date(newStartDate).toISOString(),
         endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
         status: "",
-      });
+      }, { signal });
+      if (myId !== requestIdRef.current) return;
 
       const items = Array.isArray(result) ? result : [];
 
@@ -375,13 +407,14 @@ export default function ReportsPage() {
 
       setReportData(data);
     } catch (error) {
+      if (myId !== requestIdRef.current || (error as Error)?.name === "AbortError") return;
       console.error("Failed to generate salary report:", error);
       notify.error(t("error"), t("failedToGenerateSalaryReport"));
       setReportData([]);
     }
   };
 
-  const generateDebtorsReport = async () => {
+  const generateDebtorsReport = async (myId: number, signal: AbortSignal) => {
     try {
       const branchId = currentBranch?.id;
       if (!branchId) {
@@ -401,7 +434,8 @@ export default function ReportsPage() {
         month: debtorMonth,
         year: yearNum,
         classId: classId !== "all" ? classId : "",
-      });
+      }, { signal });
+      if (myId !== requestIdRef.current) return;
 
       const items = Array.isArray(result) ? result : [];
 
@@ -427,13 +461,14 @@ export default function ReportsPage() {
 
       setReportData(data);
     } catch (error) {
+      if (myId !== requestIdRef.current || (error as Error)?.name === "AbortError") return;
       console.error("Failed to generate debtors report:", error);
-      notify.error(t("error"), "Failed to generate debtors report");
+      notify.error(t("error"), t("failedToGenerateDebtorsReport"));
       setReportData([]);
     }
   };
 
-  const generateExpensesReport = async () => {
+  const generateExpensesReport = async (myId: number, signal: AbortSignal) => {
     try {
       const branchId = currentBranch?.id;
       if (!branchId) {
@@ -454,7 +489,8 @@ export default function ReportsPage() {
         branchId,
         startDate: new Date(newStartDate).toISOString(),
         endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
-      });
+      }, { signal });
+      if (myId !== requestIdRef.current) return;
 
       const expenses = Array.isArray(result) ? result : [];
 
@@ -487,13 +523,14 @@ export default function ReportsPage() {
 
       setReportData(data);
     } catch (error) {
+      if (myId !== requestIdRef.current || (error as Error)?.name === "AbortError") return;
       console.error("Failed to generate expenses report:", error);
-      notify.error(t("error"), "Failed to generate expenses report");
+      notify.error(t("error"), t("failedToGenerateExpensesReport"));
       setReportData([]);
     }
   };
 
-  const generateIncomeReport = async () => {
+  const generateIncomeReport = async (myId: number, signal: AbortSignal) => {
     try {
       const branchId = currentBranch?.id;
       if (!branchId) {
@@ -513,7 +550,8 @@ export default function ReportsPage() {
         branchId,
         startDate: new Date(newStartDate).toISOString(),
         endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
-      });
+      }, { signal });
+      if (myId !== requestIdRef.current) return;
 
       const totalExpense =
         financialSummary.totalSalaries + financialSummary.totalExpenses;
@@ -564,13 +602,14 @@ export default function ReportsPage() {
         avg: 0,
       });
     } catch (error) {
+      if (myId !== requestIdRef.current || (error as Error)?.name === "AbortError") return;
       console.error("Failed to generate income report:", error);
-      notify.error(t("error"), "Failed to generate income report");
+      notify.error(t("error"), t("failedToGenerateIncomeReport"));
       setReportData([]);
     }
   };
 
-  const generateForecastReport = async () => {
+  const generateForecastReport = async (myId: number) => {
     try {
       const branchId = currentBranch?.id;
       if (!branchId) {
@@ -581,10 +620,12 @@ export default function ReportsPage() {
       const month = now.getMonth() + 1;
       const year = now.getFullYear();
       const data = await getForecastData(branchId, month, year);
+      if (myId !== requestIdRef.current) return;
       setForecastData(data);
     } catch (error) {
+      if (myId !== requestIdRef.current) return;
       console.error("Failed to load forecast data:", error);
-      notify.error(t("error"), "Failed to load forecast data");
+      notify.error(t("error"), t("failedToLoadForecastData"));
       setForecastData(null);
     }
   };
@@ -1567,6 +1608,7 @@ export default function ReportsPage() {
                   <Button
                     variant="outline"
                     size="sm"
+                    aria-label={t("previous")}
                     onClick={() => setPage(Math.max(1, page - 1))}
                     disabled={page === 1}
                     className="h-8"
@@ -1580,6 +1622,7 @@ export default function ReportsPage() {
                   <Button
                     variant="outline"
                     size="sm"
+                    aria-label={t("next")}
                     onClick={() => setPage(Math.min(totalPages, page + 1))}
                     disabled={page === totalPages || totalPages === 0}
                     className="h-8"

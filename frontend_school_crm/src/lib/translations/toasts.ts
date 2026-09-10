@@ -249,6 +249,11 @@ export const toastTranslations: Partial<Translation> = {
     "uz-latn": "Sinflarni yuklash muvaffaqiyatsiz bo'ldi",
     en: "Failed to load classes",
   },
+  failedToLoadAttendance: {
+    "uz-cyrl": "Давоматни юклаш муваффақиятсиз бўлди",
+    "uz-latn": "Davomatni yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load attendance",
+  },
   failedToLoadPayments: {
     "uz-cyrl": "Тўловларни юклаш муваффақиятсиз бўлди",
     "uz-latn": "To'lovlarni yuklash muvaffaqiyatsiz bo'ldi",
@@ -349,6 +354,26 @@ export const toastTranslations: Partial<Translation> = {
     "uz-cyrl": "Маош ҳисоботини яратиш муваффақиятсиз бўлди",
     "uz-latn": "Maosh hisobotini yaratish muvaffaqiyatsiz bo'ldi",
     en: "Failed to generate salary report",
+  },
+  failedToGenerateDebtorsReport: {
+    "uz-cyrl": "Қарздорлар ҳисоботини яратиш муваффақиятсиз бўлди",
+    "uz-latn": "Qarzdorlar hisobotini yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to generate debtors report",
+  },
+  failedToGenerateExpensesReport: {
+    "uz-cyrl": "Харажатлар ҳисоботини яратиш муваффақиятсиз бўлди",
+    "uz-latn": "Xarajatlar hisobotini yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to generate expenses report",
+  },
+  failedToGenerateIncomeReport: {
+    "uz-cyrl": "Даромад ҳисоботини яратиш муваффақиятсиз бўлди",
+    "uz-latn": "Daromad hisobotini yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to generate income report",
+  },
+  failedToLoadForecastData: {
+    "uz-cyrl": "Прогноз маълумотларини юклаш муваффақиятсиз бўлди",
+    "uz-latn": "Prognoz ma'lumotlarini yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load forecast data",
   },
   failedToReadFile: {
     "uz-cyrl": "Файлни ўқиш муваффақиятсиз бўлди",

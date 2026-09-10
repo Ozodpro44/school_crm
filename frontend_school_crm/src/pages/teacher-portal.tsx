@@ -61,7 +61,7 @@ export default function TeacherPortalPage() {
     }
   }, [currentUser, router]);
 
-  const { data, isLoading, refetch: refetchPortal } = useTeacherPortalQuery();
+  const { data, isLoading, isError, refetch: refetchPortal } = useTeacherPortalQuery();
   const attendanceMutation = useAttendanceMutation();
   const [activeTab, setActiveTab] = useState<Tab>("classes");
 
@@ -217,6 +217,21 @@ export default function TeacherPortalPage() {
           {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28 rounded-xl" />)}
         </div>
         <Skeleton className="h-64 rounded-xl" />
+      </div>
+    );
+  }
+
+  // A network/auth failure previously fell through to the same "no teacher
+  // record linked" message as a genuinely unlinked account — misleading a
+  // teacher whose account is fine but hit a transient error, with no way to
+  // retry short of a full page reload.
+  if (isError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4 text-center">
+        <GraduationCap className="w-16 h-16 text-red-300" />
+        <h2 className="text-xl font-semibold text-slate-700 dark:text-slate-300">{t("error")}</h2>
+        <p className="text-slate-500 dark:text-slate-400 max-w-md">{t("failedToLoadTeacherPortal")}</p>
+        <Button onClick={() => refetchPortal()}>{t("tryAgain")}</Button>
       </div>
     );
   }

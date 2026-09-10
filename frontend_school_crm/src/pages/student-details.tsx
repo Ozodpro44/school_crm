@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Student, Payment, Branch } from "@/types";
+import { Student, Payment, Branch, Class } from "@/types";
 import {
   ArrowLeft,
   Phone,
@@ -116,7 +116,7 @@ export default function StudentDetailsPage() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [isMarkLeftLoading, setIsMarkLeftLoading] = useState(false);
-  const [classes, setClasses] = useState<any[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [editFormData, setEditFormData] = useState({
     fullName: "",
@@ -149,10 +149,18 @@ export default function StudentDetailsPage() {
   const t = (key: string) => getTranslation(key, language);
   const notify = useNotify();
 
+  // Guards a rapid id/branch change: without this, an older still-in-flight
+  // loadData() call could resolve after a newer one and overwrite the
+  // screen with the previous student's data.
+  const loadRequestIdRef = useRef(0);
+
   useEffect(() => {
     if (!id || !currentBranch?.id) return;
     setIsLoading(true);
-    loadData().finally(() => setIsLoading(false));
+    const myId = ++loadRequestIdRef.current;
+    loadData(myId).finally(() => {
+      if (myId === loadRequestIdRef.current) setIsLoading(false);
+    });
   }, [id, currentBranch?.id]);
 
   useEffect(() => {
@@ -164,36 +172,44 @@ export default function StudentDetailsPage() {
     }
   }, [from, router.query.classId]);
 
-  const loadData = async () => {
+  const loadData = async (myId: number) => {
     if (!id) return;
     const branchId = currentBranch?.id;
 
     try {
       const studentData = await getStudent(id as string);
       if (!studentData) return;
+      if (myId !== loadRequestIdRef.current) return;
       setStudent(studentData);
 
-      // All remaining calls are independent — run in parallel
+      // All remaining calls are independent — run in parallel. Every one
+      // has its own .catch(): listClasses/getBranch previously didn't, so a
+      // failure in either of these secondary/context fetches rejected the
+      // whole Promise.all and fell into the outer catch below, which called
+      // setStudent(null) — wiping out the student profile that had already
+      // loaded successfully just above.
       const [classesData, branch, payments, attendance, notes, contactLog] = await Promise.all([
-        branchId ? listClasses(branchId) : Promise.resolve([]),
-        branchId ? getBranch(branchId) : Promise.resolve(null),
+        branchId ? listClasses(branchId).catch(() => []) : Promise.resolve([]),
+        branchId ? getBranch(branchId).catch(() => null) : Promise.resolve(null),
         getStudentPaymentHistory(studentData.id, branchId || undefined).catch(() => []),
         getStudentAttendanceRecords(studentData.id).catch(() => []),
         branchId ? listStudentNotes(studentData.id, branchId).catch(() => []) : Promise.resolve([]),
         branchId ? listContactLog(studentData.id, branchId).catch(() => []) : Promise.resolve([]),
       ]);
+      if (myId !== loadRequestIdRef.current) return;
 
-      setClasses(classesData as any[]);
+      setClasses(classesData);
       if (branchId && studentData.classId) {
-        const classData = (classesData as any[]).find((c) => c.id === studentData.classId);
+        const classData = classesData.find((c) => c.id === studentData.classId);
         setClassName(classData?.name || "—");
       }
-      if (branch) setBranchData(branch as any);
-      setPayments(payments as any[]);
-      setAttendanceRecords((attendance as any[]) || []);
-      setNotes((notes as any[]) || []);
-      setContactLogEntries((contactLog as any[]) || []);
+      if (branch) setBranchData(branch);
+      setPayments(payments);
+      setAttendanceRecords(attendance || []);
+      setNotes(notes || []);
+      setContactLogEntries(contactLog || []);
     } catch (error) {
+      if (myId !== loadRequestIdRef.current) return;
       console.error("Failed to load student details:", error);
       notify.error(t("error"), t("failedToLoadStudentDetails"));
       setStudent(null);
@@ -226,7 +242,7 @@ export default function StudentDetailsPage() {
     }
   };
 
-  const getEffectivePaymentStatus = (payment: any): string => {
+  const getEffectivePaymentStatus = (payment: Payment): string => {
     if (!student) return payment.status;
     return payment.amount >= student.monthlyPayment ? "paid" : "partial";
   };
@@ -246,7 +262,7 @@ export default function StudentDetailsPage() {
   })();
 
   // Build running balance for payments table (sorted chronologically)
-  const paymentsWithBalance = (() => {
+  const paymentsWithBalance: (Payment & { runningBalance: number })[] = (() => {
     const sorted = [...payments].sort((a, b) => {
       const da = new Date(`${a.year}-${String(a.month).padStart(2,"0")}-01`);
       const db_ = new Date(`${b.year}-${String(b.month).padStart(2,"0")}-01`);
@@ -475,7 +491,7 @@ export default function StudentDetailsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => router.push(backRoute)}>
+          <Button variant="ghost" size="icon" aria-label={t("back")} onClick={() => router.push(backRoute)}>
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <InitialsAvatar name={student.fullName} size="lg" />
@@ -671,7 +687,7 @@ export default function StudentDetailsPage() {
             <CardContent>
               <SectionErrorBoundary label={t("paymentHistory")}>
                 <PaymentTrendChart
-                  payments={payments as any[]}
+                  payments={payments}
                   targetAmount={student.monthlyPayment}
                   monthLabels={MONTH_LABELS_SHORT(t)}
                 />
@@ -726,7 +742,7 @@ export default function StudentDetailsPage() {
                             : "-"}
                         </td>
                         <td className="py-3 px-4 text-right font-medium text-slate-900 dark:text-slate-100">
-                          {formatCurrency((payment as any).runningBalance)}
+                          {formatCurrency(payment.runningBalance)}
                         </td>
                       </tr>
                     ))
@@ -828,6 +844,7 @@ export default function StudentDetailsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={t("delete")}
                         className="text-red-500 hover:text-red-600 flex-shrink-0"
                         onClick={() => handleDeleteNote(note.id)}
                       >
@@ -957,6 +974,7 @@ export default function StudentDetailsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        aria-label={t("delete")}
                         className="text-red-500 hover:text-red-600 flex-shrink-0"
                         onClick={() => handleDeleteContact(entry.id)}
                       >

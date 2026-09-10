@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { apiRequest, listClasses, listStudents } from "@/lib/api";
@@ -126,12 +126,21 @@ export default function AttendancePage() {
 
   const branchId = currentBranch?.id ?? "";
 
+  // Guards the attendance fetch below against a rapid class/date switch:
+  // without it, an older still-in-flight request could resolve after a
+  // newer one and silently show the wrong class/date's attendance.
+  const attendanceRequestIdRef = useRef(0);
+
   useEffect(() => {
     if (!branchId) return;
     setLoadingClasses(true);
     listClasses(branchId)
       .then(setClasses)
-      .catch(() => {})
+      .catch((err) => {
+        console.error("Failed to load classes:", err);
+        notify.error(t("error"), t("failedToLoadClasses"));
+        setClasses([]);
+      })
       .finally(() => setLoadingClasses(false));
   }, [branchId]);
 
@@ -139,23 +148,35 @@ export default function AttendancePage() {
     if (!selectedClassId || !branchId) { setStudents([]); return; }
     listStudents(branchId, undefined, 200, { classId: selectedClassId, status: "active" })
       .then((res) => setStudents(res.data ?? []))
-      .catch(() => setStudents([]));
+      .catch((err) => {
+        console.error("Failed to load students:", err);
+        notify.error(t("error"), t("failedToLoadStudents"));
+        setStudents([]);
+      });
   }, [selectedClassId, branchId]);
 
   useEffect(() => {
     if (!selectedClassId || !selectedDate) return;
     setLoadingAttendance(true);
     setHasSavedData(false);
+    const myId = ++attendanceRequestIdRef.current;
     fetchAttendance(selectedClassId, selectedDate)
       .then((records) => {
+        if (myId !== attendanceRequestIdRef.current) return;
         const map = new Map<string, AttendanceStatus>();
         records.forEach((r) => map.set(r.studentId, r.status));
         setAttendance(map);
         setSavedAttendance(new Map(map));
         setHasSavedData(records.length > 0);
       })
-      .catch(() => {})
-      .finally(() => setLoadingAttendance(false));
+      .catch((err) => {
+        if (myId !== attendanceRequestIdRef.current) return;
+        console.error("Failed to load attendance:", err);
+        notify.error(t("error"), t("failedToLoadAttendance"));
+      })
+      .finally(() => {
+        if (myId === attendanceRequestIdRef.current) setLoadingAttendance(false);
+      });
   }, [selectedClassId, selectedDate]);
 
   const loadSummary = useCallback(() => {
@@ -296,6 +317,7 @@ export default function AttendancePage() {
           <div className="flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden h-9">
             <button
               onClick={() => shiftDate(-1)}
+              aria-label={t("previous")}
               className="px-2 h-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border-r border-slate-200 dark:border-slate-700"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -303,12 +325,14 @@ export default function AttendancePage() {
             <input
               type="date"
               value={selectedDate}
+              max={toDateString(new Date())}
               onChange={(e) => setSelectedDate(e.target.value)}
               className="text-sm bg-transparent text-slate-700 dark:text-slate-200 outline-none px-3 h-full"
             />
             <button
               onClick={() => shiftDate(1)}
               disabled={selectedDate >= toDateString(new Date())}
+              aria-label={t("next")}
               className="px-2 h-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border-l border-slate-200 dark:border-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <ChevronRight className="w-4 h-4" />

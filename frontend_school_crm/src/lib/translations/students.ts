@@ -185,6 +185,12 @@ export const studentTranslations: Partial<Translation> = {
     en: "Mark this student as left?",
   },
 
+  markAsLeft: {
+    "uz-cyrl": "Кетган деб белгилаш",
+    "uz-latn": "Ketgan deb belgilash",
+    en: "Mark as left",
+  },
+
   willBeDeleted: { "uz-cyrl": "Ўчирилади", "uz-latn": "O‘chiriladi", en: "Will be deleted" },
 
   willStopPaymentTracking: {

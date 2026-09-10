@@ -877,6 +877,11 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Telefon raqamini to'g'ri kiriting: +998 XX XXX-XX-XX",
     en: "Enter a valid phone: +998 XX XXX-XX-XX",
   },
+  mustBePositive: {
+    "uz-cyrl": "Сумма нолдан катта бўлиши керак",
+    "uz-latn": "Summa noldan katta bo'lishi kerak",
+    en: "Amount must be greater than zero",
+  },
   passwordMinLength: {
     "uz-cyrl": "Пароль камида 6 та белгидан иборат бўлиши керак",
     "uz-latn": "Parol kamida 6 ta belgidan iborat bolishi kerak",
@@ -1305,6 +1310,11 @@ export const commonTranslations: Partial<Translation> = {
     "uz-cyrl": "Тасдиқлаш",
     "uz-latn": "Tasdiqlaš",
     en: "Confirm",
+  },
+  back: {
+    "uz-cyrl": "Орқага",
+    "uz-latn": "Orqaga",
+    en: "Back",
   },
   backToClasses: {
     "uz-cyrl": "Синфларга қайтиш",
@@ -2077,6 +2087,11 @@ export const commonTranslations: Partial<Translation> = {
   notifications:        { "uz-cyrl": "Билдиришномалар",              "uz-latn": "Bildirishnomalar",              en: "Notifications" },
   markAllRead:          { "uz-cyrl": "Барчасини ўқилди деб белгилаш", "uz-latn": "Barchasini o'qildi deb belgilash", en: "Mark all read" },
   noNotificationsYet:   { "uz-cyrl": "Ҳали билдиришномалар йўқ",     "uz-latn": "Hali bildirishnomalar yo'q",     en: "No notifications yet" },
+  notificationHistory:  { "uz-cyrl": "Билдиришномалар тарихи",       "uz-latn": "Bildirishnomalar tarixi",       en: "Notification history" },
+  notificationHistoryDesc: { "uz-cyrl": "Ушбу филиал учун барча билдиришномалар", "uz-latn": "Ushbu filial uchun barcha bildirishnomalar", en: "All notifications for this branch" },
+  unreadOnly:           { "uz-cyrl": "Фақат ўқилмаганлар",           "uz-latn": "Faqat o'qilmaganlar",           en: "Unread only" },
+  markRead:             { "uz-cyrl": "Ўқилди деб белгилаш",          "uz-latn": "O'qildi deb belgilash",         en: "Mark read" },
+  failedToUpdate:       { "uz-cyrl": "Янгилаб бўлмади",              "uz-latn": "Yangilab bo'lmadi",             en: "Failed to update" },
 
   // Receipt
   receiptTitle:         { "uz-cyrl": "Квитансия",    "uz-latn": "Kvitansiya",    en: "Receipt" },

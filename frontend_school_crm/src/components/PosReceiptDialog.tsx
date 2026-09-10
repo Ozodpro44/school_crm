@@ -118,6 +118,7 @@ export function PosReceiptDialog({
               </Button>
               <Button
                 className="flex-1 bg-blue-600 hover:bg-blue-700"
+                aria-label={t("print")}
                 onClick={() => window.print()}
               >
                 <Printer className="w-4 h-4" />

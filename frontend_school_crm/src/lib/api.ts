@@ -1110,6 +1110,10 @@ export async function deleteBranch(id: string): Promise<{ success: boolean }> {
  * Advances the branch's current_month to the next calendar month
  */
 export async function switchBranchMonth(id: string): Promise<Branch> {
+  // Without invalidating, getBranch(id) can keep serving the pre-switch
+  // month for up to the cache's TTL right after an admin switches it —
+  // updateBranch already does this for the same reason.
+  invalidateBranchCache(id);
   return apiRequest<Branch>(`/branches/${id}/switch-month`, {
     method: "POST",
   });
@@ -1590,19 +1594,34 @@ export async function pollJob(jobId: string): Promise<JobResponse> {
 /**
  * Submit a job and poll every 1.5 s until it finishes.
  * Resolves with the parsed result, or rejects with the server error message.
+ *
+ * maxAttempts caps the poll loop (default ~5 minutes) so a job that never
+ * reaches "done"/"failed" server-side can't poll forever. signal lets a
+ * caller cancel an in-flight poll — e.g. reports.tsx firing a new report
+ * request while an older one is still polling, where the old one finishing
+ * later would otherwise overwrite the newer result on screen.
  */
 export async function runReportJob(
   type: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  options?: { signal?: AbortSignal; maxAttempts?: number }
 ): Promise<any> {
+  const maxAttempts = options?.maxAttempts ?? 200;
   const { job_id } = await submitJob(type, payload);
-  for (;;) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (options?.signal?.aborted) {
+      throw new DOMException("Report polling cancelled", "AbortError");
+    }
     await new Promise((r) => setTimeout(r, 1500));
+    if (options?.signal?.aborted) {
+      throw new DOMException("Report polling cancelled", "AbortError");
+    }
     const job = await pollJob(job_id);
     if (job.status === "done") return job.result ?? null;
     if (job.status === "failed")
       throw new Error(job.error ?? "Report generation failed");
   }
+  throw new Error("Report generation timed out");
 }
 
 /**
@@ -1802,12 +1821,15 @@ export async function getSettings(branchId?: string): Promise<Settings> {
 }
 
 /**
- * Update settings for authenticated user's branch
+ * Update settings for the given branch, or the authenticated user's default
+ * branch if branchId is omitted.
  */
 export async function updateSettings(
-  updates: UpdateSettingsRequest
+  updates: UpdateSettingsRequest,
+  branchId?: string
 ): Promise<Settings> {
-  return apiRequest<Settings>("/settings", {
+  const endpoint = branchId ? `/settings?branchId=${branchId}` : "/settings";
+  return apiRequest<Settings>(endpoint, {
     method: "PUT",
     body: JSON.stringify(updates),
   });

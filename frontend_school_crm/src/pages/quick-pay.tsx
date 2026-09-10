@@ -373,7 +373,7 @@ function QRScanTab({
         paymentMethod: payMethod,
       }]);
       const r = res.results[0]!;
-      if (r.error) { notify.error(r.error); return; }
+      if (r.error) { notify.error(t("paymentFailed"), r.error); return; }
       onPaid({
         studentName: student.fullName,
         amount: student.remaining,
@@ -387,7 +387,7 @@ function QRScanTab({
       setStudent(null);
       setManualId("");
     } catch (e: any) {
-      notify.error(e.message);
+      notify.error(t("paymentFailed"), e.message);
     } finally {
       setPaying(false);
     }
@@ -418,7 +418,7 @@ function QRScanTab({
                 <span className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-white rounded-br-lg" />
               </div>
             </div>
-            <button onClick={stopCamera} className="absolute top-3 right-3 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70">
+            <button onClick={stopCamera} aria-label={t("close")} className="absolute top-3 right-3 p-1.5 rounded-full bg-black/50 text-white hover:bg-black/70">
               <X className="w-4 h-4" />
             </button>
           </>
@@ -436,7 +436,7 @@ function QRScanTab({
           onKeyDown={(e) => e.key === "Enter" && handleManual()}
           className="text-sm"
         />
-        <Button variant="outline" onClick={handleManual} className="flex-shrink-0">
+        <Button variant="outline" aria-label={t("search")} onClick={handleManual} className="flex-shrink-0">
           <Search className="w-4 h-4" />
         </Button>
       </div>
@@ -462,7 +462,7 @@ function QRScanTab({
               <p className="font-bold text-slate-900 dark:text-white text-lg">{student.fullName}</p>
               <p className="text-sm text-slate-400">{student.phone}</p>
             </div>
-            <button onClick={() => setStudent(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+            <button onClick={() => setStudent(null)} aria-label={t("clear")} className="text-slate-400 hover:text-slate-600 transition-colors">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -525,6 +525,20 @@ export default function QuickPayPage() {
     listClasses(branchId).then(setClasses).catch(() => {});
   }, [branchId]);
 
+  // debouncedSearch (not the raw `search` state the input is bound to)
+  // drives the actual fetch. Previously loadStudents depended on `search`
+  // directly, so its identity changed on every keystroke — which re-fired
+  // the tab-effect below immediately (it depends on loadStudents), firing a
+  // second, undebounced fetch alongside the "debounced" one further down.
+  // With no cancellation, a fast typer could get an older response landing
+  // after a newer one. Debouncing the value loadStudents reads, instead of
+  // debouncing a second call to it, fixes both at once.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(id);
+  }, [search]);
+
   // Load active students with their current-month payment status
   const loadStudents = useCallback(async () => {
     if (!branchId) return;
@@ -532,7 +546,7 @@ export default function QuickPayPage() {
     try {
       const res = await searchStudentsWithPaymentStatus({
         branchId,
-        search,
+        search: debouncedSearch,
         classId: classFilter !== "all" ? classFilter : undefined,
         status: "active",   // only active students can receive payments
         limit: 500,
@@ -543,7 +557,7 @@ export default function QuickPayPage() {
     } finally {
       setLoading(false);
     }
-  }, [branchId, search, classFilter]);
+  }, [branchId, debouncedSearch, classFilter]);
 
   useEffect(() => {
     if (tab === "collect" || tab === "bulk") loadStudents();
@@ -551,14 +565,6 @@ export default function QuickPayPage() {
 
   // Re-fetch when the page regains visibility (e.g. user deleted a payment elsewhere)
   useRefetchOnFocus(loadStudents);
-
-  // Debounce search
-  useEffect(() => {
-    const id = setTimeout(() => {
-      if (tab === "collect" || tab === "bulk") loadStudents();
-    }, 300);
-    return () => clearTimeout(id);
-  }, [search]);
 
   const unpaid = students.filter((s) => s.paymentStatus !== "paid");
   const unpaidSelected = unpaid.filter((s) => selected.has(s.id));
@@ -595,12 +601,12 @@ export default function QuickPayPage() {
         paymentMethod: payMethod,
       }]);
       const r = res.results[0]!;
-      if (r.error) { notify.error(r.error); return; }
+      if (r.error) { notify.error(t("paymentFailed"), r.error); return; }
       setReceipt(makeReceipt(student, r));
       // Re-fetch from server — never trust stale local state for payment status
       await loadStudents();
     } catch (e: any) {
-      notify.error(e.message);
+      notify.error(t("paymentFailed"), e.message);
     } finally {
       setPayingId(null);
     }
@@ -629,7 +635,7 @@ export default function QuickPayPage() {
       // Re-fetch from server — reflects actual backend state
       await loadStudents();
     } catch (e: any) {
-      notify.error(e.message);
+      notify.error(t("paymentFailed"), e.message);
     } finally {
       setBulkPaying(false);
     }

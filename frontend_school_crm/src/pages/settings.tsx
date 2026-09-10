@@ -63,7 +63,11 @@ export default function SettingsPage() {
   const fetchSettings = async () => {
     try {
       setLoading(true);
-      const data = await getSettings();
+      // Explicit branchId — without it, this always read the JWT's home
+      // branch's settings, even while viewing/editing a different branch
+      // that this admin/manager also administers (branch switching doesn't
+      // reissue a JWT).
+      const data = await getSettings(currentBranch?.id);
       setSettings(data);
       setOriginalSettings(data);
       
@@ -177,7 +181,7 @@ export default function SettingsPage() {
         name: settings.name,
       };
 
-      const updatedSettings = await updateSettings(updatePayload);
+      const updatedSettings = await updateSettings(updatePayload, currentBranch?.id);
 
       // Update original settings so changes are no longer detected
       setOriginalSettings(updatedSettings);

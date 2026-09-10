@@ -82,8 +82,18 @@ export default function SalariesPage() {
     paymentMethod: "bank" as PaymentMethod,
     notes: "",
   });
+  const [formErrors, setFormErrors] = useState<{ teacherId?: string; amount?: string }>({});
 
   const firstBranchLoadRef = useRef(true);
+  // Set by the branch-change effect right before it resets selectedMonth to
+  // "" to force recomputing the new branch's default month — without this,
+  // that reset ALSO triggers the month-change effect below (selectedMonth
+  // is one of its dependencies), so a single branch switch fired loadData()
+  // twice, racing each other.
+  const skipNextMonthEffectRef = useRef(false);
+  // Guards against whichever of the two loadData() calls resolves last
+  // winning regardless of which one was actually requested most recently.
+  const loadRequestIdRef = useRef(0);
   const financialMonthKey = currentBranch?.currentFinancialMonth
     ? `${currentBranch.currentFinancialMonth.year}-${currentBranch.currentFinancialMonth.month}`
     : undefined;
@@ -100,16 +110,33 @@ export default function SalariesPage() {
     setIsLoading(true);
     if (!firstBranchLoadRef.current) {
       setCurrentPage(1);
+      skipNextMonthEffectRef.current = true;
       setSelectedMonth("");
     }
     firstBranchLoadRef.current = false;
-    loadData().finally(() => setIsLoading(false));
+    const myId = ++loadRequestIdRef.current;
+    loadData().finally(() => {
+      if (myId === loadRequestIdRef.current) setIsLoading(false);
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentBranch?.id, financialMonthKey]);
 
-  // Reload data when month/year changes
+  // Reload data when the user picks a different month/year. Skipped once
+  // right after a branch switch — that reset already triggers its own fetch
+  // in the effect above (see skipNextMonthEffectRef), so without this guard
+  // a single branch switch fired loadData() twice, racing each other, and
+  // this effect never showed a loading state of its own (switching months
+  // used to flash the previous month's figures with no indicator).
   useEffect(() => {
-    loadData();
+    if (skipNextMonthEffectRef.current) {
+      skipNextMonthEffectRef.current = false;
+      return;
+    }
+    setIsLoading(true);
+    const myId = ++loadRequestIdRef.current;
+    loadData().finally(() => {
+      if (myId === loadRequestIdRef.current) setIsLoading(false);
+    });
   }, [selectedMonth, selectedYear]);
 
   const t = (key: string) => getTranslation(key, language);
@@ -155,6 +182,20 @@ export default function SalariesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Previously unvalidated: teacherId could be submitted empty (creating
+    // a salary record with no teacher) and amount could be blank/negative/
+    // zero (parseFloat("") is NaN, sent straight to the API).
+    const errors: typeof formErrors = {};
+    if (!editingSalaryId && !formData.teacherId) errors.teacherId = t("fieldRequired");
+    if (!formData.amount.trim() || !(parseFloat(formData.amount) > 0)) {
+      errors.amount = formData.amount.trim() ? t("mustBePositive") : t("fieldRequired");
+    }
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
     setIsSubmitting(true);
     const user = getCurrentUser();
     if (!user) { setIsSubmitting(false); return; }
@@ -253,6 +294,7 @@ export default function SalariesPage() {
       notes: "",
     });
     setEditingSalaryId(null);
+    setFormErrors({});
   };
 
   const getTeacherName = (teacherId: string) => {
@@ -495,9 +537,10 @@ export default function SalariesPage() {
                       teacherId: value,
                       amount: teacher?.monthlySalary.toString() || "",
                     });
+                    if (formErrors.teacherId) setFormErrors((e) => ({ ...e, teacherId: undefined }));
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={formErrors.teacherId ? "border-red-500 focus:ring-red-500" : ""}>
                     <SelectValue placeholder={t("selectTeacher")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -508,6 +551,9 @@ export default function SalariesPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                {formErrors.teacherId && (
+                  <p className="text-xs text-red-500">{formErrors.teacherId}</p>
+                )}
               </div>
 
               <Field
@@ -515,10 +561,12 @@ export default function SalariesPage() {
                 label={`${t("amount")} *`}
                 type="text"
                 value={formatNumberWithSpaces(formData.amount)}
+                error={formErrors.amount}
                 placeholder="0"
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setFormData({ ...formData, amount: removeNumberFormatting(e.target.value) })
-                }
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, amount: removeNumberFormatting(e.target.value) });
+                  if (formErrors.amount) setFormErrors((er) => ({ ...er, amount: undefined }));
+                }}
               />
 
               <div className="space-y-1.5">
