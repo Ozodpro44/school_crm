@@ -47,6 +47,7 @@ export default function SalariesPage() {
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
+  const [editingSalaryOriginal, setEditingSalaryOriginal] = useState<Salary | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -203,14 +204,28 @@ export default function SalariesPage() {
     const branchId = currentBranch?.id || user.branchId || "";
     try {
       if (editingSalaryId) {
+        // A salary already marked "paid" is a reconciled record — the
+        // backend now rejects changing its amount/paidDate while it stays
+        // paid. Only send those fields when they're actually changing (a
+        // fresh amount, or a genuine transition into "paid" for the first
+        // time), so editing e.g. just the notes on an already-paid salary
+        // doesn't get rejected for silently re-sending the old amount and
+        // today's date as if they were new values.
+        const wasAlreadyPaid = editingSalaryOriginal?.status === "paid";
+        const newAmount = parseFloat(formData.amount);
+        const amountChanged = !editingSalaryOriginal || newAmount !== editingSalaryOriginal.amount;
+        const transitioningToPaid = formData.status === "paid" && !wasAlreadyPaid;
         await updateSalary(editingSalaryId, {
-          amount: parseFloat(formData.amount),
+          ...(!wasAlreadyPaid || amountChanged ? { amount: newAmount } : {}),
           status: formData.status,
           paymentMethod: formData.paymentMethod,
           notes: formData.notes || undefined,
-          paidDate: formData.status === "paid" ? new Date().toISOString() : undefined,
+          ...(!wasAlreadyPaid || transitioningToPaid
+            ? { paidDate: formData.status === "paid" ? new Date().toISOString() : undefined }
+            : {}),
         });
         setEditingSalaryId(null);
+        setEditingSalaryOriginal(null);
       } else {
         await createSalary({
           teacherId: formData.teacherId,
@@ -230,7 +245,7 @@ export default function SalariesPage() {
       notify.success(t("success"));
     } catch (error) {
       console.error("Failed to save salary:", error);
-      notify.error(t("error"), t("failedToSaveSalary"));
+      notify.error(t("error"), error instanceof Error ? error.message : t("failedToSaveSalary"));
     } finally {
       setIsSubmitting(false);
     }
@@ -241,13 +256,14 @@ export default function SalariesPage() {
       await updateSalary(id, { status: "paid", paidDate: new Date().toISOString() });
       await loadData();
       notify.success(t("success"), "Salary marked as paid");
-    } catch {
-      notify.error(t("error"));
+    } catch (error) {
+      notify.error(t("error"), error instanceof Error ? error.message : undefined);
     }
   };
 
   const handleEdit = (salary: Salary) => {
     setEditingSalaryId(salary.id);
+    setEditingSalaryOriginal(salary);
     setFormData({
       teacherId: salary.teacherId,
       amount: salary.amount.toString(),
@@ -294,6 +310,7 @@ export default function SalariesPage() {
       notes: "",
     });
     setEditingSalaryId(null);
+    setEditingSalaryOriginal(null);
     setFormErrors({});
   };
 

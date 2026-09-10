@@ -138,8 +138,8 @@ export default function SchedulePage() {
       });
       notify.success(t("success"));
       setDialogOpen(false);
-    } catch {
-      notify.error(t("error"));
+    } catch (error) {
+      notify.error(t("error"), error instanceof Error ? error.message : undefined);
     } finally {
       setIsSaving(false);
     }
