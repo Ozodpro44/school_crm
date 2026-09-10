@@ -48,9 +48,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-require (
-	github.com/school-crm/protos v0.0.0
-	google.golang.org/protobuf v1.36.10
-)
-
-replace github.com/school-crm/protos => ../protos
+require google.golang.org/protobuf v1.36.10

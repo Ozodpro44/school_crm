@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"net"
 
-	studentv1 "github.com/school-crm/protos/student/v1"
+	studentv1 "github.com/school-crm/student-service/internal/pb/studentv1"
 
-	commonv1 "github.com/school-crm/protos/common/v1"
+	commonv1 "github.com/school-crm/student-service/internal/pb/commonv1"
 	"github.com/school-crm/student-service/internal/service"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

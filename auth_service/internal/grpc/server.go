@@ -13,7 +13,7 @@ import (
 	"net"
 	"time"
 
-	authv1 "github.com/school-crm/protos/auth/v1"
+	authv1 "github.com/school-crm/auth-service/internal/pb/authv1"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/school-crm/auth-service/internal/middleware"

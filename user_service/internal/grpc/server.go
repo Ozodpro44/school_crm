@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"net"
 
-	userv1 "github.com/school-crm/protos/user/v1"
+	userv1 "github.com/school-crm/user-service/internal/pb/userv1"
 
 	"github.com/school-crm/user-service/internal/service"
 	"google.golang.org/grpc"

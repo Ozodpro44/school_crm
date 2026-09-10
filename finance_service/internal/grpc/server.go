@@ -13,10 +13,10 @@ import (
 	"net"
 	"time"
 
-	financev1 "github.com/school-crm/protos/finance/v1"
+	financev1 "github.com/school-crm/finance-service/internal/pb/financev1"
 
 	"github.com/school-crm/finance-service/internal/service"
-	commonv1 "github.com/school-crm/protos/common/v1"
+	commonv1 "github.com/school-crm/finance-service/internal/pb/commonv1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

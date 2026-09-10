@@ -49,8 +49,5 @@ require (
 require (
 	github.com/golang-jwt/jwt/v5 v5.1.0
 	github.com/redis/go-redis/v9 v9.2.1
-	github.com/school-crm/protos v0.0.0
 	google.golang.org/protobuf v1.36.10
 )
-
-replace github.com/school-crm/protos => ../protos
