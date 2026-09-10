@@ -1,22 +1,27 @@
 import { useState, useEffect, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
-  Search, Trash2, RefreshCw, Loader2, AlertCircle, Users as UsersIcon,
+  Search, Trash2, Edit, RefreshCw, Loader2, AlertCircle, Users as UsersIcon,
   Shield, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { listUsers, deleteUser, type CRMUser } from "@/services/api-client";
+import { listUsers, updateUser, deleteUser, type CRMUser } from "@/services/api-client";
 
 const ROLE_CONFIG: Record<string, { label: string; cls: string }> = {
   admin:        { label: "Admin",        cls: "bg-primary/15 text-primary border border-primary/25"                        },
@@ -43,8 +48,11 @@ export default function Users() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [selected, setSelected] = useState<CRMUser | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState({ fullName: "", email: "", password: "" });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +79,35 @@ export default function Users() {
   });
 
   const countByRole = (role: string) => users.filter((u) => u.role === role).length;
+
+  const openEdit = (user: CRMUser) => {
+    setSelected(user);
+    setEditForm({ fullName: user.fullName, email: user.email, password: "" });
+    setEditOpen(true);
+  };
+
+  const handleEdit = async () => {
+    if (!selected) return;
+    if (!editForm.fullName.trim() || !editForm.email.trim()) {
+      toast.error("Name and email are required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await updateUser(selected.id, {
+        full_name: editForm.fullName,
+        email: editForm.email,
+        ...(editForm.password ? { password: editForm.password } : {}),
+      });
+      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+      setEditOpen(false);
+      toast.success("User updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update user");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!selected) return;
@@ -218,14 +255,24 @@ export default function Users() {
                           : "—"}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 w-7 p-0 text-status-critical hover:text-status-critical"
-                          onClick={() => { setSelected(user); setDeleteOpen(true); }}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0"
+                            onClick={() => openEdit(user)}
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-status-critical hover:text-status-critical"
+                            onClick={() => { setSelected(user); setDeleteOpen(true); }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -235,6 +282,52 @@ export default function Users() {
           </div>
         )}
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+            <DialogDescription>
+              Only name, email, and password can be changed here — role and branch require a
+              backend change and aren't editable from this form.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Full Name</Label>
+              <Input
+                value={editForm.fullName}
+                onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>New Password (optional)</Label>
+              <Input
+                type="password"
+                placeholder="Leave blank to keep current password"
+                value={editForm.password}
+                onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleEdit} disabled={saving}>
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirm */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

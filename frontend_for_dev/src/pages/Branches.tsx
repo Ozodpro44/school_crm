@@ -26,7 +26,7 @@ import {
   type CRMBranch,
 } from "@/services/api-client";
 
-const emptyForm = { name: "", address: "", phone: "", monthlyPayment: 0 };
+const emptyForm = { name: "", address: "", phone: "", monthlyPayment: 0, adminId: "" };
 
 function fmt(n?: number) {
   return new Intl.NumberFormat("en-US", {
@@ -69,15 +69,30 @@ export default function Branches() {
 
   const totalRevenue = branches.reduce((sum, b) => sum + (b.monthlyPayment || 0), 0);
 
+  // The backend requires monthlyPayment > 0 (CreateBranchRequest binding:
+  // "required,gt=0"). The old `Number(form.monthlyPayment) || undefined`
+  // pattern silently dropped a real `0` (falsy) from the request instead of
+  // rejecting it, and let a negative value through unvalidated to fail with
+  // a confusing backend error.
+  const validateBranchForm = (): string | null => {
+    if (!form.name.trim()) return "Branch name is required";
+    if (!Number.isFinite(form.monthlyPayment) || form.monthlyPayment <= 0) {
+      return "Monthly payment must be greater than 0";
+    }
+    return null;
+  };
+
   const handleCreate = async () => {
-    if (!form.name.trim()) { toast.error("Branch name is required"); return; }
+    const validationError = validateBranchForm();
+    if (validationError) { toast.error(validationError); return; }
     setSaving(true);
     try {
       const created = await createBranch({
         name: form.name,
         address: form.address || undefined,
         phone: form.phone || undefined,
-        monthlyPayment: Number(form.monthlyPayment) || undefined,
+        monthlyPayment: form.monthlyPayment,
+        adminId: form.adminId || undefined,
       });
       setBranches((prev) => [...prev, created]);
       setCreateOpen(false);
@@ -91,14 +106,17 @@ export default function Branches() {
   };
 
   const handleEdit = async () => {
-    if (!selected || !form.name.trim()) { toast.error("Branch name is required"); return; }
+    if (!selected) return;
+    const validationError = validateBranchForm();
+    if (validationError) { toast.error(validationError); return; }
     setSaving(true);
     try {
       const updated = await updateBranch(selected.id, {
         name: form.name,
         address: form.address || undefined,
         phone: form.phone || undefined,
-        monthlyPayment: Number(form.monthlyPayment) || undefined,
+        monthlyPayment: form.monthlyPayment,
+        adminId: form.adminId || undefined,
       });
       setBranches((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
       setEditOpen(false);
@@ -132,6 +150,7 @@ export default function Branches() {
       address: branch.address ?? "",
       phone: branch.phone ?? "",
       monthlyPayment: branch.monthlyPayment ?? 0,
+      adminId: branch.adminId ?? "",
     });
     setEditOpen(true);
   };
@@ -163,14 +182,24 @@ export default function Branches() {
         />
       </div>
       <div className="space-y-2">
-        <Label>Monthly Payment ($)</Label>
+        <Label>Monthly Payment ($) *</Label>
         <Input
           type="number"
-          min="0"
+          min="0.01"
+          step="0.01"
           placeholder="0"
           value={form.monthlyPayment || ""}
           onChange={(e) => setForm({ ...form, monthlyPayment: Number(e.target.value) })}
           className="font-mono"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Admin User ID</Label>
+        <Input
+          placeholder="Optional — UUID of the branch admin"
+          value={form.adminId}
+          onChange={(e) => setForm({ ...form, adminId: e.target.value })}
+          className="font-mono text-sm"
         />
       </div>
     </div>

@@ -63,8 +63,21 @@ export default function SubscriptionPlans() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Backend validates nothing on these fields (no binding tags), so a
+  // negative price/limit would otherwise save silently and corrupt any
+  // MRR/limit math built from it downstream.
+  const validateForm = (): string | null => {
+    if (!form.name.trim()) return "Name is required";
+    if (!Number.isFinite(form.price) || form.price < 0) return "Price cannot be negative";
+    if (!Number.isInteger(form.maxBranches) || form.maxBranches < 1) return "Max branches must be at least 1";
+    if (!Number.isInteger(form.maxStudents) || form.maxStudents < 1) return "Max students must be at least 1";
+    if (!Number.isInteger(form.maxClasses) || form.maxClasses < 1) return "Max classes must be at least 1";
+    return null;
+  };
+
   const handleCreate = async () => {
-    if (!form.name.trim()) { toast.error("Name is required"); return; }
+    const validationError = validateForm();
+    if (validationError) { toast.error(validationError); return; }
     setSaving(true);
     try {
       const created = await createPlan({
@@ -90,7 +103,9 @@ export default function SubscriptionPlans() {
   };
 
   const handleEdit = async () => {
-    if (!selected || !form.name.trim()) { toast.error("Name is required"); return; }
+    if (!selected) return;
+    const validationError = validateForm();
+    if (validationError) { toast.error(validationError); return; }
     setSaving(true);
     try {
       const updated = await updatePlan(selected.id, {

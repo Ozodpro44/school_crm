@@ -28,7 +28,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       const body = await res.json().catch(() => ({})) as { error?: string };
       const err = new Error(body.error ?? `HTTP ${res.status}`);
       (err as Error & { status: number }).status = res.status;
-      if (res.status === 401) onUnauthorized?.();
+      // A 401 from the login/register endpoints means "wrong credentials",
+      // not "session expired" — it must not trigger the global logout +
+      // hard redirect, which would wipe the login page's own error state
+      // before the "Invalid email or password" toast can even render.
+      if (res.status === 401 && !endpoint.startsWith("/dev/auth/")) onUnauthorized?.();
       throw err;
     }
 
@@ -187,6 +191,10 @@ export async function createSubscription(req: {
 export async function updateSubscription(id: string, req: Partial<{
   status: string; planId: string; autoRenew: boolean;
   paymentMethod: string; endDate: string; renewalDate: string; notes: string;
+  // Notes can't be cleared just by omitting/nulling `notes` — the backend
+  // can't tell "not provided" from "explicit null" via standard JSON
+  // unmarshaling, so clearing it needs this explicit flag.
+  clearNotes: boolean;
 }>): Promise<AdminSubscription> {
   return request<AdminSubscription>(`/dev/subscriptions/${id}`, { method: "PUT", body: JSON.stringify(req) });
 }
@@ -306,6 +314,16 @@ export async function listUsers(): Promise<CRMUser[]> {
   return Array.isArray(res) ? res : [];
 }
 
+// The backend only persists full_name/email/password from this body (other
+// keys, e.g. role/branchId, are silently accepted-but-dropped) — matching
+// that constraint here instead of exposing controls that would silently
+// fail. Keys must stay snake_case; that's what the handler reads.
+export async function updateUser(id: string, req: {
+  full_name?: string; email?: string; password?: string;
+}): Promise<CRMUser> {
+  return request<CRMUser>(`/dev/crm/users/${id}`, { method: "PUT", body: JSON.stringify(req) });
+}
+
 export async function deleteUser(id: string): Promise<void> {
   return request<void>(`/dev/crm/users/${id}`, { method: "DELETE" });
 }
@@ -334,7 +352,7 @@ export async function createBranch(req: {
 }
 
 export async function updateBranch(id: string, req: Partial<{
-  name: string; address: string; phone: string; monthlyPayment: number;
+  name: string; address: string; phone: string; monthlyPayment: number; adminId: string;
 }>): Promise<CRMBranch> {
   return request<CRMBranch>(`/dev/crm/branches/${id}`, { method: "PUT", body: JSON.stringify(req) });
 }
@@ -351,6 +369,36 @@ export async function getDevSettings(): Promise<Record<string, unknown>> {
 
 export async function updateDevSettings(settings: Record<string, unknown>): Promise<Record<string, unknown>> {
   return request<Record<string, unknown>>("/dev/settings", { method: "PUT", body: JSON.stringify(settings) });
+}
+
+// ── Dev Notifications ─────────────────────────────────────────────────────────
+// Distinct storage from /dev/settings — the dedicated endpoints for alert
+// preferences and a real recent-activity feed.
+
+export async function getNotificationPreferences(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>("/dev/notifications/preferences");
+}
+
+export async function updateNotificationPreferences(
+  prefs: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>("/dev/notifications/preferences", {
+    method: "PUT",
+    body: JSON.stringify(prefs),
+  });
+}
+
+export interface RecentNotification {
+  id: string;
+  level: string;
+  module?: string;
+  message: string;
+  createdAt: string;
+}
+
+export async function getRecentNotifications(): Promise<RecentNotification[]> {
+  const res = await request<RecentNotification[]>("/dev/notifications/recent");
+  return Array.isArray(res) ? res : [];
 }
 
 // Legacy compat for old imports

@@ -2,13 +2,16 @@ import { useState, useEffect, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
   Bell, AlertTriangle, Shield, CreditCard, Server,
-  Save, Loader2, Info,
+  Save, Loader2, Info, Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { getDevSettings, updateDevSettings } from "@/services/api-client";
+import {
+  getNotificationPreferences, updateNotificationPreferences,
+  getRecentNotifications, type RecentNotification,
+} from "@/services/api-client";
 
 interface NotifPrefs {
   errors: boolean;
@@ -66,14 +69,15 @@ export default function Notifications() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [recent, setRecent] = useState<RecentNotification[]>([]);
+  const [recentLoading, setRecentLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const raw = await getDevSettings();
-      const notifs = raw.notifications as Partial<NotifPrefs> | undefined;
-      if (notifs && typeof notifs === "object") {
-        setPrefs({ ...DEFAULTS, ...notifs });
+      const raw = await getNotificationPreferences();
+      if (raw && typeof raw === "object" && Object.keys(raw).length > 0) {
+        setPrefs({ ...DEFAULTS, ...(raw as Partial<NotifPrefs>) });
       }
     } catch {
       // Graceful fallback — notifications are optional
@@ -82,7 +86,18 @@ export default function Notifications() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadRecent = useCallback(async () => {
+    setRecentLoading(true);
+    try {
+      setRecent(await getRecentNotifications());
+    } catch {
+      setRecent([]);
+    } finally {
+      setRecentLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); loadRecent(); }, [load, loadRecent]);
 
   const toggle = (key: keyof NotifPrefs) => {
     setPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -92,14 +107,13 @@ export default function Notifications() {
   const save = async () => {
     setSaving(true);
     try {
-      await updateDevSettings({ notifications: prefs });
+      // This endpoint replaces the stored preferences wholesale (not a
+      // merge), so the full prefs object is sent every time.
+      await updateNotificationPreferences(prefs as unknown as Record<string, unknown>);
       setDirty(false);
       toast.success("Notification preferences saved");
-    } catch {
-      // Server may not support this endpoint — save to localStorage
-      localStorage.setItem("dev:notificationPrefs", JSON.stringify(prefs));
-      setDirty(false);
-      toast.success("Preferences saved locally");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save preferences");
     } finally {
       setSaving(false);
     }
@@ -134,9 +148,45 @@ export default function Notifications() {
           <div className="flex items-start gap-3 p-4 rounded-lg border border-status-info/25 bg-status-info/10 text-status-info">
             <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <p className="text-sm">
-              Notification delivery is configured server-side. These toggles control which events the
-              developer portal tracks and surfaces in the dashboard.
+              These toggles are display preferences for this portal only — there is no email/push
+              delivery configured server-side yet.
             </p>
+          </div>
+
+          {/* Recent Activity */}
+          <div className="glass-card rounded-lg overflow-hidden">
+            <div className="p-4 border-b border-border flex items-center gap-2">
+              <Clock className="w-4 h-4 text-primary" />
+              <h2 className="text-sm font-semibold text-foreground">Recent Activity</h2>
+            </div>
+            <div className="divide-y divide-border">
+              {recentLoading ? (
+                <div className="p-6 flex justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : recent.length === 0 ? (
+                <p className="p-4 text-sm text-muted-foreground">No recent alerts.</p>
+              ) : (
+                recent.map((n) => (
+                  <div key={n.id} className="flex items-start gap-3 p-3">
+                    <span className={cn(
+                      "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5",
+                      n.level.toLowerCase() === "error" || n.level.toLowerCase() === "critical"
+                        ? "bg-status-critical/15 text-status-critical"
+                        : "bg-status-warning/15 text-status-warning"
+                    )}>
+                      {n.level}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm text-foreground truncate">{n.message}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {n.module ? `${n.module} · ` : ""}{new Date(n.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           {/* Alert Type Toggles */}

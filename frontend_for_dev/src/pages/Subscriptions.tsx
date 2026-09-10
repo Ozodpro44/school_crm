@@ -32,14 +32,18 @@ import {
   type AdminSubscription, type SubscriptionPlan,
 } from "@/services/api-client";
 
-const STATUS_OPTIONS = ["active", "trial", "pending", "expired", "cancelled", "paused"];
+// Must match the backend's actual enum exactly (subscriptions.status check
+// constraint) — "pending" here previously didn't exist server-side at all
+// (the real value is "pending_payment"), and "past_due" was missing.
+const STATUS_OPTIONS = ["active", "trial", "pending_payment", "past_due", "expired", "cancelled", "paused"];
 
 function statusBadgeClass(status: string) {
   const s = status?.toLowerCase();
   if (s === "active")    return "badge-active";
   if (s === "trial")     return "badge-trial";
   if (s === "expired")   return "badge-expired";
-  if (s === "pending" || s === "pending_payment") return "badge-pending";
+  if (s === "pending_payment") return "badge-pending";
+  if (s === "past_due")  return "badge-pending";
   if (s === "cancelled") return "badge-cancelled";
   if (s === "paused")    return "badge-paused";
   return "badge-cancelled";
@@ -145,12 +149,19 @@ export default function Subscriptions() {
     if (!selected) return;
     setSaving(true);
     try {
+      // Omitting endDate/renewalDate/notes means "leave unchanged" — the
+      // backend can't tell that apart from an explicit clear via a plain
+      // JSON null, so an emptied notes field needs the explicit clearNotes
+      // flag instead. (endDate/renewalDate have no such escape hatch yet —
+      // leaving a date blank just leaves the stored date untouched.)
+      const notesWasCleared = (selected.notes ?? "") !== "" && editForm.notes.trim() === "";
       const updated = await updateSubscription(selected.id, {
         status: editForm.status,
         planId: editForm.planId || undefined,
         endDate: editForm.endDate || undefined,
         renewalDate: editForm.renewalDate || undefined,
         notes: editForm.notes || undefined,
+        clearNotes: notesWasCleared,
         autoRenew: editForm.autoRenew,
       });
       setSubs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
@@ -246,15 +257,16 @@ export default function Subscriptions() {
       {/* Stats Bar */}
       <div className="flex flex-wrap gap-3 mb-5">
         {[
-          { label: "Active",    count: countByStatus("active"),    cls: "badge-active"    },
-          { label: "Trial",     count: countByStatus("trial"),     cls: "badge-trial"     },
-          { label: "Pending",   count: countByStatus("pending"),   cls: "badge-pending"   },
-          { label: "Expired",   count: countByStatus("expired"),   cls: "badge-expired"   },
-          { label: "Cancelled", count: countByStatus("cancelled"), cls: "badge-cancelled" },
-        ].map(({ label, count, cls }) => (
+          { label: "Active",     value: "active",          count: countByStatus("active"),          cls: "badge-active"    },
+          { label: "Trial",      value: "trial",           count: countByStatus("trial"),            cls: "badge-trial"     },
+          { label: "Pending",    value: "pending_payment", count: countByStatus("pending_payment"),  cls: "badge-pending"   },
+          { label: "Past Due",   value: "past_due",        count: countByStatus("past_due"),         cls: "badge-pending"   },
+          { label: "Expired",    value: "expired",         count: countByStatus("expired"),          cls: "badge-expired"   },
+          { label: "Cancelled",  value: "cancelled",       count: countByStatus("cancelled"),        cls: "badge-cancelled" },
+        ].map(({ label, value, count, cls }) => (
           <button
-            key={label}
-            onClick={() => setStatusFilter(statusFilter === label.toLowerCase() ? "all" : label.toLowerCase())}
+            key={value}
+            onClick={() => setStatusFilter(statusFilter === value ? "all" : value)}
             className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium transition-colors hover:border-primary/40", cls)}
           >
             {label} <span className="font-mono">({count})</span>
@@ -558,7 +570,9 @@ export default function Subscriptions() {
           <DialogHeader>
             <DialogTitle>Grant Trial</DialogTitle>
             <DialogDescription>
-              Grant a trial period to {selected?.userFullName || selected?.userEmail}.
+              Grant a trial period to {selected?.userFullName || selected?.userEmail}. This will end
+              any of their active, trial, paused, or pending-payment subscriptions first — including
+              a currently paid plan.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

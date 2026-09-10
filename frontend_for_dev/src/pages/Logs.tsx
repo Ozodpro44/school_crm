@@ -42,13 +42,23 @@ export default function Logs() {
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Module list for the filter dropdown — fetched unfiltered/separately so
+  // switching modules doesn't make other modules disappear from the list.
+  const [moduleOptions, setModuleOptions] = useState<string[]>([]);
+
   const fetchLogs = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      // The module filter used to be applied only client-side to whatever
+      // the `limit`-capped fetch happened to contain, so picking a module
+      // could silently show an incomplete (or empty) result even though
+      // more matching entries exist beyond the fetch window. The backend
+      // supports filtering by module directly — use that instead.
       const data = await getLogs({
         limit,
         level: level !== "ALL" ? level : undefined,
+        module: moduleFilter !== "all" ? moduleFilter : undefined,
       });
       setLogs(data);
     } catch (e) {
@@ -57,9 +67,17 @@ export default function Logs() {
     } finally {
       setLoading(false);
     }
-  }, [limit, level]);
+  }, [limit, level, moduleFilter]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
+
+  useEffect(() => {
+    getLogs({ limit: 500 })
+      .then((data) => {
+        setModuleOptions(Array.from(new Set(data.map((l) => l.module).filter(Boolean))).sort());
+      })
+      .catch(() => { /* dropdown just stays empty — not critical */ });
+  }, []);
 
   useEffect(() => {
     if (autoRefresh) {
@@ -70,11 +88,9 @@ export default function Logs() {
     return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); };
   }, [autoRefresh, fetchLogs]);
 
-  // Derive unique modules from data
-  const allModules = ["all", ...Array.from(new Set(logs.map((l) => l.module).filter(Boolean))).sort()];
+  const allModules = ["all", ...moduleOptions];
 
   const filtered = logs.filter((l) => {
-    if (moduleFilter !== "all" && l.module !== moduleFilter) return false;
     if (search) {
       const q = search.toLowerCase();
       if (!l.message.toLowerCase().includes(q) && !l.module.toLowerCase().includes(q)) return false;
