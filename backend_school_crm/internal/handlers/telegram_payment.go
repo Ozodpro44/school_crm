@@ -3,6 +3,7 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/service"
@@ -87,6 +88,17 @@ func InitiateTelegramPayment(telegramService *service.TelegramPaymentService, su
 // @Router /webhooks/telegram-callback [post]
 func TelegramPaymentCallback(telegramService *service.TelegramPaymentService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Previously this callback trusted invoice_id/status with no proof
+		// the request actually came from the payment bot — anyone who knew
+		// or guessed an invoice number could activate that subscription for
+		// free. Require the shared bot-token secret as a bearer token.
+		auth := c.GetHeader("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") || !telegramService.VerifyWebhookSecret(strings.TrimPrefix(auth, "Bearer ")) {
+			log.Printf("[TelegramPaymentCallback] Rejected: missing or invalid webhook secret")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid webhook credentials"})
+			return
+		}
+
 		invoiceID := c.Query("invoice_id")
 		status := c.Query("status")
 

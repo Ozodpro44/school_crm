@@ -619,69 +619,26 @@ func GetDevSubscriptions(database *db.Database) gin.HandlerFunc {
 	}
 }
 
-// GetDevUsers returns all users for dev dashboard
-func GetDevUsers(database *db.Database) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		query := `
-			SELECT id, email, full_name, role, created_at, updated_at
-			FROM users
-			ORDER BY created_at DESC
-			LIMIT 100
-		`
+// RegisterDeveloperRoutes registers the only genuinely public developer
+// endpoint — static API documentation. Schema/migrations/test-data/seeding
+// used to live here unauthenticated too; they now require a developer JWT,
+// see RegisterDevUtilityRoutes.
+func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database, subscriptionService *service.SubscriptionService) {
+	log.Println("[ROUTES] Registering public developer routes")
 
-		rows, err := database.GetConn().QueryContext(c.Request.Context(), query)
-		if err != nil {
-			log.Printf("[DEV ERROR] Failed to fetch users: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
-			return
-		}
-		defer rows.Close()
-
-		var users []map[string]interface{}
-		for rows.Next() {
-			var id, email, fullName, role string
-			var createdAt, updatedAt time.Time
-
-			if err := rows.Scan(&id, &email, &fullName, &role, &createdAt, &updatedAt); err != nil {
-				continue
-			}
-
-			users = append(users, map[string]interface{}{
-				"id":        id,
-				"email":     email,
-				"fullName":  fullName,
-				"role":      role,
-				"createdAt": createdAt,
-				"updatedAt": updatedAt,
-			})
-		}
-
-		if users == nil {
-			users = []map[string]interface{}{}
-		}
-
-		c.JSON(http.StatusOK, users)
-	}
+	router.GET("/dev/api-docs", GetAPIDocumentation())
 }
 
-// RegisterDeveloperRoutes registers developer endpoints
-func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database, subscriptionService *service.SubscriptionService) {
-	log.Println("[ROUTES] Registering developer routes")
-
-	// Schema and migrations info (no auth required for learning)
+// RegisterDevUtilityRoutes registers developer-only operational endpoints
+// (schema/migration introspection, test-data generation, plan seeding).
+// Must be mounted on a router group behind DevAuthMiddleware — these expose
+// full DB schema and can write data, and were previously reachable with no
+// auth at all.
+func RegisterDevUtilityRoutes(router *gin.RouterGroup, database *db.Database) {
 	router.GET("/dev/schema", GetDatabaseSchema(database))
 	router.GET("/dev/migrations", GetDatabaseMigrations(database))
-	router.GET("/dev/api-docs", GetAPIDocumentation())
-
-	// Test data generation (admin only)
 	router.POST("/dev/generate-test-data", GenerateTestData(database))
-	
-	// Subscription plans seeding
 	router.POST("/dev/seed-subscription-plans", SeedSubscriptionPlans(database))
-	
-	// Subscriptions and users data (dev endpoints — unauthenticated read-only)
-	// Full CRUD is on the authenticated devProtected group via RegisterAdminSubscriptionRoutes.
-	router.GET("/dev/users", GetDevUsers(database))
 }
 
 // ==================== DEV SETTINGS ====================

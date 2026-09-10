@@ -198,6 +198,25 @@ func main() {
 	cacheClient := cache.New(redisClient.GetClient())
 	subscriptionService.SetCache(cacheClient)
 
+	// Periodically flip lapsed subscriptions to "expired" — nothing else in
+	// the codebase called ExpireLapsedSubscriptions/CheckSubscriptionExpiry,
+	// so platform stats/admin listings kept reporting long-past subscriptions
+	// as active/trial forever (access itself was already correctly blocked
+	// elsewhere by a live end_date check; this is purely a status/reporting
+	// sweep, so an hourly cadence is more than sufficient).
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			n, err := subscriptionService.ExpireLapsedSubscriptions(context.Background())
+			if err != nil {
+				log.Printf("[subscription-expiry] sweep failed: %v", err)
+			} else if n > 0 {
+				log.Printf("[subscription-expiry] marked %d lapsed subscription(s) as expired", n)
+			}
+		}
+	}()
+
 	rateLimiter := middleware.NewRateLimiter(redisClient.GetClient())
 	log.Println("Rate limiting enabled")
 
@@ -231,9 +250,11 @@ func main() {
 		log.Println("Warning: CLICK_MERCHANT_ID/CLICK_SERVICE_ID/CLICK_SECRET_KEY not set. Click.uz disabled.")
 	}
 	clickUzService := service.NewClickUzService(database, clickMerchantID, clickServiceID, clickSecretKey)
+	clickUzService.SetCache(cacheClient)
 
 	// Telegram payment service
 	telegramPaymentService := service.NewTelegramPaymentService(database, telegramBotToken)
+	telegramPaymentService.SetCache(cacheClient)
 
 	// ── Router ────────────────────────────────────────────────────────────────
 	if cfg.Environment == "production" {
@@ -322,6 +343,7 @@ func main() {
 	handlers.RegisterSubscriptionPlanDevRoutes(devProtected, subscriptionService)
 	handlers.RegisterPaymentTypeDevRoutes(devProtected, paymentTypeService)
 	handlers.RegisterClickUzDevRoutes(devProtected, clickUzService)
+	handlers.RegisterDevUtilityRoutes(devProtected, database)
 
 	// ── Auth-only (login required, subscription not required) ─────────────────
 	authOnly := router.Group("/api/v1")
@@ -381,6 +403,7 @@ func main() {
 	handlers.RegisterAdminPlansRoutes(legacyDevProtected, subscriptionService)
 	handlers.RegisterSubscriptionPlanDevRoutes(legacyDevProtected, subscriptionService)
 	handlers.RegisterPaymentTypeDevRoutes(legacyDevProtected, paymentTypeService)
+	handlers.RegisterDevUtilityRoutes(legacyDevProtected, database)
 
 	legacyAuthOnly := router.Group("/api")
 	legacyAuthOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret))

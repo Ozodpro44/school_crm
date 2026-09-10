@@ -101,6 +101,21 @@ func UpdateSubscriptionStatus(subscriptionService *service.SubscriptionService) 
 			return
 		}
 
+		// This endpoint exists for self-service pause/resume only — it must
+		// not let a subscription that hasn't actually been paid for
+		// (pending_payment / past_due / expired / cancelled) be flipped
+		// straight to "active" with no payment involved. Only a genuine
+		// active<->paused toggle is a valid self-service transition; every
+		// other path to "active" goes through a real payment callback.
+		validTransition := (req.Status == "active" && sub.Status == "paused") ||
+			(req.Status == "paused" && sub.Status == "active")
+		if !validTransition {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "cannot change status from " + sub.Status + " to " + req.Status + " — pay for the subscription to activate it",
+			})
+			return
+		}
+
 		if err := subscriptionService.UpdateSubscriptionStatus(c.Request.Context(), subscriptionID, req.Status); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -157,9 +172,28 @@ func CreateSubscription(subscriptionService *service.SubscriptionService, userSe
 
 		now := time.Now()
 		status := "active"
+		paymentMethod := req.PaymentMethod
 		// For paid plans, require payment first
 		if plan.Price > 0 {
 			status = "pending_payment"
+		} else {
+			// A $0 plan activates immediately with no payment step — that's
+			// fine for a one-time trial, but without this check a user
+			// could call this endpoint repeatedly for unlimited free
+			// months. payment_method is forced to "free_trial" here
+			// (not trusted from the request) so HasUsedTrial's check can't
+			// be evaded by sending some other payment_method string for a
+			// free plan.
+			usedTrial, err := subscriptionService.HasUsedTrial(c.Request.Context(), userID.(string))
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify trial eligibility"})
+				return
+			}
+			if usedTrial {
+				c.JSON(http.StatusForbidden, gin.H{"error": "free trial already used — choose a paid plan"})
+				return
+			}
+			paymentMethod = "free_trial"
 		}
 
 		subscription := &models.Subscription{
@@ -168,7 +202,7 @@ func CreateSubscription(subscriptionService *service.SubscriptionService, userSe
 			BranchID:      req.BranchID,
 			Status:        status,
 			StartDate:     now,
-			PaymentMethod: &req.PaymentMethod,
+			PaymentMethod: &paymentMethod,
 			Notes:         req.Notes,
 		}
 

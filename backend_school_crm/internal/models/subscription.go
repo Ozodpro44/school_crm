@@ -160,6 +160,12 @@ type AdminCreateSubscriptionRequest struct {
 }
 
 // AdminUpdateSubscriptionRequest allows partial update of a subscription.
+// A nil pointer field means "leave unchanged" (COALESCE in the update
+// query) — standard JSON unmarshaling can't tell an omitted key apart from
+// an explicit `null`, so there's no way to distinguish "don't touch notes"
+// from "clear notes" via the Notes field alone. ClearNotes is an explicit
+// flag for that one case, since blanking free-text notes is the only field
+// here with a real clear-it use case.
 type AdminUpdateSubscriptionRequest struct {
 	Status        *string    `json:"status"`
 	PlanID        *string    `json:"planId"`
@@ -168,6 +174,7 @@ type AdminUpdateSubscriptionRequest struct {
 	EndDate       *time.Time `json:"endDate"`
 	RenewalDate   *time.Time `json:"renewalDate"`
 	Notes         *string    `json:"notes"`
+	ClearNotes    bool       `json:"clearNotes"`
 }
 
 // PlatformStats is an aggregate metrics payload for the developer dashboard.

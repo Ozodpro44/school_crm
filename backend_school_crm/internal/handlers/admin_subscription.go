@@ -3,9 +3,11 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/school-crm/backend/internal/middleware"
 	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/service"
 )
@@ -18,11 +20,14 @@ func RegisterAdminSubscriptionRoutes(router *gin.RouterGroup, subSvc *service.Su
 	grp.POST("", adminCreateSubscription(subSvc))
 	grp.GET("/:id", adminGetSubscription(subSvc))
 	grp.PUT("/:id", adminUpdateSubscription(subSvc))
-	grp.DELETE("/:id", adminDeleteSubscription(subSvc))
+	// Deleting a subscription and overriding a user's trial are the two
+	// genuinely destructive/abusable actions here — restrict them to the
+	// "admin" developer tier, not any developer account.
+	grp.DELETE("/:id", middleware.RequireDeveloperRole("admin"), adminDeleteSubscription(subSvc))
 
 	// Developer override: grant a free trial to any user (bypasses one-time rule)
 	// POST /dev/subscriptions/:userId/grant-trial
-	router.POST("/dev/subscriptions/:userId/grant-trial", AdminGrantTrialHandler(subSvc))
+	router.POST("/dev/subscriptions/:userId/grant-trial", middleware.RequireDeveloperRole("admin"), AdminGrantTrialHandler(subSvc))
 }
 
 // RegisterAdminPlatformStatsRoute mounts GET /dev/stats.
@@ -126,6 +131,10 @@ func adminDeleteSubscription(svc *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
 		if err := svc.AdminDeleteSubscription(c.Request.Context(), id); err != nil {
+			if errors.Is(err, service.ErrSubscriptionNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

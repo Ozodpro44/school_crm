@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -282,6 +283,47 @@ func (s *SubscriptionService) CheckSubscriptionExpiry(ctx context.Context, subsc
 	return false, nil
 }
 
+// ExpireLapsedSubscriptions marks every non-terminal subscription whose
+// end_date has passed as "expired". Nothing previously called
+// CheckSubscriptionExpiry (which only handles one ID at a time) anywhere, so
+// a lapsed subscription's status column stayed stuck at trial/active/etc.
+// forever — access itself was still correctly cut off by SubscriptionGate's
+// separate end_date check, but platform stats, admin listings, and MRR kept
+// counting long-lapsed subscriptions as live. Meant to be run periodically.
+func (s *SubscriptionService) ExpireLapsedSubscriptions(ctx context.Context) (int, error) {
+	rows, err := s.database.GetConn().QueryContext(ctx, `
+		UPDATE subscriptions
+		SET status = 'expired', updated_at = NOW()
+		WHERE status IN ('active', 'trial', 'paused', 'pending_payment', 'past_due')
+		  AND end_date IS NOT NULL AND end_date < NOW()
+		RETURNING user_id
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("expire lapsed subscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	var userIDs []string
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			continue
+		}
+		userIDs = append(userIDs, uid)
+	}
+	if err := rows.Err(); err != nil {
+		return len(userIDs), err
+	}
+
+	if s.cache != nil {
+		for _, uid := range userIDs {
+			_ = s.cache.Delete(ctx, fmt.Sprintf("crm:sub_active:%s", uid))
+		}
+	}
+
+	return len(userIDs), nil
+}
+
 // CreateSubscriptionPlan creates a new subscription plan (dev endpoint)
 func (s *SubscriptionService) CreateSubscriptionPlan(ctx context.Context, plan *models.SubscriptionPlan) error {
 	query := `
@@ -422,6 +464,20 @@ func (s *SubscriptionService) AdminCreateSubscription(ctx context.Context, req *
 		req.Status = "active"
 	}
 
+	// Unlike AdminGrantTrial, this used to leave any subscription the user
+	// already had untouched — creating a second simultaneously-"active" row
+	// for the same user, which GetPlatformStats's MRR/active-count queries
+	// (WHERE status='active', no per-user dedup) then double-count.
+	if req.Status == "active" || req.Status == "trial" {
+		if _, err := s.database.GetConn().ExecContext(ctx, `
+			UPDATE subscriptions
+			SET status = 'expired', updated_at = NOW()
+			WHERE user_id = $1 AND status IN ('active', 'trial', 'paused', 'pending_payment', 'past_due')
+		`, req.UserID); err != nil {
+			return nil, fmt.Errorf("admin create subscription: expire old: %w", err)
+		}
+	}
+
 	var id string
 	err := s.database.GetConn().QueryRowContext(ctx, `
 		INSERT INTO subscriptions (user_id, plan_id, branch_id, status, start_date, end_date, renewal_date, auto_renew, payment_method, notes)
@@ -431,6 +487,9 @@ func (s *SubscriptionService) AdminCreateSubscription(ctx context.Context, req *
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("admin create subscription: %w", err)
+	}
+	if s.cache != nil {
+		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:sub_active:%s", req.UserID))
 	}
 	return s.AdminGetSubscription(ctx, id)
 }
@@ -480,11 +539,11 @@ func (s *SubscriptionService) AdminUpdateSubscription(ctx context.Context, id st
 			auto_renew     = COALESCE($3, auto_renew),
 			end_date       = COALESCE($4, end_date),
 			renewal_date   = COALESCE($5, renewal_date),
-			notes          = COALESCE($6, notes),
+			notes          = CASE WHEN $9 THEN NULL ELSE COALESCE($6, notes) END,
 			payment_method = COALESCE($7, payment_method),
 			updated_at     = NOW()
 		WHERE id = $8
-	`, req.Status, req.PlanID, req.AutoRenew, req.EndDate, req.RenewalDate, req.Notes, req.PaymentMethod, id)
+	`, req.Status, req.PlanID, req.AutoRenew, req.EndDate, req.RenewalDate, req.Notes, req.PaymentMethod, id, req.ClearNotes)
 	if err != nil {
 		return nil, fmt.Errorf("admin update subscription: %w", err)
 	}
@@ -501,11 +560,29 @@ func (s *SubscriptionService) AdminUpdateSubscription(ctx context.Context, id st
 }
 
 // AdminDeleteSubscription hard-cancels and removes a subscription.
+var ErrSubscriptionNotFound = fmt.Errorf("subscription not found")
+
 func (s *SubscriptionService) AdminDeleteSubscription(ctx context.Context, id string) error {
-	_, err := s.database.GetConn().ExecContext(ctx,
-		`DELETE FROM subscriptions WHERE id = $1`, id)
+	// Fetch user_id first: needed both to invalidate that user's cached
+	// active-subscription flag, and to distinguish "actually deleted" from
+	// "no such row" — the DELETE alone previously reported success either way.
+	var userID string
+	err := s.database.GetConn().QueryRowContext(ctx,
+		`SELECT user_id FROM subscriptions WHERE id = $1`, id).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrSubscriptionNotFound
+	}
 	if err != nil {
 		return fmt.Errorf("admin delete subscription: %w", err)
+	}
+
+	if _, err := s.database.GetConn().ExecContext(ctx,
+		`DELETE FROM subscriptions WHERE id = $1`, id); err != nil {
+		return fmt.Errorf("admin delete subscription: %w", err)
+	}
+
+	if s.cache != nil {
+		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:sub_active:%s", userID))
 	}
 	return nil
 }
@@ -769,11 +846,14 @@ func (s *SubscriptionService) AdminGrantTrial(ctx context.Context, userID string
 		return nil, fmt.Errorf("admin grant trial: get plan: %w", err)
 	}
 
-	// Expire any existing active/trial subscriptions for this user
+	// Expire any existing non-terminal subscriptions for this user. Includes
+	// past_due (previously omitted) — GetUserSubscriptionWithPlan treats
+	// past_due as a live state, so leaving it out could land a user with
+	// two simultaneously non-terminal rows that never reconcile.
 	_, err = s.database.GetConn().ExecContext(ctx, `
 		UPDATE subscriptions
 		SET status = 'expired', updated_at = NOW()
-		WHERE user_id = $1 AND status IN ('active', 'trial', 'paused', 'pending_payment')
+		WHERE user_id = $1 AND status IN ('active', 'trial', 'paused', 'pending_payment', 'past_due')
 	`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("admin grant trial: expire old: %w", err)
@@ -799,6 +879,10 @@ func (s *SubscriptionService) AdminGrantTrial(ctx context.Context, userID string
 	// Update trial_used_at so one-time check reflects developer override
 	_, _ = s.database.GetConn().ExecContext(ctx,
 		`UPDATE users SET trial_used_at = NOW() WHERE id = $1`, userID)
+
+	if s.cache != nil {
+		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:sub_active:%s", userID))
+	}
 
 	return s.AdminGetSubscription(ctx, id)
 }

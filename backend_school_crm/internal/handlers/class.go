@@ -28,7 +28,11 @@ func createClass(classService *service.ClassService, subService *service.Subscri
 			return
 		}
 
-		// Enforce subscription class limit before inserting.
+		// Enforce subscription class limit before inserting. Unlike
+		// student/branch creation (which fail closed on any error from
+		// CheckResourceLimit, in their service layer), this only used to
+		// block on the specific limit-reached error and silently proceeded
+		// on any other error (e.g. a DB hiccup) — fail closed here too.
 		if req.BranchID != "" {
 			ownerID, err := subService.GetOwnerIDFromBranch(c.Request.Context(), req.BranchID)
 			if err == nil && ownerID != "" {
@@ -40,6 +44,8 @@ func createClass(classService *service.ClassService, subService *service.Subscri
 						})
 						return
 					}
+					c.JSON(http.StatusInternalServerError, gin.H{"error": limitErr.Error()})
+					return
 				}
 			}
 		}

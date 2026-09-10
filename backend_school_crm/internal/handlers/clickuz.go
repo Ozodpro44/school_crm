@@ -201,7 +201,17 @@ func TestPaymentCallback(clickUzService *service.ClickUzService) gin.HandlerFunc
 			return
 		}
 
-		success, err := clickUzService.HandlePaymentCallback(c.Request.Context(), "test-txn-"+invoiceID, invoiceID, 0)
+		// Look up the invoice's real amount rather than hardcoding 0 — the
+		// service now rejects a callback whose amount doesn't match what
+		// the invoice was actually created for, so this must exercise the
+		// same check a real callback would.
+		amount, err := clickUzService.GetInvoiceAmount(c.Request.Context(), invoiceID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "invoice not found", "invoice_id": invoiceID})
+			return
+		}
+
+		success, err := clickUzService.HandlePaymentCallback(c.Request.Context(), "test-txn-"+invoiceID, invoiceID, amount)
 		if err != nil || !success {
 			c.JSON(http.StatusOK, gin.H{
 				"error": "failed to process test payment",
