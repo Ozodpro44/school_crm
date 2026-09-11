@@ -15,6 +15,8 @@ import { login as apiLogin, verifyLoginOtp } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
+import { LanguageSwitch } from "@/components/LanguageSwitch";
+import { ThemeSwitch } from "@/components/ThemeSwitch";
 import { cn } from "@/lib/utils";
 
 type LoginMode = "admin" | "teacher";
@@ -115,6 +117,13 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 to-indigo-50 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center p-4">
+      {/* Language and theme were only reachable after signing in, which left
+          anyone who doesn't read the default Uzbek stuck on this screen. */}
+      <div className="absolute top-4 right-4 flex items-center gap-1.5">
+        <LanguageSwitch />
+        <ThemeSwitch />
+      </div>
+
       <div className="w-full max-w-md space-y-4">
 
         {/* Logo */}

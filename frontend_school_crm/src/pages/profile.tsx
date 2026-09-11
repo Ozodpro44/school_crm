@@ -37,7 +37,7 @@ import { useNotify } from "@/hooks/use-notify";
 
 const ROLE_CONFIG: Record<string, { color: string; avatar: string; labelKey: string; descKey: string }> = {
   admin:        { color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",              avatar: "from-red-500 to-pink-600",        labelKey: "admin",       descKey: "adminRoleDesc" },
-  branch_admin: { color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400", avatar: "from-orange-500 to-amber-500",    labelKey: "branchAdmin", descKey: "branchAdminRoleDesc" },
+  branch_admin: { color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400", avatar: "from-orange-500 to-amber-500",    labelKey: "branchAdmin", descKey: "branchAdminRoleDesc" },
   manager:      { color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",          avatar: "from-blue-500 to-indigo-600",     labelKey: "manager",     descKey: "managerRoleDesc" },
   accountant:   { color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400", avatar: "from-purple-500 to-violet-600",   labelKey: "accountant",  descKey: "accountantRoleDesc" },
   teacher:      { color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",      avatar: "from-emerald-500 to-teal-500",   labelKey: "teacher",     descKey: "teacherRoleDesc" },

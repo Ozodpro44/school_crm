@@ -442,8 +442,8 @@ export default function AttendancePage() {
                           <span className={cn(
                             "inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold",
                             status === "present" && "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
-                            status === "absent"  && "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-                            status === "late"    && "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+                            status === "absent"  && "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+                            status === "late"    && "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
                           )}>
                             {status === "present" && <CheckCircle2 className="w-3.5 h-3.5" />}
                             {status === "absent"  && <XCircle className="w-3.5 h-3.5" />}

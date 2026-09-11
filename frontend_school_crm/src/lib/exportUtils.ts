@@ -37,8 +37,12 @@ export function formatCurrency(amount: number, currency?: string): string {
     } else {
       locale = lang;
     }
-  } else if (typeof navigator !== "undefined") {
-    locale = navigator.language || "en-US";
+  } else {
+    // No stored preference yet: fall back to the app's own default language
+    // (LanguageContext starts at "uz-latn"), not the browser locale. Falling
+    // back to navigator.language meant a first-time visitor saw an Uzbek UI
+    // with en-US money formatting ("UZS 4,150,000" instead of "4 150 000").
+    locale = "uz-UZ";
   }
 
   try {

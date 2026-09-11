@@ -494,7 +494,7 @@ export default function ClassesPage() {
             <DialogTrigger asChild>
               <Button
                 variant="outline"
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 w-full sm:w-auto"
+                className="bg-brand hover:bg-brand-hover text-white border-0 w-full sm:w-auto"
                 disabled={unassignedStudents.length === 0}
               >
                 <UserPlus className="w-4 h-4 mr-2" />
@@ -613,7 +613,7 @@ export default function ClassesPage() {
                     disabled={
                       !selectedClassId || selectedStudentIds.length === 0
                     }
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                    className="bg-brand hover:bg-brand-hover"
                   >
                     {t("add")} {selectedStudentIds.length} {t("student")}
                   </Button>
@@ -930,7 +930,7 @@ export default function ClassesPage() {
                       setSelectedStudentIds(unassignedSelection);
                       setIsBulkAddOpen(true);
                     }}
-                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                    className="w-full bg-brand hover:bg-brand-hover text-white"
                   >
                     <UserPlus className="w-4 h-4 mr-2" />
                     {t("moveToClass")}
@@ -974,7 +974,7 @@ export default function ClassesPage() {
                 confirmDialog.onConfirm();
               }}
               disabled={confirmDialog.isLoading}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              className="bg-brand hover:bg-brand-hover"
             >
               {confirmDialog.isLoading ? (
                 <>

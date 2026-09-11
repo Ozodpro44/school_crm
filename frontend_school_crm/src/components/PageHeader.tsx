@@ -12,7 +12,11 @@ interface PageHeaderProps {
 export function PageHeader({ title, subtitle }: PageHeaderProps) {
   return (
     <div>
-      <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
+      {/* Uses the shared `.text-display` ramp rather than its own
+          `text-2xl sm:text-3xl`. The two disagreed, so a page title changed
+          size depending on whether the page used this component or the
+          utility directly. */}
+      <h1 className="text-display text-slate-900 dark:text-slate-100">
         {title}
       </h1>
       {subtitle && (

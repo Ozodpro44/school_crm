@@ -848,7 +848,7 @@ export default function ClassDetailsPage() {
                 confirmDialog.onConfirm();
               }}
               disabled={confirmDialog.isLoading}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              className="bg-brand hover:bg-brand-hover"
             >
               {confirmDialog.isLoading ? (
                 <>

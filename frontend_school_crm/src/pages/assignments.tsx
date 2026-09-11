@@ -181,9 +181,9 @@ export default function AssignmentsPage() {
       case "submitted":
         return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">{t("submitted")}</Badge>;
       case "late":
-        return <Badge className="bg-orange-100 text-orange-800">{t("late")}</Badge>;
+        return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">{t("late")}</Badge>;
       case "missing":
-        return <Badge className="bg-red-100 text-red-800">{t("missing")}</Badge>;
+        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">{t("missing")}</Badge>;
       default:
         return <Badge className="bg-slate-100 text-slate-600">{t("pending")}</Badge>;
     }
@@ -262,7 +262,7 @@ export default function AssignmentsPage() {
                           <Badge variant="outline" className="text-xs">{assignment.subject}</Badge>
                         )}
                         {overdue && (
-                          <Badge className="bg-red-100 text-red-700 text-xs">{t("overdue")}</Badge>
+                          <Badge variant="danger" className="text-xs">{t("overdue")}</Badge>
                         )}
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">

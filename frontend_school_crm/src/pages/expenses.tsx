@@ -713,7 +713,7 @@ export default function ExpensesPage() {
       key: "amount",
       header: t("amount"),
       render: (expense) => (
-        <span className="font-semibold text-red-600 dark:text-red-400">
+        <span className="font-semibold text-red-600 dark:text-red-400 tabular-nums">
           {formatCurrency(expense.amount)}
         </span>
       ),
@@ -796,7 +796,7 @@ export default function ExpensesPage() {
 
         <div className="flex-1 flex justify-end">
           <Button
-            className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
+            className="bg-brand hover:bg-brand-hover"
             onClick={() => { resetForm(); setIsDialogOpen(true); }}
             disabled={!canCreateExpenses}
             title={
@@ -1292,7 +1292,7 @@ export default function ExpensesPage() {
                 confirmDialog.onConfirm();
               }}
               disabled={confirmDialog.isLoading}
-              className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
+              className="bg-brand hover:bg-brand-hover"
             >
               {confirmDialog.isLoading ? (
                 <>

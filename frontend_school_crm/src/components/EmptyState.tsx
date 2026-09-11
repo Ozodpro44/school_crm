@@ -1,6 +1,7 @@
 import React from "react";
 import { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface EmptyStateProps {
   icon: LucideIcon;
@@ -63,19 +64,14 @@ export function EmptyState({
         </p>
       )}
       {action && (
-        <button
-          type="button"
-          onClick={action.onClick}
-          className={cn(
-            "mt-5 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors",
-            "bg-indigo-600 hover:bg-indigo-700 text-white",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2",
-            "dark:focus-visible:ring-offset-slate-900"
-          )}
-        >
+        // Uses the shared Button with the brand gradient so the empty-state
+        // CTA matches the page-header CTA for the same action. It used to be
+        // a flat indigo button, so an empty table showed two differently
+        // styled buttons for the identical action.
+        <Button onClick={action.onClick} className="mt-5 bg-brand hover:bg-brand-hover">
           {ActionIcon && <ActionIcon className="w-4 h-4" />}
           {action.label}
-        </button>
+        </Button>
       )}
     </div>
   );

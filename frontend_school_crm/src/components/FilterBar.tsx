@@ -20,8 +20,14 @@ interface FilterBarProps {
 
 export function FilterBar({ children, className }: FilterBarProps) {
   return (
+    // On narrow screens the wrapped flex row left the last control alone on
+    // its own line with a gap beside it. A 2-up grid on mobile fills the row
+    // evenly, and the original wrapping row takes over from `sm` upward where
+    // there is room for the controls at their natural widths.
     <div className={cn(
-      "flex flex-wrap items-center gap-2 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs",
+      "grid grid-cols-2 gap-2 p-3 sm:flex sm:flex-wrap sm:items-center",
+      "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm",
+      "[&>*:only-child]:col-span-2",
       className
     )}>
       {children}
@@ -54,7 +60,9 @@ export function FilterSearch({
   };
 
   return (
-    <div className={cn("relative flex-1 min-w-[180px]", className)}>
+    // Search is the primary control, so it takes the full width of the mobile
+    // grid and the filters pair up beneath it.
+    <div className={cn("relative col-span-2 sm:col-span-1 sm:flex-1 sm:min-w-[180px]", className)}>
       <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
       <Input
         ref={inputRef}

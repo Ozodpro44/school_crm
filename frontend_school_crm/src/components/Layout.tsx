@@ -86,6 +86,8 @@ import { getStoredBranchId } from "@/lib/storage";
 import { User } from "@/types";
 import { getTranslation } from "@/lib/translations";
 import { useLanguage, useSetLanguage } from "@/hooks/use-language";
+import { useSettings } from "@/hooks/use-settings";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useBranch } from "@/context/BranchContext";
 import type { Language } from "@/types";
 import { getCurrentSubscription } from "@/lib/subscription-api";
@@ -433,9 +435,13 @@ function SidebarHeaderSection({
             <Building2 className="w-5 h-5 text-white" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate leading-none mb-1">
-              {currentBranchName}
-            </p>
+            {currentBranchName ? (
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate leading-none mb-1">
+                {currentBranchName}
+              </p>
+            ) : (
+              <Skeleton className="h-3.5 w-28 mb-1.5" />
+            )}
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest opacity-80">
               {schoolName}
             </p>
@@ -520,6 +526,7 @@ export function Layout({ children }: LayoutProps) {
   const [user, setUser] = useState<User | null>(null);
   const language = useLanguage();
   const { currentBranch, branches, setCurrentBranchById, clearBranches } = useBranch();
+  const { settings, loading: settingsLoading } = useSettings();
   const [subInfo, setSubInfo] = useState<SubInfo | null>(null);
   // SidebarProvider (components/ui/sidebar.tsx) treats passing onOpenChange
   // as "the parent fully controls this" — if `open` isn't also passed back
@@ -691,20 +698,30 @@ export function Layout({ children }: LayoutProps) {
       ];
 
   // Bottom nav — role-aware
+  // Short labels: a bottom-bar tab is ~56px wide, so the full page names were
+  // being truncated mid-word ("Asosiy pa…").
   const bottomNavItems = isTeacher
     ? [
-        { name: t("teacherPortal"), href: "/teacher-portal", icon: PortalIcon },
+        { name: t("teacherPortalShort"), href: "/teacher-portal", icon: PortalIcon },
         { name: t("timetable"), href: "/schedule", icon: Calendar },
         { name: t("assignments"), href: "/assignments", icon: ClipboardCheck },
         { name: t("help"), href: "/help", icon: HelpCircle },
       ]
     : [
-        { name: t("dashboard"), href: "/", icon: LayoutDashboard },
+        { name: t("dashboardShort"), href: "/", icon: LayoutDashboard },
         { name: t("students"), href: "/students", icon: Users },
         { name: t("payments"), href: "/payments", icon: DollarSign },
         { name: t("classes"), href: "/classes", icon: BookOpen },
       ];
 
+  // The brand slot shows the SCHOOL, not the branch: the branch name already
+  // appears in the switcher directly below it, so showing it here too printed
+  // the same string twice. While settings load we pass an empty string and
+  // render a skeleton rather than the literal "Maktab nomi" placeholder the
+  // old `t("schoolName")` fallback put on screen on every page load.
+  const schoolDisplayName = settingsLoading ? "" : settings?.name || t("schoolName");
+  // Still needed for the mobile top bar, where non-admins see the branch as
+  // plain text instead of the switcher.
   const branchDisplayName = currentBranch?.name || t("schoolName");
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -728,7 +745,7 @@ export function Layout({ children }: LayoutProps) {
         >
           {/* Header */}
           <SidebarHeaderSection
-            currentBranchName={branchDisplayName}
+            currentBranchName={schoolDisplayName}
             schoolName="Management"
           />
 

@@ -1213,7 +1213,7 @@ export default function ReportsPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-4">
-                  <div className={`flex items-center gap-2 text-sm font-semibold px-3 py-1.5 rounded-full ${forecastData.isBreakingEven ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
+                  <div className={`flex items-center gap-2 text-sm font-semibold px-3 py-1.5 rounded-full ${forecastData.isBreakingEven ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"}`}>
                     {forecastData.isBreakingEven ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                     {forecastData.isBreakingEven ? (t("profitable")) : (t("operatingAtLoss"))}
                   </div>

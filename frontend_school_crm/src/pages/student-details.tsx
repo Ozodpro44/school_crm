@@ -229,7 +229,7 @@ export default function StudentDetailsPage() {
     switch (status) {
       case "present": return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
       case "absent": return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
-      case "late": return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
+      case "late": return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
       default: return "";
     }
   };
@@ -237,7 +237,7 @@ export default function StudentDetailsPage() {
   const getPaymentStatusColor = (status: string) => {
     switch (status) {
       case "paid": return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-      case "partial": return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
+      case "partial": return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
       default: return "";
     }
   };
@@ -954,10 +954,10 @@ export default function StudentDetailsPage() {
                         <Badge
                           className={`text-xs ${
                             entry.outcome === "answered" || entry.outcome === "resolved"
-                              ? "bg-green-100 text-green-800"
+                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
                               : entry.outcome === "no_answer"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-orange-100 text-orange-800"
+                              ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                              : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
                           }`}
                         >
                           {t(entry.outcome === "no_answer" ? "noAnswer" : entry.outcome === "left_message" ? "leftMessage" : entry.outcome) || entry.outcome}

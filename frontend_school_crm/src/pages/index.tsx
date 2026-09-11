@@ -24,6 +24,7 @@ import { StatCard } from "@/components/StatCard";
 import { PaymentMethodBreakdown } from "@/components/PaymentMethodBreakdown";
 import { RecentActivityFeed } from "@/components/RecentActivityFeed";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
+import { EmptyState } from "@/components/EmptyState";
 import { useQuery } from "@tanstack/react-query";
 import { getAuditLogs } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
@@ -386,9 +387,12 @@ export default function HomePage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* Counts are neutral; only the money tiles carry good/bad colour.
+            Giving every tile its own hue made the row read as decoration
+            rather than signal. */}
         <StatCard
           icon={Users}
-          tone="indigo"
+          tone="slate"
           label={t("students")}
           value={stats.activeStudents}
           hint={`${stats.totalStudents} ${t("totalEnrolled")}`}
@@ -396,7 +400,7 @@ export default function HomePage() {
         />
         <StatCard
           icon={GraduationCap}
-          tone="purple"
+          tone="slate"
           label={t("teachers")}
           value={stats.totalTeachers}
           hint={t("activeTeachers")}
@@ -420,51 +424,61 @@ export default function HomePage() {
         />
       </div>
 
+      {/* Payment-method icons are neutral rather than green/blue/cyan: they
+          label a channel, not a status, and three more hues here was a large
+          part of the dashboard's rainbow. */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         <PaymentMethodBreakdown
           icon={DollarSign}
-          iconColor="text-green-500"
+          iconColor="text-slate-400 dark:text-slate-500"
           title={t("cashPayments")}
           income={stats.cashIncome}
           expenses={stats.cashExpenses}
           profit={stats.cashProfit}
           labels={{ income: t("income"), expenses: t("expenses"), profit: t("profit") }}
           format={formatCurrency}
+          loading={isLoading}
         />
         <PaymentMethodBreakdown
           icon={CreditCard}
-          iconColor="text-blue-500"
+          iconColor="text-slate-400 dark:text-slate-500"
           title={t("cardPayments")}
           income={stats.cardIncome}
           expenses={stats.cardExpenses}
           profit={stats.cardProfit}
           labels={{ income: t("income"), expenses: t("expenses"), profit: t("profit") }}
           format={formatCurrency}
+          loading={isLoading}
         />
         <PaymentMethodBreakdown
           icon={Building2}
-          iconColor="text-cyan-500"
+          iconColor="text-slate-400 dark:text-slate-500"
           title={t("bankPayments")}
           income={stats.bankIncome}
           expenses={stats.bankExpenses}
           profit={stats.bankProfit}
           labels={{ income: t("income"), expenses: t("expenses"), profit: t("profit") }}
           format={formatCurrency}
+          loading={isLoading}
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
-        {/* Pending payments */}
+      {/* `items-start` stops the grid from stretching the two short cards to
+          match the activity feed's height — they used to end with ~120px of
+          dead space below a single number. Both pending tiles now share one
+          card, so the row is two balanced columns instead of three ragged
+          ones. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 items-start">
         <Card className="hover:shadow-md transition-shadow">
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
-              <AlertCircle className="w-4 h-4 text-orange-500" />
+              <AlertCircle className="w-4 h-4 text-amber-500" />
               {t("pendingPayments")}
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between p-4 bg-orange-50 dark:bg-orange-950/30 rounded-lg">
-              <div>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between gap-4 p-4 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+              <div className="min-w-0">
                 <p className="font-medium text-sm text-slate-900 dark:text-slate-100">
                   {t("studentDebtors")}
                 </p>
@@ -472,24 +486,17 @@ export default function HomePage() {
                   {t("pendingStudentPayments")}
                 </p>
               </div>
-              <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">
-                {stats.debtorsCount}
-              </div>
+              {isLoading ? (
+                <Skeleton className="h-8 w-10 shrink-0" />
+              ) : (
+                <div className="text-3xl font-bold text-amber-600 dark:text-amber-400 tabular-nums shrink-0">
+                  {stats.debtorsCount}
+                </div>
+              )}
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Pending salaries */}
-        <Card className="hover:shadow-md transition-shadow">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400">
-              <Wallet className="w-4 h-4 text-blue-500" />
-              {t("pendingExpenses")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-              <div>
+            <div className="flex items-center justify-between gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+              <div className="min-w-0">
                 <p className="font-medium text-sm text-slate-900 dark:text-slate-100">
                   {t("pendingSalaries")}
                 </p>
@@ -497,9 +504,13 @@ export default function HomePage() {
                   {t("teacherSalaryPaymentsDue")}
                 </p>
               </div>
-              <div className="text-3xl font-bold text-blue-600 dark:text-blue-400">
-                {stats.unpaidSalariesCount}
-              </div>
+              {isLoading ? (
+                <Skeleton className="h-8 w-10 shrink-0" />
+              ) : (
+                <div className="text-3xl font-bold text-slate-700 dark:text-slate-200 tabular-nums shrink-0">
+                  {stats.unpaidSalariesCount}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -530,9 +541,13 @@ export default function HomePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
-              {stats.collectionRate.toFixed(1)}%
-            </div>
+            {isLoading ? (
+              <Skeleton className="h-9 w-24" />
+            ) : (
+              <div className="text-3xl font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                {stats.collectionRate.toFixed(1)}%
+              </div>
+            )}
             <Progress
               value={stats.collectionRate}
               className="mt-2 h-2"
@@ -552,9 +567,16 @@ export default function HomePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-red-600 dark:text-red-400">
-              {stats.churnedStudents}
-            </div>
+            {isLoading ? (
+              <Skeleton className="h-9 w-24" />
+            ) : (
+              <div className="text-3xl font-bold text-red-600 dark:text-red-400 tabular-nums">
+                {stats.churnedStudents}
+              </div>
+            )}
+            {/* Spacer matching the sibling cards' progress bar, so all three
+                captions in this row sit on the same baseline. */}
+            <div className="mt-2 h-2" aria-hidden="true" />
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               {t("churnThisMonth")}
               {" · "}
@@ -574,9 +596,13 @@ export default function HomePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-purple-600 dark:text-purple-400">
-              {stats.salaryPayoutPct.toFixed(1)}%
-            </div>
+            {isLoading ? (
+              <Skeleton className="h-9 w-24" />
+            ) : (
+              <div className="text-3xl font-bold text-slate-800 dark:text-slate-100 tabular-nums">
+                {stats.salaryPayoutPct.toFixed(1)}%
+              </div>
+            )}
             <Progress
               value={stats.salaryPayoutPct}
               className="mt-2 h-2"
@@ -603,9 +629,7 @@ export default function HomePage() {
           </CardHeader>
           <CardContent>
             {stats.topDebtors.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">
-                —
-              </p>
+              <EmptyState icon={TrendingDown} title={t("noDebtors")} compact />
             ) : (
               <div className="space-y-2">
                 {stats.topDebtors.map((d) => (
@@ -641,9 +665,7 @@ export default function HomePage() {
           </CardHeader>
           <CardContent>
             {stats.unpaidByClass.length === 0 ? (
-              <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-4">
-                —
-              </p>
+              <EmptyState icon={Users} title={t("noUnpaidClasses")} compact />
             ) : (
               <div className="space-y-2">
                 {stats.unpaidByClass.map((c) => (
@@ -665,26 +687,24 @@ export default function HomePage() {
         </Card>
       </div>
 
-      <Card
-        className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-indigo-200 dark:border-indigo-800 animate-fade-in"
-        style={{ animationDelay: "0.70s" }}
-      >
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-indigo-900 dark:text-indigo-100">
+      {/* Neutral surface like every other card. The indigo/purple tint and
+          indigo title colour singled this card out for no reason the content
+          justified. */}
+      <Card className="animate-fade-in">
+        <CardHeader className="flex flex-row items-center justify-between gap-4">
+          <CardTitle>
             {chartView === "daily"
               ? t("dailyFourteenDays")
               : t("financialOverviewLastSixMonths")}
           </CardTitle>
-          <div className="flex gap-2">
+          {/* Segmented control: the active view is the filled button, the
+              other is outline. Previously both overrode the Button system
+              with a hardcoded indigo. */}
+          <div className="flex gap-2 shrink-0">
             <Button
               variant={chartView === "monthly" ? "default" : "outline"}
               size="sm"
               onClick={() => setChartView("monthly")}
-              className={
-                chartView === "monthly"
-                  ? "bg-indigo-600 hover:bg-indigo-700"
-                  : ""
-              }
             >
               {t("monthly")}
             </Button>
@@ -692,9 +712,6 @@ export default function HomePage() {
               variant={chartView === "daily" ? "default" : "outline"}
               size="sm"
               onClick={() => setChartView("daily")}
-              className={
-                chartView === "daily" ? "bg-indigo-600 hover:bg-indigo-700" : ""
-              }
             >
               {t("daily")}
             </Button>
@@ -707,50 +724,11 @@ export default function HomePage() {
         </CardContent>
       </Card>
 
-      <Card
-        className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border-indigo-200 dark:border-indigo-800 animate-fade-in"
-        style={{ animationDelay: "0.7s" }}
-      >
-        <CardHeader>
-          <CardTitle className="text-indigo-900 dark:text-indigo-100">
-            {t("quickStatsSummary")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4">
-            <div className="p-3 md:p-4 bg-white/60 dark:bg-slate-900/60 rounded-lg backdrop-blur">
-              <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400">
-                {t("totalIncome")}
-              </p>
-              <p className="text-xl md:text-2xl font-bold text-green-600 dark:text-green-400">
-                {formatCurrency(stats.totalIncome)}
-              </p>
-            </div>
-            <div className="p-3 md:p-4 bg-white/60 dark:bg-slate-900/60 rounded-lg backdrop-blur">
-              <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400">
-                {t("totalExpenses")}
-              </p>
-              <p className="text-xl md:text-2xl font-bold text-red-600 dark:text-red-400">
-                {formatCurrency(stats.totalExpenses)}
-              </p>
-            </div>
-            <div className="p-3 md:p-4 bg-white/60 dark:bg-slate-900/60 rounded-lg backdrop-blur">
-              <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400">
-                {t("netProfit")}
-              </p>
-              <p
-                className={`text-xl md:text-2xl font-bold ${
-                  stats.profit >= 0
-                    ? "text-indigo-600 dark:text-indigo-400"
-                    : "text-red-600 dark:text-red-400"
-                }`}
-              >
-                {formatCurrency(stats.profit)}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* The "quick stats summary" card that used to sit here repeated
+          Total income / Total expenses / Net profit — all three already
+          appear above, in the StatCard row and the per-method breakdown.
+          Removed rather than restyled: it added a screenful of height and
+          no new information. */}
     </div>
   );
 }

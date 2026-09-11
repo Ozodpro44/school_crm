@@ -4,6 +4,41 @@ export const miscTranslations: Partial<Translation> = {
   perMonth: { "uz-cyrl": "/ой", "uz-latn": "/oy", en: "/mo" },
   overdue: { "uz-cyrl": "Муддати ўтган", "uz-latn": "Muddati o'tgan", en: "Overdue" },
   totalCount: { "uz-cyrl": "жами", "uz-latn": "jami", en: "total" },
+  selectedCount: { "uz-cyrl": "та танланди", "uz-latn": "ta tanlandi", en: "selected" },
+
+  // Short forms for the mobile bottom bar, where a tab is ~56px wide and the
+  // full labels ("Asosiy panel", "O'qituvchi portali") were truncated to
+  // "Asosiy pa…".
+  dashboardShort: { "uz-cyrl": "Асосий", "uz-latn": "Asosiy", en: "Home" },
+  teacherPortalShort: { "uz-cyrl": "Портал", "uz-latn": "Portal", en: "Portal" },
+
+  // Audit-log / activity-feed actions. These used to render as raw English
+  // verbs ("create payment", "delete expense") inside an otherwise Uzbek UI.
+  auditActionCreate: { "uz-cyrl": "қўшди", "uz-latn": "qo'shdi", en: "created" },
+  auditActionUpdate: { "uz-cyrl": "ўзгартирди", "uz-latn": "o'zgartirdi", en: "updated" },
+  auditActionDelete: { "uz-cyrl": "ўчирди", "uz-latn": "o'chirdi", en: "deleted" },
+  auditActionLogin: { "uz-cyrl": "тизимга кирди", "uz-latn": "tizimga kirdi", en: "logged in" },
+  auditActionLogout: { "uz-cyrl": "тизимдан чиқди", "uz-latn": "tizimdan chiqdi", en: "logged out" },
+  auditResourcePayment: { "uz-cyrl": "тўлов", "uz-latn": "to'lov", en: "payment" },
+  auditResourceStudent: { "uz-cyrl": "ўқувчи", "uz-latn": "o'quvchi", en: "student" },
+  auditResourceTeacher: { "uz-cyrl": "ўқитувчи", "uz-latn": "o'qituvchi", en: "teacher" },
+  auditResourceExpense: { "uz-cyrl": "харажат", "uz-latn": "xarajat", en: "expense" },
+  auditResourceSalary: { "uz-cyrl": "иш ҳақи", "uz-latn": "ish haqi", en: "salary" },
+  auditResourceClass: { "uz-cyrl": "синф", "uz-latn": "sinf", en: "class" },
+  auditResourceUser: { "uz-cyrl": "фойдаланувчи", "uz-latn": "foydalanuvchi", en: "user" },
+  auditResourceBranch: { "uz-cyrl": "филиал", "uz-latn": "filial", en: "branch" },
+
+  noDebtors: { "uz-cyrl": "Қарздорлар йўқ", "uz-latn": "Qarzdorlar yo'q", en: "No debtors" },
+  noUnpaidClasses: {
+    "uz-cyrl": "Тўланмаган синфлар йўқ",
+    "uz-latn": "To'lanmagan sinflar yo'q",
+    en: "No classes with unpaid fees",
+  },
+  noChartData: {
+    "uz-cyrl": "Бу давр учун маълумот йўқ",
+    "uz-latn": "Bu davr uchun ma'lumot yo'q",
+    en: "No data for this period",
+  },
 
   // Dashboard
   dashboard: { "uz-cyrl": "Асосий панел", "uz-latn": "Asosiy panel", en: "Dashboard" },

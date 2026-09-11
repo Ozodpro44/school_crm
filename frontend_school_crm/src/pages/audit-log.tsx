@@ -42,7 +42,7 @@ const RESOURCE_COLORS: Record<string, string> = {
   expense:  "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400",
   class:    "bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400",
   branch:   "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400",
-  user:     "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400",
+  user:     "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
 const formatTime = (iso: string) => {

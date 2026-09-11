@@ -703,12 +703,17 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       ),
     },
     {
-      key: "phone",
-      header: t("phone"),
+      // Shows the PARENT's number: the student's own phone already appears
+      // under their name in the first column, so this column was rendering
+      // the identical value twice per row while parentPhone — which the form
+      // collects and validates, and which the school actually calls — was
+      // never shown in the table at all.
+      key: "parentPhone",
+      header: t("parentPhone"),
       hideOnMobile: true,
       render: (student) => (
         <span className="text-slate-900 dark:text-slate-100">
-          {formatPhoneNumber(student.phone)}
+          {student.parentPhone ? formatPhoneNumber(student.parentPhone) : "—"}
         </span>
       ),
     },
@@ -717,7 +722,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       header: t("monthlyPayment"),
       hideOnMobile: true,
       render: (student) => (
-        <span className="text-slate-900 dark:text-slate-100">
+        <span className="text-slate-900 dark:text-slate-100 tabular-nums">
           {formatCurrency(student.monthlyPayment)}
         </span>
       ),
@@ -1246,7 +1251,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-slate-600 dark:text-slate-400">{t("monthlyPayment")}:</span>
-                      <span className="font-medium text-slate-900 dark:text-slate-100">
+                      <span className="font-medium text-slate-900 dark:text-slate-100 tabular-nums">
                         {formatCurrency(student.monthlyPayment)}
                       </span>
                     </div>

@@ -79,7 +79,7 @@ export default function HelpPage() {
                       <li>
                         <Badge
                           variant="secondary"
-                          className="bg-green-100 text-green-800"
+                          className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
                         >
                           {t("active")}
                         </Badge>{" "}
@@ -97,7 +97,7 @@ export default function HelpPage() {
                       <li>
                         <Badge
                           variant="secondary"
-                          className="bg-red-100 text-red-800"
+                          className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
                         >
                           {t("suspended")}
                         </Badge>{" "}
@@ -193,19 +193,19 @@ export default function HelpPage() {
                     </h4>
                     <ul className="list-disc list-inside mt-2 space-y-1 text-slate-600 dark:text-slate-400">
                       <li>
-                        <Badge className="bg-green-100 text-green-800">
+                        <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
                           {t("paid")}
                         </Badge>{" "}
                         - {t("paidDesc")}
                       </li>
                       <li>
-                        <Badge className="bg-red-100 text-red-800">
+                        <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
                           {t("unpaid")}
                         </Badge>{" "}
                         - {t("unpaidDesc")}
                       </li>
                       <li>
-                        <Badge className="bg-orange-100 text-orange-800">
+                        <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
                           {t("partial")}
                         </Badge>{" "}
                         - {t("partialDesc")}

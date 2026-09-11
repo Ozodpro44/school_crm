@@ -441,7 +441,7 @@ export default function SalariesPage() {
       key: "amount",
       header: t("amount"),
       render: (salary) => (
-        <span className="text-slate-900 dark:text-slate-100">
+        <span className="text-slate-900 dark:text-slate-100 tabular-nums">
           {formatCurrency(salary.amount)}
         </span>
       ),
@@ -550,7 +550,7 @@ export default function SalariesPage() {
 
         <div className="flex-1 flex justify-end">
           <Button
-            className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
+            className="bg-brand hover:bg-brand-hover"
             onClick={() => { resetForm(); setIsDialogOpen(true); }}
             disabled={!canCreateSalaries}
             title={!canCreateSalaries ? t("noPermission") : ""}
@@ -802,7 +802,7 @@ export default function SalariesPage() {
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    <span className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
                       {formatCurrency(salary.amount)}
                     </span>
                     <Badge className={getStatusColor(salary.status)}>

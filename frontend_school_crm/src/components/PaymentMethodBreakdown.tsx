@@ -1,6 +1,7 @@
 import React from "react";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 type PaymentMethodBreakdownProps = {
@@ -14,6 +15,8 @@ type PaymentMethodBreakdownProps = {
   labels: { income: string; expenses: string; profit: string };
   /** Number formatter */
   format: (n: number) => string;
+  /** When true, show skeletons instead of figures. */
+  loading?: boolean;
 };
 
 /**
@@ -29,6 +32,7 @@ export function PaymentMethodBreakdown({
   profit,
   labels,
   format,
+  loading = false,
 }: PaymentMethodBreakdownProps) {
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -39,21 +43,45 @@ export function PaymentMethodBreakdown({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
-        <Row label={labels.income} value={format(income)} valueClass="text-green-600 dark:text-green-400" />
-        <Row label={labels.expenses} value={format(expenses)} valueClass="text-red-600 dark:text-red-400" />
-        <div className="border-t border-slate-100 dark:border-slate-800 pt-2">
-          <Row
-            label={labels.profit}
-            value={format(profit)}
-            labelClass="font-semibold text-slate-700 dark:text-slate-300"
-            valueClass={cn(
-              "font-semibold",
-              profit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
-            )}
-          />
-        </div>
+        {/* Without a loading state these rendered a real-looking "UZS 0"
+            while the dashboard request was still in flight, which reads as
+            "your school earned nothing" rather than "still loading". */}
+        {loading ? (
+          <>
+            <SkeletonRow />
+            <SkeletonRow />
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-2">
+              <SkeletonRow />
+            </div>
+          </>
+        ) : (
+          <>
+            <Row label={labels.income} value={format(income)} valueClass="text-green-600 dark:text-green-400" />
+            <Row label={labels.expenses} value={format(expenses)} valueClass="text-red-600 dark:text-red-400" />
+            <div className="border-t border-slate-100 dark:border-slate-800 pt-2">
+              <Row
+                label={labels.profit}
+                value={format(profit)}
+                labelClass="font-semibold text-slate-700 dark:text-slate-300"
+                valueClass={cn(
+                  "font-semibold",
+                  profit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"
+                )}
+              />
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <div className="flex items-center justify-between">
+      <Skeleton className="h-4 w-20" />
+      <Skeleton className="h-5 w-24" />
+    </div>
   );
 }
 

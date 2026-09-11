@@ -112,6 +112,15 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, []);
 
+  // Keep <html lang> in step with the chosen language so screen readers use
+  // the right pronunciation rules and browsers offer the right translation.
+  // _document renders a static lang="uz"; this updates it on every change,
+  // including the initial read from localStorage.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.lang = language === "en" ? "en" : "uz";
+  }, [language]);
+
   const setLanguage = (newLanguage: Language) => {
     setLanguageState(newLanguage);
     // Store language preference in localStorage

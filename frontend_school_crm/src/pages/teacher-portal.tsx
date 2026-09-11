@@ -131,7 +131,7 @@ export default function TeacherPortalPage() {
       case "paid":
         return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">{t("paid")}</Badge>;
       case "partial":
-        return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">{t("partial")}</Badge>;
+        return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">{t("partial")}</Badge>;
       default:
         return <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">{t("unpaid")}</Badge>;
     }
@@ -142,7 +142,7 @@ export default function TeacherPortalPage() {
       case "paid":
         return <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">{t("paid")}</Badge>;
       case "partial":
-        return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">{t("partial")}</Badge>;
+        return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">{t("partial")}</Badge>;
       default:
         return <Badge className="bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">{t("pending")}</Badge>;
     }

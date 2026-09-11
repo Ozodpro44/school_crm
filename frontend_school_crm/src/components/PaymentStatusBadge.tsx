@@ -59,7 +59,7 @@ const CONFIG = {
   partial: {
     icon: AlertCircle,
     className:
-      "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+      "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
     defaultLabel: "Partial",
   },
   unpaid: {

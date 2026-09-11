@@ -28,8 +28,8 @@ const ACTION_ICON = {
 
 const ACTION_TONE = {
   create: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  update: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  delete: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  update: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+  delete: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
 };
 
 export function RecentActivityFeed({
@@ -96,7 +96,7 @@ export function RecentActivityFeed({
                         {entry.userName || "Unknown"}
                       </span>{" "}
                       <span className="text-slate-500 dark:text-slate-400">
-                        {entry.description || `${entry.action} ${entry.resource}`}
+                        {entry.description || describeEntry(t, entry.action, entry.resource)}
                       </span>
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
@@ -113,14 +113,36 @@ export function RecentActivityFeed({
   );
 }
 
+/**
+ * Renders "<resource> <action>" in the active language — e.g. "to'lov qo'shdi"
+ * instead of the raw backend enum pair, which surfaced as English
+ * ("create payment", "delete expense") inside an otherwise Uzbek UI.
+ * Unknown values fall back to the raw string rather than showing a missing key.
+ */
+function describeEntry(
+  t: (k: string) => string,
+  action: string,
+  resource: string
+): string {
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const actionKey = `auditAction${cap(action)}`;
+  const resourceKey = `auditResource${cap(resource)}`;
+  const actionLabel = t(actionKey) === actionKey ? action : t(actionKey);
+  const resourceLabel = t(resourceKey) === resourceKey ? resource : t(resourceKey);
+  // Uzbek puts the object before the verb; English reads the other way round.
+  return `${resourceLabel} ${actionLabel}`;
+}
+
 function makeFormatRelative(t: (k: string) => string) {
   return function formatRelative(iso: string): string {
     const date = new Date(iso);
     const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
+    // The space matters: these used to concatenate directly and rendered as
+    // "1soat oldin" / "2kun oldin".
     if (diffSec < 60) return t("justNow");
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}${t("minAgo")}`;
-    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}${t("hourAgo")}`;
-    if (diffSec < 7 * 86400) return `${Math.floor(diffSec / 86400)}${t("dayAgo")}`;
+    if (diffSec < 3600) return `${Math.floor(diffSec / 60)} ${t("minAgo")}`;
+    if (diffSec < 86400) return `${Math.floor(diffSec / 3600)} ${t("hourAgo")}`;
+    if (diffSec < 7 * 86400) return `${Math.floor(diffSec / 86400)} ${t("dayAgo")}`;
     return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   };
 }

@@ -260,7 +260,7 @@ export default function TeachersPage() {
       header: t("salary"),
       sortable: true,
       render: (teacher) => (
-        <span className="font-medium text-slate-900 dark:text-slate-100">
+        <span className="font-medium text-slate-900 dark:text-slate-100 tabular-nums">
           {formatCurrency(teacher.monthlySalary)}
         </span>
       ),

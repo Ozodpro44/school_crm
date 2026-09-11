@@ -142,7 +142,7 @@ function TablePagination({
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 dark:border-slate-800">
       <p className="text-sm text-slate-500 dark:text-slate-400 order-2 sm:order-1">
-        {total === 0 ? t("noResults") : `${from}–${to} of ${total}`}
+        {total === 0 ? t("noResults") : `${from}–${to} / ${total}`}
       </p>
 
       <div className="flex items-center gap-3 order-1 sm:order-2">
@@ -224,6 +224,8 @@ export function DataTable<T extends { id: string }>({
   rowClassName,
   renderCard,
 }: DataTableProps<T>) {
+  const language = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const visibleColumns = columns; // future: column visibility toggle
 
   // ── Bulk action bar ─────────────────────────────────────────────────────────
@@ -236,7 +238,7 @@ export function DataTable<T extends { id: string }>({
       {showBulkBar && (
         <div className="flex items-center justify-between gap-3 px-4 py-2 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900 rounded-lg mb-3">
           <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">
-            {selectedCount} selected
+            {selectedCount} {t("selectedCount")}
           </span>
           <div className="flex items-center gap-2">{bulkActions}</div>
         </div>

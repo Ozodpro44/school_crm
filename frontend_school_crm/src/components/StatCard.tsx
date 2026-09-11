@@ -75,11 +75,15 @@ export function StatCard({
       onClick={onClick}
     >
       <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-3">
+        {/* min-h reserves two lines for the label so that a tile whose label
+            wraps still lines its value up with the tiles beside it. Without
+            it, one wrapped label pushed a single value out of line and made
+            the whole row look crooked. */}
+        <div className="flex items-start justify-between gap-2 mb-3 min-h-[2rem]">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
             {label}
           </p>
-          <Icon className={cn("w-4 h-4", toneStyle.icon)} />
+          <Icon className={cn("w-4 h-4 shrink-0", toneStyle.icon)} />
         </div>
 
         {loading ? (
@@ -89,10 +93,16 @@ export function StatCard({
           </>
         ) : (
           <>
-            <div className="flex items-baseline gap-2">
+            <div className="flex items-baseline gap-2 min-w-0">
+              {/* Capped at 24px: a formatted UZS amount ("-UZS 12,280,000")
+                  measures ~260px, and a tile in the 4-column dashboard grid
+                  is ~215px wide, so the old `md:text-3xl` (30px) overflowed
+                  and wrapped — stranding the minus sign on its own line above
+                  the number. 24px fits the longest realistic amount whole. */}
               <div
                 className={cn(
-                  "text-2xl md:text-3xl font-semibold text-slate-900 dark:text-slate-100",
+                  "text-xl sm:text-2xl font-semibold text-slate-900 dark:text-slate-100",
+                  "whitespace-nowrap tabular-nums",
                   toneStyle.value
                 )}
               >

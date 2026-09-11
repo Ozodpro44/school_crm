@@ -608,7 +608,7 @@ export default function PaymentsPage() {
           />
 
           <Button
-            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+            className="bg-brand hover:bg-brand-hover"
             onClick={() => { setEditPayment(null); setIsDialogOpen(true); }}
             disabled={!canCreatePayments}
             title={
@@ -648,7 +648,11 @@ export default function PaymentsPage() {
       </div>
 
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      {/* Six across left each tile ~105px at 1440px, so the longer labels
+          wrapped to two lines while the others stayed on one — pushing those
+          tiles' values out of line with their neighbours. Three per row gives
+          each label room to sit on a single line. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard
           icon={CheckCircle}
           tone="green"
@@ -826,7 +830,7 @@ export default function PaymentsPage() {
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                    <span className="font-semibold text-slate-900 dark:text-slate-100">
+                    <span className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
                       {formatCurrency(p.amount)}
                     </span>
                     <PaymentStatusBadge

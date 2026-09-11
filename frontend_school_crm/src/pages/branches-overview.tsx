@@ -196,7 +196,7 @@ export default function BranchesOverviewPage() {
                 <span className="text-xl font-bold text-amber-600 dark:text-amber-400">
                   {data.topBranchName}
                 </span>
-                <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-xs">
+                <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 text-xs">
                   {formatCurrency(
                     branches.find((b) => b.branchId === data.topBranchId)?.revenue ?? 0
                   )}
