@@ -14,14 +14,16 @@ import {
   getPlatformStats, getHealth, listSubscriptions,
   type PlatformStats, type HealthStatus, type AdminSubscription,
 } from "@/services/api-client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation } from "@/lib/i18n";
 
 const QUICK_LINKS = [
-  { label: "Logs",            href: "/logs",           icon: FileText,  desc: "View application logs"       },
-  { label: "Subscriptions",   href: "/subscriptions",  icon: CreditCard, desc: "Manage billing"             },
-  { label: "Plans",           href: "/plans",          icon: Layers,    desc: "Subscription plans"          },
-  { label: "Payment Types",   href: "/payment-types",  icon: PayCard,   desc: "Payment methods"             },
-  { label: "Users",           href: "/users",          icon: UserCheck, desc: "CRM users"                   },
-  { label: "Branches",        href: "/branches",       icon: Building2, desc: "School branches"             },
+  { labelKey: "navLogs",          descKey: "qlViewLogs",          href: "/logs",               icon: FileText   },
+  { labelKey: "navSubscriptions", descKey: "qlManageBilling",     href: "/subscriptions",       icon: CreditCard },
+  { labelKey: "navPlans",         descKey: "qlSubscriptionPlans", href: "/subscription-plans",  icon: Layers     },
+  { labelKey: "navPaymentTypes",  descKey: "qlPaymentMethods",    href: "/payment-types",       icon: PayCard    },
+  { labelKey: "navUsers",         descKey: "qlCrmUsers",          href: "/users",               icon: UserCheck  },
+  { labelKey: "navBranches",      descKey: "qlSchoolBranches",    href: "/branches",             icon: Building2  },
 ];
 
 function formatUSD(n: number) {
@@ -65,6 +67,8 @@ function subStatusClass(status: string) {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [recentSubs, setRecentSubs] = useState<AdminSubscription[]>([]);
@@ -97,7 +101,7 @@ export default function Dashboard() {
         setRecentSubs(sorted.slice(0, 8));
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to load data";
+      const msg = e instanceof Error ? e.message : t("failedToLoadData");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -117,12 +121,12 @@ export default function Dashboard() {
   }, [autoRefresh, fetchAll]);
 
   const statCards = [
-    { label: "Total Users",    value: stats?.totalUsers ?? "—",          icon: Users,        color: "text-primary",          bg: "bg-primary/15"             },
-    { label: "MRR",            value: stats ? formatUSD(stats.mrr) : "—", icon: TrendingUp,  color: "text-status-healthy",   bg: "bg-status-healthy/15"      },
-    { label: "Active Subs",    value: stats?.activeSubscriptions ?? "—", icon: CheckCircle2, color: "text-status-healthy",   bg: "bg-status-healthy/15"      },
-    { label: "Trial Subs",     value: stats?.trialSubscriptions ?? "—",  icon: Clock,        color: "text-status-info",      bg: "bg-status-info/15"         },
-    { label: "Pending",        value: stats?.pendingSubscriptions ?? "—",icon: AlertTriangle,color: "text-status-warning",   bg: "bg-status-warning/15"      },
-    { label: "Expired",        value: stats?.expiredSubscriptions ?? "—",icon: XCircle,      color: "text-status-critical",  bg: "bg-status-critical/15"     },
+    { label: t("statTotalUsers"), value: stats?.totalUsers ?? "—",          icon: Users,        color: "text-primary",          bg: "bg-primary/15"             },
+    { label: t("statMRR"),        value: stats ? formatUSD(stats.mrr) : "—", icon: TrendingUp,  color: "text-status-healthy",   bg: "bg-status-healthy/15"      },
+    { label: t("statActiveSubs"), value: stats?.activeSubscriptions ?? "—", icon: CheckCircle2, color: "text-status-healthy",   bg: "bg-status-healthy/15"      },
+    { label: t("statTrialSubs"),  value: stats?.trialSubscriptions ?? "—",  icon: Clock,        color: "text-status-info",      bg: "bg-status-info/15"         },
+    { label: t("statPending"),    value: stats?.pendingSubscriptions ?? "—",icon: AlertTriangle,color: "text-status-warning",   bg: "bg-status-warning/15"      },
+    { label: t("statExpired"),    value: stats?.expiredSubscriptions ?? "—",icon: XCircle,      color: "text-status-critical",  bg: "bg-status-critical/15"     },
   ];
 
   return (
@@ -130,7 +134,7 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Platform Overview</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("platformOverview")}</h1>
           <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
             <Calendar className="w-4 h-4" />
             <span className="font-mono">
@@ -148,11 +152,11 @@ export default function Dashboard() {
             onClick={() => setAutoRefresh((v) => !v)}
           >
             <Activity className="w-4 h-4" />
-            {autoRefresh ? "Auto-refresh ON" : "Auto-refresh"}
+            {autoRefresh ? t("autoRefreshOn") : t("autoRefresh")}
           </Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={fetchAll} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Refresh
+            {t("refresh")}
           </Button>
         </div>
       </div>
@@ -184,11 +188,11 @@ export default function Dashboard() {
         <div className="glass-card rounded-lg p-4">
           <div className="flex items-center gap-2 mb-3">
             <Zap className="w-4 h-4 text-primary" />
-            <h2 className="text-sm font-semibold text-foreground">Health Status</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t("healthStatus")}</h2>
           </div>
           {loading ? (
             <div className="flex items-center gap-2 text-muted-foreground text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" /> Checking health...
+              <Loader2 className="w-4 h-4 animate-spin" /> {t("checkingHealth")}
             </div>
           ) : health ? (
             <div className="flex flex-wrap items-center gap-6">
@@ -197,7 +201,7 @@ export default function Dashboard() {
               </div>
               <div className="flex items-center gap-1.5 text-sm">
                 <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-muted-foreground">Response:</span>
+                <span className="text-muted-foreground">{t("response")}</span>
                 <span className={cn(
                   "font-mono font-semibold",
                   health.responseTime < 200 ? "text-status-healthy" :
@@ -206,37 +210,34 @@ export default function Dashboard() {
                   {health.responseTime}ms
                 </span>
               </div>
-              {health.uptime != null && (
+              {health.uptime_seconds != null && (
                 <div className="flex items-center gap-1.5 text-sm">
                   <Activity className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Uptime:</span>
-                  <span className="font-mono font-semibold text-foreground">{formatUptime(health.uptime)}</span>
+                  <span className="text-muted-foreground">{t("uptime")}</span>
+                  <span className="font-mono font-semibold text-foreground">{formatUptime(health.uptime_seconds)}</span>
                 </div>
               )}
-              {health.version && (
+              {health.database && (
                 <div className="flex items-center gap-1.5 text-sm">
-                  <span className="text-muted-foreground">Version:</span>
-                  <span className="font-mono text-foreground">{health.version}</span>
+                  <span className="text-muted-foreground">{t("database")}</span>
+                  <StatusBadge status={health.database.status} />
+                  <span className="font-mono text-xs text-muted-foreground">
+                    ({health.database.open_connections}/{health.database.max_open_connections} conns)
+                  </span>
                 </div>
               )}
-              {health.services && Object.entries(health.services).map(([svc, st]) => (
-                <div key={svc} className="flex items-center gap-1.5 text-sm">
-                  <span className="text-muted-foreground capitalize">{svc}:</span>
-                  <StatusBadge status={st} />
-                </div>
-              ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Health data unavailable</p>
+            <p className="text-sm text-muted-foreground">{t("healthDataUnavailable")}</p>
           )}
         </div>
 
         {/* Recent Subscriptions */}
         <div className="glass-card rounded-lg overflow-hidden">
           <div className="flex items-center justify-between p-4 border-b border-border">
-            <h2 className="text-sm font-semibold text-foreground">Recent Subscriptions</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t("recentSubscriptions")}</h2>
             <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => navigate("/subscriptions")}>
-              View all <ExternalLink className="w-3 h-3" />
+              {t("viewAll")} <ExternalLink className="w-3 h-3" />
             </Button>
           </div>
           {loading ? (
@@ -244,17 +245,17 @@ export default function Dashboard() {
               <Loader2 className="w-5 h-5 animate-spin text-primary" />
             </div>
           ) : recentSubs.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">No subscriptions found</div>
+            <div className="p-8 text-center text-sm text-muted-foreground">{t("noSubscriptionsFound")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-muted-foreground border-b border-border">
-                    <th className="text-left px-4 py-3 font-medium">User</th>
-                    <th className="text-left px-4 py-3 font-medium">Plan</th>
-                    <th className="text-left px-4 py-3 font-medium">Status</th>
-                    <th className="text-right px-4 py-3 font-medium">Price</th>
-                    <th className="text-left px-4 py-3 font-medium">Date</th>
+                    <th className="text-left px-4 py-3 font-medium">{t("user")}</th>
+                    <th className="text-left px-4 py-3 font-medium">{t("plan")}</th>
+                    <th className="text-left px-4 py-3 font-medium">{t("status")}</th>
+                    <th className="text-right px-4 py-3 font-medium">{t("price")}</th>
+                    <th className="text-left px-4 py-3 font-medium">{t("date")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -269,7 +270,7 @@ export default function Dashboard() {
                         <span className={subStatusClass(sub.status)}>{sub.status}</span>
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-foreground">
-                        {sub.planPrice > 0 ? `$${sub.planPrice.toLocaleString()}` : "Free"}
+                        {sub.planPrice > 0 ? `$${sub.planPrice.toLocaleString()}` : t("free")}
                         <span className="text-xs text-muted-foreground">/{sub.billingPeriod}</span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground text-xs font-mono">
@@ -285,11 +286,11 @@ export default function Dashboard() {
 
         {/* Quick Links */}
         <div>
-          <h2 className="text-sm font-semibold text-foreground mb-3">Quick Links</h2>
+          <h2 className="text-sm font-semibold text-foreground mb-3">{t("quickLinks")}</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {QUICK_LINKS.map(({ label, href, icon: Icon, desc }) => (
+            {QUICK_LINKS.map(({ labelKey, descKey, href, icon: Icon }) => (
               <button
-                key={label}
+                key={href}
                 onClick={() => navigate(href)}
                 className="flex flex-col items-start gap-3 p-4 rounded-lg border border-border bg-card hover:border-primary/40 hover:bg-accent/30 transition-colors text-left"
               >
@@ -297,8 +298,8 @@ export default function Dashboard() {
                   <Icon className="w-4 h-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-foreground">{label}</p>
-                  <p className="text-xs text-muted-foreground">{desc}</p>
+                  <p className="text-sm font-medium text-foreground">{t(labelKey)}</p>
+                  <p className="text-xs text-muted-foreground">{t(descKey)}</p>
                 </div>
               </button>
             ))}

@@ -12,6 +12,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { getLogs, getHealth, type LogEntry, type HealthStatus } from "@/services/api-client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation, tf } from "@/lib/i18n";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -71,6 +73,8 @@ const CHART_STYLE = {
 };
 
 export default function Analytics() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,7 +91,7 @@ export default function Analytics() {
       if (logsRes.status === "fulfilled")  setLogs(logsRes.value);
       setLastRefresh(new Date());
     } catch {
-      toast.error("Failed to load analytics data");
+      toast.error(t("failedToLoadAnalytics"));
     } finally {
       setLoading(false);
     }
@@ -115,8 +119,8 @@ export default function Analytics() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
-          <p className="text-sm text-muted-foreground mt-1">API performance and log analytics</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("analyticsTitle")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("apiPerformanceAndLogAnalytics")}</p>
         </div>
         <Button
           variant="outline"
@@ -126,7 +130,7 @@ export default function Analytics() {
           disabled={loading}
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          {loading ? "Loading…" : `Refreshed ${lastRefresh.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}`}
+          {loading ? t("loading") : tf(t("refreshedAt"), { time: lastRefresh.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) })}
         </Button>
       </div>
 
@@ -136,11 +140,11 @@ export default function Analytics() {
           <div className="flex items-center justify-between">
             <Activity className="w-5 h-5 text-primary" />
             <span className="text-xs text-status-healthy flex items-center gap-0.5">
-              <ArrowUpRight className="w-3 h-3" /> live
+              <ArrowUpRight className="w-3 h-3" /> {t("live")}
             </span>
           </div>
           <p className="text-2xl font-bold text-foreground font-mono">{loading ? "—" : totalLogs.toLocaleString()}</p>
-          <p className="text-xs text-muted-foreground">Log entries</p>
+          <p className="text-xs text-muted-foreground">{t("logEntries")}</p>
         </div>
         <div className="stat-card">
           <div className="flex items-center justify-between">
@@ -155,15 +159,15 @@ export default function Analytics() {
           )}>
             {loading ? "—" : health ? `${health.responseTime}ms` : "—"}
           </p>
-          <p className="text-xs text-muted-foreground">Response time</p>
+          <p className="text-xs text-muted-foreground">{t("responseTimeLabel")}</p>
         </div>
         <div className="stat-card">
           <div className="flex items-center justify-between">
             <AlertTriangle className="w-5 h-5 text-status-warning" />
             {!loading && (
               parseFloat(errorRate) > 5
-                ? <span className="text-xs text-status-critical flex items-center gap-0.5"><ArrowUpRight className="w-3 h-3" />high</span>
-                : <span className="text-xs text-status-healthy flex items-center gap-0.5"><ArrowDownRight className="w-3 h-3" />low</span>
+                ? <span className="text-xs text-status-critical flex items-center gap-0.5"><ArrowUpRight className="w-3 h-3" />{t("high")}</span>
+                : <span className="text-xs text-status-healthy flex items-center gap-0.5"><ArrowDownRight className="w-3 h-3" />{t("low")}</span>
             )}
           </div>
           <p className={cn(
@@ -172,7 +176,7 @@ export default function Analytics() {
           )}>
             {loading ? "—" : `${errorRate}%`}
           </p>
-          <p className="text-xs text-muted-foreground">Error rate</p>
+          <p className="text-xs text-muted-foreground">{t("errorRateLabel")}</p>
         </div>
         <div className="stat-card">
           <div className="flex items-center justify-between">
@@ -187,9 +191,13 @@ export default function Analytics() {
             </span>
           </div>
           <p className="text-2xl font-bold text-foreground font-mono">
-            {loading ? "—" : health?.version || (healthOk ? "99.9%" : "degraded")}
+            {loading
+              ? "—"
+              : health?.uptime_seconds != null
+                ? `${Math.floor(health.uptime_seconds / 3600)}h ${Math.floor((health.uptime_seconds % 3600) / 60)}m`
+                : healthOk ? t("active") : "degraded"}
           </p>
-          <p className="text-xs text-muted-foreground">Version / Status</p>
+          <p className="text-xs text-muted-foreground">{t("uptimeLabel")}</p>
         </div>
       </div>
 
@@ -197,10 +205,10 @@ export default function Analytics() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
         {/* Error Rate Chart */}
         <div className="xl:col-span-2 glass-card rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Errors by Hour (Last 24h)</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">{t("errorsByHour")}</h3>
           {loading ? (
             <div className="h-56 flex items-center justify-center text-muted-foreground text-sm">
-              <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…
+              <Loader2 className="w-4 h-4 animate-spin mr-2" /> {t("loading")}
             </div>
           ) : (
             <div className="h-56">
@@ -230,15 +238,15 @@ export default function Analytics() {
 
         {/* Level Distribution Pie */}
         <div className="glass-card rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Log Level Distribution</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">{t("logLevelDistribution")}</h3>
           {loading ? (
             <div className="h-44 flex items-center justify-center text-muted-foreground text-sm">
-              <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…
+              <Loader2 className="w-4 h-4 animate-spin mr-2" /> {t("loading")}
             </div>
           ) : levelPieData.length === 0 ? (
             <div className="h-44 flex flex-col items-center justify-center gap-2 text-muted-foreground">
               <Zap className="w-8 h-8 opacity-30" />
-              <p className="text-xs">No log data</p>
+              <p className="text-xs">{t("noLogData")}</p>
             </div>
           ) : (
             <>
@@ -274,15 +282,15 @@ export default function Analytics() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Top Modules Bar Chart */}
         <div className="xl:col-span-2 glass-card rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-4">Module Activity (Top 10)</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-4">{t("moduleActivityTop10")}</h3>
           {loading ? (
             <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
-              <Loader2 className="w-4 h-4 animate-spin mr-2" /> Loading…
+              <Loader2 className="w-4 h-4 animate-spin mr-2" /> {t("loading")}
             </div>
           ) : moduleData.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center gap-2 text-muted-foreground">
               <Activity className="w-8 h-8 opacity-30" />
-              <p className="text-xs">No module data</p>
+              <p className="text-xs">{t("noModuleData")}</p>
             </div>
           ) : (
             <div className="h-64">
@@ -311,17 +319,17 @@ export default function Analytics() {
         <div className="space-y-4">
           {/* Health Metrics */}
           <div className="glass-card rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-foreground mb-3">Health Metrics</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-3">{t("healthMetrics")}</h3>
             {health ? (
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Status</span>
+                  <span className="text-muted-foreground">{t("status")}</span>
                   <span className={cn("font-semibold font-mono", healthOk ? "text-status-healthy" : "text-status-critical")}>
                     {health.status}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Response</span>
+                  <span className="text-muted-foreground">{t("response").replace(":", "")}</span>
                   <span className={cn(
                     "font-mono",
                     health.responseTime < 200 ? "text-status-healthy" :
@@ -330,23 +338,25 @@ export default function Analytics() {
                     {health.responseTime}ms
                   </span>
                 </div>
-                {health.uptime != null && (
+                {health.uptime_seconds != null && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Uptime</span>
+                    <span className="text-muted-foreground">{t("uptimeLabel")}</span>
                     <span className="font-mono text-foreground">
-                      {Math.floor(health.uptime / 3600)}h {Math.floor((health.uptime % 3600) / 60)}m
+                      {Math.floor(health.uptime_seconds / 3600)}h {Math.floor((health.uptime_seconds % 3600) / 60)}m
                     </span>
                   </div>
                 )}
-                {health.version && (
+                {health.database && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Version</span>
-                    <span className="font-mono text-foreground">{health.version}</span>
+                    <span className="text-muted-foreground">{t("database").replace(":", "")}</span>
+                    <span className="font-mono text-foreground">
+                      {health.database.status} ({health.database.open_connections}/{health.database.max_open_connections})
+                    </span>
                   </div>
                 )}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">Health data unavailable</p>
+              <p className="text-xs text-muted-foreground">{t("healthDataUnavailable")}</p>
             )}
           </div>
 
@@ -354,11 +364,11 @@ export default function Analytics() {
           <div className="glass-card rounded-lg overflow-hidden">
             <div className="p-3 border-b border-border flex items-center gap-2">
               <AlertCircle className="w-3.5 h-3.5 text-status-critical" />
-              <h3 className="text-sm font-semibold text-foreground">Recent Errors</h3>
-              <span className="ml-auto text-xs text-muted-foreground">{errorLogs.length} total</span>
+              <h3 className="text-sm font-semibold text-foreground">{t("recentErrors")}</h3>
+              <span className="ml-auto text-xs text-muted-foreground">{tf(t("totalCount"), { count: errorLogs.length })}</span>
             </div>
             {lastErrors.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">No errors found</div>
+              <div className="p-6 text-center text-xs text-muted-foreground">{t("noErrorsFound")}</div>
             ) : (
               <div className="divide-y divide-border max-h-64 overflow-y-auto scrollbar-thin">
                 {lastErrors.map((log) => (

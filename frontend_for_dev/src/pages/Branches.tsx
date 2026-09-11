@@ -25,6 +25,8 @@ import {
   listBranches, createBranch, updateBranch, deleteBranch,
   type CRMBranch,
 } from "@/services/api-client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation, tf } from "@/lib/i18n";
 
 const emptyForm = { name: "", address: "", phone: "", monthlyPayment: 0, adminId: "" };
 
@@ -35,6 +37,8 @@ function fmt(n?: number) {
 }
 
 export default function Branches() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [branches, setBranches] = useState<CRMBranch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +57,7 @@ export default function Branches() {
       const data = await listBranches();
       setBranches(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load branches");
+      setError(e instanceof Error ? e.message : t("failedToLoadBranches"));
     } finally {
       setLoading(false);
     }
@@ -75,9 +79,11 @@ export default function Branches() {
   // rejecting it, and let a negative value through unvalidated to fail with
   // a confusing backend error.
   const validateBranchForm = (): string | null => {
-    if (!form.name.trim()) return "Branch name is required";
+    if (!form.name.trim()) return t("branchNameRequired");
+    if (!form.address.trim()) return t("addressRequired");
+    if (!form.phone.trim()) return t("phoneRequired");
     if (!Number.isFinite(form.monthlyPayment) || form.monthlyPayment <= 0) {
-      return "Monthly payment must be greater than 0";
+      return t("monthlyPaymentMustBePositive");
     }
     return null;
   };
@@ -97,9 +103,9 @@ export default function Branches() {
       setBranches((prev) => [...prev, created]);
       setCreateOpen(false);
       setForm(emptyForm);
-      toast.success("Branch created");
+      toast.success(t("branchCreated"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to create branch");
+      toast.error(e instanceof Error ? e.message : t("failedToCreateBranch"));
     } finally {
       setSaving(false);
     }
@@ -120,9 +126,9 @@ export default function Branches() {
       });
       setBranches((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
       setEditOpen(false);
-      toast.success("Branch updated");
+      toast.success(t("branchUpdated"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update branch");
+      toast.error(e instanceof Error ? e.message : t("failedToUpdateBranch"));
     } finally {
       setSaving(false);
     }
@@ -135,9 +141,9 @@ export default function Branches() {
       await deleteBranch(selected.id);
       setBranches((prev) => prev.filter((b) => b.id !== selected.id));
       setDeleteOpen(false);
-      toast.success("Branch deleted");
+      toast.success(t("branchDeleted"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete branch");
+      toast.error(e instanceof Error ? e.message : t("failedToDeleteBranch"));
     } finally {
       setSaving(false);
     }
@@ -158,7 +164,7 @@ export default function Branches() {
   const BranchForm = () => (
     <div className="space-y-4 py-4">
       <div className="space-y-2">
-        <Label>Branch Name *</Label>
+        <Label>{t("branchNameLabel")}</Label>
         <Input
           placeholder="e.g. Downtown Campus"
           value={form.name}
@@ -166,7 +172,7 @@ export default function Branches() {
         />
       </div>
       <div className="space-y-2">
-        <Label>Address</Label>
+        <Label>{t("address")} *</Label>
         <Input
           placeholder="Street address"
           value={form.address}
@@ -174,7 +180,7 @@ export default function Branches() {
         />
       </div>
       <div className="space-y-2">
-        <Label>Phone</Label>
+        <Label>{t("phone")} *</Label>
         <Input
           placeholder="+1 555 000 0000"
           value={form.phone}
@@ -182,7 +188,7 @@ export default function Branches() {
         />
       </div>
       <div className="space-y-2">
-        <Label>Monthly Payment ($) *</Label>
+        <Label>{t("monthlyPaymentUsdLabel")}</Label>
         <Input
           type="number"
           min="0.01"
@@ -194,9 +200,9 @@ export default function Branches() {
         />
       </div>
       <div className="space-y-2">
-        <Label>Admin User ID</Label>
+        <Label>{t("adminUserId")}</Label>
         <Input
-          placeholder="Optional — UUID of the branch admin"
+          placeholder={t("adminUserIdPlaceholder")}
           value={form.adminId}
           onChange={(e) => setForm({ ...form, adminId: e.target.value })}
           className="font-mono text-sm"
@@ -210,17 +216,17 @@ export default function Branches() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Branches</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage school branches</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("branchesTitle")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("manageSchoolBranches")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-2" onClick={load} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Refresh
+            {t("refresh")}
           </Button>
           <Button size="sm" className="gap-2" onClick={() => { setForm(emptyForm); setCreateOpen(true); }}>
             <Plus className="w-4 h-4" />
-            Add Branch
+            {t("addBranch")}
           </Button>
         </div>
       </div>
@@ -230,12 +236,12 @@ export default function Branches() {
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border bg-card">
           <Building2 className="w-4 h-4 text-primary" />
           <span className="font-mono font-bold text-foreground">{branches.length}</span>
-          <span className="text-sm text-muted-foreground">Total Branches</span>
+          <span className="text-sm text-muted-foreground">{t("totalBranches")}</span>
         </div>
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border bg-card">
           <DollarSign className="w-4 h-4 text-status-healthy" />
           <span className="font-mono font-bold text-status-healthy">{fmt(totalRevenue)}</span>
-          <span className="text-sm text-muted-foreground">Monthly Revenue</span>
+          <span className="text-sm text-muted-foreground">{t("monthlyRevenue")}</span>
         </div>
       </div>
 
@@ -244,7 +250,7 @@ export default function Branches() {
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           {error}
           <Button variant="ghost" size="sm" onClick={load} className="ml-auto">
-            Retry
+            {t("retry")}
           </Button>
         </div>
       )}
@@ -254,7 +260,7 @@ export default function Branches() {
         <div className="relative max-w-md">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <Input
-            placeholder="Search branches by name or address..."
+            placeholder={t("searchBranchesPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-8 h-8 bg-background text-sm"
@@ -270,11 +276,11 @@ export default function Branches() {
       ) : filtered.length === 0 ? (
         <div className="glass-card rounded-lg p-14 flex flex-col items-center gap-3 text-muted-foreground">
           <Building2 className="w-9 h-9 opacity-30" />
-          <p className="text-sm">{search ? "No branches match your search" : "No branches yet"}</p>
+          <p className="text-sm">{search ? t("noBranchesMatchSearch") : t("noBranchesYet")}</p>
           {!search && (
             <Button size="sm" onClick={() => { setForm(emptyForm); setCreateOpen(true); }}>
               <Plus className="w-4 h-4 mr-2" />
-              Add Branch
+              {t("addBranch")}
             </Button>
           )}
         </div>
@@ -284,13 +290,13 @@ export default function Branches() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted-foreground border-b border-border">
-                  <th className="text-left px-4 py-3 font-medium">Name</th>
-                  <th className="text-left px-4 py-3 font-medium">Address</th>
-                  <th className="text-left px-4 py-3 font-medium">Phone</th>
-                  <th className="text-right px-4 py-3 font-medium">Monthly Payment</th>
-                  <th className="text-left px-4 py-3 font-medium">Admin ID</th>
-                  <th className="text-left px-4 py-3 font-medium">Created</th>
-                  <th className="text-right px-4 py-3 font-medium">Actions</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("name")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("address")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("phone")}</th>
+                  <th className="text-right px-4 py-3 font-medium">{t("monthlyPayment")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("adminId")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("created")}</th>
+                  <th className="text-right px-4 py-3 font-medium">{t("actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -348,7 +354,7 @@ export default function Branches() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem onClick={() => openEdit(branch)}>
                             <Edit className="w-4 h-4 mr-2" />
-                            Edit Branch
+                            {t("editBranch")}
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
@@ -356,7 +362,7 @@ export default function Branches() {
                             onClick={() => { setSelected(branch); setDeleteOpen(true); }}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
-                            Delete Branch
+                            {t("deleteBranch")}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -373,15 +379,15 @@ export default function Branches() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Add New Branch</DialogTitle>
-            <DialogDescription>Create a new school branch.</DialogDescription>
+            <DialogTitle>{t("addNewBranch")}</DialogTitle>
+            <DialogDescription>{t("createNewSchoolBranch")}</DialogDescription>
           </DialogHeader>
           <BranchForm />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleCreate} disabled={saving}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Create Branch
+              {t("createBranch")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -391,15 +397,15 @@ export default function Branches() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Branch</DialogTitle>
-            <DialogDescription>Update branch information.</DialogDescription>
+            <DialogTitle>{t("editBranch")}</DialogTitle>
+            <DialogDescription>{t("updateBranchInfo")}</DialogDescription>
           </DialogHeader>
           <BranchForm />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleEdit} disabled={saving}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Save Changes
+              {t("saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -409,20 +415,20 @@ export default function Branches() {
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Branch</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteBranch")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Delete "{selected?.name}"? All associated data will be permanently removed.
+              {tf(t("deleteBranchConfirm"), { name: selected?.name || "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={saving}
               className="bg-status-critical hover:bg-status-critical/90"
             >
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Delete Branch
+              {t("deleteBranch")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

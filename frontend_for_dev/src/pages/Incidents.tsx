@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { getLogs, type LogEntry } from "@/services/api-client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation, tf } from "@/lib/i18n";
 
 interface Incident {
   module: string;
@@ -25,10 +27,10 @@ function getSeverity(count: number): Severity {
   return "low";
 }
 
-const SEVERITY_CONFIG: Record<Severity, { label: string; cls: string; dotCls: string }> = {
-  high:   { label: "High",   cls: "bg-status-critical/15 text-status-critical border-status-critical/25", dotCls: "pulse-dot-error" },
-  medium: { label: "Medium", cls: "bg-status-warning/15 text-status-warning border-status-warning/25",    dotCls: "pulse-dot-warn"  },
-  low:    { label: "Low",    cls: "bg-status-info/15 text-status-info border-status-info/25",              dotCls: ""               },
+const SEVERITY_CONFIG: Record<Severity, { labelKey: string; cls: string; dotCls: string }> = {
+  high:   { labelKey: "severityHigh",   cls: "bg-status-critical/15 text-status-critical border-status-critical/25", dotCls: "pulse-dot-error" },
+  medium: { labelKey: "severityMedium", cls: "bg-status-warning/15 text-status-warning border-status-warning/25",    dotCls: "pulse-dot-warn"  },
+  low:    { labelKey: "severityLow",    cls: "bg-status-info/15 text-status-info border-status-info/25",              dotCls: ""               },
 };
 
 function groupByModule(errors: LogEntry[]): Incident[] {
@@ -62,18 +64,20 @@ function fmtTs(ts: string) {
   });
 }
 
-function relTime(ts: string) {
+function relTime(ts: string, t: (key: string) => string) {
   if (!ts) return "—";
   const diff = Date.now() - new Date(ts).getTime();
   const m = Math.floor(diff / 60000);
-  if (m < 2)  return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (m < 2)  return t("justNow");
+  if (m < 60) return tf(t("minutesAgo"), { m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return tf(t("hoursAgo"), { h });
+  return tf(t("daysAgo"), { d: Math.floor(h / 24) });
 }
 
 export default function Incidents() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +90,7 @@ export default function Incidents() {
       const logs = await getLogs({ level: "ERROR", limit: 200 });
       setIncidents(groupByModule(logs));
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to load error logs";
+      const msg = e instanceof Error ? e.message : t("failedToLoadErrorLogs");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -105,14 +109,14 @@ export default function Incidents() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Incidents</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("incidentsTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Error logs grouped by module into incidents
+            {t("errorLogsGroupedByModule")}
           </p>
         </div>
         <Button variant="outline" size="sm" className="gap-2" onClick={load} disabled={loading}>
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          Refresh
+          {t("refresh")}
         </Button>
       </div>
 
@@ -121,17 +125,17 @@ export default function Incidents() {
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border bg-card">
           <AlertCircle className="w-4 h-4 text-status-critical" />
           <span className="font-mono font-bold text-foreground">{loading ? "—" : totalErrors}</span>
-          <span className="text-sm text-muted-foreground">Total Errors</span>
+          <span className="text-sm text-muted-foreground">{t("totalErrors")}</span>
         </div>
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border bg-card">
           <Shield className="w-4 h-4 text-status-warning" />
           <span className="font-mono font-bold text-foreground">{loading ? "—" : affectedModules}</span>
-          <span className="text-sm text-muted-foreground">Affected Modules</span>
+          <span className="text-sm text-muted-foreground">{t("affectedModules")}</span>
         </div>
         <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-status-critical/20 bg-status-critical/10">
           <span className="pulse-dot-error" />
           <span className="font-mono font-bold text-status-critical">{loading ? "—" : highSev}</span>
-          <span className="text-sm text-status-critical">High Severity</span>
+          <span className="text-sm text-status-critical">{t("highSeverity")}</span>
         </div>
       </div>
 
@@ -149,14 +153,15 @@ export default function Incidents() {
       ) : incidents.length === 0 ? (
         <div className="glass-card rounded-lg p-16 flex flex-col items-center gap-3 text-muted-foreground">
           <Shield className="w-10 h-10 opacity-30 text-status-healthy" />
-          <p className="text-sm font-medium">No error incidents detected</p>
-          <p className="text-xs">ERROR log entries will automatically appear here</p>
+          <p className="text-sm font-medium">{t("noErrorIncidentsDetected")}</p>
+          <p className="text-xs">{t("errorLogsWillAppearHere")}</p>
         </div>
       ) : (
         <div className="space-y-3">
           {incidents.map((incident) => {
             const sev = getSeverity(incident.count);
-            const { label, cls, dotCls } = SEVERITY_CONFIG[sev];
+            const { labelKey, cls, dotCls } = SEVERITY_CONFIG[sev];
+            const label = t(labelKey);
             const isExpanded = expandedModule === incident.module;
 
             return (
@@ -187,15 +192,15 @@ export default function Incidents() {
                           {label}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {incident.count} error{incident.count !== 1 ? "s" : ""}
+                          {tf(t("errorCount"), { count: incident.count, plural: incident.count !== 1 ? "s" : "" })}
                         </span>
                       </div>
                       <p className="text-sm text-foreground mb-2 line-clamp-2">{incident.exampleMessage}</p>
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <Clock className="w-3 h-3" />
-                        Last seen: {fmtTs(incident.lastSeen)}
+                        {tf(t("lastSeen"), { time: fmtTs(incident.lastSeen) })}
                         <span className="text-muted-foreground/50">·</span>
-                        {relTime(incident.lastSeen)}
+                        {relTime(incident.lastSeen, t)}
                       </div>
                     </div>
 

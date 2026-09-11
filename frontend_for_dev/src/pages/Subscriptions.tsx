@@ -31,6 +31,9 @@ import {
   grantTrial, listPlans, getPlatformStats,
   type AdminSubscription, type SubscriptionPlan,
 } from "@/services/api-client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation, tf } from "@/lib/i18n";
 
 // Must match the backend's actual enum exactly (subscriptions.status check
 // constraint) — "pending" here previously didn't exist server-side at all
@@ -58,6 +61,15 @@ function statusIcon(status: string) {
 }
 
 export default function Subscriptions() {
+  const { user } = useAuth();
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
+  // Grant Trial / Delete are gated server-side to RequireDeveloperRole("admin")
+  // (see backend_school_crm/internal/handlers/admin_subscription.go) — a
+  // "developer"-tier account always gets 403 "insufficient developer role"
+  // on these two. Disabling them here surfaces that upfront instead of a
+  // raw backend error toast after the click.
+  const isAdminDeveloper = user?.role === "admin";
   const [subs, setSubs] = useState<AdminSubscription[]>([]);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,7 +110,7 @@ export default function Subscriptions() {
         listSubscriptions(), listPlans(), getPlatformStats(),
       ]);
       if (subsRes.status === "fulfilled") setSubs(subsRes.value);
-      else setError(subsRes.reason instanceof Error ? subsRes.reason.message : "Failed to load subscriptions");
+      else setError(subsRes.reason instanceof Error ? subsRes.reason.message : t("failedToLoadData"));
       if (plansRes.status === "fulfilled") setPlans(plansRes.value);
       if (statsRes.status === "fulfilled") setMrr(statsRes.value.mrr);
     } finally {
@@ -122,7 +134,7 @@ export default function Subscriptions() {
 
   const handleCreate = async () => {
     if (!createForm.userId || !createForm.planId) {
-      toast.error("User ID and plan are required");
+      toast.error(t("userIdPlanRequired"));
       return;
     }
     setSaving(true);
@@ -137,9 +149,9 @@ export default function Subscriptions() {
       setSubs((prev) => [created, ...prev]);
       setCreateOpen(false);
       setCreateForm({ userId: "", planId: "", status: "active", autoRenew: true, notes: "" });
-      toast.success("Subscription created");
+      toast.success(t("subscriptionCreated"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to create subscription");
+      toast.error(e instanceof Error ? e.message : t("failedToCreateSubscription"));
     } finally {
       setSaving(false);
     }
@@ -159,20 +171,30 @@ export default function Subscriptions() {
       // unmarshaling requires full RFC3339 — a bare "YYYY-MM-DD" from the
       // <input type="date"> fails to parse ("cannot parse \"\" as \"T\"").
       const toRFC3339 = (d: string) => (d ? `${d}T00:00:00Z` : undefined);
+      // Only send a date if the developer actually edited it. The form
+      // pre-fills both dates from the current subscription, so re-sending
+      // them unchanged used to suppress AdminUpdateSubscription's own
+      // "activating with no explicit end_date and the old one is in the
+      // past → auto-extend by one billing period" logic on the backend —
+      // that path only fires when EndDate is nil in the request. Without
+      // this, ticking Status to "active" alone silently left a past
+      // end_date in place, so the subscription still read as expired.
+      const originalEndDate = selected.endDate ? selected.endDate.split("T")[0] : "";
+      const originalRenewalDate = selected.renewalDate ? selected.renewalDate.split("T")[0] : "";
       const updated = await updateSubscription(selected.id, {
         status: editForm.status,
         planId: editForm.planId || undefined,
-        endDate: toRFC3339(editForm.endDate),
-        renewalDate: toRFC3339(editForm.renewalDate),
+        endDate: editForm.endDate !== originalEndDate ? toRFC3339(editForm.endDate) : undefined,
+        renewalDate: editForm.renewalDate !== originalRenewalDate ? toRFC3339(editForm.renewalDate) : undefined,
         notes: editForm.notes || undefined,
         clearNotes: notesWasCleared,
         autoRenew: editForm.autoRenew,
       });
       setSubs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       setEditOpen(false);
-      toast.success("Subscription updated");
+      toast.success(t("subscriptionUpdated"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update");
+      toast.error(e instanceof Error ? e.message : t("failedToUpdate"));
     } finally {
       setSaving(false);
     }
@@ -185,9 +207,9 @@ export default function Subscriptions() {
       await deleteSubscription(selected.id);
       setSubs((prev) => prev.filter((s) => s.id !== selected.id));
       setDeleteOpen(false);
-      toast.success("Subscription deleted");
+      toast.success(t("subscriptionDeleted"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete");
+      toast.error(e instanceof Error ? e.message : t("failedToDelete"));
     } finally {
       setSaving(false);
     }
@@ -200,9 +222,9 @@ export default function Subscriptions() {
       await grantTrial(selected.userId, Number(trialDays), trialNotes || undefined);
       await loadData();
       setTrialOpen(false);
-      toast.success(`Trial granted for ${trialDays} days`);
+      toast.success(tf(t("trialGrantedForDays"), { days: trialDays }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to grant trial");
+      toast.error(e instanceof Error ? e.message : t("failedToGrantTrial"));
     } finally {
       setSaving(false);
     }
@@ -243,17 +265,17 @@ export default function Subscriptions() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Subscriptions</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage tenant subscriptions</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("subscriptionsTitle")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("manageTenantSubscriptions")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-2" onClick={loadData} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Refresh
+            {t("refresh")}
           </Button>
           <Button size="sm" className="gap-2" onClick={() => setCreateOpen(true)}>
             <Plus className="w-4 h-4" />
-            New Subscription
+            {t("newSubscription")}
           </Button>
         </div>
       </div>
@@ -261,12 +283,12 @@ export default function Subscriptions() {
       {/* Stats Bar */}
       <div className="flex flex-wrap gap-3 mb-5">
         {[
-          { label: "Active",     value: "active",          count: countByStatus("active"),          cls: "badge-active"    },
-          { label: "Trial",      value: "trial",           count: countByStatus("trial"),            cls: "badge-trial"     },
-          { label: "Pending",    value: "pending_payment", count: countByStatus("pending_payment"),  cls: "badge-pending"   },
-          { label: "Past Due",   value: "past_due",        count: countByStatus("past_due"),         cls: "badge-pending"   },
-          { label: "Expired",    value: "expired",         count: countByStatus("expired"),          cls: "badge-expired"   },
-          { label: "Cancelled",  value: "cancelled",       count: countByStatus("cancelled"),        cls: "badge-cancelled" },
+          { label: t("statActive"),        value: "active",          count: countByStatus("active"),          cls: "badge-active"    },
+          { label: t("statTrial"),         value: "trial",           count: countByStatus("trial"),            cls: "badge-trial"     },
+          { label: t("statPendingPayment"),value: "pending_payment", count: countByStatus("pending_payment"),  cls: "badge-pending"   },
+          { label: t("statPastDue"),       value: "past_due",        count: countByStatus("past_due"),         cls: "badge-pending"   },
+          { label: t("statExpiredSub"),    value: "expired",         count: countByStatus("expired"),          cls: "badge-expired"   },
+          { label: t("statCancelled"),     value: "cancelled",       count: countByStatus("cancelled"),        cls: "badge-cancelled" },
         ].map(({ label, value, count, cls }) => (
           <button
             key={value}
@@ -297,7 +319,7 @@ export default function Subscriptions() {
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search by name or email..."
+              placeholder={t("searchByNameOrEmail")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 h-8 bg-background text-sm"
@@ -305,19 +327,19 @@ export default function Subscriptions() {
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-full md:w-44 bg-background h-8 text-sm">
-              <SelectValue placeholder="All statuses" />
+              <SelectValue placeholder={t("allStatuses")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="all">{t("allStatuses")}</SelectItem>
               {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={planFilter} onValueChange={setPlanFilter}>
             <SelectTrigger className="w-full md:w-48 bg-background h-8 text-sm">
-              <SelectValue placeholder="All plans" />
+              <SelectValue placeholder={t("allPlans")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Plans</SelectItem>
+              <SelectItem value="all">{t("allPlans")}</SelectItem>
               {uniquePlanIds.map((id) => (
                 <SelectItem key={id} value={id}>
                   {plansByPlanId[id]?.name ?? id}
@@ -337,21 +359,21 @@ export default function Subscriptions() {
         ) : filtered.length === 0 ? (
           <div className="p-12 flex flex-col items-center gap-3 text-muted-foreground">
             <CheckCircle2 className="w-8 h-8 opacity-30" />
-            <span className="text-sm">No subscriptions found</span>
+            <span className="text-sm">{t("noSubscriptionsFound")}</span>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted-foreground border-b border-border">
-                  <th className="text-left px-4 py-3 font-medium">User</th>
-                  <th className="text-left px-4 py-3 font-medium">Plan</th>
-                  <th className="text-left px-4 py-3 font-medium">Status</th>
-                  <th className="text-right px-4 py-3 font-medium">Price</th>
-                  <th className="text-left px-4 py-3 font-medium">Start</th>
-                  <th className="text-left px-4 py-3 font-medium">End</th>
-                  <th className="text-center px-4 py-3 font-medium">Auto-renew</th>
-                  <th className="text-right px-4 py-3 font-medium">Actions</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("user")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("plan")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("status")}</th>
+                  <th className="text-right px-4 py-3 font-medium">{t("price")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("start")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("end")}</th>
+                  <th className="text-center px-4 py-3 font-medium">{t("autoRenewCol")}</th>
+                  <th className="text-right px-4 py-3 font-medium">{t("actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -371,7 +393,7 @@ export default function Subscriptions() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-foreground">
-                        {sub.planPrice > 0 ? `$${sub.planPrice}` : "Free"}
+                        {sub.planPrice > 0 ? `$${sub.planPrice}` : t("free")}
                         <span className="text-xs text-muted-foreground">/{sub.billingPeriod}</span>
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
@@ -388,7 +410,7 @@ export default function Subscriptions() {
                               const updated = await updateSubscription(sub.id, { autoRenew: v });
                               setSubs((prev) => prev.map((s) => s.id === updated.id ? updated : s));
                             } catch (e) {
-                              toast.error(e instanceof Error ? e.message : "Failed to update");
+                              toast.error(e instanceof Error ? e.message : t("failedToUpdate"));
                             }
                           }}
                         />
@@ -403,16 +425,25 @@ export default function Subscriptions() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => openEdit(sub)}>
                               <Edit className="w-4 h-4 mr-2" />
-                              Edit
+                              {t("edit")}
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openTrial(sub)}>
+                            <DropdownMenuItem
+                              onClick={() => openTrial(sub)}
+                              disabled={!isAdminDeveloper}
+                              title={isAdminDeveloper ? undefined : t("adminRoleRequired")}
+                            >
                               <Gift className="w-4 h-4 mr-2" />
-                              Grant Trial
+                              {t("grantTrial")}
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-status-critical" onClick={() => openDelete(sub)}>
+                            <DropdownMenuItem
+                              className="text-status-critical"
+                              onClick={() => openDelete(sub)}
+                              disabled={!isAdminDeveloper}
+                              title={isAdminDeveloper ? undefined : t("adminRoleRequired")}
+                            >
                               <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
+                              {t("delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -430,23 +461,23 @@ export default function Subscriptions() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>New Subscription</DialogTitle>
-            <DialogDescription>Create a subscription for a user.</DialogDescription>
+            <DialogTitle>{t("newSubscription")}</DialogTitle>
+            <DialogDescription>{t("createSubscriptionFor")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>User ID</Label>
+              <Label>{t("userId")}</Label>
               <Input
-                placeholder="User UUID"
+                placeholder={t("userUuidPlaceholder")}
                 value={createForm.userId}
                 onChange={(e) => setCreateForm({ ...createForm, userId: e.target.value })}
                 className="font-mono text-sm"
               />
             </div>
             <div className="space-y-2">
-              <Label>Plan</Label>
+              <Label>{t("plan")}</Label>
               <Select value={createForm.planId} onValueChange={(v) => setCreateForm({ ...createForm, planId: v })}>
-                <SelectTrigger><SelectValue placeholder="Select plan" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t("selectPlan")} /></SelectTrigger>
                 <SelectContent>
                   {plans.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
@@ -457,7 +488,7 @@ export default function Subscriptions() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Status</Label>
+              <Label>{t("status")}</Label>
               <Select value={createForm.status} onValueChange={(v) => setCreateForm({ ...createForm, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -466,17 +497,17 @@ export default function Subscriptions() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>{t("notes")}</Label>
               <Input
-                placeholder="Optional notes"
+                placeholder={t("optionalNotes")}
                 value={createForm.notes}
                 onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
               />
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-foreground">Auto-renew</p>
-                <p className="text-xs text-muted-foreground">Automatically renew on expiry</p>
+                <p className="text-sm font-medium text-foreground">{t("autoRenewLabel")}</p>
+                <p className="text-xs text-muted-foreground">{t("autoRenewDesc")}</p>
               </div>
               <Switch
                 checked={createForm.autoRenew}
@@ -485,10 +516,10 @@ export default function Subscriptions() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleCreate} disabled={saving}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Create
+              {t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -498,12 +529,12 @@ export default function Subscriptions() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Subscription</DialogTitle>
-            <DialogDescription>Update subscription for {selected?.userFullName || selected?.userEmail}.</DialogDescription>
+            <DialogTitle>{t("editSubscription")}</DialogTitle>
+            <DialogDescription>{tf(t("updateSubscriptionFor"), { name: selected?.userFullName || selected?.userEmail || "" })}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Status</Label>
+              <Label>{t("status")}</Label>
               <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -512,9 +543,9 @@ export default function Subscriptions() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Plan</Label>
+              <Label>{t("plan")}</Label>
               <Select value={editForm.planId} onValueChange={(v) => setEditForm({ ...editForm, planId: v })}>
-                <SelectTrigger><SelectValue placeholder="Keep current plan" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t("keepCurrentPlan")} /></SelectTrigger>
                 <SelectContent>
                   {plans.map((p) => (
                     <SelectItem key={p.id} value={p.id}>{p.name} — ${p.price}/{p.billingPeriod}</SelectItem>
@@ -524,7 +555,7 @@ export default function Subscriptions() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>End Date</Label>
+                <Label>{t("endDate")}</Label>
                 <Input
                   type="date"
                   value={editForm.endDate}
@@ -533,7 +564,7 @@ export default function Subscriptions() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Renewal Date</Label>
+                <Label>{t("renewalDate")}</Label>
                 <Input
                   type="date"
                   value={editForm.renewalDate}
@@ -543,15 +574,15 @@ export default function Subscriptions() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Notes</Label>
+              <Label>{t("notes")}</Label>
               <Input
                 value={editForm.notes}
                 onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                placeholder="Optional notes"
+                placeholder={t("optionalNotes")}
               />
             </div>
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-foreground">Auto-renew</p>
+              <p className="text-sm font-medium text-foreground">{t("autoRenewLabel")}</p>
               <Switch
                 checked={editForm.autoRenew}
                 onCheckedChange={(v) => setEditForm({ ...editForm, autoRenew: v })}
@@ -559,10 +590,10 @@ export default function Subscriptions() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleEdit} disabled={saving}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Save Changes
+              {t("saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -572,16 +603,14 @@ export default function Subscriptions() {
       <Dialog open={trialOpen} onOpenChange={setTrialOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Grant Trial</DialogTitle>
+            <DialogTitle>{t("grantTrial")}</DialogTitle>
             <DialogDescription>
-              Grant a trial period to {selected?.userFullName || selected?.userEmail}. This will end
-              any of their active, trial, paused, or pending-payment subscriptions first — including
-              a currently paid plan.
+              {tf(t("grantTrialFor"), { name: selected?.userFullName || selected?.userEmail || "" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Trial Days</Label>
+              <Label>{t("trialDays")}</Label>
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-muted-foreground" />
                 <Input
@@ -592,24 +621,24 @@ export default function Subscriptions() {
                   onChange={(e) => setTrialDays(e.target.value)}
                   className="w-24 bg-background font-mono"
                 />
-                <span className="text-sm text-muted-foreground">days</span>
+                <span className="text-sm text-muted-foreground">{t("days")}</span>
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Notes (optional)</Label>
+              <Label>{t("notes")} ({t("optional")})</Label>
               <Input
                 value={trialNotes}
                 onChange={(e) => setTrialNotes(e.target.value)}
-                placeholder="Reason for trial..."
+                placeholder={t("reasonForTrial")}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setTrialOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setTrialOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleGrantTrial} disabled={saving}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               <Gift className="w-4 h-4 mr-2" />
-              Grant Trial
+              {t("grantTrial")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -619,20 +648,20 @@ export default function Subscriptions() {
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Subscription</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteSubscription")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Permanently delete subscription for {selected?.userFullName || selected?.userEmail}? This cannot be undone.
+              {tf(t("permanentlyDeleteSubscriptionFor"), { name: selected?.userFullName || selected?.userEmail || "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={saving}
               className="bg-status-critical hover:bg-status-critical/90"
             >
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Delete
+              {t("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

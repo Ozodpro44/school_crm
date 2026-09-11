@@ -377,19 +377,23 @@ func UpdateSubscriptionPlanHandler(subscriptionService *service.SubscriptionServ
 			return
 		}
 
-		var plan models.SubscriptionPlan
-		if err := c.ShouldBindJSON(&plan); err != nil {
+		var req models.UpdateSubscriptionPlanRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		plan.ID = planID
-		if err := subscriptionService.UpdateSubscriptionPlan(c.Request.Context(), &plan); err != nil {
+		updated, err := subscriptionService.UpdateSubscriptionPlan(c.Request.Context(), planID, &req)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		if updated == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "plan not found"})
+			return
+		}
 
-		c.JSON(http.StatusOK, plan)
+		c.JSON(http.StatusOK, updated)
 	}
 }
 

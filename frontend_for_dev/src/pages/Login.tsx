@@ -5,12 +5,16 @@ import { login, register } from "@/services/api-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Terminal, Eye, EyeOff, Loader2, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation } from "@/lib/i18n";
 
 type Mode = "login" | "register";
 
 export default function Login() {
   const navigate = useNavigate();
   const { login: authLogin, isAuthenticated } = useAuth();
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,18 +26,18 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) { toast.error("Email and password are required"); return; }
-    if (mode === "register" && !fullName.trim()) { toast.error("Full name is required"); return; }
+    if (!email || !password) { toast.error(t("emailPasswordRequired")); return; }
+    if (mode === "register" && !fullName.trim()) { toast.error(t("fullNameRequired")); return; }
     setLoading(true);
     try {
       const res = mode === "login"
         ? await login(email, password)
         : await register(email, password, fullName);
       authLogin(res.token, res.user);
-      toast.success(`Welcome${res.user.fullName ? `, ${res.user.fullName}` : ""}!`);
+      toast.success(`${t("welcomeBack")}${res.user.fullName ? `, ${res.user.fullName}` : ""}!`);
       navigate("/");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Authentication failed");
+      toast.error(err instanceof Error ? err.message : t("authenticationFailed"));
     } finally {
       setLoading(false);
     }
@@ -48,15 +52,15 @@ export default function Login() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 border border-primary/25 mb-4">
             <Terminal className="w-7 h-7 text-primary" />
           </div>
-          <h1 className="text-xl font-bold text-foreground tracking-tight">Developer Portal</h1>
-          <p className="text-xs text-muted-foreground mt-1">Wonderkids CRM · Internal Tools</p>
+          <h1 className="text-xl font-bold text-foreground tracking-tight">{t("developerPortal")}</h1>
+          <p className="text-xs text-muted-foreground mt-1">{t("internalTools")}</p>
         </div>
 
         <div className="bg-card border border-border rounded-2xl p-6 shadow-2xl">
           <div className="flex items-start gap-2.5 p-3 rounded-lg bg-status-warning/8 border border-status-warning/20 mb-5">
             <ShieldAlert className="w-4 h-4 text-status-warning flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-status-warning/90 leading-relaxed">
-              Restricted access — developer credentials only. All actions are logged.
+              {t("restrictedAccessNotice")}
             </p>
           </div>
 
@@ -71,7 +75,7 @@ export default function Login() {
                   mode === m ? "bg-accent text-primary" : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {m}
+                {m === "login" ? t("loginTab") : t("registerTab")}
               </button>
             ))}
           </div>
@@ -79,7 +83,7 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-3">
             {mode === "register" && (
               <div>
-                <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1.5">Full Name</label>
+                <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1.5">{t("fullName")}</label>
                 <input
                   type="text"
                   value={fullName}
@@ -90,7 +94,7 @@ export default function Login() {
               </div>
             )}
             <div>
-              <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1.5">Email</label>
+              <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1.5">{t("email")}</label>
               <input
                 type="email"
                 value={email}
@@ -101,7 +105,7 @@ export default function Login() {
               />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1.5">Password</label>
+              <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1.5">{t("password")}</label>
               <div className="relative">
                 <input
                   type={showPass ? "text" : "password"}
@@ -127,9 +131,9 @@ export default function Login() {
               className="w-full mt-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-primary-foreground rounded-lg py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
             >
               {loading ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Authenticating...</>
+                <><Loader2 className="w-4 h-4 animate-spin" /> {t("authenticating")}</>
               ) : (
-                mode === "login" ? "Sign in" : "Create account"
+                mode === "login" ? t("signIn") : t("createAccount")
               )}
             </button>
           </form>

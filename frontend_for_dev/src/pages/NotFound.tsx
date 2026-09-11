@@ -1,7 +1,11 @@
 import { Link } from "react-router-dom";
 import { Terminal, ArrowLeft } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation } from "@/lib/i18n";
 
 export default function NotFound() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="text-center space-y-6 max-w-md">
@@ -36,7 +40,7 @@ export default function NotFound() {
         {/* Message */}
         <div>
           <h1 className="text-3xl font-bold text-foreground font-mono">404</h1>
-          <p className="text-muted-foreground mt-1">This page does not exist</p>
+          <p className="text-muted-foreground mt-1">{t("pageDoesNotExist")}</p>
         </div>
 
         {/* Back Link */}
@@ -45,7 +49,7 @@ export default function NotFound() {
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to Dashboard
+          {t("backToDashboard")}
         </Link>
       </div>
     </div>

@@ -109,12 +109,20 @@ export async function getPlatformStats(): Promise<PlatformStats> {
 
 // ── Health ─────────────────────────────────────────────────────────────────────
 
+// Matches cmd/main.go's inline healthHandler response exactly — it never
+// sends version/uptime/services, only these fields.
 export interface HealthStatus {
   status: string;
-  version?: string;
-  uptime?: number;
+  service?: string;
+  environment?: string;
+  uptime_seconds?: number;
+  database?: {
+    status: string;
+    open_connections: number;
+    idle_connections: number;
+    max_open_connections: number;
+  };
   responseTime: number;
-  services?: Record<string, string>;
 }
 
 export async function getHealth(): Promise<HealthStatus> {
@@ -327,10 +335,9 @@ export interface CRMUser {
 }
 
 export async function listUsers(): Promise<CRMUser[]> {
-  try {
-    const res = await request<CRMUser[]>("/dev/users");
-    if (Array.isArray(res)) return res;
-  } catch { /* fallthrough */ }
+  // /dev/users was never registered on the backend (only /dev/crm/users is) —
+  // this used to try it first on every load, always 404ing before falling
+  // back to the real endpoint.
   const res = await request<CRMUser[]>("/dev/crm/users");
   return Array.isArray(res) ? res : [];
 }

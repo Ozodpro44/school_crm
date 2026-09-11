@@ -22,6 +22,27 @@ type SubscriptionPlan struct {
 	UpdatedAt       time.Time  `json:"updatedAt" db:"updated_at"`
 }
 
+// UpdateSubscriptionPlanRequest allows a partial update of a plan. A nil
+// pointer field means "leave unchanged" (COALESCE in the update query) —
+// previously the handler bound requests straight into a full SubscriptionPlan
+// and the service did an unconditional full-column UPDATE, so a partial
+// payload (e.g. just {"status": "inactive"}) silently zeroed out every other
+// column, including Features. Features uses json.RawMessage rather than
+// JSONMap here: JSONMap's Value() has a value receiver, so a nil *JSONMap
+// would panic when the sql driver invokes it; a nil []byte instead converts
+// cleanly to SQL NULL.
+type UpdateSubscriptionPlanRequest struct {
+	Name          *string         `json:"name"`
+	Description   *string         `json:"description"`
+	Price         *float64        `json:"price"`
+	BillingPeriod *string         `json:"billingPeriod"`
+	MaxBranches   *int            `json:"maxBranches"`
+	MaxStudents   *int            `json:"maxStudents"`
+	MaxClasses    *int            `json:"maxClasses"`
+	Features      json.RawMessage `json:"features"`
+	Status        *string         `json:"status"`
+}
+
 // Subscription represents a user's subscription
 type Subscription struct {
 	ID                    string     `json:"id" db:"id"`

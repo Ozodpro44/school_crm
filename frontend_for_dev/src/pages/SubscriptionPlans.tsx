@@ -24,6 +24,8 @@ import {
   listPlans, createPlan, updatePlan, deletePlan,
   type SubscriptionPlan,
 } from "@/services/api-client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation, tf } from "@/lib/i18n";
 
 const emptyForm = {
   name: "",
@@ -37,6 +39,8 @@ const emptyForm = {
 };
 
 export default function SubscriptionPlans() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +59,7 @@ export default function SubscriptionPlans() {
       const data = await listPlans();
       setPlans(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load plans");
+      setError(e instanceof Error ? e.message : t("failedToLoadPlans"));
     } finally {
       setLoading(false);
     }
@@ -67,11 +71,11 @@ export default function SubscriptionPlans() {
   // negative price/limit would otherwise save silently and corrupt any
   // MRR/limit math built from it downstream.
   const validateForm = (): string | null => {
-    if (!form.name.trim()) return "Name is required";
-    if (!Number.isFinite(form.price) || form.price < 0) return "Price cannot be negative";
-    if (!Number.isInteger(form.maxBranches) || form.maxBranches < 1) return "Max branches must be at least 1";
-    if (!Number.isInteger(form.maxStudents) || form.maxStudents < 1) return "Max students must be at least 1";
-    if (!Number.isInteger(form.maxClasses) || form.maxClasses < 1) return "Max classes must be at least 1";
+    if (!form.name.trim()) return t("nameRequired");
+    if (!Number.isFinite(form.price) || form.price < 0) return t("priceCannotBeNegative");
+    if (!Number.isInteger(form.maxBranches) || form.maxBranches < 1) return t("maxBranchesMin");
+    if (!Number.isInteger(form.maxStudents) || form.maxStudents < 1) return t("maxStudentsMin");
+    if (!Number.isInteger(form.maxClasses) || form.maxClasses < 1) return t("maxClassesMin");
     return null;
   };
 
@@ -94,9 +98,9 @@ export default function SubscriptionPlans() {
       setPlans((prev) => [...prev, created]);
       setCreateOpen(false);
       setForm(emptyForm);
-      toast.success("Plan created");
+      toast.success(t("planCreated"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to create plan");
+      toast.error(e instanceof Error ? e.message : t("failedToCreatePlan"));
     } finally {
       setSaving(false);
     }
@@ -120,9 +124,9 @@ export default function SubscriptionPlans() {
       });
       setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       setEditOpen(false);
-      toast.success("Plan updated");
+      toast.success(t("planUpdated"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update plan");
+      toast.error(e instanceof Error ? e.message : t("failedToUpdatePlan"));
     } finally {
       setSaving(false);
     }
@@ -135,9 +139,9 @@ export default function SubscriptionPlans() {
       await deletePlan(selected.id);
       setPlans((prev) => prev.filter((p) => p.id !== selected.id));
       setDeleteOpen(false);
-      toast.success("Plan deleted");
+      toast.success(t("planDeleted"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete plan");
+      toast.error(e instanceof Error ? e.message : t("failedToDeletePlan"));
     } finally {
       setSaving(false);
     }
@@ -148,9 +152,9 @@ export default function SubscriptionPlans() {
       const newStatus = (plan.status === "active" || plan.isActive) ? "inactive" : "active";
       const updated = await updatePlan(plan.id, { status: newStatus });
       setPlans((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
-      toast.success(`Plan ${newStatus}`);
+      toast.success(tf(t("planStatusChanged"), { status: t(newStatus) }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update plan");
+      toast.error(e instanceof Error ? e.message : t("failedToUpdatePlan"));
     }
   };
 
@@ -175,7 +179,7 @@ export default function SubscriptionPlans() {
   const PlanForm = () => (
     <div className="space-y-4 py-4">
       <div className="space-y-2">
-        <Label>Plan Name *</Label>
+        <Label>{t("planName")}</Label>
         <Input
           placeholder="e.g. Professional"
           value={form.name}
@@ -183,16 +187,16 @@ export default function SubscriptionPlans() {
         />
       </div>
       <div className="space-y-2">
-        <Label>Description</Label>
+        <Label>{t("description")}</Label>
         <Input
-          placeholder="Brief plan description"
+          placeholder={t("briefPlanDescription")}
           value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
         />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label>Price ($)</Label>
+          <Label>{t("priceUsd")}</Label>
           <Input
             type="number"
             min="0"
@@ -203,22 +207,22 @@ export default function SubscriptionPlans() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Billing Period</Label>
+          <Label>{t("billingPeriod")}</Label>
           <Select
             value={form.billingPeriod}
             onValueChange={(v) => setForm({ ...form, billingPeriod: v as "monthly" | "yearly" })}
           >
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="monthly">Monthly</SelectItem>
-              <SelectItem value="yearly">Yearly</SelectItem>
+              <SelectItem value="monthly">{t("monthly")}</SelectItem>
+              <SelectItem value="yearly">{t("yearly")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
-          <Label>Max Branches</Label>
+          <Label>{t("maxBranches")}</Label>
           <Input
             type="number"
             min="1"
@@ -228,7 +232,7 @@ export default function SubscriptionPlans() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Max Students</Label>
+          <Label>{t("maxStudents")}</Label>
           <Input
             type="number"
             min="1"
@@ -238,7 +242,7 @@ export default function SubscriptionPlans() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Max Classes</Label>
+          <Label>{t("maxClasses")}</Label>
           <Input
             type="number"
             min="1"
@@ -249,15 +253,15 @@ export default function SubscriptionPlans() {
         </div>
       </div>
       <div className="space-y-2">
-        <Label>Status</Label>
+        <Label>{t("status")}</Label>
         <Select
           value={form.status}
           onValueChange={(v) => setForm({ ...form, status: v as "active" | "inactive" })}
         >
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="inactive">Inactive</SelectItem>
+            <SelectItem value="active">{t("active")}</SelectItem>
+            <SelectItem value="inactive">{t("inactive")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -269,19 +273,23 @@ export default function SubscriptionPlans() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Subscription Plans</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("subscriptionPlansTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {plans.length} plan{plans.length !== 1 ? "s" : ""} — {plans.filter(isPlanActive).length} active
+            {tf(t("planCountSummary"), {
+              count: plans.length,
+              plural: plans.length !== 1 ? "s" : "",
+              activeCount: plans.filter(isPlanActive).length,
+            })}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" className="gap-2" onClick={load} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Refresh
+            {t("refresh")}
           </Button>
           <Button size="sm" className="gap-2" onClick={() => { setForm(emptyForm); setCreateOpen(true); }}>
             <Plus className="w-4 h-4" />
-            New Plan
+            {t("newPlan")}
           </Button>
         </div>
       </div>
@@ -300,10 +308,10 @@ export default function SubscriptionPlans() {
       ) : plans.length === 0 ? (
         <div className="glass-card rounded-lg p-16 flex flex-col items-center gap-3 text-muted-foreground">
           <Layers className="w-10 h-10 opacity-30" />
-          <p className="text-sm">No plans yet. Create your first plan.</p>
+          <p className="text-sm">{t("noPlansYet")}</p>
           <Button size="sm" onClick={() => { setForm(emptyForm); setCreateOpen(true); }}>
             <Plus className="w-4 h-4 mr-2" />
-            Create Plan
+            {t("createPlan")}
           </Button>
         </div>
       ) : (
@@ -341,7 +349,7 @@ export default function SubscriptionPlans() {
                     )}
                   >
                     {active ? <CheckCircle2 className="w-2.5 h-2.5" /> : <XCircle className="w-2.5 h-2.5" />}
-                    {active ? "Active" : "Inactive"}
+                    {active ? t("active") : t("inactive")}
                   </span>
                 </div>
 
@@ -359,22 +367,22 @@ export default function SubscriptionPlans() {
                   <div className="bg-accent/50 rounded-lg p-2">
                     <Building2 className="w-3.5 h-3.5 text-muted-foreground mx-auto mb-1" />
                     <p className="text-xs font-mono font-bold text-foreground">{plan.maxBranches ?? "∞"}</p>
-                    <p className="text-[10px] text-muted-foreground">Branches</p>
+                    <p className="text-[10px] text-muted-foreground">{t("branches")}</p>
                   </div>
                   <div className="bg-accent/50 rounded-lg p-2">
                     <Users className="w-3.5 h-3.5 text-muted-foreground mx-auto mb-1" />
                     <p className="text-xs font-mono font-bold text-foreground">{plan.maxStudents ?? "∞"}</p>
-                    <p className="text-[10px] text-muted-foreground">Students</p>
+                    <p className="text-[10px] text-muted-foreground">{t("students")}</p>
                   </div>
                   <div className="bg-accent/50 rounded-lg p-2">
                     <BookOpen className="w-3.5 h-3.5 text-muted-foreground mx-auto mb-1" />
                     <p className="text-xs font-mono font-bold text-foreground">{plan.maxClasses ?? "∞"}</p>
-                    <p className="text-[10px] text-muted-foreground">Classes</p>
+                    <p className="text-[10px] text-muted-foreground">{t("classes")}</p>
                   </div>
                 </div>
 
                 {featCount > 0 && (
-                  <p className="text-xs text-muted-foreground">{featCount} feature{featCount !== 1 ? "s" : ""} configured</p>
+                  <p className="text-xs text-muted-foreground">{tf(t("featuresConfigured"), { count: featCount, plural: featCount !== 1 ? "s" : "" })}</p>
                 )}
 
                 {/* Actions */}
@@ -386,7 +394,7 @@ export default function SubscriptionPlans() {
                     onClick={() => openEdit(plan)}
                   >
                     <Edit className="w-3.5 h-3.5" />
-                    Edit
+                    {t("edit")}
                   </Button>
                   <Button
                     variant="outline"
@@ -395,7 +403,7 @@ export default function SubscriptionPlans() {
                     onClick={() => handleToggleActive(plan)}
                   >
                     {active ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    {active ? "Deactivate" : "Activate"}
+                    {active ? t("deactivate") : t("activate")}
                   </Button>
                   <Button
                     variant="outline"
@@ -416,15 +424,15 @@ export default function SubscriptionPlans() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Create Plan</DialogTitle>
-            <DialogDescription>Add a new subscription plan.</DialogDescription>
+            <DialogTitle>{t("createPlan")}</DialogTitle>
+            <DialogDescription>{t("addNewSubscriptionPlan")}</DialogDescription>
           </DialogHeader>
           <PlanForm />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleCreate} disabled={saving}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Create
+              {t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -434,15 +442,15 @@ export default function SubscriptionPlans() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Plan</DialogTitle>
-            <DialogDescription>Update plan details.</DialogDescription>
+            <DialogTitle>{t("editPlan")}</DialogTitle>
+            <DialogDescription>{t("updatePlanDetails")}</DialogDescription>
           </DialogHeader>
           <PlanForm />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleEdit} disabled={saving}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Save Changes
+              {t("saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -452,20 +460,20 @@ export default function SubscriptionPlans() {
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Plan</AlertDialogTitle>
+            <AlertDialogTitle>{t("deletePlan")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Delete "{selected?.name}"? This cannot be undone.
+              {tf(t("deletePlanConfirm"), { name: selected?.name || "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={saving}
               className="bg-status-critical hover:bg-status-critical/90"
             >
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Delete
+              {t("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

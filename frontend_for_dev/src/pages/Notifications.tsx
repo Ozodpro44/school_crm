@@ -12,6 +12,8 @@ import {
   getNotificationPreferences, updateNotificationPreferences,
   getRecentNotifications, type RecentNotification,
 } from "@/services/api-client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation } from "@/lib/i18n";
 
 interface NotifPrefs {
   errors: boolean;
@@ -29,42 +31,44 @@ const DEFAULTS: NotifPrefs = {
 
 const TOGGLES: {
   key: keyof NotifPrefs;
-  label: string;
-  desc: string;
+  labelKey: string;
+  descKey: string;
   icon: React.ElementType;
   iconCls: string;
 }[] = [
   {
     key: "errors",
-    label: "Error Alerts",
-    desc: "Get notified when the error rate spikes or critical errors are logged",
+    labelKey: "errorAlerts",
+    descKey: "errorAlertsDesc",
     icon: AlertTriangle,
     iconCls: "text-status-critical bg-status-critical/15",
   },
   {
     key: "deployments",
-    label: "Deployment Alerts",
-    desc: "Notify when a new deployment is detected on the backend",
+    labelKey: "deploymentAlerts",
+    descKey: "deploymentAlertsDesc",
     icon: Server,
     iconCls: "text-status-info bg-status-info/15",
   },
   {
     key: "security",
-    label: "Security Alerts",
-    desc: "Unusual login attempts, failed auth, or suspicious access patterns",
+    labelKey: "securityAlerts",
+    descKey: "securityAlertsDesc",
     icon: Shield,
     iconCls: "text-status-warning bg-status-warning/15",
   },
   {
     key: "weeklyReport",
-    label: "Weekly Report",
-    desc: "Summary digest of metrics, errors, and activity every Monday",
+    labelKey: "weeklyReport",
+    descKey: "weeklyReportDesc",
     icon: CreditCard,
     iconCls: "text-primary bg-primary/15",
   },
 ];
 
 export default function Notifications() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [prefs, setPrefs] = useState<NotifPrefs>(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -111,9 +115,9 @@ export default function Notifications() {
       // merge), so the full prefs object is sent every time.
       await updateNotificationPreferences(prefs as unknown as Record<string, unknown>);
       setDirty(false);
-      toast.success("Notification preferences saved");
+      toast.success(t("notificationPreferencesSaved"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to save preferences");
+      toast.error(e instanceof Error ? e.message : t("failedToSavePreferences"));
     } finally {
       setSaving(false);
     }
@@ -124,8 +128,8 @@ export default function Notifications() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
-          <p className="text-sm text-muted-foreground mt-1">Configure alert preferences for the developer portal</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("notificationsTitle")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("configureAlertPreferences")}</p>
         </div>
         <Button
           size="sm"
@@ -134,13 +138,13 @@ export default function Notifications() {
           disabled={saving || !dirty}
         >
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {saving ? "Saving…" : "Save Preferences"}
+          {saving ? t("saving") : t("savePreferences")}
         </Button>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
+          <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t("loading")}
         </div>
       ) : (
         <div className="max-w-2xl space-y-4">
@@ -148,8 +152,7 @@ export default function Notifications() {
           <div className="flex items-start gap-3 p-4 rounded-lg border border-status-info/25 bg-status-info/10 text-status-info">
             <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <p className="text-sm">
-              These toggles are display preferences for this portal only — there is no email/push
-              delivery configured server-side yet.
+              {t("displayPreferencesNotice")}
             </p>
           </div>
 
@@ -157,7 +160,7 @@ export default function Notifications() {
           <div className="glass-card rounded-lg overflow-hidden">
             <div className="p-4 border-b border-border flex items-center gap-2">
               <Clock className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">Recent Activity</h2>
+              <h2 className="text-sm font-semibold text-foreground">{t("recentActivity")}</h2>
             </div>
             <div className="divide-y divide-border">
               {recentLoading ? (
@@ -165,7 +168,7 @@ export default function Notifications() {
                   <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                 </div>
               ) : recent.length === 0 ? (
-                <p className="p-4 text-sm text-muted-foreground">No recent alerts.</p>
+                <p className="p-4 text-sm text-muted-foreground">{t("noRecentAlerts")}</p>
               ) : (
                 recent.map((n) => (
                   <div key={n.id} className="flex items-start gap-3 p-3">
@@ -193,18 +196,18 @@ export default function Notifications() {
           <div className="glass-card rounded-lg overflow-hidden">
             <div className="p-4 border-b border-border flex items-center gap-2">
               <Bell className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">Alert Types</h2>
+              <h2 className="text-sm font-semibold text-foreground">{t("alertTypes")}</h2>
             </div>
             <div className="divide-y divide-border">
-              {TOGGLES.map(({ key, label, desc, icon: Icon, iconCls }) => (
+              {TOGGLES.map(({ key, labelKey, descKey, icon: Icon, iconCls }) => (
                 <div key={key} className="flex items-center justify-between p-4 gap-4">
                   <div className="flex items-start gap-3">
                     <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0", iconCls)}>
                       <Icon className="w-4 h-4" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-foreground">{label}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{desc}</p>
+                      <p className="text-sm font-medium text-foreground">{t(labelKey)}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{t(descKey)}</p>
                     </div>
                   </div>
                   <Switch
@@ -219,20 +222,20 @@ export default function Notifications() {
 
           {/* Current State Summary */}
           <div className="glass-card rounded-lg p-4">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Current Configuration</h3>
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t("currentConfiguration")}</h3>
             <div className="grid grid-cols-2 gap-3">
-              {TOGGLES.map(({ key, label }) => (
+              {TOGGLES.map(({ key, labelKey }) => (
                 <div key={key} className="flex items-center gap-2 text-sm">
                   <div className={cn(
                     "w-2 h-2 rounded-full flex-shrink-0",
                     prefs[key] ? "bg-status-healthy" : "bg-muted-foreground/40"
                   )} />
-                  <span className="text-muted-foreground">{label}</span>
+                  <span className="text-muted-foreground">{t(labelKey)}</span>
                   <span className={cn(
                     "ml-auto text-xs font-semibold",
                     prefs[key] ? "text-status-healthy" : "text-muted-foreground"
                   )}>
-                    {prefs[key] ? "ON" : "OFF"}
+                    {prefs[key] ? t("on") : t("off")}
                   </span>
                 </div>
               ))}
@@ -241,7 +244,7 @@ export default function Notifications() {
 
           {dirty && (
             <p className="text-xs text-center text-muted-foreground">
-              You have unsaved changes — click Save Preferences to persist them.
+              {t("unsavedChangesNotice")}
             </p>
           )}
         </div>

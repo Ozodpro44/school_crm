@@ -16,6 +16,8 @@ import {
   getDevSettings, updateDevSettings, getHealth,
   listMySessions, revokeSession, DeveloperSession,
 } from "@/services/api-client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation, tf } from "@/lib/i18n";
 
 const API_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api").replace(/\/$/, "");
 
@@ -52,6 +54,8 @@ function decodeJwt(token: string): Record<string, unknown> | null {
 }
 
 function JwtInspector() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState(false);
   const token = localStorage.getItem("auth_token") ?? "";
@@ -72,16 +76,16 @@ function JwtInspector() {
       <div className="p-4 border-b border-border">
         <h3 className="font-semibold text-foreground flex items-center gap-2 text-sm">
           <Key className="w-4 h-4 text-status-info" />
-          API Token Inspector
+          {t("apiTokenInspector")}
         </h3>
       </div>
       <div className="p-4 space-y-4">
         {!token ? (
-          <p className="text-sm text-muted-foreground">No auth token found. Please log in.</p>
+          <p className="text-sm text-muted-foreground">{t("noAuthTokenFound")}</p>
         ) : (
           <>
             <div className="space-y-2">
-              <Label>Current Token</Label>
+              <Label>{t("currentToken")}</Label>
               <div className="flex items-center gap-2">
                 <code className="flex-1 p-2 bg-accent/30 rounded-lg text-xs font-mono text-foreground break-all">
                   {show ? token : `${token.slice(0, 8)}${"•".repeat(Math.min(40, token.length - 16))}${token.slice(-8)}`}
@@ -93,25 +97,25 @@ function JwtInspector() {
                   <Copy className="w-4 h-4" />
                 </button>
               </div>
-              {copied && <p className="text-xs text-status-healthy">Copied!</p>}
+              {copied && <p className="text-xs text-status-healthy">{t("copiedBang")}</p>}
             </div>
             {payload && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Issued At</p>
+                  <p className="text-xs text-muted-foreground mb-1">{t("issuedAt")}</p>
                   <p className="font-medium text-foreground font-mono text-xs">
                     {iatTs ? new Date(iatTs * 1000).toLocaleString() : "—"}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Expires At</p>
+                  <p className="text-xs text-muted-foreground mb-1">{t("expiresAt")}</p>
                   <p className={`font-medium font-mono text-xs ${expired ? "text-status-critical" : "text-status-healthy"}`}>
                     {expTs ? new Date(expTs * 1000).toLocaleString() : "—"}
-                    {expired && " (EXPIRED)"}
+                    {expired && t("expiredSuffix")}
                   </p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Subject / Role</p>
+                  <p className="text-xs text-muted-foreground mb-1">{t("subjectRole")}</p>
                   <p className="font-medium font-mono text-xs text-foreground">
                     {String(payload.sub ?? payload.role ?? "—")}
                   </p>
@@ -127,8 +131,8 @@ function JwtInspector() {
 
 // ── Active Sessions ────────────────────────────────────────────────────────────
 
-function formatUserAgent(ua: string): string {
-  if (!ua) return "Unknown device";
+function formatUserAgent(ua: string, t: (key: string) => string): string {
+  if (!ua) return t("unknownDevice");
   let os = "Unknown OS";
   if (/Windows/i.test(ua)) os = "Windows";
   else if (/Mac OS/i.test(ua)) os = "macOS";
@@ -146,6 +150,8 @@ function formatUserAgent(ua: string): string {
 }
 
 function ActiveSessions() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [sessions, setSessions] = useState<DeveloperSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [revokingId, setRevokingId] = useState<string | null>(null);
@@ -171,13 +177,13 @@ function ActiveSessions() {
     try {
       await revokeSession(session.id);
       setSessions((prev) => prev.filter((s) => s.id !== session.id));
-      toast.success("Session signed out");
+      toast.success(t("sessionSignedOut"));
       if (session.id === currentSessionId) {
         localStorage.removeItem("auth_token");
         window.location.href = "/login";
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to sign out session");
+      toast.error(e instanceof Error ? e.message : t("failedToSignOutSession"));
     } finally {
       setRevokingId(null);
     }
@@ -188,7 +194,7 @@ function ActiveSessions() {
       <div className="p-4 border-b border-border">
         <h3 className="font-semibold text-foreground flex items-center gap-2 text-sm">
           <Monitor className="w-4 h-4 text-status-info" />
-          Active Sessions
+          {t("activeSessions")}
         </h3>
       </div>
       <div className="p-4 space-y-2">
@@ -197,7 +203,7 @@ function ActiveSessions() {
             <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
           </div>
         ) : sessions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No active sessions found.</p>
+          <p className="text-sm text-muted-foreground">{t("noActiveSessionsFound")}</p>
         ) : (
           sessions.map((session) => (
             <div
@@ -208,16 +214,16 @@ function ActiveSessions() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-medium text-foreground truncate">
-                    {formatUserAgent(session.userAgent)}
+                    {formatUserAgent(session.userAgent, t)}
                   </p>
                   {session.id === currentSessionId && (
                     <span className="text-xs px-1.5 py-0.5 rounded bg-primary/15 text-primary">
-                      This device
+                      {t("thisDevice")}
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground font-mono">
-                  {session.ipAddress || "—"} · last active {new Date(session.lastSeenAt).toLocaleString()}
+                  {session.ipAddress || "—"} · {tf(t("lastActive"), { time: new Date(session.lastSeenAt).toLocaleString() })}
                 </p>
               </div>
               <Button
@@ -227,7 +233,7 @@ function ActiveSessions() {
                 disabled={revokingId === session.id}
                 onClick={() => handleRevoke(session)}
               >
-                {revokingId === session.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Sign out"}
+                {revokingId === session.id ? <Loader2 className="w-3 h-3 animate-spin" /> : t("signOut")}
               </Button>
             </div>
           ))
@@ -250,6 +256,8 @@ function Section({
   saving: boolean;
   dirty: boolean;
 }) {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   return (
     <div className="glass-card rounded-lg overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b border-border">
@@ -259,7 +267,7 @@ function Section({
         </h3>
         <Button size="sm" onClick={onSave} disabled={saving || !dirty} className="gap-1.5 h-7 text-xs">
           {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("saving") : t("save")}
         </Button>
       </div>
       <div className="p-4 space-y-4">{children}</div>
@@ -270,6 +278,8 @@ function Section({
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function Settings() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState<Record<string, boolean>>({
@@ -303,7 +313,7 @@ export default function Settings() {
       setHealthMsg(h?.status || "healthy");
     } catch (e) {
       setHealth("error");
-      setHealthMsg(e instanceof Error ? e.message : "unreachable");
+      setHealthMsg(e instanceof Error ? e.message : t("unreachable"));
     }
   }, []);
 
@@ -331,9 +341,9 @@ export default function Settings() {
         window.dispatchEvent(new Event("dev:maintenanceModeChanged"));
       }
       setDirty((prev) => ({ ...prev, [section]: false }));
-      toast.success(`${section.charAt(0).toUpperCase() + section.slice(1)} settings saved`);
+      toast.success(tf(t("settingsSaved"), { section: section.charAt(0).toUpperCase() + section.slice(1) }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to save");
+      toast.error(e instanceof Error ? e.message : t("failedToSave"));
     } finally {
       setSaving((prev) => ({ ...prev, [section]: false }));
     }
@@ -353,12 +363,12 @@ export default function Settings() {
     <DashboardLayout>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
-          <p className="text-sm text-muted-foreground mt-1">Developer portal configuration</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("settingsTitle")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("developerPortalConfig")}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-2" onClick={loadSettings}>
           <RefreshCw className="w-4 h-4" />
-          Reload
+          {t("reload")}
         </Button>
       </div>
 
@@ -366,30 +376,30 @@ export default function Settings() {
 
         {/* Server */}
         <Section
-          icon={Server} iconClass="text-primary" title="Server"
+          icon={Server} iconClass="text-primary" title={t("server")}
           onSave={() => saveSection("server", ["requestTimeout", "rateLimiting", "environment"])}
           saving={saving.server} dirty={dirty.server}
         >
           <div className="space-y-2">
-            <Label>Backend API URL</Label>
+            <Label>{t("backendApiUrl")}</Label>
             <Input value={API_URL} readOnly className="font-mono text-xs opacity-60 cursor-not-allowed" />
-            <p className="text-xs text-muted-foreground">Set via VITE_API_BASE_URL environment variable</p>
+            <p className="text-xs text-muted-foreground">{t("setViaEnvVar")}</p>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label>Backend Status</Label>
+              <Label>{t("backendStatus")}</Label>
               <button onClick={checkHealth} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
-                <RefreshCw className="w-3 h-3" /> Check
+                <RefreshCw className="w-3 h-3" /> {t("check")}
               </button>
             </div>
             <div className="flex items-center gap-2 p-2 rounded-lg bg-accent/30">
-              {health === "loading" && <><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /><span className="text-sm text-muted-foreground">Checking…</span></>}
-              {health === "ok"      && <><CheckCircle2 className="w-4 h-4 text-status-healthy" /><span className="text-sm text-status-healthy">Connected — {healthMsg}</span></>}
-              {health === "error"   && <><XCircle className="w-4 h-4 text-status-critical" /><span className="text-sm text-status-critical">Cannot reach backend ({healthMsg})</span></>}
+              {health === "loading" && <><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /><span className="text-sm text-muted-foreground">{t("checking")}</span></>}
+              {health === "ok"      && <><CheckCircle2 className="w-4 h-4 text-status-healthy" /><span className="text-sm text-status-healthy">{tf(t("connectedWith"), { msg: healthMsg })}</span></>}
+              {health === "error"   && <><XCircle className="w-4 h-4 text-status-critical" /><span className="text-sm text-status-critical">{tf(t("cannotReachBackend"), { msg: healthMsg })}</span></>}
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Request Timeout (seconds)</Label>
+            <Label>{t("requestTimeoutSeconds")}</Label>
             <Input
               type="number"
               value={settings.requestTimeout}
@@ -399,8 +409,8 @@ export default function Settings() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-foreground">Rate Limiting</p>
-              <p className="text-xs text-muted-foreground">Enable API rate limiting alerts</p>
+              <p className="text-sm font-medium text-foreground">{t("rateLimiting")}</p>
+              <p className="text-xs text-muted-foreground">{t("enableRateLimitingAlerts")}</p>
             </div>
             <Switch
               checked={!!settings.rateLimiting}
@@ -411,12 +421,12 @@ export default function Settings() {
 
         {/* Security */}
         <Section
-          icon={Shield} iconClass="text-status-warning" title="Security"
+          icon={Shield} iconClass="text-status-warning" title={t("security")}
           onSave={() => saveSection("security", ["jwtExpiry", "maxLoginAttempts", "requireMFA"])}
           saving={saving.security} dirty={dirty.security}
         >
           <div className="space-y-2">
-            <Label>JWT Token Expiry (hours)</Label>
+            <Label>{t("jwtTokenExpiryHours")}</Label>
             <Input
               type="number"
               value={settings.jwtExpiry}
@@ -425,7 +435,7 @@ export default function Settings() {
             />
           </div>
           <div className="space-y-2">
-            <Label>Max Failed Login Attempts</Label>
+            <Label>{t("maxFailedLoginAttempts")}</Label>
             <Input
               type="number"
               value={settings.maxLoginAttempts}
@@ -435,8 +445,8 @@ export default function Settings() {
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-foreground">Require MFA</p>
-              <p className="text-xs text-muted-foreground">Enforce 2FA for all admin accounts</p>
+              <p className="text-sm font-medium text-foreground">{t("requireMfa")}</p>
+              <p className="text-xs text-muted-foreground">{t("enforce2faForAdmins")}</p>
             </div>
             <Switch
               checked={!!settings.requireMFA}
@@ -447,28 +457,28 @@ export default function Settings() {
 
         {/* Maintenance */}
         <Section
-          icon={Globe} iconClass="text-status-info" title="Maintenance"
+          icon={Globe} iconClass="text-status-info" title={t("maintenance")}
           onSave={() => saveSection("maintenance", ["maintenanceMode", "environment"])}
           saving={saving.maintenance} dirty={dirty.maintenance}
         >
           <div className="space-y-2">
-            <Label>Environment</Label>
+            <Label>{t("environment")}</Label>
             <Select
               value={settings.environment}
               onValueChange={(v) => set("environment", v, "maintenance")}
             >
               <SelectTrigger className="w-52 bg-background"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="production">Production</SelectItem>
-                <SelectItem value="staging">Staging</SelectItem>
-                <SelectItem value="development">Development</SelectItem>
+                <SelectItem value="production">{t("production")}</SelectItem>
+                <SelectItem value="staging">{t("staging")}</SelectItem>
+                <SelectItem value="development">{t("development")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-foreground">Maintenance Mode</p>
-              <p className="text-xs text-muted-foreground">Show maintenance banner across dashboard</p>
+              <p className="text-sm font-medium text-foreground">{t("maintenanceMode")}</p>
+              <p className="text-xs text-muted-foreground">{t("showMaintenanceBanner")}</p>
             </div>
             <Switch
               checked={!!settings.maintenanceMode}
@@ -477,36 +487,36 @@ export default function Settings() {
           </div>
           {settings.maintenanceMode && (
             <div className="p-3 rounded-lg bg-status-warning/10 border border-status-warning/25 text-status-warning text-xs">
-              Maintenance mode is ON. Save to persist and trigger the dashboard banner.
+              {t("maintenanceModeOnNotice")}
             </div>
           )}
         </Section>
 
         {/* Logging */}
         <Section
-          icon={Database} iconClass="text-status-healthy" title="Logging"
+          icon={Database} iconClass="text-status-healthy" title={t("logging")}
           onSave={() => saveSection("logging", ["logLevel", "queryLogging"])}
           saving={saving.logging} dirty={dirty.logging}
         >
           <div className="space-y-2">
-            <Label>Log Level</Label>
+            <Label>{t("logLevel")}</Label>
             <Select
               value={settings.logLevel}
               onValueChange={(v) => set("logLevel", v, "logging")}
             >
               <SelectTrigger className="w-40 bg-background"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="debug">Debug</SelectItem>
-                <SelectItem value="info">Info</SelectItem>
-                <SelectItem value="warn">Warning</SelectItem>
-                <SelectItem value="error">Error</SelectItem>
+                <SelectItem value="debug">{t("debug")}</SelectItem>
+                <SelectItem value="info">{t("info")}</SelectItem>
+                <SelectItem value="warn">{t("warning")}</SelectItem>
+                <SelectItem value="error">{t("errorLevel")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-foreground">Query Logging</p>
-              <p className="text-xs text-muted-foreground">Log all DB queries to the Logs page</p>
+              <p className="text-sm font-medium text-foreground">{t("queryLogging")}</p>
+              <p className="text-xs text-muted-foreground">{t("logAllDbQueries")}</p>
             </div>
             <Switch
               checked={!!settings.queryLogging}

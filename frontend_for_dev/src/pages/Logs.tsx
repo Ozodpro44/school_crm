@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { getLogs, clearLogs, type LogEntry } from "@/services/api-client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation, tf } from "@/lib/i18n";
 
 type Level = "ALL" | "DEBUG" | "INFO" | "WARN" | "ERROR";
 
@@ -29,6 +31,8 @@ const LEVEL_CONFIG: Record<string, { icon: typeof Info; lineClass: string; badge
 const LIMITS = [50, 100, 200, 500];
 
 export default function Logs() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,7 +66,7 @@ export default function Logs() {
       });
       setLogs(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch logs");
+      setError(e instanceof Error ? e.message : t("failedToFetchLogs"));
       setLogs([]);
     } finally {
       setLoading(false);
@@ -111,7 +115,7 @@ export default function Logs() {
       log.metadata ? "\n" + JSON.stringify(log.metadata, null, 2) : ""
     }`;
     navigator.clipboard.writeText(text);
-    toast.success("Copied to clipboard");
+    toast.success(t("copiedToClipboard"));
   };
 
   const handleDownload = () => {
@@ -122,7 +126,7 @@ export default function Logs() {
     a.download = `logs-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Downloaded logs.json");
+    toast.success(t("downloadedLogsJson"));
   };
 
   const handleClear = async () => {
@@ -130,9 +134,9 @@ export default function Logs() {
       await clearLogs();
       setLogs([]);
       setClearDialogOpen(false);
-      toast.success("Logs cleared");
+      toast.success(t("logsCleared"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to clear logs");
+      toast.error(e instanceof Error ? e.message : t("failedToClearLogs"));
       setClearDialogOpen(false);
     }
   };
@@ -144,13 +148,13 @@ export default function Logs() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Log Viewer</h1>
-          <p className="text-sm text-muted-foreground mt-1">Real-time application logs from the backend</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("logViewer")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("realTimeLogsFromBackend")}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" className="gap-2" onClick={handleDownload}>
             <Download className="w-4 h-4" />
-            Download JSON
+            {t("downloadJson")}
           </Button>
           <Button
             variant="outline"
@@ -159,11 +163,11 @@ export default function Logs() {
             onClick={() => setAutoRefresh((v) => !v)}
           >
             <Activity className="w-4 h-4" />
-            {autoRefresh ? "Auto-refresh ON" : "Auto-refresh"}
+            {autoRefresh ? t("autoRefreshOn") : t("autoRefresh")}
           </Button>
           <Button variant="outline" size="sm" className="gap-2" onClick={fetchLogs} disabled={loading}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Refresh
+            {t("refresh")}
           </Button>
           <Button
             variant="outline"
@@ -172,7 +176,7 @@ export default function Logs() {
             onClick={() => setClearDialogOpen(true)}
           >
             <Trash2 className="w-4 h-4" />
-            Clear
+            {t("clear")}
           </Button>
         </div>
       </div>
@@ -213,11 +217,11 @@ export default function Logs() {
         <div className="flex flex-col md:flex-row gap-2">
           <Select value={moduleFilter} onValueChange={setModuleFilter}>
             <SelectTrigger className="w-full md:w-48 bg-background h-8 text-xs">
-              <SelectValue placeholder="Module" />
+              <SelectValue placeholder={t("module")} />
             </SelectTrigger>
             <SelectContent>
               {allModules.map((m) => (
-                <SelectItem key={m} value={m}>{m === "all" ? "All Modules" : m}</SelectItem>
+                <SelectItem key={m} value={m}>{m === "all" ? t("allModules") : m}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -227,14 +231,14 @@ export default function Logs() {
             </SelectTrigger>
             <SelectContent>
               {LIMITS.map((l) => (
-                <SelectItem key={l} value={String(l)}>{l} entries</SelectItem>
+                <SelectItem key={l} value={String(l)}>{l} {t("entries")}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search message or module..."
+              placeholder={t("searchMessageOrModule")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 h-8 bg-background text-xs"
@@ -246,10 +250,10 @@ export default function Logs() {
       {/* Log List */}
       <div className="glass-card rounded-lg overflow-hidden">
         <div className="flex items-center gap-4 px-4 py-2 border-b border-border text-xs text-muted-foreground font-medium">
-          <div className="w-36">Timestamp</div>
-          <div className="w-14">Level</div>
-          <div className="w-28">Module</div>
-          <div className="flex-1">Message</div>
+          <div className="w-36">{t("timestamp")}</div>
+          <div className="w-14">{t("level")}</div>
+          <div className="w-28">{t("module")}</div>
+          <div className="flex-1">{t("message")}</div>
           <div className="w-8" />
         </div>
 
@@ -257,13 +261,13 @@ export default function Logs() {
           {loading ? (
             <div className="p-10 flex flex-col items-center gap-3 text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin text-primary" />
-              <span className="text-sm">Loading logs...</span>
+              <span className="text-sm">{t("loadingLogs")}</span>
             </div>
           ) : filtered.length === 0 ? (
             <div className="p-10 flex flex-col items-center gap-3 text-muted-foreground">
               <Info className="w-8 h-8 opacity-30" />
               <span className="text-sm">
-                {logs.length === 0 ? "No log entries yet" : "No logs match your filters"}
+                {logs.length === 0 ? t("noLogEntriesYet") : t("noLogsMatchFilters")}
               </span>
             </div>
           ) : (
@@ -332,7 +336,7 @@ export default function Logs() {
 
         {!loading && filtered.length > 0 && (
           <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">
-            Showing {filtered.length} of {logs.length} entries
+            {tf(t("showingOfEntries"), { shown: filtered.length, total: logs.length })}
           </div>
         )}
       </div>
@@ -341,15 +345,15 @@ export default function Logs() {
       <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear All Logs</AlertDialogTitle>
+            <AlertDialogTitle>{t("clearAllLogs")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Permanently delete all log entries? This cannot be undone.
+              {t("clearAllLogsConfirm")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={handleClear} className="bg-status-critical hover:bg-status-critical/90">
-              Clear All Logs
+              {t("clearAllLogs")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

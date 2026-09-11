@@ -25,10 +25,14 @@ import {
   togglePaymentType, deletePaymentType,
   type PaymentType,
 } from "@/services/api-client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation, tf } from "@/lib/i18n";
 
 const emptyForm = { code: "", displayName: "", description: "", isActive: true, sortOrder: 0 };
 
 export default function PaymentTypes() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [types, setTypes] = useState<PaymentType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +50,7 @@ export default function PaymentTypes() {
       const data = await listPaymentTypes();
       setTypes(data.sort((a, b) => a.sortOrder - b.sortOrder));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load payment types");
+      setError(e instanceof Error ? e.message : t("failedToLoadPaymentTypes"));
     } finally {
       setLoading(false);
     }
@@ -74,7 +78,7 @@ export default function PaymentTypes() {
 
   const handleSave = async () => {
     if (!form.code.trim() || !form.displayName.trim()) {
-      toast.error("Code and display name are required");
+      toast.error(t("codeDisplayNameRequired"));
       return;
     }
     setSaving(true);
@@ -86,8 +90,8 @@ export default function PaymentTypes() {
           isActive: form.isActive,
           sortOrder: form.sortOrder,
         });
-        setTypes((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-        toast.success("Payment type updated");
+        setTypes((prev) => prev.map((pt) => (pt.id === updated.id ? updated : pt)));
+        toast.success(t("paymentTypeUpdated"));
       } else {
         const created = await createPaymentType({
           code: form.code,
@@ -97,11 +101,11 @@ export default function PaymentTypes() {
           sortOrder: form.sortOrder,
         });
         setTypes((prev) => [...prev, created].sort((a, b) => a.sortOrder - b.sortOrder));
-        toast.success("Payment type created");
+        toast.success(t("paymentTypeCreated"));
       }
       setModalOpen(false);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Save failed");
+      toast.error(e instanceof Error ? e.message : t("saveFailed"));
     } finally {
       setSaving(false);
     }
@@ -110,10 +114,10 @@ export default function PaymentTypes() {
   const handleToggle = async (pt: PaymentType) => {
     try {
       const updated = await togglePaymentType(pt.id);
-      setTypes((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
-      toast.success(`${updated.displayName} ${updated.isActive ? "activated" : "deactivated"}`);
+      setTypes((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+      toast.success(tf(updated.isActive ? t("typeActivated") : t("typeDeactivated"), { name: updated.displayName }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Toggle failed");
+      toast.error(e instanceof Error ? e.message : t("toggleFailed"));
     }
   };
 
@@ -122,12 +126,12 @@ export default function PaymentTypes() {
     setSaving(true);
     try {
       await deletePaymentType(deleteTarget.id);
-      setTypes((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+      setTypes((prev) => prev.filter((pt) => pt.id !== deleteTarget.id));
       setDeleteOpen(false);
       setDeleteTarget(null);
-      toast.success("Payment type deleted");
+      toast.success(t("paymentTypeDeleted"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Delete failed");
+      toast.error(e instanceof Error ? e.message : t("deleteFailed"));
     } finally {
       setSaving(false);
     }
@@ -142,19 +146,19 @@ export default function PaymentTypes() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Payment Types</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t("paymentTypesTitle")}</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {types.length} types — {activeCount} active, {systemCount} system
+              {tf(t("typesCountSummary"), { count: types.length, activeCount, systemCount })}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" className="gap-2" onClick={load} disabled={loading}>
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              Refresh
+              {t("refresh")}
             </Button>
             <Button size="sm" className="gap-2" onClick={openCreate}>
               <Plus className="w-4 h-4" />
-              Add Type
+              {t("addType")}
             </Button>
           </div>
         </div>
@@ -171,13 +175,13 @@ export default function PaymentTypes() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/20 text-xs text-muted-foreground">
-                <th className="text-left px-4 py-3 font-medium">Code</th>
-                <th className="text-left px-4 py-3 font-medium">Display Name</th>
-                <th className="text-left px-4 py-3 font-medium">Description</th>
-                <th className="text-center px-4 py-3 font-medium">Order</th>
-                <th className="text-center px-4 py-3 font-medium">Active</th>
-                <th className="text-center px-4 py-3 font-medium">Type</th>
-                <th className="text-right px-4 py-3 font-medium">Actions</th>
+                <th className="text-left px-4 py-3 font-medium">{t("code")}</th>
+                <th className="text-left px-4 py-3 font-medium">{t("displayName")}</th>
+                <th className="text-left px-4 py-3 font-medium">{t("description")}</th>
+                <th className="text-center px-4 py-3 font-medium">{t("order")}</th>
+                <th className="text-center px-4 py-3 font-medium">{t("active")}</th>
+                <th className="text-center px-4 py-3 font-medium">{t("type")}</th>
+                <th className="text-right px-4 py-3 font-medium">{t("actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -195,7 +199,7 @@ export default function PaymentTypes() {
                 <tr>
                   <td colSpan={7} className="px-4 py-14 text-center text-muted-foreground">
                     <CreditCard className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No payment types found</p>
+                    <p className="text-sm">{t("noPaymentTypesFound")}</p>
                   </td>
                 </tr>
               ) : (
@@ -221,11 +225,11 @@ export default function PaymentTypes() {
                     <td className="px-4 py-3 text-center">
                       {pt.isSystem ? (
                         <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
-                          System
+                          {t("system")}
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                          Custom
+                          {t("custom")}
                         </Badge>
                       )}
                     </td>
@@ -248,7 +252,7 @@ export default function PaymentTypes() {
                                 </Button>
                               </span>
                             </TooltipTrigger>
-                            <TooltipContent>System payment types cannot be deleted</TooltipContent>
+                            <TooltipContent>{t("systemTypesCannotBeDeleted")}</TooltipContent>
                           </Tooltip>
                         ) : (
                           <Button
@@ -273,11 +277,11 @@ export default function PaymentTypes() {
         <Dialog open={modalOpen} onOpenChange={setModalOpen}>
           <DialogContent className="sm:max-w-[440px]">
             <DialogHeader>
-              <DialogTitle>{editTarget ? "Edit Payment Type" : "New Payment Type"}</DialogTitle>
+              <DialogTitle>{editTarget ? t("editPaymentType") : t("newPaymentType")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-1">
-                <Label>Code <span className="text-status-critical">*</span></Label>
+                <Label>{t("code")} <span className="text-status-critical">*</span></Label>
                 <Input
                   value={form.code}
                   onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
@@ -287,12 +291,12 @@ export default function PaymentTypes() {
                 />
                 {!editTarget && (
                   <p className="text-xs text-muted-foreground">
-                    Internal identifier — cannot be changed after creation.
+                    {t("internalIdentifierNotice")}
                   </p>
                 )}
               </div>
               <div className="space-y-1">
-                <Label>Display Name <span className="text-status-critical">*</span></Label>
+                <Label>{t("displayName")} <span className="text-status-critical">*</span></Label>
                 <Input
                   value={form.displayName}
                   onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
@@ -300,15 +304,15 @@ export default function PaymentTypes() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>Description</Label>
+                <Label>{t("description")}</Label>
                 <Input
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="Short description shown to users"
+                  placeholder={t("shortDescriptionShownToUsers")}
                 />
               </div>
               <div className="space-y-1">
-                <Label>Sort Order</Label>
+                <Label>{t("sortOrder")}</Label>
                 <Input
                   type="number"
                   min={0}
@@ -318,7 +322,7 @@ export default function PaymentTypes() {
                 />
               </div>
               <div className="flex items-center justify-between py-1">
-                <Label>Active by default</Label>
+                <Label>{t("activeByDefault")}</Label>
                 <Switch
                   checked={form.isActive}
                   onCheckedChange={(v) => setForm((f) => ({ ...f, isActive: v }))}
@@ -326,10 +330,10 @@ export default function PaymentTypes() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
+              <Button variant="outline" onClick={() => setModalOpen(false)}>{t("cancel")}</Button>
               <Button onClick={handleSave} disabled={saving}>
                 {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {editTarget ? "Update" : "Create"}
+                {editTarget ? t("update") : t("create")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -339,20 +343,20 @@ export default function PaymentTypes() {
         <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete Payment Type</AlertDialogTitle>
+              <AlertDialogTitle>{t("deletePaymentType")}</AlertDialogTitle>
               <AlertDialogDescription>
-                Delete "{deleteTarget?.displayName}" ({deleteTarget?.code})? This cannot be undone.
+                {tf(t("deletePaymentTypeConfirm"), { name: deleteTarget?.displayName || "", code: deleteTarget?.code || "" })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDelete}
                 disabled={saving}
                 className="bg-status-critical hover:bg-status-critical/90"
               >
                 {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Delete
+                {t("delete")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

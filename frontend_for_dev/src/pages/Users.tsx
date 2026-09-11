@@ -22,17 +22,20 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { listUsers, updateUser, deleteUser, type CRMUser } from "@/services/api-client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation, tf } from "@/lib/i18n";
 
-const ROLE_CONFIG: Record<string, { label: string; cls: string }> = {
-  admin:        { label: "Admin",        cls: "bg-primary/15 text-primary border border-primary/25"                        },
-  manager:      { label: "Manager",      cls: "bg-status-info/15 text-status-info border border-status-info/25"            },
-  teacher:      { label: "Teacher",      cls: "bg-status-healthy/15 text-status-healthy border border-status-healthy/25"   },
-  accountant:   { label: "Accountant",   cls: "bg-amber-500/15 text-amber-400 border border-amber-500/25"                  },
-  branch_admin: { label: "Branch Admin", cls: "bg-violet-500/15 text-violet-400 border border-violet-500/25"               },
+const ROLE_CONFIG: Record<string, { labelKey: string; cls: string }> = {
+  admin:        { labelKey: "roleAdmin",       cls: "bg-primary/15 text-primary border border-primary/25"                        },
+  manager:      { labelKey: "roleManager",     cls: "bg-status-info/15 text-status-info border border-status-info/25"            },
+  teacher:      { labelKey: "roleTeacher",     cls: "bg-status-healthy/15 text-status-healthy border border-status-healthy/25"   },
+  accountant:   { labelKey: "roleAccountant",  cls: "bg-amber-500/15 text-amber-400 border border-amber-500/25"                  },
+  branch_admin: { labelKey: "roleBranchAdmin", cls: "bg-violet-500/15 text-violet-400 border border-violet-500/25"               },
 };
 
-function getRoleCfg(role: string) {
-  return ROLE_CONFIG[role] ?? { label: role, cls: "bg-muted text-muted-foreground border border-border" };
+function getRoleCfg(role: string, t: (key: string) => string) {
+  const cfg = ROLE_CONFIG[role];
+  return cfg ? { label: t(cfg.labelKey), cls: cfg.cls } : { label: role, cls: "bg-muted text-muted-foreground border border-border" };
 }
 
 function getInitials(name: string) {
@@ -42,6 +45,8 @@ function getInitials(name: string) {
 const ROLES = ["all", "admin", "manager", "teacher", "accountant", "branch_admin"];
 
 export default function Users() {
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [users, setUsers] = useState<CRMUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +66,7 @@ export default function Users() {
       const data = await listUsers();
       setUsers(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load users");
+      setError(e instanceof Error ? e.message : t("failedToLoadUsers"));
     } finally {
       setLoading(false);
     }
@@ -89,7 +94,7 @@ export default function Users() {
   const handleEdit = async () => {
     if (!selected) return;
     if (!editForm.fullName.trim() || !editForm.email.trim()) {
-      toast.error("Name and email are required");
+      toast.error(t("nameEmailRequired"));
       return;
     }
     setSaving(true);
@@ -101,9 +106,9 @@ export default function Users() {
       });
       setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
       setEditOpen(false);
-      toast.success("User updated");
+      toast.success(t("userUpdated"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update user");
+      toast.error(e instanceof Error ? e.message : t("failedToUpdateUser"));
     } finally {
       setSaving(false);
     }
@@ -116,20 +121,20 @@ export default function Users() {
       await deleteUser(selected.id);
       setUsers((prev) => prev.filter((u) => u.id !== selected.id));
       setDeleteOpen(false);
-      toast.success("User deleted");
+      toast.success(t("userDeleted"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to delete user");
+      toast.error(e instanceof Error ? e.message : t("failedToDeleteUser"));
     } finally {
       setDeleting(false);
     }
   };
 
   const statCards = [
-    { label: "Total",      value: users.length,             icon: UsersIcon, cls: "text-primary",        bg: "bg-primary/15"           },
-    { label: "Admins",     value: countByRole("admin"),      icon: Shield,    cls: "text-primary",        bg: "bg-primary/15"           },
-    { label: "Managers",   value: countByRole("manager"),    icon: User,      cls: "text-status-info",    bg: "bg-status-info/15"       },
-    { label: "Teachers",   value: countByRole("teacher"),    icon: User,      cls: "text-status-healthy", bg: "bg-status-healthy/15"    },
-    { label: "Accountants",value: countByRole("accountant"), icon: User,      cls: "text-amber-400",      bg: "bg-amber-500/15"         },
+    { label: t("statTotal"),       value: users.length,               icon: UsersIcon, cls: "text-primary",        bg: "bg-primary/15"           },
+    { label: t("statAdmins"),      value: countByRole("admin"),       icon: Shield,    cls: "text-primary",        bg: "bg-primary/15"           },
+    { label: t("statManagers"),    value: countByRole("manager"),     icon: User,      cls: "text-status-info",    bg: "bg-status-info/15"       },
+    { label: t("statTeachers"),    value: countByRole("teacher"),     icon: User,      cls: "text-status-healthy", bg: "bg-status-healthy/15"    },
+    { label: t("statAccountants"), value: countByRole("accountant"),  icon: User,      cls: "text-amber-400",      bg: "bg-amber-500/15"         },
   ];
 
   return (
@@ -137,12 +142,12 @@ export default function Users() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Users</h1>
-          <p className="text-sm text-muted-foreground mt-1">CRM users across all branches</p>
+          <h1 className="text-2xl font-bold text-foreground">{t("usersTitle")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("crmUsersAcrossBranches")}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-2" onClick={load} disabled={loading}>
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          Refresh
+          {t("refresh")}
         </Button>
       </div>
 
@@ -174,7 +179,7 @@ export default function Users() {
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search by name or email..."
+              placeholder={t("searchByNameOrEmail")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-8 h-8 bg-background text-sm"
@@ -182,12 +187,12 @@ export default function Users() {
           </div>
           <Select value={roleFilter} onValueChange={setRoleFilter}>
             <SelectTrigger className="w-full md:w-44 bg-background h-8 text-sm">
-              <SelectValue placeholder="All roles" />
+              <SelectValue placeholder={t("allRoles")} />
             </SelectTrigger>
             <SelectContent>
               {ROLES.map((r) => (
                 <SelectItem key={r} value={r}>
-                  {r === "all" ? "All Roles" : getRoleCfg(r).label}
+                  {r === "all" ? t("allRoles") : getRoleCfg(r, t).label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -204,24 +209,24 @@ export default function Users() {
         ) : filtered.length === 0 ? (
           <div className="p-12 flex flex-col items-center gap-3 text-muted-foreground">
             <UsersIcon className="w-8 h-8 opacity-30" />
-            <span className="text-sm">No users found</span>
+            <span className="text-sm">{t("noUsersFound")}</span>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-muted-foreground border-b border-border">
-                  <th className="text-left px-4 py-3 font-medium">User</th>
-                  <th className="text-left px-4 py-3 font-medium">Email</th>
-                  <th className="text-left px-4 py-3 font-medium">Role</th>
-                  <th className="text-left px-4 py-3 font-medium">Branch ID</th>
-                  <th className="text-left px-4 py-3 font-medium">Created</th>
-                  <th className="text-right px-4 py-3 font-medium">Actions</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("user")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("email")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("role")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("branchId")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("created")}</th>
+                  <th className="text-right px-4 py-3 font-medium">{t("actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {filtered.map((user) => {
-                  const { label, cls } = getRoleCfg(user.role);
+                  const { label, cls } = getRoleCfg(user.role, t);
                   return (
                     <tr key={user.id} className="hover:bg-accent/20 transition-colors">
                       <td className="px-4 py-3">
@@ -287,22 +292,21 @@ export default function Users() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Edit User</DialogTitle>
+            <DialogTitle>{t("editUser")}</DialogTitle>
             <DialogDescription>
-              Only name, email, and password can be changed here — role and branch require a
-              backend change and aren't editable from this form.
+              {t("editUserNotice")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Full Name</Label>
+              <Label>{t("fullName")}</Label>
               <Input
                 value={editForm.fullName}
                 onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <Label>Email</Label>
+              <Label>{t("email")}</Label>
               <Input
                 type="email"
                 value={editForm.email}
@@ -310,20 +314,20 @@ export default function Users() {
               />
             </div>
             <div className="space-y-2">
-              <Label>New Password (optional)</Label>
+              <Label>{t("newPasswordOptional")}</Label>
               <Input
                 type="password"
-                placeholder="Leave blank to keep current password"
+                placeholder={t("leaveBlankToKeepPassword")}
                 value={editForm.password}
                 onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t("cancel")}</Button>
             <Button onClick={handleEdit} disabled={saving}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Save Changes
+              {t("saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -333,20 +337,20 @@ export default function Users() {
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete User</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteUser")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Delete {selected?.fullName || selected?.email}? This action cannot be undone.
+              {tf(t("deleteUserConfirm"), { name: selected?.fullName || selected?.email || "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={deleting}
               className="bg-status-critical hover:bg-status-critical/90"
             >
               {deleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Delete
+              {t("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -914,7 +914,7 @@ func GetRecentAlerts(database *db.Database) gin.HandlerFunc {
 		rows, err := database.GetConn().QueryContext(c.Request.Context(), `
 			SELECT id, level, module, message, metadata, created_at
 			FROM logs
-			WHERE level IN ('error', 'warn', 'warning', 'critical', 'info')
+			WHERE level IN ('ERROR', 'WARN', 'WARNING', 'CRITICAL', 'INFO')
 			ORDER BY created_at DESC
 			LIMIT 20
 		`)

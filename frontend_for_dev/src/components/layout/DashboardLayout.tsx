@@ -2,6 +2,8 @@ import { ReactNode, useState, useEffect } from "react";
 import { Sidebar } from "./Sidebar";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation } from "@/lib/i18n";
 
 function useMaintenanceMode() {
   const [on, setOn] = useState(() => localStorage.getItem("dev:maintenanceMode") === "true");
@@ -19,6 +21,8 @@ function useMaintenanceMode() {
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const maintenanceMode = useMaintenanceMode();
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("dev:sidebarCollapsed") === "true"
   );
@@ -35,8 +39,8 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
         {maintenanceMode && (
           <div className="flex items-center gap-3 px-6 py-2.5 bg-status-warning/10 border-b border-status-warning/25 text-status-warning text-sm sticky top-0 z-30">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-            <span className="font-medium">Maintenance mode is active</span>
-            <span className="text-status-warning/60 text-xs">— Disable in Settings</span>
+            <span className="font-medium">{t("maintenanceModeActive")}</span>
+            <span className="text-status-warning/60 text-xs">— {t("disableInSettings")}</span>
           </div>
         )}
         <div className="p-6 animate-fade-in">

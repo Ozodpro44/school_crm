@@ -324,8 +324,17 @@ func (s *SubscriptionService) ExpireLapsedSubscriptions(ctx context.Context) (in
 	return len(userIDs), nil
 }
 
-// CreateSubscriptionPlan creates a new subscription plan (dev endpoint)
+// CreateSubscriptionPlan creates a new subscription plan (dev endpoint).
+// plan.Status is respected when the caller provides one (defaults to
+// "active" only when left blank) — it previously hardcoded "active"
+// unconditionally, silently ignoring a deliberate "inactive" choice at
+// creation time.
 func (s *SubscriptionService) CreateSubscriptionPlan(ctx context.Context, plan *models.SubscriptionPlan) error {
+	status := plan.Status
+	if status == "" {
+		status = "active"
+	}
+
 	query := `
 		INSERT INTO subscription_plans (id, name, description, price, billing_period, max_branches, max_students, max_classes, features, status, created_at, updated_at)
 		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -333,7 +342,7 @@ func (s *SubscriptionService) CreateSubscriptionPlan(ctx context.Context, plan *
 	`
 
 	err := s.database.GetConn().QueryRowContext(ctx, query,
-		plan.Name, plan.Description, plan.Price, plan.BillingPeriod, plan.MaxBranches, plan.MaxStudents, plan.MaxClasses, plan.Features, "active",
+		plan.Name, plan.Description, plan.Price, plan.BillingPeriod, plan.MaxBranches, plan.MaxStudents, plan.MaxClasses, plan.Features, status,
 	).Scan(&plan.ID, &plan.Name, &plan.Description, &plan.Price, &plan.BillingPeriod, &plan.MaxBranches, &plan.MaxStudents, &plan.MaxClasses, &plan.Features, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt)
 
 	if err != nil {
@@ -343,25 +352,38 @@ func (s *SubscriptionService) CreateSubscriptionPlan(ctx context.Context, plan *
 	return nil
 }
 
-// UpdateSubscriptionPlan updates an existing subscription plan (dev endpoint)
-func (s *SubscriptionService) UpdateSubscriptionPlan(ctx context.Context, plan *models.SubscriptionPlan) error {
-	query := `
-		UPDATE subscription_plans
-		SET name = $1, description = $2, price = $3, billing_period = $4, max_branches = $5, max_students = $6, max_classes = $7, features = $8,
-		    status = CASE WHEN $9 = '' THEN status ELSE $9 END,
-		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = $10
-	`
-
-	_, err := s.database.GetConn().ExecContext(ctx, query,
-		plan.Name, plan.Description, plan.Price, plan.BillingPeriod, plan.MaxBranches, plan.MaxStudents, plan.MaxClasses, plan.Features, plan.Status, plan.ID,
-	)
-
-	if err != nil {
-		return fmt.Errorf("failed to update subscription plan: %w", err)
+// UpdateSubscriptionPlan partially updates an existing subscription plan
+// (dev endpoint) — a nil field in req leaves that column untouched. This
+// used to take a full SubscriptionPlan and unconditionally overwrite every
+// column, so a partial payload (e.g. the toggle-active control, which only
+// ever sends {"status": ...}) silently blanked name/price/limits/features.
+func (s *SubscriptionService) UpdateSubscriptionPlan(ctx context.Context, id string, req *models.UpdateSubscriptionPlanRequest) (*models.SubscriptionPlan, error) {
+	var featuresArg interface{}
+	if req.Features != nil {
+		featuresArg = []byte(req.Features)
 	}
 
-	return nil
+	_, err := s.database.GetConn().ExecContext(ctx, `
+		UPDATE subscription_plans
+		SET
+			name           = COALESCE($1, name),
+			description    = COALESCE($2, description),
+			price          = COALESCE($3, price),
+			billing_period = COALESCE($4, billing_period),
+			max_branches   = COALESCE($5, max_branches),
+			max_students   = COALESCE($6, max_students),
+			max_classes    = COALESCE($7, max_classes),
+			features       = COALESCE($8::jsonb, features),
+			status         = COALESCE($9, status),
+			updated_at     = CURRENT_TIMESTAMP
+		WHERE id = $10
+	`, req.Name, req.Description, req.Price, req.BillingPeriod, req.MaxBranches, req.MaxStudents, req.MaxClasses, featuresArg, req.Status, id)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to update subscription plan: %w", err)
+	}
+
+	return s.GetSubscriptionPlanByID(ctx, id)
 }
 
 // DeleteSubscriptionPlan deletes a subscription plan (dev endpoint)
