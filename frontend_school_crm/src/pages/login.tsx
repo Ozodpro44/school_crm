@@ -9,9 +9,9 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { GraduationCap, AlertCircle, Loader2, Eye, EyeOff, ShieldCheck, BookOpen } from "lucide-react";
+import { GraduationCap, AlertCircle, Loader2, Eye, EyeOff, ShieldCheck, BookOpen, KeyRound } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
-import { login as apiLogin } from "@/lib/api";
+import { login as apiLogin, verifyLoginOtp } from "@/lib/api";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
@@ -28,6 +28,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [mfaEmail, setMfaEmail] = useState<string | null>(null);
+  const [otp, setOtp] = useState("");
   const language = useLanguage();
   const t = (key: string) => getTranslation(key, language);
 
@@ -54,6 +56,12 @@ export default function LoginPage() {
     try {
       const response = await apiLogin({ email, password });
 
+      if (response.mfaRequired) {
+        setMfaEmail(response.email ?? email);
+        setLoading(false);
+        return;
+      }
+
       if (response.user && response.token) {
         // `apiLogin` (via @/lib/storage's persistLogin) already wrote the
         // token, the user blob, and any branchId from the response, then
@@ -69,7 +77,9 @@ export default function LoginPage() {
     } catch (error) {
       if (error instanceof Error) {
         const msg = error.message.toLowerCase();
-        if (msg.includes("invalid") || msg.includes("unauthorized")) {
+        if (msg.includes("too many")) {
+          setError(error.message);
+        } else if (msg.includes("invalid") || msg.includes("unauthorized")) {
           setError(t("invalidEmailOrPassword"));
         } else if (msg.includes("network")) {
           setError(t("networkError"));
@@ -79,6 +89,25 @@ export default function LoginPage() {
       } else {
         setError(t("errorOccurred"));
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mfaEmail) return;
+    setError("");
+    setLoading(true);
+    try {
+      const response = await verifyLoginOtp(mfaEmail, otp);
+      if (response.user && response.token) {
+        router.push(response.user.role === "teacher" ? "/teacher-portal" : "/");
+      } else {
+        setError(t("invalidEmailOrPassword"));
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : t("errorOccurred"));
     } finally {
       setLoading(false);
     }
@@ -138,6 +167,67 @@ export default function LoginPage() {
             </p>
           </CardHeader>
           <CardContent className="pb-6">
+            {mfaEmail ? (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                {error && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="flex flex-col items-center text-center gap-2 pb-2">
+                  <div className="w-12 h-12 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                    <KeyRound className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                  <h2 className="font-semibold text-slate-900 dark:text-slate-100">{t("verifyIdentity")}</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {t("verificationCodeSentTo").replace("{email}", mfaEmail)}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="otp">{t("verificationCode")}</Label>
+                  <Input
+                    id="otp"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="000000"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    required
+                    disabled={loading}
+                    className="h-11 text-center text-lg tracking-[0.5em]"
+                    autoFocus
+                  />
+                </div>
+
+                <Button
+                  type="submit"
+                  className="w-full h-11 font-semibold bg-brand hover:bg-brand-hover"
+                  disabled={loading || otp.length !== 6}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {t("verifying")}
+                    </>
+                  ) : (
+                    t("verify")
+                  )}
+                </Button>
+
+                <button
+                  type="button"
+                  onClick={() => { setMfaEmail(null); setOtp(""); setError(""); }}
+                  className="w-full text-center text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium transition-colors"
+                  disabled={loading}
+                >
+                  {t("backToLogin")}
+                </button>
+              </form>
+            ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <Alert variant="destructive">
@@ -210,6 +300,7 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
+            )}
           </CardContent>
         </Card>
       </div>

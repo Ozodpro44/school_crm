@@ -161,6 +161,16 @@ export const authTranslations: Partial<Translation> = {
   signIn: { "uz-cyrl": "Кириш", "uz-latn": "Kirish", en: "Sign In" },
   signingIn: { "uz-cyrl": "Кирмоқда...", "uz-latn": "Kirmoqda...", en: "Signing In..." },
 
+  verifyIdentity: { "uz-cyrl": "Шахсни тасдиқлаш", "uz-latn": "Shaxsni tasdiqlash", en: "Verify your identity" },
+  verificationCodeSentTo: {
+    "uz-cyrl": "Тасдиқлаш коди {email} манзилига юборилди",
+    "uz-latn": "Tasdiqlash kodi {email} manziliga yuborildi",
+    en: "A verification code was sent to {email}",
+  },
+  verificationCode: { "uz-cyrl": "Тасдиқлаш коди", "uz-latn": "Tasdiqlash kodi", en: "Verification code" },
+  verify: { "uz-cyrl": "Тасдиқлаш", "uz-latn": "Tasdiqlash", en: "Verify" },
+  verifying: { "uz-cyrl": "Тасдиқланмоқда...", "uz-latn": "Tasdiqlanmoqda...", en: "Verifying..." },
+
   adminLoginSubtitle: {
     "uz-cyrl": "Мактабингизни бошқариш учун киринг",
     "uz-latn": "Maktabingizni boshqarish uchun kiring",

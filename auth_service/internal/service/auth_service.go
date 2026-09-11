@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"github.com/school-crm/auth-service/internal/db"
+	"github.com/school-crm/auth-service/internal/platformsettings"
+	"github.com/school-crm/auth-service/internal/utils"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -47,18 +49,75 @@ type RegisterRequest struct {
 // ── Service ───────────────────────────────────────────────────────────────────
 
 type AuthService struct {
-	db    *db.DB
-	redis *redis.Client
+	db          *db.DB
+	redis       *redis.Client
+	settings    *platformsettings.Store
+	emailSender *utils.EmailSender
 }
 
-func New(database *db.DB, redisClient *redis.Client) *AuthService {
-	return &AuthService{db: database, redis: redisClient}
+func New(database *db.DB, redisClient *redis.Client, settings *platformsettings.Store, emailSender *utils.EmailSender) *AuthService {
+	return &AuthService{db: database, redis: redisClient, settings: settings, emailSender: emailSender}
 }
 
-// Login verifies credentials and returns the user.
+// loginLockoutWindow bounds how long a failed-attempt count survives — long
+// enough to actually deter brute-forcing, short enough that a locked-out
+// legitimate user isn't stuck for hours.
+const loginLockoutWindow = 15 * time.Minute
+
+// ErrAccountLocked is returned when the platform-wide "Max Failed Login
+// Attempts" threshold (internal/platformsettings) has been exceeded.
+var ErrAccountLocked = errors.New("too many failed login attempts — try again later")
+
+func loginAttemptsKey(email string) string { return "auth:login-attempts:" + email }
+
+// maxLoginAttempts reads the current platform-wide threshold; <= 0 means the
+// lockout is effectively disabled (defensive — the UI shouldn't produce 0).
+func (s *AuthService) maxLoginAttempts() int {
+	if s.settings == nil {
+		return int(platformsettings.Defaults.MaxLoginAttempts)
+	}
+	return int(s.settings.Get().MaxLoginAttempts)
+}
+
+// JWTExpiryHours reads the platform-wide token lifetime; <= 0 falls back to
+// the default (24h) rather than minting a token that's already expired.
+func (s *AuthService) JWTExpiryHours() int {
+	hours := int(platformsettings.Defaults.JWTExpiryHours)
+	if s.settings != nil {
+		if h := int(s.settings.Get().JWTExpiryHours); h > 0 {
+			hours = h
+		}
+	}
+	return hours
+}
+
+// Login verifies credentials and returns the user. Enforces the
+// platform-wide failed-login lockout (internal/platformsettings) — checked
+// before the bcrypt compare so a locked-out account fails fast, and
+// incremented on any failure (including "no such user") so lockout
+// behavior itself doesn't leak which emails are registered.
 func (s *AuthService) Login(ctx context.Context, email, password string) (*User, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+
+	maxAttempts := s.maxLoginAttempts()
+	attemptsKey := loginAttemptsKey(email)
+	if maxAttempts > 0 {
+		attempts, _ := s.redis.Get(ctx, attemptsKey).Int()
+		if attempts >= maxAttempts {
+			return nil, ErrAccountLocked
+		}
+	}
+
+	recordFailure := func() {
+		if maxAttempts <= 0 {
+			return
+		}
+		pipe := s.redis.Pipeline()
+		pipe.Incr(ctx, attemptsKey)
+		pipe.Expire(ctx, attemptsKey, loginLockoutWindow)
+		_, _ = pipe.Exec(ctx)
+	}
 
 	var user User
 	var passwordHash string
@@ -69,6 +128,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*User,
 	).Scan(&user.ID, &user.Email, &passwordHash, &user.Role, &user.FullName, &branchID, &user.CreatedAt)
 
 	if errors.Is(err, sql.ErrNoRows) {
+		recordFailure()
 		return nil, errors.New("invalid credentials")
 	}
 	if err != nil {
@@ -79,13 +139,94 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*User,
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)); err != nil {
+		recordFailure()
 		return nil, errors.New("invalid credentials")
+	}
+
+	if maxAttempts > 0 {
+		_ = s.redis.Del(ctx, attemptsKey).Err()
 	}
 
 	// Stamp last_login_at (best-effort)
 	_, _ = s.db.Conn().ExecContext(ctx,
 		`UPDATE users SET last_login_at = NOW() WHERE id = $1`, user.ID)
 
+	return &user, nil
+}
+
+// ── Login MFA (email OTP) ────────────────────────────────────────────────────
+//
+// Gated by the platform-wide "Require MFA" setting. Separate Redis
+// namespace from the password-reset OTP (otpKey) since the two flows are
+// independent and shouldn't share a TTL/attempt budget.
+
+func loginOTPKey(email string) string { return "auth:login-otp:" + email }
+
+// MFARequired reports whether a successful password check must be followed
+// by an OTP step before a token is issued.
+func (s *AuthService) MFARequired() bool {
+	if s.settings == nil {
+		return platformsettings.Defaults.RequireMFA
+	}
+	return s.settings.Get().RequireMFA
+}
+
+// EmailConfigured reports whether SendLoginOTPEmail can actually deliver —
+// used to fail closed with a clear error rather than silently skipping MFA
+// when an operator enables it without configuring Resend.
+func (s *AuthService) EmailConfigured() bool {
+	return s.emailSender != nil
+}
+
+// CreateLoginOTP generates and stores a 10-minute login OTP, returning it so
+// the caller can email it.
+func (s *AuthService) CreateLoginOTP(ctx context.Context, email string) (string, error) {
+	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
+	if err != nil {
+		return "", fmt.Errorf("generate login otp: %w", err)
+	}
+	otp := fmt.Sprintf("%06d", n.Int64())
+	if err := s.redis.Set(ctx, loginOTPKey(email), otp, 10*time.Minute).Err(); err != nil {
+		return "", fmt.Errorf("store login otp: %w", err)
+	}
+	return otp, nil
+}
+
+// SendLoginOTPEmail emails a previously-created login OTP.
+func (s *AuthService) SendLoginOTPEmail(email, otp string) error {
+	if s.emailSender == nil {
+		return errors.New("email sender not configured")
+	}
+	return s.emailSender.SendLoginOTPEmail(email, otp)
+}
+
+// VerifyLoginOTP checks the OTP and, on success, returns the user record so
+// the caller can create a session and issue the real token — mirrors Login's
+// user-fetch but skips the password check (already done in the first step).
+func (s *AuthService) VerifyLoginOTP(ctx context.Context, email, otp string) (*User, error) {
+	stored, err := s.redis.Get(ctx, loginOTPKey(email)).Result()
+	if err != nil || subtle.ConstantTimeCompare([]byte(stored), []byte(otp)) != 1 {
+		return nil, errors.New("invalid or expired code")
+	}
+	_ = s.redis.Del(ctx, loginOTPKey(email)).Err()
+
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	var user User
+	var branchID sql.NullString
+	err = s.db.Conn().QueryRowContext(ctx,
+		`SELECT id, email, role, full_name, branch_id, created_at FROM users WHERE email = $1`, email,
+	).Scan(&user.ID, &user.Email, &user.Role, &user.FullName, &branchID, &user.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if branchID.Valid {
+		user.BranchID = branchID.String
+	}
 	return &user, nil
 }
 

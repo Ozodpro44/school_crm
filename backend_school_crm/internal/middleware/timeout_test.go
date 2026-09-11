@@ -17,7 +17,7 @@ func TestRequestTimeout_ContextHasDeadline(t *testing.T) {
 	var deadlineSet bool
 
 	r := gin.New()
-	r.Use(middleware.RequestTimeout(5 * time.Second))
+	r.Use(middleware.RequestTimeout(func() time.Duration { return 5 * time.Second }))
 	r.GET("/", func(c *gin.Context) {
 		_, deadlineSet = c.Request.Context().Deadline()
 		c.Status(http.StatusOK)
@@ -42,7 +42,7 @@ func TestRequestTimeout_DeadlineIsInFuture(t *testing.T) {
 	var deadline time.Time
 
 	r := gin.New()
-	r.Use(middleware.RequestTimeout(timeout))
+	r.Use(middleware.RequestTimeout(func() time.Duration { return timeout }))
 	r.GET("/", func(c *gin.Context) {
 		deadline, _ = c.Request.Context().Deadline()
 		c.Status(http.StatusOK)
@@ -72,7 +72,7 @@ func TestRequestTimeout_ShortTimeoutCancel(t *testing.T) {
 	var ctxErr error
 
 	r := gin.New()
-	r.Use(middleware.RequestTimeout(50 * time.Millisecond))
+	r.Use(middleware.RequestTimeout(func() time.Duration { return 50 * time.Millisecond }))
 	r.GET("/", func(c *gin.Context) {
 		ctx := c.Request.Context()
 		// Wait for cancellation or give up after 1s.

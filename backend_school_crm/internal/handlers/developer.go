@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/db"
+	"github.com/school-crm/backend/internal/platformsettings"
 	"github.com/school-crm/backend/internal/service"
 )
 
@@ -692,10 +693,14 @@ func devDeleteUser(userService *service.UserService) gin.HandlerFunc {
 
 // RegisterDevSettingsRoutes registers authenticated developer settings routes.
 // Must be called with a router group that uses DevAuthMiddleware.
-func RegisterDevSettingsRoutes(router *gin.RouterGroup, database *db.Database) {
-	router.GET("/dev/settings", GetDevSettings(database))
-	router.PUT("/dev/settings", UpdateDevSettings(database))
-	// Notification-specific sub-routes (convenience wrappers around /dev/settings JSONB)
+func RegisterDevSettingsRoutes(router *gin.RouterGroup, database *db.Database, settingsStore *platformsettings.Store) {
+	router.GET("/dev/settings", GetDevSettings(settingsStore))
+	router.PUT("/dev/settings", UpdateDevSettings(settingsStore))
+	// Notification-specific sub-routes (convenience wrappers around the
+	// per-developer settings JSONB column — a different blob than
+	// GetDevSettings/UpdateDevSettings above, which moved to a global
+	// platform-wide Redis key since Server/Security/Logging are operational
+	// settings shared across every developer, not personal preferences).
 	router.GET("/dev/notifications/preferences", GetNotificationPreferences(database))
 	router.PUT("/dev/notifications/preferences", UpdateNotificationPreferences(database))
 	router.GET("/dev/notifications/channels", GetNotificationChannels(database))
@@ -703,96 +708,65 @@ func RegisterDevSettingsRoutes(router *gin.RouterGroup, database *db.Database) {
 	router.GET("/dev/notifications/recent", GetRecentAlerts(database))
 }
 
-// GetDevSettings returns the authenticated developer's stored settings.
-func GetDevSettings(database *db.Database) gin.HandlerFunc {
+// GetDevSettings returns the current platform-wide settings — shared by
+// every developer, not scoped to the caller.
+func GetDevSettings(settingsStore *platformsettings.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		developerID, _ := c.Get("developer_id")
-		devID, ok := developerID.(string)
-		if !ok || devID == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "developer not authenticated"})
-			return
-		}
-
-		var raw []byte
-		err := database.GetConn().QueryRowContext(
-			c.Request.Context(),
-			"SELECT COALESCE(settings, '{}') FROM developers WHERE id = $1",
-			devID,
-		).Scan(&raw)
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "developer not found"})
-			return
-		}
-		if err != nil {
-			log.Printf("[DEV SETTINGS] DB error reading settings: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read settings"})
-			return
-		}
-
-		var settings map[string]interface{}
-		if err := json.Unmarshal(raw, &settings); err != nil {
-			settings = map[string]interface{}{}
-		}
-
-		c.JSON(http.StatusOK, settings)
+		c.JSON(http.StatusOK, settingsStore.Get())
 	}
 }
 
-// UpdateDevSettings merges the request body into the developer's stored settings.
-func UpdateDevSettings(database *db.Database) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		developerID, _ := c.Get("developer_id")
-		devID, ok := developerID.(string)
-		if !ok || devID == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "developer not authenticated"})
-			return
-		}
+// validLogLevels are the only values SafeRequestLogger (internal/handlers/logs.go)
+// knows how to compare against its threshold.
+var validLogLevels = map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
 
+// UpdateDevSettings merges the request body into the current platform-wide
+// settings and persists the result via settingsStore (Redis-backed, read by
+// auth_service/api_gateway/backend_school_crm — see internal/platformsettings).
+func UpdateDevSettings(settingsStore *platformsettings.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		var incoming map[string]interface{}
 		if err := c.ShouldBindJSON(&incoming); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
 			return
 		}
 
-		// Read current settings
-		var raw []byte
-		err := database.GetConn().QueryRowContext(
-			c.Request.Context(),
-			"SELECT COALESCE(settings, '{}') FROM developers WHERE id = $1",
-			devID,
-		).Scan(&raw)
-		if err != nil && err != sql.ErrNoRows {
-			log.Printf("[DEV SETTINGS] DB error reading settings: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read settings"})
+		if lvl, ok := incoming["logLevel"].(string); ok && !validLogLevels[lvl] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "logLevel must be one of debug, info, warn, error"})
 			return
 		}
 
-		// Merge: existing + incoming (top-level merge)
-		current := map[string]interface{}{}
-		_ = json.Unmarshal(raw, &current)
+		current := settingsStore.Get()
+		currentJSON, err := json.Marshal(current)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read current settings"})
+			return
+		}
+		merged := map[string]interface{}{}
+		_ = json.Unmarshal(currentJSON, &merged)
 		for k, v := range incoming {
-			current[k] = v
+			merged[k] = v
 		}
 
-		merged, err := json.Marshal(current)
+		mergedJSON, err := json.Marshal(merged)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to serialize settings"})
 			return
 		}
+		var newSettings platformsettings.Settings
+		if err := json.Unmarshal(mergedJSON, &newSettings); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid settings value: " + err.Error()})
+			return
+		}
 
-		_, err = database.GetConn().ExecContext(
-			c.Request.Context(),
-			"UPDATE developers SET settings = $1, updated_at = $2 WHERE id = $3",
-			string(merged), time.Now(), devID,
-		)
-		if err != nil {
-			log.Printf("[DEV SETTINGS] DB error updating settings: %v", err)
+		if err := settingsStore.Save(c.Request.Context(), newSettings); err != nil {
+			log.Printf("[DEV SETTINGS] failed to save platform settings: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save settings"})
 			return
 		}
 
-		log.Printf("[DEV SETTINGS] Saved settings for developer %s", devID)
-		c.JSON(http.StatusOK, current)
+		log.Printf("[DEV SETTINGS] platform settings updated: %+v", newSettings)
+		c.JSON(http.StatusOK, newSettings)
 	}
 }
 

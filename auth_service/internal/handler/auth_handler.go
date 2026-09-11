@@ -22,6 +22,7 @@ func NewAuthHandler(svc *service.AuthService, jwtSecret string) *AuthHandler {
 
 func (h *AuthHandler) Register(r *gin.RouterGroup) {
 	r.POST("/auth/login", h.Login)
+	r.POST("/auth/verify-login-otp", h.VerifyLoginOTP)
 	r.POST("/auth/register", h.RegisterUser)
 	r.POST("/auth/forgot-password", h.ForgotPassword)
 	r.POST("/auth/verify-otp", h.VerifyOTP)
@@ -40,6 +41,60 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	user, err := h.svc.Login(c.Request.Context(), req.Email, req.Password)
+	if err != nil {
+		status := http.StatusUnauthorized
+		if errors.Is(err, service.ErrAccountLocked) {
+			status = http.StatusTooManyRequests
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	if h.svc.MFARequired() {
+		if !h.svc.EmailConfigured() {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "MFA is enabled but email delivery is not configured"})
+			return
+		}
+		otp, err := h.svc.CreateLoginOTP(c.Request.Context(), user.Email)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start verification"})
+			return
+		}
+		if err := h.svc.SendLoginOTPEmail(user.Email, otp); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to send verification email"})
+			return
+		}
+		c.JSON(http.StatusAccepted, gin.H{"mfaRequired": true, "email": user.Email})
+		return
+	}
+
+	sessionID, err := h.svc.CreateSession(c.Request.Context(), user.ID, c.ClientIP(), c.Request.UserAgent())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session"})
+		return
+	}
+
+	tokenStr, err := h.issueToken(user, sessionID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"token": tokenStr, "user": user})
+}
+
+// VerifyLoginOTP completes a login that was paused for MFA by Login above.
+func (h *AuthHandler) VerifyLoginOTP(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+		OTP   string `json:"otp"   binding:"required,len=6"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.svc.VerifyLoginOTP(c.Request.Context(), req.Email, req.OTP)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -228,7 +283,7 @@ func (h *AuthHandler) issueToken(user *service.User, sessionID string) (string, 
 		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.ID,
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(h.svc.JWTExpiryHours()) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}

@@ -138,7 +138,7 @@ func (s *AuthGRPCServer) issueToken(user *service.User) (string, error) {
 		BranchID: user.BranchID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.ID,
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(s.authSvc.JWTExpiryHours()) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}

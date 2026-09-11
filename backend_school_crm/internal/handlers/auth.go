@@ -8,9 +8,22 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/platformsettings"
 	"github.com/school-crm/backend/internal/service"
 	"github.com/school-crm/backend/internal/utils"
 )
+
+// jwtExpiry reads the platform-wide token lifetime (developer portal
+// Settings page); <= 0 falls back to the default (24h).
+func jwtExpiry(settingsStore *platformsettings.Store) time.Duration {
+	hours := int(platformsettings.Defaults.JWTExpiryHours)
+	if settingsStore != nil {
+		if h := int(settingsStore.Get().JWTExpiryHours); h > 0 {
+			hours = h
+		}
+	}
+	return time.Duration(hours) * time.Hour
+}
 
 // Login authenticates a user and returns a JWT token.
 //
@@ -24,7 +37,7 @@ import (
 //	@Failure      400   {object}  map[string]string      "invalid request body"
 //	@Failure      401   {object}  map[string]string      "invalid credentials"
 //	@Router       /auth/login [post]
-func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
+func Login(userService *service.UserService, jwtSecret string, settingsStore *platformsettings.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.LoginRequest
 		
@@ -53,7 +66,7 @@ func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
 			Role:   string(user.Role),
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject:   user.ID,
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtExpiry(settingsStore))),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
 		})
@@ -87,7 +100,7 @@ func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
 //	@Failure      403   {object}  map[string]string        "only admin role allowed"
 //	@Failure      500   {object}  map[string]string        "internal error"
 //	@Router       /auth/register [post]
-func Register(userService *service.UserService, subscriptionService *service.SubscriptionService, jwtSecret string) gin.HandlerFunc {
+func Register(userService *service.UserService, subscriptionService *service.SubscriptionService, jwtSecret string, settingsStore *platformsettings.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.RegisterRequest
 
@@ -134,7 +147,7 @@ func Register(userService *service.UserService, subscriptionService *service.Sub
 			Role:   string(user.Role),
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject:   user.ID,
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtExpiry(settingsStore))),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
 		})

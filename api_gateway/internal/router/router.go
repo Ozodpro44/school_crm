@@ -37,6 +37,7 @@ import (
 	"github.com/school-crm/api-gateway/internal/config"
 	"github.com/school-crm/api-gateway/internal/logger"
 	"github.com/school-crm/api-gateway/internal/middleware"
+	"github.com/school-crm/api-gateway/internal/platformsettings"
 	"github.com/school-crm/api-gateway/internal/proxy"
 )
 
@@ -51,6 +52,7 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 			slog.Warn("redis ping failed — rate limiting and logout revocation will fail open", "error", err)
 		}
 		middleware.InitRedis(rdb)
+		middleware.InitPlatformSettings(platformsettings.NewStore(rdb))
 	}
 
 	monolithProxy, err := proxy.New(cfg.MonolithURL)
@@ -110,6 +112,7 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	authPublic.Use(middleware.RateLimiter(10, time.Minute))
 	{
 		authPublic.POST("/login", gin.WrapH(proxy.Handler(authProxy)))
+		authPublic.POST("/verify-login-otp", gin.WrapH(proxy.Handler(authProxy)))
 		authPublic.POST("/register", gin.WrapH(proxy.Handler(authProxy)))
 		authPublic.POST("/forgot-password", gin.WrapH(proxy.Handler(authProxy)))
 		authPublic.POST("/verify-otp", gin.WrapH(proxy.Handler(authProxy)))
@@ -124,6 +127,7 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	authLegacy.Use(middleware.RateLimiter(10, time.Minute))
 	{
 		authLegacy.POST("/login", gin.WrapH(proxy.Handler(authProxy)))
+		authLegacy.POST("/verify-login-otp", gin.WrapH(proxy.Handler(authProxy)))
 		authLegacy.POST("/register", gin.WrapH(proxy.Handler(authProxy)))
 		authLegacy.POST("/forgot-password", gin.WrapH(proxy.Handler(authProxy)))
 		authLegacy.POST("/verify-otp", gin.WrapH(proxy.Handler(authProxy)))

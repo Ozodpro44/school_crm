@@ -11,7 +11,24 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/db"
+	"github.com/school-crm/backend/internal/platformsettings"
 )
+
+// logLevelSeverity orders the four levels the dev portal's "Log Level"
+// setting understands. Unknown levels are treated as "info".
+var logLevelSeverity = map[string]int{"debug": 0, "info": 1, "warn": 2, "error": 3}
+
+func meetsLogLevel(entryLevel, threshold string) bool {
+	entrySev, ok := logLevelSeverity[strings.ToLower(entryLevel)]
+	if !ok {
+		entrySev = 1
+	}
+	thresholdSev, ok := logLevelSeverity[strings.ToLower(threshold)]
+	if !ok {
+		thresholdSev = 1
+	}
+	return entrySev >= thresholdSev
+}
 
 // LogEntry represents a stored log record.
 type LogEntry struct {
@@ -245,7 +262,7 @@ func isLogsTableReady(database *db.Database) bool {
 }
 
 // SafeRequestLogger is like RequestLogger but skips if the logs table doesn't exist yet.
-func SafeRequestLogger(database *db.Database) gin.HandlerFunc {
+func SafeRequestLogger(database *db.Database, settingsStore *platformsettings.Store) gin.HandlerFunc {
 	ready := false
 	return func(c *gin.Context) {
 		c.Next()
@@ -286,6 +303,14 @@ func SafeRequestLogger(database *db.Database) gin.HandlerFunc {
 				module = parts[i+1]
 				break
 			}
+		}
+
+		threshold := platformsettings.Defaults.LogLevel
+		if settingsStore != nil {
+			threshold = settingsStore.Get().LogLevel
+		}
+		if !meetsLogLevel(level, threshold) {
+			return
 		}
 
 		meta, _ := json.Marshal(map[string]interface{}{

@@ -21,7 +21,11 @@ type Database struct {
 }
 
 func New(ctx context.Context, dsn string) (*Database, error) {
-	conn, err := sql.Open("postgres", dsn)
+	// Opened via the sqlhooks-wrapped driver name (see querylog.go) rather
+	// than "postgres" directly, so the platform-wide "Query Logging" toggle
+	// can observe every query through this connection without touching the
+	// ~15 call sites across the app that use it.
+	conn, err := sql.Open(queryLoggingDriverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}

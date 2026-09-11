@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/redis/go-redis/v9"
+	"github.com/school-crm/api-gateway/internal/platformsettings"
 )
 
 // redisClient backs both RateLimiter and the token-blacklist check in JWTAuth.
@@ -29,6 +30,20 @@ var redisClient *redis.Client
 // traffic; leaving it uncalled disables both (they fail open).
 func InitRedis(rdb *redis.Client) {
 	redisClient = rdb
+}
+
+// settingsStore backs the platform-wide "Rate Limiting" on/off toggle from
+// the developer portal's Settings page. Same package-level-singleton shape
+// as redisClient above; nil means "always enabled" (today's behavior).
+var settingsStore *platformsettings.Store
+
+// InitPlatformSettings wires the shared settings store. Call once at startup.
+func InitPlatformSettings(store *platformsettings.Store) {
+	settingsStore = store
+}
+
+func rateLimitingEnabled() bool {
+	return settingsStore == nil || settingsStore.Get().RateLimitingEnabled
 }
 
 // blacklistKey must match auth_service's key format exactly — both services
@@ -131,7 +146,7 @@ func JWTAuth(jwtSecret string) gin.HandlerFunc {
 // traffic outright.
 func RateLimiter(limit int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if redisClient == nil {
+		if redisClient == nil || !rateLimitingEnabled() {
 			c.Next()
 			return
 		}

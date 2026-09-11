@@ -14,12 +14,24 @@ import (
 // RateLimiter holds a Redis client and applies fixed-window rate limiting.
 // When Redis is unavailable the middleware fails open (requests are allowed).
 type RateLimiter struct {
-	rdb *redis.Client
+	rdb     *redis.Client
+	enabled func() bool
 }
 
 // NewRateLimiter creates a RateLimiter backed by the given Redis client.
 func NewRateLimiter(rdb *redis.Client) *RateLimiter {
 	return &RateLimiter{rdb: rdb}
+}
+
+// SetEnabledFunc wires the platform-wide "Rate Limiting" toggle (see
+// internal/platformsettings) — called once at startup. Leaving it unset
+// (nil) keeps rate limiting always-on, matching the previous behavior.
+func (rl *RateLimiter) SetEnabledFunc(f func() bool) {
+	rl.enabled = f
+}
+
+func (rl *RateLimiter) isEnabled() bool {
+	return rl.enabled == nil || rl.enabled()
 }
 
 // allow checks the fixed-window counter for key. Returns (allowed, current, limit).
@@ -52,6 +64,10 @@ func retryAfterSeconds(window time.Duration) int {
 // keyed on the client IP. Intended for auth and webhook endpoints.
 func (rl *RateLimiter) ByIP(limit int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !rl.isEnabled() {
+			c.Next()
+			return
+		}
 		ip := c.ClientIP()
 		key := fmt.Sprintf("ip:%s:%s", c.FullPath(), ip)
 
@@ -78,6 +94,10 @@ func (rl *RateLimiter) ByIP(limit int, window time.Duration) gin.HandlerFunc {
 // AuthMiddleware). Falls back to IP if no user ID is present.
 func (rl *RateLimiter) ByUser(limit int, window time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if !rl.isEnabled() {
+			c.Next()
+			return
+		}
 		identifier := c.ClientIP() // default fallback
 		if userID, exists := c.Get("user_id"); exists {
 			if uid, ok := userID.(string); ok && uid != "" {

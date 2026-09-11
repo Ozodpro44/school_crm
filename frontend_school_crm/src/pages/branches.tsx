@@ -207,6 +207,9 @@ export default function BranchesPage() {
         fullName,
         role: "branch_admin",
       });
+      if (!newUser.user) {
+        throw new Error("Registration did not return a user record");
+      }
 
       await api.updateBranch(branchId, { adminId: newUser.user.id });
 

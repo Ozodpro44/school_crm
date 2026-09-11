@@ -20,8 +20,8 @@ func init() {
 // newAuthRouter builds a minimal gin router with login + register routes wired up.
 func newAuthRouter(userSvc *service.UserService, subSvc *service.SubscriptionService) *gin.Engine {
 	r := gin.New()
-	r.POST("/login", handlers.Login(userSvc, "test-secret-key-that-is-long-enough"))
-	r.POST("/register", handlers.Register(userSvc, subSvc, "test-secret-key-that-is-long-enough"))
+	r.POST("/login", handlers.Login(userSvc, "test-secret-key-that-is-long-enough", nil))
+	r.POST("/register", handlers.Register(userSvc, subSvc, "test-secret-key-that-is-long-enough", nil))
 	return r
 }
 
@@ -30,7 +30,7 @@ func newAuthRouter(userSvc *service.UserService, subSvc *service.SubscriptionSer
 func TestLoginHandler_BadJSON(t *testing.T) {
 	// No DB needed — handler returns 400 before touching the service.
 	r := gin.New()
-	r.POST("/login", handlers.Login(nil, "secret"))
+	r.POST("/login", handlers.Login(nil, "secret", nil))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/login", bytes.NewBufferString("{bad json"))
@@ -125,7 +125,7 @@ func TestLoginHandler_WrongPassword(t *testing.T) {
 
 func TestRegisterHandler_BadJSON(t *testing.T) {
 	r := gin.New()
-	r.POST("/register", handlers.Register(nil, nil, "secret"))
+	r.POST("/register", handlers.Register(nil, nil, "secret", nil))
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewBufferString("not json"))
@@ -140,7 +140,7 @@ func TestRegisterHandler_BadJSON(t *testing.T) {
 func TestRegisterHandler_NonAdminForbidden(t *testing.T) {
 	// No DB needed — handler returns 403 before touching the service.
 	r := gin.New()
-	r.POST("/register", handlers.Register(nil, nil, "secret"))
+	r.POST("/register", handlers.Register(nil, nil, "secret", nil))
 
 	body, _ := json.Marshal(map[string]string{
 		"email":    "teacher@test.example",

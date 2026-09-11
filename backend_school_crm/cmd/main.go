@@ -40,6 +40,7 @@ import (
 	"github.com/school-crm/backend/internal/handlers"
 	"github.com/school-crm/backend/internal/jobs"
 	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/platformsettings"
 	"github.com/school-crm/backend/internal/service"
 	"github.com/school-crm/backend/internal/utils"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -217,7 +218,36 @@ func main() {
 		}
 	}()
 
+	// Platform-wide operational settings (JWT expiry, rate limiting, login
+	// lockout, MFA, request timeout, log level, query logging) — surfaced on
+	// the developer portal's Settings page and shared with auth_service /
+	// api_gateway via Redis (see internal/platformsettings).
+	settingsStore := platformsettings.NewStore(redisClient.GetClient())
+
+	// Wire the platform-wide "Query Logging" toggle into the DB layer
+	// (internal/db/querylog.go) — checked every 5s so a save from any
+	// developer takes effect without a restart. LogQueryFunc writes into the
+	// same `logs` table the dev portal's Logs page already reads.
+	db.LogQueryFunc = func(query string, argCount int, duration time.Duration, qerr error) {
+		level := "DEBUG"
+		msg := fmt.Sprintf("query (%d args, %s): %s", argCount, duration.Round(time.Millisecond), query)
+		if qerr != nil {
+			level = "WARN"
+			msg = fmt.Sprintf("query failed (%d args, %s): %s — %v", argCount, duration.Round(time.Millisecond), query, qerr)
+		}
+		handlers.WriteLog(database, level, "database", msg, nil)
+	}
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			db.SetQueryLoggingEnabled(settingsStore.Get().QueryLoggingEnabled)
+			<-ticker.C
+		}
+	}()
+
 	rateLimiter := middleware.NewRateLimiter(redisClient.GetClient())
+	rateLimiter.SetEnabledFunc(func() bool { return settingsStore.Get().RateLimitingEnabled })
 	log.Println("Rate limiting enabled")
 
 	// Reports — still served from monolith (complex aggregation across tables)
@@ -276,7 +306,7 @@ func main() {
 	router.Use(middleware.StructuredLogger(logger))
 	router.Use(middleware.CORSMiddleware())
 	router.Use(middleware.ErrorHandling())
-	router.Use(handlers.SafeRequestLogger(database))
+	router.Use(handlers.SafeRequestLogger(database, settingsStore))
 	router.Use(middleware.AuditMiddleware(database))
 
 	healthHandler := func(c *gin.Context) {
@@ -305,8 +335,8 @@ func main() {
 	// ── Public routes ─────────────────────────────────────────────────────────
 	// Auth — these are also served by auth_service via the gateway; kept here
 	// so the monolith can still validate tokens and serve as fallback.
-	router.POST("/api/v1/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret))
-	router.POST("/api/v1/auth/register", authRateLimit, handlers.Register(userService, subscriptionService, cfg.JWTSecret))
+	router.POST("/api/v1/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret, settingsStore))
+	router.POST("/api/v1/auth/register", authRateLimit, handlers.Register(userService, subscriptionService, cfg.JWTSecret, settingsStore))
 	router.POST("/api/v1/auth/forgot-password", authRateLimit, handlers.ForgotPassword(userService))
 	router.POST("/api/v1/auth/verify-otp", authRateLimit, handlers.VerifyOTP(userService))
 	router.POST("/api/v1/auth/resend-otp", authRateLimit, handlers.ResendOTP(userService))
@@ -334,7 +364,7 @@ func main() {
 	// ── Dev-protected routes ──────────────────────────────────────────────────
 	devProtected := router.Group("/api/v1")
 	devProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret, developerService))
-	handlers.RegisterDevSettingsRoutes(devProtected, database)
+	handlers.RegisterDevSettingsRoutes(devProtected, database, settingsStore)
 	handlers.RegisterDevLogsRoutes(devProtected, database)
 	handlers.RegisterDevCRMRoutes(devProtected, userService, branchService)
 	handlers.RegisterAdminSubscriptionRoutes(devProtected, subscriptionService)
@@ -349,7 +379,7 @@ func main() {
 	// ── Auth-only (login required, subscription not required) ─────────────────
 	authOnly := router.Group("/api/v1")
 	authOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret, redisClient.GetClient()))
-	authOnly.Use(middleware.RequestTimeout(30 * time.Second))
+	authOnly.Use(middleware.RequestTimeout(func() time.Duration { return time.Duration(settingsStore.Get().RequestTimeoutSeconds) * time.Second }))
 	handlers.RegisterSubscriptionProtectedRoutes(authOnly, subscriptionService, userService)
 	handlers.RegisterClickUzRoutes(authOnly, clickUzService, subscriptionService)
 	handlers.RegisterTelegramPaymentRoutes(authOnly, telegramPaymentService, subscriptionService)
@@ -359,7 +389,7 @@ func main() {
 	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret, redisClient.GetClient()))
 	protected.Use(middleware.SubscriptionGate(userService, subscriptionService))
 	protected.Use(middleware.TenantBranchMiddleware(userService))
-	protected.Use(middleware.RequestTimeout(30 * time.Second))
+	protected.Use(middleware.RequestTimeout(func() time.Duration { return time.Duration(settingsStore.Get().RequestTimeoutSeconds) * time.Second }))
 	protected.Use(rateLimiter.ByUser(300, time.Minute))
 
 	// Reports (complex aggregation — still on monolith)
@@ -384,8 +414,8 @@ func main() {
 	router.POST("/api/dev/auth/login", authRateLimit, handlers.DeveloperLogin(developerService, cfg.JWTSecret))
 	router.POST("/api/dev/auth/register", authRateLimit, handlers.DeveloperRegister(developerService, cfg.JWTSecret))
 
-	router.POST("/api/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret))
-	router.POST("/api/auth/register", authRateLimit, handlers.Register(userService, subscriptionService, cfg.JWTSecret))
+	router.POST("/api/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret, settingsStore))
+	router.POST("/api/auth/register", authRateLimit, handlers.Register(userService, subscriptionService, cfg.JWTSecret, settingsStore))
 	router.POST("/api/auth/forgot-password", authRateLimit, handlers.ForgotPassword(userService))
 	router.POST("/api/auth/verify-otp", authRateLimit, handlers.VerifyOTP(userService))
 	router.POST("/api/auth/resend-otp", authRateLimit, handlers.ResendOTP(userService))
@@ -397,7 +427,7 @@ func main() {
 	legacyDevProtected := router.Group("/api")
 	legacyDevProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret, developerService))
 	handlers.RegisterDevLogsRoutes(legacyDevProtected, database)
-	handlers.RegisterDevSettingsRoutes(legacyDevProtected, database)
+	handlers.RegisterDevSettingsRoutes(legacyDevProtected, database, settingsStore)
 	handlers.RegisterDevCRMRoutes(legacyDevProtected, userService, branchService)
 	handlers.RegisterAdminSubscriptionRoutes(legacyDevProtected, subscriptionService)
 	handlers.RegisterAdminPlatformStatsRoute(legacyDevProtected, subscriptionService)
@@ -409,7 +439,7 @@ func main() {
 
 	legacyAuthOnly := router.Group("/api")
 	legacyAuthOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret, redisClient.GetClient()))
-	legacyAuthOnly.Use(middleware.RequestTimeout(30 * time.Second))
+	legacyAuthOnly.Use(middleware.RequestTimeout(func() time.Duration { return time.Duration(settingsStore.Get().RequestTimeoutSeconds) * time.Second }))
 	handlers.RegisterSubscriptionProtectedRoutes(legacyAuthOnly, subscriptionService, userService)
 
 	// Start server

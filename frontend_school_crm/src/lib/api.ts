@@ -66,8 +66,13 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  token: string;
-  user: {
+  token?: string;
+  // Present instead of token/user when the platform-wide "Require MFA"
+  // setting is on — the caller must collect the emailed OTP and call
+  // verifyLoginOtp() to actually complete the login.
+  mfaRequired?: boolean;
+  email?: string;
+  user?: {
     id: string;
     email: string;
     fullName: string;
@@ -534,7 +539,29 @@ export async function login(request: LoginRequest): Promise<LoginResponse> {
     body: JSON.stringify(request),
   });
 
-  if (response.token) {
+  if (response.token && response.user) {
+    persistLogin({
+      token: response.token,
+      user: response.user as unknown as Parameters<typeof persistLogin>[0]["user"],
+      branchId: response.user.branchId,
+    });
+  }
+
+  return response;
+}
+
+/**
+ * Completes a login that Login paused for MFA (response.mfaRequired) — the
+ * caller collects the emailed OTP and submits it here. Same persistence
+ * rules as login() on success.
+ */
+export async function verifyLoginOtp(email: string, otp: string): Promise<LoginResponse> {
+  const response = await apiRequest<LoginResponse>("/auth/verify-login-otp", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
+  });
+
+  if (response.token && response.user) {
     persistLogin({
       token: response.token,
       user: response.user as unknown as Parameters<typeof persistLogin>[0]["user"],
@@ -554,7 +581,7 @@ export async function register(request: RegisterRequest): Promise<LoginResponse>
     body: JSON.stringify(request),
   });
 
-  if (response.token) {
+  if (response.token && response.user) {
     persistLogin({
       token: response.token,
       user: response.user as unknown as Parameters<typeof persistLogin>[0]["user"],

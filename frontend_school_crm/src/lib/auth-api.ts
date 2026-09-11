@@ -221,6 +221,14 @@ export async function login(email: string, password: string): Promise<User> {
   try {
     const response = await api.login({ email, password });
 
+    if (response.mfaRequired || !response.user) {
+      // This wrapper has no caller today (verified: only ForgotPasswordModal
+      // imports from this module, and not this function) and predates the
+      // MFA step — it isn't equipped to prompt for the OTP the way
+      // pages/login.tsx is, so fail loudly rather than silently.
+      throw new Error("MFA verification required — use the main login form");
+    }
+
     // Transform backend response to frontend User type
     const branchIds = (response.user as any).branchIds || [];
     const branchId = branchIds.length > 0 ? branchIds[0] : (response.user as any).branchId;
@@ -266,6 +274,10 @@ export async function register(
       fullName,
       role,
     });
+
+    if (!response.user) {
+      throw new Error("Registration did not return a user record");
+    }
 
     const user: User = {
       id: response.user.id,

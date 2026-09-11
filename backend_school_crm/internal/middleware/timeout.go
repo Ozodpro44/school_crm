@@ -13,9 +13,13 @@ import (
 // the next DB/service call returns an error, which the handler propagates as
 // 500. The middleware itself does not write a 504 because the handler may
 // already have started streaming a response.
-func RequestTimeout(timeout time.Duration) gin.HandlerFunc {
+//
+// getTimeout is called on every request rather than baking in a fixed value,
+// so the platform-wide "Request Timeout" setting (see internal/platformsettings)
+// takes effect without a redeploy.
+func RequestTimeout(getTimeout func() time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+		ctx, cancel := context.WithTimeout(c.Request.Context(), getTimeout())
 		defer cancel()
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()

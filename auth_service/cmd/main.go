@@ -18,7 +18,9 @@ import (
 	authgrpc "github.com/school-crm/auth-service/internal/grpc"
 	"github.com/school-crm/auth-service/internal/handler"
 	"github.com/school-crm/auth-service/internal/logger"
+	"github.com/school-crm/auth-service/internal/platformsettings"
 	"github.com/school-crm/auth-service/internal/service"
+	"github.com/school-crm/auth-service/internal/utils"
 )
 
 func main() {
@@ -56,7 +58,16 @@ func main() {
 	defer rdb.Close()
 	slog.Info("redis connected")
 
-	authSvc := service.New(database, rdb)
+	settingsStore := platformsettings.NewStore(rdb)
+
+	var emailSender *utils.EmailSender
+	if cfg.ResendAPIKey != "" && cfg.ResendFrom != "" {
+		emailSender = utils.NewEmailSender(cfg.ResendAPIKey, cfg.ResendFrom)
+	} else {
+		slog.Warn("RESEND_API_KEY/RESEND_FROM not set — login MFA emails will fail closed if enabled")
+	}
+
+	authSvc := service.New(database, rdb, settingsStore, emailSender)
 
 	grpcSrv := authgrpc.NewAuthGRPCServer(authSvc, cfg.JWTSecret)
 	go func() {
