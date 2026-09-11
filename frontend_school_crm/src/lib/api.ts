@@ -265,7 +265,6 @@ export interface Teacher {
   monthlySalary: number;
   phone: string;
   email: string;
-  assignedClasses: string[];
   branchId: string;
   joinedDate?: string;
   createdAt: string;
@@ -696,7 +695,10 @@ export async function updateUserPermissions(
   userId: string,
   permissions: Record<string, boolean>
 ): Promise<any> {
-  return apiRequest<any>(`/users/${userId}/permissions`, {
+  // user_service registers this at PUT /permissions/:userId (not nested
+  // under /users/:id) — the old path always 404'd, so no permission edit
+  // from the Managers page ever actually took effect.
+  return apiRequest<any>(`/permissions/${userId}`, {
     method: "PUT",
     body: JSON.stringify(permissions),
   });

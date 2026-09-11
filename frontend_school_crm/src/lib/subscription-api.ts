@@ -322,9 +322,9 @@ export function isSubscriptionActive(subscription: Subscription | null): boolean
  * Check if subscription will expire soon (within 7 days)
  */
 export function isExpiringsoon(subscription: Subscription | null): boolean {
-  if (!subscription || !subscription.endDate) return false;
+  if (!subscription || !subscription.end_date) return false;
 
-  const endDate = new Date(subscription.endDate);
+  const endDate = new Date(subscription.end_date);
   const today = new Date();
   const daysUntilExpiry = Math.ceil(
     (endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
@@ -334,11 +334,11 @@ export function isExpiringsoon(subscription: Subscription | null): boolean {
 }
 
 /**
- * Get days until subscription endDate (negative if already past, Infinity if no end date)
+ * Get days until subscription end_date (negative if already past, Infinity if no end date)
  */
 export function getDaysUntilExpiry(subscription: Subscription | null): number {
-  if (!subscription || !subscription.endDate) return Infinity;
-  const end = new Date(subscription.endDate).getTime();
+  if (!subscription || !subscription.end_date) return Infinity;
+  const end = new Date(subscription.end_date).getTime();
   const now = Date.now();
   return Math.ceil((end - now) / (1000 * 60 * 60 * 24));
 }
@@ -348,7 +348,7 @@ export function getDaysUntilExpiry(subscription: Subscription | null): number {
  */
 export function isTrialEndingSoon(subscription: Subscription | null): boolean {
   if (!subscription || subscription.status !== "trial") return false;
-  if (!subscription.endDate) return false;
+  if (!subscription.end_date) return false;
   return getDaysUntilExpiry(subscription) <= 7;
 }
 
@@ -356,9 +356,9 @@ export function isTrialEndingSoon(subscription: Subscription | null): boolean {
  * Get days until subscription renewal
  */
 export function getDaysUntilRenewal(subscription: Subscription | null): number {
-  if (!subscription || !subscription.renewalDate) return -1;
+  if (!subscription || !subscription.renewal_date) return -1;
 
-  const renewalDate = new Date(subscription.renewalDate);
+  const renewalDate = new Date(subscription.renewal_date);
   const today = new Date();
   return Math.ceil(
     (renewalDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)

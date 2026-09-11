@@ -49,7 +49,7 @@ interface PaymentState {
 
 function isTrialEndingSoon(sub: SubscriptionResponse): boolean {
   if (sub.status !== "trial") return false;
-  if (!sub.endDate) return false;
+  if (!sub.end_date) return false;
   return getDaysUntilExpiry(sub) <= 7;
 }
 
@@ -450,7 +450,7 @@ export default function BillingPage() {
                       <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Next Payment</p>
                     </div>
                     <p className="text-sm font-bold text-slate-900 dark:text-white">
-                      {currentSub.renewalDate ? new Date(currentSub.renewalDate).toLocaleDateString() : 'N/A'}
+                      {currentSub.renewal_date ? new Date(currentSub.renewal_date).toLocaleDateString() : 'N/A'}
                     </p>
                   </div>
                   <div className="p-4 rounded-2xl bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50">

@@ -613,17 +613,20 @@ export default function ExpensesPage() {
       isOpen: true,
       title: t("deleteMultipleExpenses"),
       message: t("confirmDeleteMultipleExpensesMessage"),
+      isLoading: false,
       onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, isLoading: true }));
         try {
           await Promise.all(selectedIds.map((id) => deleteExpense(id)));
           clearSelection();
           await loadData();
           notify.success(t("deleted"), `${selectedIds.length} ${t("expensesDeleted")
               }`);
-          setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
         } catch (error) {
           console.error("Failed to delete expenses:", error);
           notify.error(t("error"), t("failedToDeleteExpenses"));
+        } finally {
+          setConfirmDialog((prev) => ({ ...prev, isOpen: false, isLoading: false }));
         }
       },
       onCancel: () => {

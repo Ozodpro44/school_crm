@@ -169,7 +169,7 @@ export default function NotificationsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable<AppNotification>
+          <DataTable
             columns={columns}
             data={notifications}
             loading={loading}

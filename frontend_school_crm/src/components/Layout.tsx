@@ -521,6 +521,15 @@ export function Layout({ children }: LayoutProps) {
   const language = useLanguage();
   const { currentBranch, branches, setCurrentBranchById, clearBranches } = useBranch();
   const [subInfo, setSubInfo] = useState<SubInfo | null>(null);
+  // SidebarProvider (components/ui/sidebar.tsx) treats passing onOpenChange
+  // as "the parent fully controls this" — if `open` isn't also passed back
+  // in, its internal setOpen() only calls onOpenChange and never updates its
+  // own state, so the sidebar never visually toggles until a reload re-seeds
+  // defaultOpen from localStorage. Keeping the boolean here and passing both
+  // open+onOpenChange makes it properly controlled.
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("sidebarOpen") !== "false" : true
+  );
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -559,8 +568,8 @@ export function Layout({ children }: LayoutProps) {
       getCurrentSubscription()
         .then((sub) => {
           if (sub) {
-            const msLeft = sub.endDate
-              ? new Date(sub.endDate).getTime() - Date.now()
+            const msLeft = sub.end_date
+              ? new Date(sub.end_date).getTime() - Date.now()
               : Infinity;
             const daysLeft = msLeft === Infinity ? 9999 : Math.ceil(msLeft / 86_400_000);
             setSubInfo({
@@ -700,14 +709,13 @@ export function Layout({ children }: LayoutProps) {
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  const savedOpen = typeof window !== "undefined"
-    ? localStorage.getItem("sidebarOpen") !== "false"
-    : true;
-
   return (
     <SidebarProvider
-      defaultOpen={savedOpen}
-      onOpenChange={(open) => localStorage.setItem("sidebarOpen", String(open))}
+      open={sidebarOpen}
+      onOpenChange={(open) => {
+        setSidebarOpen(open);
+        localStorage.setItem("sidebarOpen", String(open));
+      }}
     >
       <MobileSidebarCloser />
       <div className="flex min-h-screen w-full bg-slate-50 dark:bg-slate-950">

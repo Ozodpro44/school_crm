@@ -150,7 +150,12 @@ export default function AssignmentsPage() {
         description: form.description,
         dueDate: form.dueDate,
       });
-      setAssignments([a, ...assignments]);
+      // The create response omits totalStudents/submittedCount (only the
+      // list endpoint computes those via an aggregate query), which left a
+      // freshly-created assignment showing no progress indicator and never
+      // getting the overdue red-border treatment until the page reloaded.
+      const cls = classes.find((c) => c.id === form.classId);
+      setAssignments([{ ...a, totalStudents: cls?.studentCount ?? 0, submittedCount: 0 }, ...assignments]);
       notify.success(t("success"));
       setDialogOpen(false);
     } catch {
@@ -210,7 +215,7 @@ export default function AssignmentsPage() {
           <h1 className="text-display text-slate-900 dark:text-slate-100">
             {t("assignments")}
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">{assignments.length} total</p>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">{assignments.length} {t("totalCount")}</p>
         </div>
         <div className="flex gap-3">
           <Select value={classFilter} onValueChange={setClassFilter}>
@@ -257,7 +262,7 @@ export default function AssignmentsPage() {
                           <Badge variant="outline" className="text-xs">{assignment.subject}</Badge>
                         )}
                         {overdue && (
-                          <Badge className="bg-red-100 text-red-700 text-xs">Overdue</Badge>
+                          <Badge className="bg-red-100 text-red-700 text-xs">{t("overdue")}</Badge>
                         )}
                       </div>
                       <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">

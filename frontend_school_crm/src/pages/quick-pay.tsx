@@ -96,11 +96,11 @@ function currentMonthLabel() {
   return new Date().toLocaleString("default", { month: "long", year: "numeric" });
 }
 
-const PAY_METHODS: { id: PayMethod; label: string; icon: React.ReactNode }[] = [
-  { id: "cash",     label: "Cash",        icon: <Banknote  className="w-4 h-4" /> },
-  { id: "click",    label: "Click.uz",    icon: <CreditCard className="w-4 h-4" /> },
-  { id: "bank",     label: "Bank",        icon: <Building2  className="w-4 h-4" /> },
-  { id: "terminal", label: "Terminal",    icon: <CreditCard className="w-4 h-4" /> },
+const PAY_METHODS: { id: PayMethod; labelKey: string; icon: React.ReactNode }[] = [
+  { id: "cash",     labelKey: "cash",        icon: <Banknote  className="w-4 h-4" /> },
+  { id: "click",    labelKey: "click",       icon: <CreditCard className="w-4 h-4" /> },
+  { id: "bank",     labelKey: "bankTransfer", icon: <Building2  className="w-4 h-4" /> },
+  { id: "terminal", labelKey: "terminal",    icon: <CreditCard className="w-4 h-4" /> },
 ];
 
 // ─── Receipt modal ────────────────────────────────────────────────────────────
@@ -676,7 +676,7 @@ export default function QuickPayPage() {
                     : "text-slate-500 dark:text-slate-400 hover:text-slate-700"
                 )}
               >
-                {m.icon} {m.label}
+                {m.icon} {t(m.labelKey)}
               </button>
             ))}
           </div>

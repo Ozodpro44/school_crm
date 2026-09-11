@@ -243,7 +243,7 @@ export default function AuditLogPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable<AuditLogEntry>
+          <DataTable
             columns={columns}
             data={filtered}
             loading={loading}

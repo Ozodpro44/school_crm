@@ -266,7 +266,7 @@ export default function BranchesPage() {
       render: (branch) => (
         <div className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-400">
           <DollarSign className="h-3.5 w-3.5 shrink-0" />
-          {formatCurrency(branch.monthlyPayment)}/oy
+          {formatCurrency(branch.monthlyPayment)}{t("perMonth")}
         </div>
       ),
     },
@@ -465,7 +465,7 @@ export default function BranchesPage() {
 
       <Card>
         <CardContent className="p-0">
-          <DataTable<Branch>
+          <DataTable
             columns={columns}
             data={branches}
             loading={loading}

@@ -25,7 +25,7 @@ import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, B
 import { Skeleton } from "@/components/ui/skeleton";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
-import { listSalaries, getBranch, listTeachers, createSalary, updateSalary, deleteSalary } from "@/lib/api";
+import { listSalaries, getBranch, listTeachers, createSalary, updateSalary, deleteSalary, getUser } from "@/lib/api";
 import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -54,6 +54,7 @@ export default function SalariesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [branchData, setBranchData] = useState<Branch | null>(null);
+  const [userCache, setUserCache] = useState<{ [key: string]: string }>({});
   const language = useLanguage();
   const canCreateSalaries = hasPermission("canCreateSalaries");
   const canEditSalaries = hasPermission("canEditSalaries");
@@ -174,10 +175,34 @@ export default function SalariesPage() {
         ]);
         setSalaries(data);
         setTeachers(teacherList);
+
+        // teacher_service.Salary.createdBy is a raw X-User-ID UUID, never
+        // joined against the users table — resolve it to a display name the
+        // same way expenses.tsx does, otherwise the "Added by" column shows
+        // a bare UUID.
+        const creatorIds = [...new Set(data.map((s) => s.createdBy).filter(Boolean))] as string[];
+        for (const userId of creatorIds) {
+          await fetchAndCacheUserName(userId);
+        }
       }
     } catch (error) {
       console.error("Failed to load salaries:", error);
       notify.error(t("error"), t("failedToLoadSalaries"));
+    }
+  };
+
+  const getUserName = (userId: string) => {
+    if (!userId) return "-";
+    return userCache[userId] || "-";
+  };
+
+  const fetchAndCacheUserName = async (userId: string) => {
+    if (!userId || userCache[userId]) return;
+    try {
+      const user = await getUser(userId);
+      setUserCache((prev) => ({ ...prev, [userId]: user.fullName }));
+    } catch {
+      setUserCache((prev) => ({ ...prev, [userId]: "Unknown" }));
     }
   };
 
@@ -459,7 +484,9 @@ export default function SalariesPage() {
       header: t("whoAddedSalaries"),
       hideOnMobile: true,
       render: (salary) => (
-        <span className="text-sm text-slate-900 dark:text-slate-100">{salary.createdBy || "-"}</span>
+        <span className="text-sm text-slate-900 dark:text-slate-100">
+          {salary.createdBy ? getUserName(salary.createdBy) : "-"}
+        </span>
       ),
     },
     {
@@ -810,7 +837,7 @@ export default function SalariesPage() {
                   </div>
                 </div>
                 {salary.createdBy && (
-                  <p className="text-xs text-slate-400 dark:text-slate-500">{t("whoAddedSalaries")}: {salary.createdBy}</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">{t("whoAddedSalaries")}: {getUserName(salary.createdBy)}</p>
                 )}
               </div>
             )}

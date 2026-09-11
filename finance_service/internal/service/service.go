@@ -45,6 +45,7 @@ type ExpenseListResponse struct {
 type ExpenseSummary struct {
 	TotalAmount float64            `json:"totalAmount"`
 	ByCategory  map[string]float64 `json:"byCategory"`
+	ByMethod    map[string]float64 `json:"byMethod"`
 }
 
 var ErrNotFound = errors.New("not found")
@@ -216,7 +217,30 @@ func (s *ExpenseService) Summary(ctx context.Context, branchID, month, year stri
 		summary.ByCategory[cat] = amt
 		summary.TotalAmount += amt
 	}
-	return summary, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// The frontend's expenses page renders separate Card/Cash/Bank totals
+	// (ExpenseSummary.byMethod on the frontend side) — this was previously
+	// never populated here, so those three stat cards always showed zero.
+	methodRows, err := s.db.Read().QueryContext(ctx,
+		"SELECT payment_method, SUM(amount) FROM expenses "+where+" GROUP BY payment_method", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer methodRows.Close()
+
+	summary.ByMethod = map[string]float64{}
+	for methodRows.Next() {
+		var method string
+		var amt float64
+		if err := methodRows.Scan(&method, &amt); err != nil {
+			return nil, err
+		}
+		summary.ByMethod[method] = amt
+	}
+	return summary, methodRows.Err()
 }
 
 // ConsolidatedData returns paginated expenses + summary for the branch's current financial month.

@@ -94,9 +94,13 @@ export default function TeachersPage() {
     setEditingTeacher(null);
   };
 
-  const getAssignedClasses = (classIds?: string[] | null) => {
-    if (!classIds || !Array.isArray(classIds)) return [];
-    return classIds.map((id) => classes.find((c) => c.id === id)?.name).filter(Boolean) as string[];
+  // teacher_service's Teacher struct has no assignedClasses field — the
+  // link only exists the other way, as Class.teacherId — so this is
+  // computed from the already-fetched classes list instead of read off
+  // the teacher record (which was always undefined, showing "No classes
+  // yet" for every teacher regardless of actual assignments).
+  const getAssignedClasses = (teacherId: string) => {
+    return classes.filter((c) => c.teacherId === teacherId).map((c) => c.name);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -218,7 +222,7 @@ export default function TeachersPage() {
             <div className="flex items-center gap-1 mt-0.5">
               <BookOpen className="w-3 h-3 text-slate-400" />
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                {getAssignedClasses(teacher.assignedClasses).join(", ") || t("noClassesYet")}
+                {getAssignedClasses(teacher.id).join(", ") || t("noClassesYet")}
               </p>
             </div>
           </div>
@@ -437,7 +441,7 @@ export default function TeachersPage() {
                 </div>
                 <div className="mt-2 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
                   <BookOpen className="w-3 h-3" />
-                  <span>{getAssignedClasses(teacher.assignedClasses).join(", ") || t("noClassesYet")}</span>
+                  <span>{getAssignedClasses(teacher.id).join(", ") || t("noClassesYet")}</span>
                 </div>
               </div>
             )}

@@ -73,7 +73,7 @@ export default function TeacherPortalPage() {
   // Profile state
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
-  const [profileForm, setProfileForm] = useState({ fullName: "", phone: "" });
+  const [profileForm, setProfileForm] = useState({ fullName: "" });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
@@ -149,7 +149,7 @@ export default function TeacherPortalPage() {
   };
 
   const handleOpenEditProfile = () => {
-    setProfileForm({ fullName: data?.teacher?.fullName ?? "", phone: data?.teacher?.phone ?? "" });
+    setProfileForm({ fullName: data?.teacher?.fullName ?? "" });
     setIsEditProfileOpen(true);
   };
 
@@ -167,7 +167,7 @@ export default function TeacherPortalPage() {
       window.dispatchEvent(new CustomEvent("userProfileUpdated", { detail: updated }));
       setIsEditProfileOpen(false);
       await refetchPortal();
-      notify.warning(t("profileUpdated"));
+      notify.success(t("profileUpdated"));
     } catch (error) {
       notify.error(t("error"), (error as Error).message);
     } finally {
@@ -193,7 +193,7 @@ export default function TeacherPortalPage() {
       });
       setIsChangePasswordOpen(false);
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      notify.warning(t("passwordUpdated"));
+      notify.success(t("passwordUpdated"));
     } catch (error) {
       notify.error(t("error"), (error as Error).message);
     } finally {

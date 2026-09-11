@@ -1,6 +1,10 @@
 import { Translation } from "@/types";
 
 export const miscTranslations: Partial<Translation> = {
+  perMonth: { "uz-cyrl": "/ой", "uz-latn": "/oy", en: "/mo" },
+  overdue: { "uz-cyrl": "Муддати ўтган", "uz-latn": "Muddati o'tgan", en: "Overdue" },
+  totalCount: { "uz-cyrl": "жами", "uz-latn": "jami", en: "total" },
+
   // Dashboard
   dashboard: { "uz-cyrl": "Асосий панел", "uz-latn": "Asosiy panel", en: "Dashboard" },
   totalIncome: { "uz-cyrl": "Жами даромад", "uz-latn": "Jami daromad", en: "Total Income" },

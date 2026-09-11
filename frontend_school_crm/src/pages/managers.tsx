@@ -700,7 +700,7 @@ export default function ManagersPage() {
 
       <Card>
         <CardContent className="p-0">
-          <DataTable<User>
+          <DataTable
             columns={columns}
             data={managers}
             loading={isLoading}

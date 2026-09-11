@@ -113,7 +113,6 @@ export interface Teacher {
   phone: string;
   email: string;
   userId?: string;
-  assignedClasses: string[];
   branchId: string;
   joinedDate?: string;
   createdAt: string;
@@ -218,23 +217,31 @@ export interface SubscriptionPlan {
   updatedAt: string;
 }
 
+// Field names match the wire format exactly (snake_case) — this is what
+// backend_school_crm's models.Subscription actually serializes to on
+// GET /subscriptions/current and POST /subscriptions (unlike every other
+// subscription-related model in this codebase, e.g. SubscriptionPlan below,
+// which is camelCase). Previously this interface declared camelCase names
+// that don't exist on the wire, so every read of endDate/renewalDate/etc.
+// silently returned undefined — e.g. "Time Remaining" always showed
+// Infinity and trial-ending warnings never fired.
 export interface Subscription {
   id: string;
-  userId: string;
-  planId: string;
-  branchId?: string;
+  user_id: string;
+  plan_id: string;
+  branch_id?: string;
   status: SubscriptionStatus;
-  startDate: string;
-  endDate?: string;
-  renewalDate?: string;
-  autoRenew: boolean;
-  paymentMethod?: string;
-  stripeSubscriptionId?: string;
+  start_date: string;
+  end_date?: string;
+  renewal_date?: string;
+  auto_renew: boolean;
+  payment_method?: string;
+  stripe_subscription_id?: string;
   notes?: string;
-  cancelledAt?: string;
-  cancelledBy?: string;
-  createdAt: string;
-  updatedAt: string;
+  cancelled_at?: string;
+  cancelled_by?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SubscriptionUsage {
