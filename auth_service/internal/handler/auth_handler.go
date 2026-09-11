@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -27,6 +28,8 @@ func (h *AuthHandler) Register(r *gin.RouterGroup) {
 	r.POST("/auth/resend-otp", h.ResendOTP)
 	r.POST("/auth/reset-password", h.ResetPassword)
 	r.POST("/auth/logout", h.Logout)
+	r.GET("/auth/sessions", h.ListSessions)
+	r.DELETE("/auth/sessions/:id", h.RevokeSession)
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -42,7 +45,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	tokenStr, err := h.issueToken(user)
+	sessionID, err := h.svc.CreateSession(c.Request.Context(), user.ID, c.ClientIP(), c.Request.UserAgent())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session"})
+		return
+	}
+
+	tokenStr, err := h.issueToken(user, sessionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 		return
@@ -68,7 +77,13 @@ func (h *AuthHandler) RegisterUser(c *gin.Context) {
 		return
 	}
 
-	tokenStr, err := h.issueToken(user)
+	sessionID, err := h.svc.CreateSession(c.Request.Context(), user.ID, c.ClientIP(), c.Request.UserAgent())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create session"})
+		return
+	}
+
+	tokenStr, err := h.issueToken(user, sessionID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 		return
@@ -166,13 +181,51 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "logged out"})
 }
 
+// ListSessions returns the caller's own active sessions (devices). The
+// caller's identity comes from X-User-ID, a trusted header api_gateway's
+// JWTAuth sets after verifying the bearer token — the same convention every
+// other microservice in this repo uses for identifying the caller.
+func (h *AuthHandler) ListSessions(c *gin.Context) {
+	userID := c.GetHeader("X-User-ID")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	sessions, err := h.svc.ListSessions(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, sessions)
+}
+
+// RevokeSession signs a single device out.
+func (h *AuthHandler) RevokeSession(c *gin.Context) {
+	userID := c.GetHeader("X-User-ID")
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	sessionID := c.Param("id")
+	if err := h.svc.RevokeSession(c.Request.Context(), userID, sessionID); err != nil {
+		if errors.Is(err, service.ErrSessionNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func (h *AuthHandler) issueToken(user *service.User) (string, error) {
+func (h *AuthHandler) issueToken(user *service.User, sessionID string) (string, error) {
 	claims := &middleware.CustomClaims{
-		UserID:   user.ID,
-		Role:     user.Role,
-		BranchID: user.BranchID,
+		UserID:    user.ID,
+		Role:      user.Role,
+		BranchID:  user.BranchID,
+		SessionID: sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.ID,
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),

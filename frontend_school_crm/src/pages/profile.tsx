@@ -25,10 +25,11 @@ import {
   Loader2,
   CheckCircle,
   XCircle,
+  Monitor,
 } from "lucide-react";
 import { getCurrentUser, logout } from "@/lib/auth";
 import { setStoredUser } from "@/lib/storage";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, getAuthToken, listSessions, revokeSession, UserSession } from "@/lib/api";
 import { User as UserType } from "@/types";
 import { getTranslation } from "@/lib/translations";
 import { useLanguage } from "@/hooks/use-language";
@@ -66,6 +67,40 @@ const PERMISSION_LABEL_KEYS: Partial<Record<string, string>> = {
   canEditSettings:    "permEditSettings",
 };
 
+/** Decodes the "sid" claim out of a JWT without verifying it — used only to
+ * highlight which session row belongs to the browser the user is currently
+ * looking at. The token is already trusted (it's this browser's own). */
+function decodeSessionId(token: string | null): string | null {
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const json = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(json).sid ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Turns a raw User-Agent string into a short human-readable label. */
+function formatUserAgent(ua: string): string {
+  if (!ua) return "Unknown device";
+  let os = "Unknown OS";
+  if (/Windows/i.test(ua)) os = "Windows";
+  else if (/Mac OS/i.test(ua)) os = "macOS";
+  else if (/Android/i.test(ua)) os = "Android";
+  else if (/iPhone|iPad|iOS/i.test(ua)) os = "iOS";
+  else if (/Linux/i.test(ua)) os = "Linux";
+
+  let browser = "Unknown browser";
+  if (/Edg\//i.test(ua)) browser = "Edge";
+  else if (/Chrome\//i.test(ua)) browser = "Chrome";
+  else if (/Firefox\//i.test(ua)) browser = "Firefox";
+  else if (/Safari\//i.test(ua)) browser = "Safari";
+
+  return `${browser} · ${os}`;
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const notify = useNotify();
@@ -74,6 +109,11 @@ export default function ProfilePage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [sessions, setSessions] = useState<UserSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<UserSession | null>(null);
+  const [isRevoking, setIsRevoking] = useState(false);
   const [editFormData, setEditFormData] = useState({ fullName: "", email: "" });
   const [passwordFormData, setPasswordFormData] = useState({
     currentPassword: "",
@@ -92,7 +132,31 @@ export default function ProfilePage() {
     }
     setUser(currentUser);
     setIsLoading(false);
+    setCurrentSessionId(decodeSessionId(getAuthToken()));
+
+    listSessions()
+      .then(setSessions)
+      .catch(() => setSessions([]))
+      .finally(() => setSessionsLoading(false));
   }, [router]);
+
+  const handleRevokeSession = async () => {
+    if (!revokeTarget) return;
+    setIsRevoking(true);
+    try {
+      await revokeSession(revokeTarget.id);
+      setSessions((prev) => prev.filter((s) => s.id !== revokeTarget.id));
+      notify.success(t("signOut"), t("signOutDeviceConfirm"));
+      if (revokeTarget.id === currentSessionId) {
+        logout();
+      }
+    } catch (error) {
+      notify.error(t("error"), (error as Error).message || t("updateError"));
+    } finally {
+      setIsRevoking(false);
+      setRevokeTarget(null);
+    }
+  };
 
   const handleLogout = () => {
     // logout() performs a hard navigation to /login.
@@ -336,6 +400,61 @@ export default function ProfilePage() {
         </Card>
       )}
 
+      {/* Active Sessions */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Monitor className="w-5 h-5" />
+            {t("activeSessions")}
+          </CardTitle>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t("activeSessionsDesc")}</p>
+        </CardHeader>
+        <CardContent>
+          {sessionsLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
+          ) : sessions.length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">{t("noActiveSessions")}</p>
+          ) : (
+            <div className="space-y-2">
+              {sessions.map((session) => (
+                <div
+                  key={session.id}
+                  className="flex items-center gap-4 p-3 border border-slate-200 dark:border-slate-800 rounded-lg"
+                >
+                  <Monitor className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium text-slate-900 dark:text-slate-100 truncate">
+                        {formatUserAgent(session.userAgent)}
+                      </p>
+                      {session.id === currentSessionId && (
+                        <Badge variant="secondary" className="text-xs">
+                          {t("thisDevice")}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {session.ipAddress || "—"} · {formatDate(session.createdAt)}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/20 flex-shrink-0"
+                    onClick={() => setRevokeTarget(session)}
+                  >
+                    {t("signOut")}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Actions */}
       <div className="flex gap-3 flex-wrap">
         <Button variant="outline" onClick={openEditModal}>
@@ -455,6 +574,25 @@ export default function ProfilePage() {
             </Button>
             <Button onClick={handleChangePassword} disabled={isSaving}>
               {isSaving ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{t("updating")}</> : t("updatePassword")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revoke Session Confirmation */}
+      <Dialog open={!!revokeTarget} onOpenChange={(open) => !open && setRevokeTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("signOut")}</DialogTitle>
+            <DialogDescription>{t("signOutDeviceConfirm")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRevokeTarget(null)} disabled={isRevoking}>
+              {t("cancel")}
+            </Button>
+            <Button variant="destructive" onClick={handleRevokeSession} disabled={isRevoking}>
+              {isRevoking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {t("signOut")}
             </Button>
           </DialogFooter>
         </DialogContent>

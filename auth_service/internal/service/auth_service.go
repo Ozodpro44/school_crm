@@ -304,10 +304,103 @@ func (s *AuthService) IsTokenBlacklisted(ctx context.Context, token string) bool
 	return err == nil && res > 0
 }
 
+// ── Sessions ─────────────────────────────────────────────────────────────────
+//
+// Every login/register inserts a user_sessions row and embeds its ID in the
+// JWT as the "sid" claim, so a user can later see their logged-in devices and
+// sign one out remotely. Revocation is a two-part write: the row is marked
+// revoked (the durable record ListSessions reads from) and a Redis flag is
+// set so api_gateway's hot-path JWTAuth check doesn't need a DB round-trip
+// per request — mirrors the existing token-blacklist pattern exactly.
+
+// sessionRevokedTTL exceeds the 24h access-token lifetime so the Redis flag
+// can't expire while a token minted against the revoked session is still
+// otherwise valid.
+const sessionRevokedTTL = 25 * time.Hour
+
+var ErrSessionNotFound = errors.New("session not found")
+
+type Session struct {
+	ID        string    `json:"id"`
+	UserID    string    `json:"userId"`
+	IPAddress string    `json:"ipAddress"`
+	UserAgent string    `json:"userAgent"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// CreateSession records a new login and returns the session ID to embed in
+// that login's JWT as the "sid" claim.
+func (s *AuthService) CreateSession(ctx context.Context, userID, ip, userAgent string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	var id string
+	err := s.db.Conn().QueryRowContext(ctx,
+		`INSERT INTO user_sessions (user_id, ip_address, user_agent) VALUES ($1, $2, $3) RETURNING id`,
+		userID, ip, userAgent,
+	).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("create session: %w", err)
+	}
+	return id, nil
+}
+
+// ListSessions returns a user's active (non-revoked) sessions, newest first.
+func (s *AuthService) ListSessions(ctx context.Context, userID string) ([]Session, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	rows, err := s.db.Conn().QueryContext(ctx,
+		`SELECT id, user_id, COALESCE(ip_address, ''), COALESCE(user_agent, ''), created_at
+		 FROM user_sessions WHERE user_id = $1 AND revoked_at IS NULL ORDER BY created_at DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list sessions: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := []Session{}
+	for rows.Next() {
+		var sess Session
+		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.IPAddress, &sess.UserAgent, &sess.CreatedAt); err != nil {
+			continue
+		}
+		sessions = append(sessions, sess)
+	}
+	return sessions, rows.Err()
+}
+
+// RevokeSession signs one device out: marks the session row revoked (scoped
+// to the caller's own userID, so one user can never revoke another's
+// session) and sets the fast Redis flag JWTAuth checks on every request.
+func (s *AuthService) RevokeSession(ctx context.Context, userID, sessionID string) error {
+	qctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	res, err := s.db.Conn().ExecContext(qctx,
+		`UPDATE user_sessions SET revoked_at = NOW() WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL`,
+		sessionID, userID,
+	)
+	if err != nil {
+		return fmt.Errorf("revoke session: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrSessionNotFound
+	}
+
+	if err := s.redis.Set(ctx, sessionRevokedKey(sessionID), "1", sessionRevokedTTL).Err(); err != nil {
+		return fmt.Errorf("flag session revoked: %w", err)
+	}
+	return nil
+}
+
 // ── Key helpers ───────────────────────────────────────────────────────────────
 
-func otpKey(email string) string         { return "auth:otp:" + email }
-func resetKey(email string) string       { return "auth:reset:" + email }
-func blacklistKey(token string) string   { return "auth:blacklist:" + token }
-func otpAttemptsKey(email string) string { return "auth:otp-attempts:" + email }
-func otpCooldownKey(email string) string { return "auth:otp-cooldown:" + email }
+func otpKey(email string) string                { return "auth:otp:" + email }
+func resetKey(email string) string              { return "auth:reset:" + email }
+func blacklistKey(token string) string          { return "auth:blacklist:" + token }
+func otpAttemptsKey(email string) string        { return "auth:otp-attempts:" + email }
+func otpCooldownKey(email string) string        { return "auth:otp-cooldown:" + email }
+func sessionRevokedKey(sessionID string) string { return "auth:session:revoked:" + sessionID }

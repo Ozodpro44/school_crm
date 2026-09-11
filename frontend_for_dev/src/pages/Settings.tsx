@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
   Server, Shield, Globe, Database, Save, Loader2,
-  RefreshCw, CheckCircle2, XCircle, Key, Eye, EyeOff, Copy,
+  RefreshCw, CheckCircle2, XCircle, Key, Eye, EyeOff, Copy, Monitor,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { getDevSettings, updateDevSettings, getHealth } from "@/services/api-client";
+import {
+  getDevSettings, updateDevSettings, getHealth,
+  listMySessions, revokeSession, DeveloperSession,
+} from "@/services/api-client";
 
 const API_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api").replace(/\/$/, "");
 
@@ -116,6 +119,118 @@ function JwtInspector() {
               </div>
             )}
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Active Sessions ────────────────────────────────────────────────────────────
+
+function formatUserAgent(ua: string): string {
+  if (!ua) return "Unknown device";
+  let os = "Unknown OS";
+  if (/Windows/i.test(ua)) os = "Windows";
+  else if (/Mac OS/i.test(ua)) os = "macOS";
+  else if (/Android/i.test(ua)) os = "Android";
+  else if (/iPhone|iPad|iOS/i.test(ua)) os = "iOS";
+  else if (/Linux/i.test(ua)) os = "Linux";
+
+  let browser = "Unknown browser";
+  if (/Edg\//i.test(ua)) browser = "Edge";
+  else if (/Chrome\//i.test(ua)) browser = "Chrome";
+  else if (/Firefox\//i.test(ua)) browser = "Firefox";
+  else if (/Safari\//i.test(ua)) browser = "Safari";
+
+  return `${browser} · ${os}`;
+}
+
+function ActiveSessions() {
+  const [sessions, setSessions] = useState<DeveloperSession[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  const token = localStorage.getItem("auth_token") ?? "";
+  const currentSessionId = (decodeJwt(token)?.sid as string | undefined) ?? null;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setSessions(await listMySessions());
+    } catch {
+      setSessions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleRevoke = async (session: DeveloperSession) => {
+    setRevokingId(session.id);
+    try {
+      await revokeSession(session.id);
+      setSessions((prev) => prev.filter((s) => s.id !== session.id));
+      toast.success("Session signed out");
+      if (session.id === currentSessionId) {
+        localStorage.removeItem("auth_token");
+        window.location.href = "/login";
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to sign out session");
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
+  return (
+    <div className="glass-card rounded-lg overflow-hidden lg:col-span-2">
+      <div className="p-4 border-b border-border">
+        <h3 className="font-semibold text-foreground flex items-center gap-2 text-sm">
+          <Monitor className="w-4 h-4 text-status-info" />
+          Active Sessions
+        </h3>
+      </div>
+      <div className="p-4 space-y-2">
+        {loading ? (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : sessions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No active sessions found.</p>
+        ) : (
+          sessions.map((session) => (
+            <div
+              key={session.id}
+              className="flex items-center gap-3 p-3 rounded-lg bg-accent/30"
+            >
+              <Monitor className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {formatUserAgent(session.userAgent)}
+                  </p>
+                  {session.id === currentSessionId && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-primary/15 text-primary">
+                      This device
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground font-mono">
+                  {session.ipAddress || "—"} · last active {new Date(session.lastSeenAt).toLocaleString()}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs flex-shrink-0"
+                disabled={revokingId === session.id}
+                onClick={() => handleRevoke(session)}
+              >
+                {revokingId === session.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "Sign out"}
+              </Button>
+            </div>
+          ))
         )}
       </div>
     </div>
@@ -402,6 +517,9 @@ export default function Settings() {
 
         {/* JWT Inspector */}
         <JwtInspector />
+
+        {/* Active Sessions */}
+        <ActiveSessions />
       </div>
     </DashboardLayout>
   );

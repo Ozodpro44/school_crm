@@ -1,15 +1,25 @@
 package handlers
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/service"
 )
+
+// devSessionTTL bounds how long a developer JWT is valid. Previously
+// DeveloperLogin/DeveloperRegister issued tokens with no exp claim at all —
+// they never expired — which made "sign this device out" meaningless for any
+// token minted before the feature existed, since it would keep working
+// forever regardless of revocation. New tokens get a real, if generous,
+// lifetime; the session row backing them is what actually enables revocation.
+const devSessionTTL = 7 * 24 * time.Hour
 
 // DeveloperLogin handles developer authentication
 // @Summary Developer Login
@@ -43,12 +53,23 @@ func DeveloperLogin(developerService *service.DeveloperService, jwtSecret string
 			return
 		}
 
+		sessionID, err := developerService.CreateSession(c.Request.Context(), dev.ID, c.ClientIP(), c.Request.UserAgent())
+		if err != nil {
+			log.Printf("[DEV-LOGIN] Session creation failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+			return
+		}
+
 		// Generate JWT token
+		now := time.Now()
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"developer_id": dev.ID,
 			"email":        dev.Email,
 			"role":         dev.Role,
 			"type":         "developer",
+			"sid":          sessionID,
+			"iat":          now.Unix(),
+			"exp":          now.Add(devSessionTTL).Unix(),
 		})
 
 		tokenString, err := token.SignedString([]byte(jwtSecret))
@@ -101,12 +122,23 @@ func DeveloperRegister(developerService *service.DeveloperService, jwtSecret str
 			return
 		}
 
+		sessionID, err := developerService.CreateSession(c.Request.Context(), dev.ID, c.ClientIP(), c.Request.UserAgent())
+		if err != nil {
+			log.Printf("[DEV-REGISTER] Session creation failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+			return
+		}
+
 		// Generate JWT token
+		now := time.Now()
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"developer_id": dev.ID,
 			"email":        dev.Email,
 			"role":         dev.Role,
 			"type":         "developer",
+			"sid":          sessionID,
+			"iat":          now.Unix(),
+			"exp":          now.Add(devSessionTTL).Unix(),
 		})
 
 		tokenString, err := token.SignedString([]byte(jwtSecret))
@@ -194,4 +226,53 @@ func RegisterDeveloperAuthRoutes(router gin.IRouter, developerService *service.D
 	log.Println("[ROUTES] Registering developer auth routes")
 	router.POST("/api/v1/dev/auth/login", DeveloperLogin(developerService, jwtSecret))
 	router.POST("/api/v1/dev/auth/register", DeveloperRegister(developerService, jwtSecret))
+}
+
+// ListDeveloperSessions returns the caller's own active sessions (devices).
+// Must run after DevAuthMiddleware, which sets "developer_id" in context.
+func ListDeveloperSessions(developerService *service.DeveloperService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		developerID, _ := c.Get("developer_id")
+		devID, _ := developerID.(string)
+
+		sessions, err := developerService.ListSessions(c.Request.Context(), devID)
+		if err != nil {
+			log.Printf("[DEV-SESSIONS] list failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list sessions"})
+			return
+		}
+		c.JSON(http.StatusOK, sessions)
+	}
+}
+
+// RevokeDeveloperSession signs a single device out. A developer can only
+// revoke their own sessions — the service layer enforces this by scoping the
+// UPDATE to developer_id, not just session id.
+func RevokeDeveloperSession(developerService *service.DeveloperService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		developerID, _ := c.Get("developer_id")
+		devID, _ := developerID.(string)
+		sessionID := c.Param("id")
+
+		if err := developerService.RevokeSession(c.Request.Context(), devID, sessionID); err != nil {
+			if errors.Is(err, service.ErrDeveloperSessionNotFound) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+				return
+			}
+			log.Printf("[DEV-SESSIONS] revoke failed: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to revoke session"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"success": true})
+	}
+}
+
+// RegisterDeveloperSessionRoutes mounts the active-sessions endpoints on an
+// already-DevAuthMiddleware-protected group.
+//
+//	GET    /dev/sessions      — list caller's own active sessions
+//	DELETE /dev/sessions/:id  — sign one of them out
+func RegisterDeveloperSessionRoutes(router gin.IRouter, developerService *service.DeveloperService) {
+	router.GET("/dev/sessions", ListDeveloperSessions(developerService))
+	router.DELETE("/dev/sessions/:id", RevokeDeveloperSession(developerService))
 }

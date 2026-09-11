@@ -337,6 +337,36 @@ export const miscTranslations: Partial<Translation> = {
     "uz-latn": "A'zolikdan beri",
     en: "Member since",
   },
+  activeSessions: {
+    "uz-cyrl": "Фаол сеанслар",
+    "uz-latn": "Faol seanslar",
+    en: "Active Sessions",
+  },
+  activeSessionsDesc: {
+    "uz-cyrl": "Ҳисобингизга кирган қурилмалар",
+    "uz-latn": "Hisobingizga kirgan qurilmalar",
+    en: "Devices currently signed in to your account",
+  },
+  thisDevice: {
+    "uz-cyrl": "Ушбу қурилма",
+    "uz-latn": "Ushbu qurilma",
+    en: "This device",
+  },
+  signOut: {
+    "uz-cyrl": "Чиқариш",
+    "uz-latn": "Chiqarish",
+    en: "Sign out",
+  },
+  signOutDeviceConfirm: {
+    "uz-cyrl": "Ушбу қурилмани ҳисобингиздан чиқарасизми?",
+    "uz-latn": "Ushbu qurilmani hisobingizdan chiqarasizmi?",
+    en: "Sign this device out of your account?",
+  },
+  noActiveSessions: {
+    "uz-cyrl": "Фаол сеанслар топилмади",
+    "uz-latn": "Faol seanslar topilmadi",
+    en: "No active sessions found",
+  },
 
   // Roles
   manager: {

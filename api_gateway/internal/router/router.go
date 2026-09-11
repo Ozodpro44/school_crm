@@ -143,6 +143,8 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	{
 		// auth
 		legacyAuth.POST("/auth/logout", gin.WrapH(proxy.Handler(authProxy)))
+		legacyAuth.GET("/auth/sessions", gin.WrapH(proxy.Handler(authProxy)))
+		legacyAuth.DELETE("/auth/sessions/:id", gin.WrapH(proxy.Handler(authProxy)))
 
 		// payments & subscriptions
 		legacyAuth.Any("/payments", gin.WrapH(proxy.Handler(paymentProxy)))
@@ -207,6 +209,8 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	authProtected.Use(middleware.JWTAuth(cfg.JWTSecret))
 	{
 		authProtected.POST("/logout", gin.WrapH(proxy.Handler(authProxy)))
+		authProtected.GET("/sessions", gin.WrapH(proxy.Handler(authProxy)))
+		authProtected.DELETE("/sessions/:id", gin.WrapH(proxy.Handler(authProxy)))
 	}
 
 	// ── Rate-limited public endpoints ────────────────────────────────────────

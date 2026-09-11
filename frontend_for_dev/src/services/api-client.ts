@@ -70,6 +70,27 @@ export async function register(email: string, password: string, fullName: string
   return { token: res.token, user: { id: res.id, email: res.email, fullName: res.fullName, role: res.role } };
 }
 
+// ── Active Sessions ────────────────────────────────────────────────────────────
+
+export interface DeveloperSession {
+  id: string;
+  developerId: string;
+  ipAddress: string;
+  userAgent: string;
+  createdAt: string;
+  lastSeenAt: string;
+  revokedAt?: string | null;
+}
+
+export async function listMySessions(): Promise<DeveloperSession[]> {
+  const res = await request<DeveloperSession[]>("/dev/sessions");
+  return Array.isArray(res) ? res : [];
+}
+
+export async function revokeSession(id: string): Promise<void> {
+  return request<void>(`/dev/sessions/${id}`, { method: "DELETE" });
+}
+
 // ── Platform Stats ─────────────────────────────────────────────────────────────
 
 export interface PlatformStats {

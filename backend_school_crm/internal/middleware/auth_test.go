@@ -31,7 +31,7 @@ func makeJWT(secret, userID string, expiry time.Duration) string {
 
 func TestAuthMiddleware_MissingHeader(t *testing.T) {
 	r := gin.New()
-	r.Use(middleware.AuthMiddleware("supersecretkey32byteslong!!!!!!!"))
+	r.Use(middleware.AuthMiddleware("supersecretkey32byteslong!!!!!!!", nil))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -45,7 +45,7 @@ func TestAuthMiddleware_MissingHeader(t *testing.T) {
 
 func TestAuthMiddleware_MalformedHeader(t *testing.T) {
 	r := gin.New()
-	r.Use(middleware.AuthMiddleware("supersecretkey32byteslong!!!!!!!"))
+	r.Use(middleware.AuthMiddleware("supersecretkey32byteslong!!!!!!!", nil))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -60,7 +60,7 @@ func TestAuthMiddleware_MalformedHeader(t *testing.T) {
 
 func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	r := gin.New()
-	r.Use(middleware.AuthMiddleware("supersecretkey32byteslong!!!!!!!"))
+	r.Use(middleware.AuthMiddleware("supersecretkey32byteslong!!!!!!!", nil))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -78,7 +78,7 @@ func TestAuthMiddleware_ExpiredToken(t *testing.T) {
 	token := makeJWT(secret, "user-123", -time.Hour) // expired 1h ago
 
 	r := gin.New()
-	r.Use(middleware.AuthMiddleware(secret))
+	r.Use(middleware.AuthMiddleware(secret, nil))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -97,7 +97,7 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 
 	var capturedUserID string
 	r := gin.New()
-	r.Use(middleware.AuthMiddleware(secret))
+	r.Use(middleware.AuthMiddleware(secret, nil))
 	r.GET("/", func(c *gin.Context) {
 		id, err := middleware.GetUserID(c)
 		if err != nil {
@@ -126,7 +126,7 @@ func TestAuthMiddleware_BranchIDPropagated(t *testing.T) {
 
 	var capturedBranch string
 	r := gin.New()
-	r.Use(middleware.AuthMiddleware(secret))
+	r.Use(middleware.AuthMiddleware(secret, nil))
 	r.GET("/", func(c *gin.Context) {
 		v, _ := c.Get("branch_id")
 		capturedBranch, _ = v.(string)
@@ -166,7 +166,7 @@ func TestAuthMiddleware_WrongSecret(t *testing.T) {
 	token := makeJWT("correct-secret-32bytes-long!!!!!", "u1", time.Hour)
 
 	r := gin.New()
-	r.Use(middleware.AuthMiddleware("wrong-secret-32bytes-long!!!!!!!"))
+	r.Use(middleware.AuthMiddleware("wrong-secret-32bytes-long!!!!!!!", nil))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

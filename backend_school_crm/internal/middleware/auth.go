@@ -1,21 +1,38 @@
 package middleware
 
 import (
+	"context"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 )
 
 type CustomClaims struct {
-	UserID string `json:"user_id"`
-	Role   string `json:"role"`
+	UserID    string `json:"user_id"`
+	Role      string `json:"role"`
+	SessionID string `json:"sid,omitempty"`
 	jwt.RegisteredClaims
 }
 
-func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
+// sessionRevokedKey must match auth_service's key format exactly (see
+// auth_service/internal/service/auth_service.go sessionRevokedKey) — both
+// share the same Redis instance, and auth_service is what writes this key
+// when a user signs a specific device/session out.
+func sessionRevokedKey(sessionID string) string { return "auth:session:revoked:" + sessionID }
+
+// AuthMiddleware validates the regular-user Bearer token. rdb is optional —
+// pass nil to skip the session-revocation check entirely (e.g. in tests, or
+// if Redis is unavailable); when present, a token whose sid claim has been
+// revoked (via "sign this device out") is rejected even though the JWT
+// itself is still validly signed and unexpired. Tokens minted before the sid
+// claim existed simply have no session to check and are never rejected here.
+func AuthMiddleware(jwtSecret string, rdb *redis.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -42,6 +59,19 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			c.Abort()
 			return
+		}
+
+		if rdb != nil && claims.SessionID != "" {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 500*time.Millisecond)
+			revoked, rerr := rdb.Exists(ctx, sessionRevokedKey(claims.SessionID)).Result()
+			cancel()
+			if rerr != nil {
+				log.Printf("[AuthMiddleware] session revocation check failed, failing open: %v", rerr)
+			} else if revoked > 0 {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "token has been revoked"})
+				c.Abort()
+				return
+			}
 		}
 
 		c.Set("user_id", claims.UserID)

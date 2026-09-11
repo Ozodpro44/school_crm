@@ -576,6 +576,31 @@ export function logout(): void {
 }
 
 // ============================================================================
+// ACTIVE SESSIONS (logged-in devices)
+// ============================================================================
+
+export interface UserSession {
+  id: string;
+  userId: string;
+  ipAddress: string;
+  userAgent: string;
+  createdAt: string;
+}
+
+/** List the current user's own active (non-revoked) sessions/devices. */
+export async function listSessions(): Promise<UserSession[]> {
+  const response = await apiRequest<unknown>("/auth/sessions");
+  return unwrapItems<UserSession>(response);
+}
+
+/** Sign a single device out. Revoking the current device logs this browser out too. */
+export async function revokeSession(id: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(`/auth/sessions/${id}`, {
+    method: "DELETE",
+  });
+}
+
+// ============================================================================
 // USER ENDPOINTS
 // ============================================================================
 

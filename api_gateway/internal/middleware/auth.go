@@ -36,11 +36,19 @@ func InitRedis(rdb *redis.Client) {
 // logout (see auth_service/internal/service/auth_service.go blacklistKey).
 func blacklistKey(token string) string { return "auth:blacklist:" + token }
 
+// sessionRevokedKey must match auth_service's key format exactly (see
+// auth_service/internal/service/auth_service.go sessionRevokedKey) —
+// auth_service sets this when a user signs one specific device out via
+// DELETE /auth/sessions/:id, distinct from the blacklist key above which
+// covers "sign out everywhere" (Logout).
+func sessionRevokedKey(sessionID string) string { return "auth:session:revoked:" + sessionID }
+
 // CustomClaims mirrors the monolith and auth_service JWT payload.
 type CustomClaims struct {
-	UserID   string `json:"user_id"`
-	Role     string `json:"role"`
-	BranchID string `json:"branch_id,omitempty"`
+	UserID    string `json:"user_id"`
+	Role      string `json:"role"`
+	BranchID  string `json:"branch_id,omitempty"`
+	SessionID string `json:"sid,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -78,6 +86,19 @@ func JWTAuth(jwtSecret string) gin.HandlerFunc {
 			cancel()
 			if berr != nil {
 				slog.Warn("blacklist check failed, failing open", "error", berr)
+			} else if revoked > 0 {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "token has been revoked"})
+				c.Abort()
+				return
+			}
+		}
+
+		if redisClient != nil && claims.SessionID != "" {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 500*time.Millisecond)
+			revoked, serr := redisClient.Exists(ctx, sessionRevokedKey(claims.SessionID)).Result()
+			cancel()
+			if serr != nil {
+				slog.Warn("session revocation check failed, failing open", "error", serr)
 			} else if revoked > 0 {
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "token has been revoked"})
 				c.Abort()

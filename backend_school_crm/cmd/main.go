@@ -333,7 +333,7 @@ func main() {
 
 	// ── Dev-protected routes ──────────────────────────────────────────────────
 	devProtected := router.Group("/api/v1")
-	devProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret))
+	devProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret, developerService))
 	handlers.RegisterDevSettingsRoutes(devProtected, database)
 	handlers.RegisterDevLogsRoutes(devProtected, database)
 	handlers.RegisterDevCRMRoutes(devProtected, userService, branchService)
@@ -344,10 +344,11 @@ func main() {
 	handlers.RegisterPaymentTypeDevRoutes(devProtected, paymentTypeService)
 	handlers.RegisterClickUzDevRoutes(devProtected, clickUzService)
 	handlers.RegisterDevUtilityRoutes(devProtected, database)
+	handlers.RegisterDeveloperSessionRoutes(devProtected, developerService)
 
 	// ── Auth-only (login required, subscription not required) ─────────────────
 	authOnly := router.Group("/api/v1")
-	authOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	authOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret, redisClient.GetClient()))
 	authOnly.Use(middleware.RequestTimeout(30 * time.Second))
 	handlers.RegisterSubscriptionProtectedRoutes(authOnly, subscriptionService, userService)
 	handlers.RegisterClickUzRoutes(authOnly, clickUzService, subscriptionService)
@@ -355,7 +356,7 @@ func main() {
 
 	// ── Protected routes (login + active subscription) ────────────────────────
 	protected := router.Group("/api/v1")
-	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret, redisClient.GetClient()))
 	protected.Use(middleware.SubscriptionGate(userService, subscriptionService))
 	protected.Use(middleware.TenantBranchMiddleware(userService))
 	protected.Use(middleware.RequestTimeout(30 * time.Second))
@@ -394,7 +395,7 @@ func main() {
 	handlers.RegisterDeveloperRoutes(legacyPublicDev, database, subscriptionService)
 
 	legacyDevProtected := router.Group("/api")
-	legacyDevProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret))
+	legacyDevProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret, developerService))
 	handlers.RegisterDevLogsRoutes(legacyDevProtected, database)
 	handlers.RegisterDevSettingsRoutes(legacyDevProtected, database)
 	handlers.RegisterDevCRMRoutes(legacyDevProtected, userService, branchService)
@@ -404,9 +405,10 @@ func main() {
 	handlers.RegisterSubscriptionPlanDevRoutes(legacyDevProtected, subscriptionService)
 	handlers.RegisterPaymentTypeDevRoutes(legacyDevProtected, paymentTypeService)
 	handlers.RegisterDevUtilityRoutes(legacyDevProtected, database)
+	handlers.RegisterDeveloperSessionRoutes(legacyDevProtected, developerService)
 
 	legacyAuthOnly := router.Group("/api")
-	legacyAuthOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	legacyAuthOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret, redisClient.GetClient()))
 	legacyAuthOnly.Use(middleware.RequestTimeout(30 * time.Second))
 	handlers.RegisterSubscriptionProtectedRoutes(legacyAuthOnly, subscriptionService, userService)
 
