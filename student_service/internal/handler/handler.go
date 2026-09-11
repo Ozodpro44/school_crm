@@ -173,6 +173,30 @@ func requestBranchID(c *gin.Context) string {
 	return c.GetHeader("X-User-Branch-ID")
 }
 
+// canDelete reports whether role may delete a student/class record.
+// Matches frontend_school_crm's DEFAULT_PERMISSIONS matrix: only
+// admin/branch_admin (tenant-level) get canDeleteStudents/canDeleteClasses:
+// true — manager/accountant/teacher/student/parent all get false, and the
+// frontend hides delete buttons accordingly. Nothing server-side enforced
+// this before — any of those roles could call DELETE directly, as long as
+// they had branch access, and it would succeed.
+func canDelete(role string) bool {
+	switch role {
+	case "admin", "branch_admin", "developer", "super_admin":
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *Handler) requireDeletePermission(c *gin.Context) bool {
+	if !canDelete(c.GetHeader("X-User-Role")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
+		return false
+	}
+	return true
+}
+
 // requireBranchAccess checks that the caller (identified by the
 // JWT-verified X-User-ID/X-User-Role headers) is authorized for branchID —
 // granted if it's their own branch, they're linked to it via
@@ -241,6 +265,9 @@ func (h *Handler) UpdateStudent(c *gin.Context) {
 }
 
 func (h *Handler) DeleteStudent(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
 	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
@@ -353,6 +380,9 @@ func (h *Handler) UpdateClass(c *gin.Context) {
 }
 
 func (h *Handler) DeleteClass(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
 	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})

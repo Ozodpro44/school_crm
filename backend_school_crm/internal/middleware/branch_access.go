@@ -107,3 +107,46 @@ func TenantBranchMiddleware(userSvc *service.UserService) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// RequireBranchIDQueryAccess validates that the caller belongs to whatever
+// branchId is passed as a query parameter. TenantBranchMiddleware only ever
+// validates the X-Branch-ID header — its own doc comment says handlers must
+// self-validate a query/body branchId — but the report and messaging
+// handlers never did: they read branchId straight from the query string and
+// passed it to the service layer unchecked, letting any authenticated
+// caller (any role, since these routes are gated by a boolean permission
+// flag like canViewReports, not branch membership) read another branch's
+// full payment/salary/expense/debtor data or message history by editing
+// the query string.
+func RequireBranchIDQueryAccess(userSvc *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		branchID := c.Query("branchId")
+		if branchID == "" {
+			c.Next()
+			return
+		}
+
+		userID, err := GetUserID(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			c.Abort()
+			return
+		}
+
+		ok, err := userSvc.BelongsToBranch(c.Request.Context(), userID, branchID)
+		if err != nil {
+			log.Printf("[RequireBranchIDQueryAccess] DB error for user=%s branch=%s: %v", userID, branchID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying branch access"})
+			c.Abort()
+			return
+		}
+		if !ok {
+			log.Printf("[RequireBranchIDQueryAccess] BOLA attempt blocked: user=%s tried to access branch=%s", userID, branchID)
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied: you do not belong to this branch"})
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
+}

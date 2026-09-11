@@ -57,6 +57,27 @@ func (h *Handler) requireBranchAccess(c *gin.Context, branchID string) bool {
 	return true
 }
 
+// canDelete reports whether role may delete an expense — matches
+// frontend_school_crm's DEFAULT_PERMISSIONS (only admin/branch_admin get
+// canDeleteExpenses:true). Nothing server-side enforced this before; any
+// role with branch access could call DELETE directly.
+func canDelete(role string) bool {
+	switch role {
+	case "admin", "branch_admin", "developer", "super_admin":
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *Handler) requireDeletePermission(c *gin.Context) bool {
+	if !canDelete(c.GetHeader("X-User-Role")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
+		return false
+	}
+	return true
+}
+
 func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/expenses", h.ListExpenses)
 	r.POST("/expenses", h.CreateExpense)
@@ -212,6 +233,9 @@ func (h *Handler) UpdateExpense(c *gin.Context) {
 }
 
 func (h *Handler) DeleteExpense(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
 	branchID := requestBranchID(c)
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})

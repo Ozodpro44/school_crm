@@ -38,6 +38,27 @@ func (h *PaymentHandler) requireBranchAccess(c *gin.Context, branchID string) bo
 	return true
 }
 
+// canDelete reports whether role may delete a payment — matches
+// frontend_school_crm's DEFAULT_PERMISSIONS (only admin/branch_admin get
+// canDeletePayments:true). Nothing server-side enforced this before; any
+// role with branch access could call DELETE directly.
+func canDelete(role string) bool {
+	switch role {
+	case "admin", "branch_admin", "developer", "super_admin":
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *PaymentHandler) requireDeletePermission(c *gin.Context) bool {
+	if !canDelete(c.GetHeader("X-User-Role")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
+		return false
+	}
+	return true
+}
+
 func (h *PaymentHandler) Register(r *gin.RouterGroup) {
 	r.GET("/payments", h.List)
 	r.POST("/payments", h.Create)
@@ -188,6 +209,9 @@ func (h *PaymentHandler) Update(c *gin.Context) {
 // Delete godoc
 // DELETE /api/v1/payments/:id
 func (h *PaymentHandler) Delete(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
 	id := c.Param("id")
 	p, err := h.svc.GetByID(c.Request.Context(), id)
 	if err != nil {

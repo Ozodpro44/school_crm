@@ -389,13 +389,23 @@ func (s *BranchService) GetAll(ctx context.Context) ([]Branch, error) {
 	return branches, rows.Err()
 }
 
+// GetByAdminID returns every branch a user administers — as the branch's
+// own admin_id, OR via a branch_managers row. It used to check admin_id
+// only, so a manager granted a second branch purely through branch_managers
+// (the mechanism this whole HasBranchAccess pattern exists for, since
+// branch-switching never reissues the JWT) had no way to even see that
+// branch in their branch list/switcher, despite HasBranchAccess correctly
+// authorizing direct API calls to it.
 func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]Branch, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
 	rows, err := s.db.Conn().QueryContext(ctx,
-		`SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at
-		 FROM branches WHERE admin_id = $1 ORDER BY name`, adminID)
+		`SELECT DISTINCT b.id, b.name, b.address, b.phone, b.monthly_payment, b.currency, b.admin_id, b.created_at, b.updated_at
+		 FROM branches b
+		 LEFT JOIN branch_managers bm ON bm.branch_id = b.id AND bm.manager_id = $1
+		 WHERE b.admin_id = $1 OR bm.manager_id IS NOT NULL
+		 ORDER BY b.name`, adminID)
 	if err != nil {
 		return nil, err
 	}

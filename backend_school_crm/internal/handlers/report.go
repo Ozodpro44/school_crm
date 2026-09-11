@@ -20,6 +20,7 @@ func RegisterReportRoutes(router *gin.RouterGroup, reportService *service.Report
 		// Protected report endpoints
 		protected := reports.Group("")
 		protected.Use(middleware.PermissionChecker(userService, "canViewReports"))
+		protected.Use(middleware.RequireBranchIDQueryAccess(userService))
 		{
 			protected.GET("/payments", getPaymentReport(reportService))
 			protected.GET("/salaries", getSalaryReport(reportService))

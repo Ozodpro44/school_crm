@@ -50,16 +50,16 @@ func TestGetDefaultPermissionsByRole_AllRoles(t *testing.T) {
 		},
 		{
 			role:              models.RoleBranchAdmin,
-			canDeleteStudents: false,
-			canEditSettings:   false,
-			canCreatePayments: false,
+			canDeleteStudents: true,
+			canEditSettings:   true,
+			canCreatePayments: true,
 			canViewStudents:   true,
 		},
 		{
 			role:              models.RoleManager,
 			canDeleteStudents: false,
 			canEditSettings:   false,
-			canCreatePayments: false,
+			canCreatePayments: true,
 			canViewStudents:   true,
 		},
 		{

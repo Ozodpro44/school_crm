@@ -17,7 +17,7 @@ import (
 //	PUT  /messages/student/:id/telegram — set telegram chat_id on student
 func RegisterMessagingRoutes(router *gin.RouterGroup, svc *service.MessagingService, userService *service.UserService) {
 	g := router.Group("/messages")
-	g.GET("", middleware.PermissionChecker(userService, "canViewStudents"), listMessages(svc))
+	g.GET("", middleware.PermissionChecker(userService, "canViewStudents"), middleware.RequireBranchIDQueryAccess(userService), listMessages(svc))
 	g.POST("/send", middleware.PermissionChecker(userService, "canEditStudents"), sendMessage(svc))
 	g.PUT("/student/:id/telegram", middleware.PermissionChecker(userService, "canEditStudents"), setStudentTelegram(svc))
 }
