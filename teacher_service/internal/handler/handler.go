@@ -22,9 +22,11 @@ func New(teachers *service.TeacherService, salaries *service.SalaryService) *Han
 // several branches picks among them client-side — branch switching in the
 // frontend does not reissue a JWT, so the token's own branch_id stays fixed
 // to the user's home branch and can't be used to infer which branch they
-// currently mean). Falls back to X-User-Branch-ID, set by api_gateway's
-// JWTAuth middleware (and this service's own, see middleware.JWTAuth), when
-// no explicit choice is given.
+// currently mean). Falls back to X-Branch-ID, the frontend's currently-
+// selected-branch header — NOT X-User-Branch-ID, which is the JWT's own
+// fixed home-branch claim and is often empty for admin/developer accounts
+// with no single home branch (using it here previously produced a spurious
+// "branchId is required" for exactly those accounts).
 //
 // Resolving a branch here is NOT an authorization decision — every caller
 // of this function MUST also call requireBranchAccess (or the resource's
@@ -34,7 +36,7 @@ func requestBranchID(c *gin.Context) string {
 	if v := c.Query("branchId"); v != "" {
 		return v
 	}
-	return c.GetHeader("X-User-Branch-ID")
+	return c.GetHeader("X-Branch-ID")
 }
 
 // requireBranchAccess checks that the caller (identified by the

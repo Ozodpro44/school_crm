@@ -63,15 +63,18 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 // pinned to their own branch (from the verified JWT), and only a
 // platform-level role may request an explicit branchId or all branches.
 func (h *Handler) ListUsers(c *gin.Context) {
-	// Query param first (not the JWT header) so a multi-branch manager who
-	// switched branches client-side — the JWT's own branch_id never changes
-	// on switch — sees the branch they actually picked, same as
-	// GetSettings/UpdateSettings and notification_service's requestBranchID.
+	// Query param first, then X-Branch-ID (the frontend's currently-selected
+	// branch) — NOT X-User-Branch-ID, the JWT's own fixed home-branch claim,
+	// which never changes when the user switches branches client-side and is
+	// often empty outright for admin/developer accounts with no single home
+	// branch. Falling back to X-User-Branch-ID here previously made ListUsers
+	// 403 for exactly those accounts ("no branch associated with this
+	// account") even though the request carried a valid X-Branch-ID.
 	// HasBranchAccess is what actually authorizes it; the param alone is
 	// never trusted.
 	branchID := c.Query("branchId")
 	if branchID == "" {
-		branchID = c.GetHeader("X-User-Branch-ID")
+		branchID = c.GetHeader("X-Branch-ID")
 	}
 	callerRole := c.GetHeader("X-User-Role")
 	if !isSuperRole(callerRole) {
@@ -576,7 +579,7 @@ type settingsResponse struct {
 func (h *Handler) GetSettings(c *gin.Context) {
 	branchIDStr := c.Query("branchId")
 	if branchIDStr == "" {
-		branchIDStr = c.GetHeader("X-User-Branch-ID")
+		branchIDStr = c.GetHeader("X-Branch-ID")
 	}
 	if branchIDStr == "" {
 		if v, ok := c.Get("branch_id"); ok {
@@ -622,7 +625,7 @@ func (h *Handler) GetSettings(c *gin.Context) {
 func (h *Handler) UpdateSettings(c *gin.Context) {
 	branchIDStr := c.Query("branchId")
 	if branchIDStr == "" {
-		branchIDStr = c.GetHeader("X-User-Branch-ID")
+		branchIDStr = c.GetHeader("X-Branch-ID")
 	}
 	if branchIDStr == "" {
 		if v, ok := c.Get("branch_id"); ok {

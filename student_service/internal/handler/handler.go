@@ -156,8 +156,14 @@ func (h *Handler) CreateStudent(c *gin.Context) {
 // several branches picks among them client-side — branch switching in the
 // frontend does not reissue a JWT, so the token's own branch_id stays fixed
 // to the user's home branch and can't be used to infer which branch they
-// currently mean). Falls back to X-User-Branch-ID, set by api_gateway's
-// JWTAuth middleware from the verified JWT, when no explicit choice is given.
+// currently mean). Falls back to X-Branch-ID, the frontend's currently-
+// selected-branch header (same convention as ListSchedule/ListAssignments
+// below and every other microservice's branch-scoped handlers) — NOT
+// X-User-Branch-ID, which is the JWT's own fixed home-branch claim and is
+// often empty outright for admin/developer accounts with no single home
+// branch. Using X-User-Branch-ID here previously broke exactly that case:
+// an admin with an empty JWT branch_id got "branchId is required" even
+// though they had a valid X-Branch-ID selection the request already carried.
 //
 // Resolving a branch here is NOT an authorization decision — every caller
 // of this function MUST also call requireBranchAccess (or the resource's
@@ -170,7 +176,7 @@ func requestBranchID(c *gin.Context) string {
 	if v := c.Query("branchId"); v != "" {
 		return v
 	}
-	return c.GetHeader("X-User-Branch-ID")
+	return c.GetHeader("X-Branch-ID")
 }
 
 // canDelete reports whether role may delete a student/class record.
