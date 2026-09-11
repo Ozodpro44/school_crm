@@ -155,11 +155,15 @@ export default function Subscriptions() {
       // flag instead. (endDate/renewalDate have no such escape hatch yet —
       // leaving a date blank just leaves the stored date untouched.)
       const notesWasCleared = (selected.notes ?? "") !== "" && editForm.notes.trim() === "";
+      // The backend's EndDate/RenewalDate fields are *time.Time, whose JSON
+      // unmarshaling requires full RFC3339 — a bare "YYYY-MM-DD" from the
+      // <input type="date"> fails to parse ("cannot parse \"\" as \"T\"").
+      const toRFC3339 = (d: string) => (d ? `${d}T00:00:00Z` : undefined);
       const updated = await updateSubscription(selected.id, {
         status: editForm.status,
         planId: editForm.planId || undefined,
-        endDate: editForm.endDate || undefined,
-        renewalDate: editForm.renewalDate || undefined,
+        endDate: toRFC3339(editForm.endDate),
+        renewalDate: toRFC3339(editForm.renewalDate),
         notes: editForm.notes || undefined,
         clearNotes: notesWasCleared,
         autoRenew: editForm.autoRenew,
