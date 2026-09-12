@@ -89,7 +89,7 @@ func (s *BranchService) Create(ctx context.Context, req *CreateBranchRequest) (*
 
 func (s *BranchService) GetByID(ctx context.Context, id string) (*models.Branch, error) {
 	branch := &models.Branch{}
-	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE id = $1`
+	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE id = $1`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&branch.ID, &branch.Name, &branch.Address, &branch.Phone, &branch.MonthlyPayment, &branch.Currency, &branch.AdminID, &branch.CurrentFinancialMonthID, &branch.CreatedAt, &branch.UpdatedAt,
@@ -112,7 +112,7 @@ func (s *BranchService) GetByID(ctx context.Context, id string) (*models.Branch,
 }
 
 func (s *BranchService) GetAll(ctx context.Context) ([]models.Branch, error) {
-	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches ORDER BY name`
+	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches ORDER BY name`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query)
 	if err != nil {
@@ -143,7 +143,7 @@ func (s *BranchService) GetAll(ctx context.Context) ([]models.Branch, error) {
 }
 
 func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]models.Branch, error) {
-	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE admin_id = $1 ORDER BY name`
+	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE admin_id = $1 ORDER BY name`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, adminID)
 	if err != nil {

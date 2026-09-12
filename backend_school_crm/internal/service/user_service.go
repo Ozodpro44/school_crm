@@ -106,7 +106,7 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*model
 	if user.Role == models.RoleAdmin {
 		// For admins, get branches they created (admin_id = user.ID)
 		query := `
-			SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at
+			SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, created_at, updated_at
 			FROM branches
 			WHERE admin_id = $1
 			ORDER BY name
@@ -510,7 +510,7 @@ func (s *UserService) Delete(ctx context.Context, id string) error {
 func (s *UserService) GetUserBranches(ctx context.Context, userID string) ([]models.Branch, error) {
 	branches := []models.Branch{}
 	query := `
-		SELECT b.id, b.name, b.address, b.phone, b.monthly_payment, b.currency, b.admin_id, b.created_at, b.updated_at
+		SELECT b.id, b.name, COALESCE(b.address, ''), COALESCE(b.phone, ''), b.monthly_payment, b.currency, b.admin_id, b.created_at, b.updated_at
 		FROM branches b
 		INNER JOIN branch_managers bm ON b.id = bm.branch_id
 		WHERE bm.manager_id = $1
@@ -537,7 +537,7 @@ func (s *UserService) GetUserBranches(ctx context.Context, userID string) ([]mod
 // GetAdminBranch returns the first branch owned by the given admin
 func (s *UserService) GetAdminBranch(ctx context.Context, adminID string) (*models.Branch, error) {
 	branch := &models.Branch{}
-	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at
+	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, created_at, updated_at
 	          FROM branches WHERE admin_id = $1 ORDER BY created_at ASC LIMIT 1`
 	err := s.db.GetConn().QueryRowContext(ctx, query, adminID).Scan(
 		&branch.ID, &branch.Name, &branch.Address, &branch.Phone,
