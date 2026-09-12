@@ -386,8 +386,10 @@ func (s *AuthService) CompleteRegistration(ctx context.Context, email, otp strin
 	if err != nil || subtle.ConstantTimeCompare([]byte(stored), []byte(otp)) != 1 {
 		return nil, errors.New("invalid or expired code")
 	}
-	_ = s.redis.Del(ctx, registrationOTPKey(email))
-	_ = s.redis.Del(ctx, attemptsKey)
+	// Deletion is deferred until the transaction below actually commits (not
+	// here, right after the compare) — a transient DB error would otherwise
+	// burn an OTP the caller entered correctly, forcing them through the
+	// resend cooldown for a new code despite having done nothing wrong.
 
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
@@ -420,6 +422,8 @@ func (s *AuthService) CompleteRegistration(ctx context.Context, email, otp strin
 		if err := tx.Commit(); err != nil {
 			return nil, fmt.Errorf("commit: %w", err)
 		}
+		_ = s.redis.Del(ctx, registrationOTPKey(email))
+		_ = s.redis.Del(ctx, attemptsKey)
 		u := &User{ID: id, Email: email, FullName: fullName, Role: role, CreatedAt: createdAt}
 		if orgName.Valid {
 			u.OrganizationName = orgName.String
@@ -432,8 +436,12 @@ func (s *AuthService) CompleteRegistration(ctx context.Context, email, otp strin
 
 	now := time.Now().UTC()
 	_, err = tx.ExecContext(ctx,
-		`UPDATE users SET email_verified = true, email_verified_at = $1, trial_used_at = $1, updated_at = $1 WHERE id = $2`,
-		now, id,
+		// email_verified_at/trial_used_at are timestamptz but updated_at is a
+		// bare timestamp — reusing one placeholder across both types made
+		// lib/pq's extended-protocol type inference ambiguous ("inconsistent
+		// types deduced for parameter $1"), so each gets its own.
+		`UPDATE users SET email_verified = true, email_verified_at = $1, trial_used_at = $2, updated_at = $3 WHERE id = $4`,
+		now, now, now, id,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("mark email verified: %w", err)
@@ -487,6 +495,8 @@ func (s *AuthService) CompleteRegistration(ctx context.Context, email, otp strin
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
+	_ = s.redis.Del(ctx, registrationOTPKey(email))
+	_ = s.redis.Del(ctx, attemptsKey)
 
 	u := &User{ID: id, Email: email, FullName: fullName, Role: role, CreatedAt: createdAt}
 	if orgName.Valid {

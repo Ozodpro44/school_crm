@@ -322,6 +322,10 @@ func (s *BranchService) Create(ctx context.Context, name, address, phone string,
 	// The new branch's admin_id is who its quota counts against — usually the
 	// caller themselves, but a developer/super_admin creating a branch on
 	// behalf of a tenant admin passes adminID explicitly (see CreateBranch).
+	// Resolved once and used for BOTH the quota check and the stored row:
+	// previously a request that omitted adminId (relying on this same
+	// caller-fallback) still inserted admin_id = NULL, silently orphaning
+	// the branch — invisible even to the admin who just created it.
 	ownerID := requesterID
 	if adminID != nil && *adminID != "" {
 		ownerID = *adminID
@@ -332,6 +336,10 @@ func (s *BranchService) Create(ctx context.Context, name, address, phone string,
 		}
 	}
 
+	var ownerIDPtr *string
+	if ownerID != "" {
+		ownerIDPtr = &ownerID
+	}
 	b := &Branch{
 		ID:             uuid.New().String(),
 		Name:           name,
@@ -339,7 +347,7 @@ func (s *BranchService) Create(ctx context.Context, name, address, phone string,
 		Phone:          phone,
 		MonthlyPayment: monthlyPayment,
 		Currency:       "UZS",
-		AdminID:        adminID,
+		AdminID:        ownerIDPtr,
 		CreatedAt:      time.Now().UTC(),
 		UpdatedAt:      time.Now().UTC(),
 	}
@@ -398,16 +406,18 @@ func (s *BranchService) GetByID(ctx context.Context, id string) (*Branch, error)
 	defer cancel()
 
 	var b Branch
+	var address, phone sql.NullString
 	err := s.db.Conn().QueryRowContext(ctx,
 		`SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at
 		 FROM branches WHERE id = $1`, id,
-	).Scan(&b.ID, &b.Name, &b.Address, &b.Phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.CreatedAt, &b.UpdatedAt)
+	).Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.CreatedAt, &b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	b.Address, b.Phone = address.String, phone.String
 
 	// Attach current open financial month (best-effort — ignore if missing)
 	var fm FinancialMonth
@@ -437,9 +447,11 @@ func (s *BranchService) GetAll(ctx context.Context) ([]Branch, error) {
 	var branches []Branch
 	for rows.Next() {
 		var b Branch
-		if err := rows.Scan(&b.ID, &b.Name, &b.Address, &b.Phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		var address, phone sql.NullString
+		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.CreatedAt, &b.UpdatedAt); err != nil {
 			return nil, err
 		}
+		b.Address, b.Phone = address.String, phone.String
 		branches = append(branches, b)
 	}
 	return branches, rows.Err()
@@ -470,9 +482,11 @@ func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]Bra
 	var branches []Branch
 	for rows.Next() {
 		var b Branch
-		if err := rows.Scan(&b.ID, &b.Name, &b.Address, &b.Phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		var address, phone sql.NullString
+		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.CreatedAt, &b.UpdatedAt); err != nil {
 			return nil, err
 		}
+		b.Address, b.Phone = address.String, phone.String
 		branches = append(branches, b)
 	}
 	return branches, rows.Err()
