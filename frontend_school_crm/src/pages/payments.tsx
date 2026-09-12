@@ -54,6 +54,7 @@ import { useBranch } from "@/context/BranchContext";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
+import { useSettings } from "@/hooks/use-settings";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { toTitleCase } from "@/lib/utils";
@@ -152,12 +153,23 @@ export default function PaymentsPage() {
 
   const { data: branchData } = useBranchQuery(branchId);
   const { data: classesFromQuery } = useClassesQuery(branchId);
+  const { settings } = useSettings();
 
   // Initialize selectedMonth/Year from branch's financial month (once)
   const financialMonth = branchData?.currentFinancialMonth?.month
     ?.toString()
     .padStart(2, "0");
   const financialYear = branchData?.currentFinancialMonth?.year;
+
+  // The sidebar already hides this link for anyone lacking canViewPayments
+  // (see Layout.tsx), but that alone doesn't stop someone from typing the
+  // URL directly — mirrors the same page-level guard settings.tsx uses for
+  // canViewSettings.
+  useEffect(() => {
+    if (!hasPermission("canViewPayments")) {
+      router.push("/");
+    }
+  }, [router]);
 
   useEffect(() => {
     if (financialMonth && financialYear && !selectedMonth) {
@@ -884,6 +896,7 @@ export default function PaymentsPage() {
         data={posPreviewData}
         onClose={() => setPosPreviewData(null)}
         branchName={branchData?.name}
+        organizationName={settings?.organizationName}
         t={t}
         formatMonth={(m) => getMonthName(String(m))}
         formatMethod={getPaymentMethodLabel}

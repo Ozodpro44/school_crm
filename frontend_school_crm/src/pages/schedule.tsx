@@ -52,7 +52,7 @@ const DAY_COLORS = [
 
 export default function SchedulePage() {
   const language = useLanguage();
-  const { currentBranch } = useBranch();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
 
   const [isLoading, setIsLoading] = useState(true);
   const [slots, setSlots] = useState<ScheduleSlot[]>([]);
@@ -75,9 +75,15 @@ export default function SchedulePage() {
   const notify = useNotify();
 
   useEffect(() => {
-    if (!currentBranch?.id) return;
+    // See the equivalent guard in assignments.tsx: without the branchLoading
+    // check, a branch that never resolves left isLoading stuck forever.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
     loadData();
-  }, [currentBranch?.id]);
+  }, [currentBranch?.id, branchLoading]);
 
   const loadData = async () => {
     const branchId = currentBranch?.id;

@@ -126,4 +126,14 @@ export const branchTranslations: Partial<Translation> = {
   failedToCreateAdmin: { "uz-cyrl": "Администратор яратишда хатолик", "uz-latn": "Administrator yaratishda xatolik", en: "Failed to create admin" },
   managerBranchNote: { "uz-cyrl": "Менежер фақат ўзига тегишли филиал маълумотларини кўра олади", "uz-latn": "Menejer faqat o'ziga tegishli filial ma'lumotlarini ko'ra oladi", en: "Manager can only view their assigned branch data" },
   failedToLoadData: { "uz-cyrl": "Маълумотларни юклашда хатолик", "uz-latn": "Ma'lumotlarni yuklashda xatolik", en: "Failed to load data" },
+
+  // Mandatory first-branch onboarding step (registration no longer
+  // auto-creates a placeholder branch — see auth_service's CompleteRegistration).
+  setUpFirstBranch: { "uz-cyrl": "Биринчи филиалингизни очинг", "uz-latn": "Birinchi filialingizni oching", en: "Set up your first branch" },
+  setUpFirstBranchSubtitle: {
+    "uz-cyrl": "Ишни бошлашдан олдин камида битта филиал қўшиш керак",
+    "uz-latn": "Ishni boshlashdan oldin kamida bitta filial qo'shish kerak",
+    en: "Add at least one branch before you can start using the system",
+  },
+  createBranchAndContinue: { "uz-cyrl": "Филиал очиш ва давом этиш", "uz-latn": "Filial ochish va davom etish", en: "Create branch and continue" },
 };

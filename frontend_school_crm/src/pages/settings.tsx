@@ -179,6 +179,7 @@ export default function SettingsPage() {
         monthlyPayment: settings.monthlyPayment,
         currency: settings.currency,
         name: settings.name,
+        organizationName: settings.organizationName,
       };
 
       const updatedSettings = await updateSettings(updatePayload, currentBranch?.id);
@@ -275,6 +276,17 @@ export default function SettingsPage() {
             <CardDescription>{t("branchName")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="organizationName">{t("organizationName")}</Label>
+              <Input
+                id="organizationName"
+                value={settings.organizationName || ""}
+                onChange={(e) => handleChange("organizationName", e.target.value)}
+                disabled={!hasPermission("canEditSettings")}
+                placeholder={t("enterOrganizationName")}
+              />
+              <p className="text-xs text-muted-foreground">{t("organizationNameHint")}</p>
+            </div>
             <div className="space-y-2">
               <Label htmlFor="name">{t("branchName")}</Label>
               <Input

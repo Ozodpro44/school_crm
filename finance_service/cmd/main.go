@@ -68,7 +68,7 @@ func main() {
 	})
 	api := r.Group("/api/v1")
 	api.Use(middleware.JWTAuth(cfg.JWTSecret))
-	handler.New(expenseSvc, budgetSvc).Register(api)
+	handler.New(expenseSvc, budgetSvc, database).Register(api)
 
 	httpSrv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.Port),

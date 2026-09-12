@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,8 +36,19 @@ import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { FilterBar, FilterSearch } from "@/components/FilterBar";
 
 export default function TeachersPage() {
+  const router = useRouter();
   const { currentBranch } = useBranch();
   const branchId = currentBranch?.id ?? null;
+
+  // The sidebar already hides this link for anyone lacking canViewTeachers
+  // (see Layout.tsx), but that alone doesn't stop someone from typing the
+  // URL directly — mirrors the same page-level guard settings.tsx uses for
+  // canViewSettings.
+  useEffect(() => {
+    if (!hasPermission("canViewTeachers")) {
+      router.push("/");
+    }
+  }, [router]);
 
   const { data: teachers = [], isLoading } = useTeachersQuery(branchId);
   const { data: classes = [] } = useClassesQuery(branchId);

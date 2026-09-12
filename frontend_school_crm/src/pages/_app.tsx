@@ -150,7 +150,10 @@ function OfflineBanner() {
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
-  const isAuthPage = router.pathname === "/login" || router.pathname === "/register";
+  const isAuthPage =
+    router.pathname === "/login" ||
+    router.pathname === "/register" ||
+    router.pathname === "/onboarding-branch";
 
   // Show fatal config error screen before rendering anything else
   if (hasFatalConfigError(configErrors)) {

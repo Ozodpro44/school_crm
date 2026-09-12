@@ -219,7 +219,7 @@ export default function BillingPage() {
       // All other payment methods (manual / bank transfer / custom) → show pending
       setPaymentState({ step: "manual_pending", subscriptionId: subId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Payment failed. Please try again.");
+      setError(err instanceof Error ? err.message : t("paymentFailedRetry"));
     } finally {
       setPaying(false);
     }
@@ -328,47 +328,47 @@ export default function BillingPage() {
 
   const getAdminBanner = (): BannerConfig | null => {
     if (!currentSub) {
-      return { text: "Welcome! Choose a plan to get started.", subtext: "", color: "blue" };
+      return { text: t("welcomeChoosePlan"), subtext: "", color: "blue" };
     }
     const status = currentSub.status;
     if (status === "trial" && isTrialEndingSoon(currentSub)) {
       const days = getDaysUntilExpiry(currentSub);
       if (days <= 0) {
         return {
-          text: "Your trial period has ended.",
-          subtext: "Choose a plan below to restore access.",
+          text: t("trialEndedBanner"),
+          subtext: t("chooseToRestore"),
           color: "red",
         };
       }
       return {
-        text: `Your trial period ends in ${days} day${days === 1 ? "" : "s"}.`,
-        subtext: "Choose a plan below to continue without interruption.",
+        text: t("trialEndsInDays").replace("{days}", String(days)),
+        subtext: t("chooseToContinue"),
         color: "yellow",
       };
     }
     if (status === "expired" || status === "cancelled" || status === "past_due") {
       const msgs: Record<string, string> = {
-        expired: "Your subscription has expired.",
-        cancelled: "Your subscription has been cancelled.",
-        past_due: "Your subscription payment is past due.",
+        expired: t("subscriptionExpiredBanner"),
+        cancelled: t("subscriptionCancelledBanner"),
+        past_due: t("subscriptionPastDueBanner"),
       };
       return {
-        text: msgs[status] ?? "Your subscription is inactive.",
-        subtext: "Choose a plan below to renew.",
+        text: msgs[status] ?? t("subscriptionInactiveBanner"),
+        subtext: t("chooseToRenew"),
         color: "red",
       };
     }
     if (status === "pending_payment") {
       return {
-        text: "Payment pending.",
-        subtext: "Complete payment or choose a different plan.",
+        text: t("paymentPendingBanner"),
+        subtext: t("completeOrChoose"),
         color: "yellow",
       };
     }
     if (status === "paused") {
       return {
-        text: "Your subscription is currently paused.",
-        subtext: "Choose a plan below to restore access.",
+        text: t("subscriptionPausedBanner"),
+        subtext: t("chooseToRestore"),
         color: "yellow",
       };
     }
@@ -416,11 +416,11 @@ export default function BillingPage() {
               <div className="flex-1 space-y-6">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Current Plan</p>
+                    <p className="text-xs font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400">{t("currentPlanLabel")}</p>
                     <h2 className="text-3xl font-black text-slate-900 dark:text-white flex items-center gap-3">
                       {currentSub.plan?.name}
                       {currentSub.status === 'trial' && (
-                        <span className="text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold uppercase">trial</span>
+                        <span className="text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold uppercase">{t("trialBadge")}</span>
                       )}
                     </h2>
                   </div>
@@ -432,12 +432,12 @@ export default function BillingPage() {
                     {currentSub.status === 'active' || (currentSub.status === 'trial' && getDaysUntilExpiry(currentSub) > 0) ? (
                       <>
                         <CheckCircle2 className="w-4 h-4" />
-                        Active
+                        {t("subscriptionActive")}
                       </>
                     ) : (
                       <>
                         <AlertCircle className="w-4 h-4" />
-                        Action Required
+                        {t("actionRequired")}
                       </>
                     )}
                   </div>
@@ -447,7 +447,7 @@ export default function BillingPage() {
                   <div className="p-4 rounded-2xl bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50">
                     <div className="flex items-center gap-2 mb-1">
                       <Calendar className="w-4 h-4 text-slate-400" />
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Next Payment</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{t("nextPayment")}</p>
                     </div>
                     <p className="text-sm font-bold text-slate-900 dark:text-white">
                       {currentSub.renewal_date ? new Date(currentSub.renewal_date).toLocaleDateString() : 'N/A'}
@@ -456,10 +456,10 @@ export default function BillingPage() {
                   <div className="p-4 rounded-2xl bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50">
                     <div className="flex items-center gap-2 mb-1">
                       <Clock className="w-4 h-4 text-slate-400" />
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Time Remaining</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{t("timeRemaining")}</p>
                     </div>
                     <p className="text-sm font-bold text-slate-900 dark:text-white">
-                      {getDaysUntilExpiry(currentSub)} Days
+                      {getDaysUntilExpiry(currentSub)} {t("daysUnit")}
                     </p>
                   </div>
                 </div>
@@ -467,22 +467,22 @@ export default function BillingPage() {
                 <div className="flex items-center gap-2 p-4 rounded-2xl bg-indigo-500/5 border border-indigo-500/10">
                   <ArrowUpCircle className="w-5 h-5 text-indigo-500" />
                   <p className="text-xs text-indigo-700 dark:text-indigo-300">
-                    Need more capacity? <span className="font-bold underline cursor-pointer" onClick={() => (window as any).scrollTo({ top: 1000, behavior: 'smooth' })}>Browse higher plans</span> below.
+                    {t("needMoreCapacity")} <span className="font-bold underline cursor-pointer" onClick={() => (window as any).scrollTo({ top: 1000, behavior: 'smooth' })}>{t("browseHigherPlans")}</span> {t("belowLabel")}
                   </p>
                 </div>
               </div>
 
               {/* Right Column: Resource Usage */}
               <div className="flex-1 space-y-6 flex flex-col justify-center">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Resource Usage</p>
-                
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">{t("resourceUsage")}</p>
+
                 <div className="space-y-6">
                   {/* Branch Limit */}
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <div className="flex items-center gap-2">
                         <Layers className="w-4 h-4 text-indigo-500" />
-                        <span className="font-semibold text-slate-700 dark:text-slate-300">Branches</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">{t("branchesLabel")}</span>
                       </div>
                       <span className="font-mono text-xs text-slate-500">
                         {usage.find(u => u.metricName === 'branches')?.currentUsage || 0} / {currentSub.plan?.maxBranches || '∞'}
@@ -498,7 +498,7 @@ export default function BillingPage() {
                     <div className="flex justify-between text-sm">
                       <div className="flex items-center gap-2">
                         <Users className="w-4 h-4 text-purple-500" />
-                        <span className="font-semibold text-slate-700 dark:text-slate-300">Students</span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300">{t("students")}</span>
                       </div>
                       <span className="font-mono text-xs text-slate-500">
                         {usage.find(u => u.metricName === 'students')?.currentUsage || 0} / {currentSub.plan?.maxStudents || '∞'}
@@ -535,12 +535,10 @@ export default function BillingPage() {
         <div id="plans">
           <div className="text-center mb-10">
             <h1 className="text-4xl font-extrabold text-gray-900 dark:text-white tracking-tight">
-              {currentSub ? "Change or Upgrade Plan" : "Subscription Plans"}
+              {currentSub ? t("changeOrUpgradePlan") : t("subscriptionPlansTitle")}
             </h1>
             <p className="mt-3 text-base text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
-              {currentSub
-                ? "All plans include full platform features. Upgrade any time."
-                : "Select a plan to activate your school CRM access. All plans include full platform features."}
+              {currentSub ? t("allPlansUpgradeAnytime") : t("selectPlanToActivate")}
             </p>
           </div>
           <PricingTable
@@ -565,12 +563,12 @@ export default function BillingPage() {
                 <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 dark:border-gray-700">
                   <div>
                     <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                      Complete Your Purchase
+                      {t("completeYourPurchase")}
                     </h2>
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                       {selectedPlan.name} &mdash;{" "}
                       <span className="font-semibold text-gray-700 dark:text-gray-300">
-                        {formatPrice(selectedPlan.price)}/{selectedPlan.billingPeriod}
+                        {formatPrice(selectedPlan.price)}/{t(selectedPlan.billingPeriod)}
                       </span>
                     </p>
                   </div>
@@ -586,7 +584,7 @@ export default function BillingPage() {
                 {/* Payment methods */}
                 <div className="px-6 pt-4 pb-2">
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
-                    Choose payment method
+                    {t("choosePaymentMethod")}
                   </p>
                   <div className="space-y-2">
                     {paymentTypes.map((m) => (
@@ -636,7 +634,7 @@ export default function BillingPage() {
                     onClick={closeModal}
                     className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
-                    Cancel
+                    {t("cancel")}
                   </button>
                   <button
                     onClick={handlePay}
@@ -646,10 +644,10 @@ export default function BillingPage() {
                     {paying ? (
                       <>
                         <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                        Processing…
+                        {t("processingPayment")}
                       </>
                     ) : (
-                      "Pay Now"
+                      t("payNow")
                     )}
                   </button>
                 </div>
@@ -666,13 +664,13 @@ export default function BillingPage() {
                     </svg>
                   </div>
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-                    Pay via Telegram
+                    {t("payViaTelegram")}
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                     {paymentState.telegramData.instruction}
                   </p>
                   <div className="inline-flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-2 mb-5">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Amount:</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{t("amountLabel")}</span>
                     <span className="text-sm font-bold text-gray-900 dark:text-white">
                       {formatPrice(paymentState.telegramData.amount)}
                     </span>
@@ -683,7 +681,7 @@ export default function BillingPage() {
                     onClick={closeModal}
                     className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                   >
-                    Close
+                    {t("close")}
                   </button>
                   <a
                     href={paymentState.telegramData.telegram_url}
@@ -691,7 +689,7 @@ export default function BillingPage() {
                     rel="noopener noreferrer"
                     className="flex-1 px-4 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold text-center transition-colors"
                   >
-                    Open Telegram
+                    {t("openTelegram")}
                   </a>
                 </div>
               </>
@@ -705,16 +703,14 @@ export default function BillingPage() {
                     <CheckCircleIcon className="w-7 h-7 text-green-600 dark:text-green-400" />
                   </div>
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">
-                    Subscription Created
+                    {t("subscriptionCreatedTitle")}
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 leading-relaxed">
-                    Your subscription has been created and is pending payment.
-                    Please contact the administrator to complete the bank transfer
-                    and activate your account.
+                    {t("subscriptionCreatedDesc")}
                   </p>
                   {paymentState.subscriptionId && (
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-lg px-4 py-2 mb-5 text-left">
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Subscription ID</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mb-0.5">{t("subscriptionIdLabel")}</p>
                       <p className="text-xs font-mono text-gray-700 dark:text-gray-300 break-all">
                         {paymentState.subscriptionId}
                       </p>
@@ -726,7 +722,7 @@ export default function BillingPage() {
                     onClick={closeModal}
                     className="w-full px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
                   >
-                    Done
+                    {t("doneLabel")}
                   </button>
                 </div>
               </>

@@ -282,4 +282,45 @@ export const authTranslations: Partial<Translation> = {
     "uz-latn": "Parol kiritilishi shart",
     en: "Password is required",
   },
+
+  // Registration page — was entirely hardcoded English (plus two t() calls
+  // referencing keys that didn't exist anywhere in this file), and the login
+  // page had no link to it at all, so a brand-new school had no discoverable
+  // way to create an account.
+  noAccountYet: {
+    "uz-cyrl": "Ҳисобингиз йўқми?",
+    "uz-latn": "Hisobingiz yo'qmi?",
+    en: "Don't have an account?",
+  },
+  registerSchool: {
+    "uz-cyrl": "Мактабингизни рўйхатдан ўтказинг",
+    "uz-latn": "Maktabingizni ro'yxatdan o'tkazing",
+    en: "Register your school",
+  },
+  createAccountSubtitle: {
+    "uz-cyrl": "School CRM билан ишлашни бошлаш учун рўйхатдан ўтинг",
+    "uz-latn": "School CRM bilan ishlashni boshlash uchun ro'yxatdan o'ting",
+    en: "Sign up to get started with School CRM",
+  },
+  alreadyHaveAccount: {
+    "uz-cyrl": "Ҳисобингиз борми?",
+    "uz-latn": "Hisobingiz bormi?",
+    en: "Already have an account?",
+  },
+  welcomeToSchool: {
+    // {schoolName} is substituted at the call site with the school's actual
+    // name — see the .replace("{schoolName}", …) pattern already used for
+    // verificationCodeSentTo above.
+    "uz-cyrl": "{schoolName}га хуш келибсиз!",
+    "uz-latn": "{schoolName}ga xush kelibsiz!",
+    en: "Welcome to {schoolName}!",
+  },
+  trialStartedMessage: {
+    // {days} is substituted with the actual trial length granted by the
+    // backend (AdminGrantTrial) — hardcoding "14-day" here previously
+    // disagreed with the 30 days the backend actually grants on register.
+    "uz-cyrl": "Мактабингиз созланди ва {days} кунлик бепул синов муддатингиз бошланди. Панелга йўналтирилмоқдасиз…",
+    "uz-latn": "Maktabingiz sozlandi va {days} kunlik bepul sinov muddatingiz boshlandi. Panelga yo'naltirilmoqdasiz…",
+    en: "Your school has been set up and your {days}-day free trial has started. Redirecting you to the dashboard…",
+  },
 };

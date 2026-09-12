@@ -94,12 +94,32 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     };
     // Same-tab: BranchContext / api.ts fire this on branch change.
     const handleBranchChange = () => loadSettings();
+    // Login and registration navigate client-side (router.push, no full page
+    // reload), so this provider — mounted once in _app.tsx — never remounts
+    // and this effect never re-runs on its own. Without this listener,
+    // whatever loadSettings() resolved to BEFORE the user signed in (the
+    // unauthenticated DEFAULT_SETTINGS fallback shown on /login, or a
+    // previous session's data left over in a still-open tab) stayed
+    // permanently stuck as `settings` for the rest of the session — so a
+    // brand-new school's sidebar showed the placeholder "Wonderkids' CRM"
+    // right after registering, until they happened to switch branches or
+    // hard-refresh the page. BranchContext already listens for LOGIN/LOGOUT
+    // for the same reason; this brings LanguageContext in line with it.
+    const handleLogin = () => loadSettings();
+    const handleLogout = () => {
+      setSettings(DEFAULT_SETTINGS);
+      setIsInitialized(true);
+    };
 
     window.addEventListener("storage", handleStorageChange);
     window.addEventListener(AuthEvents.BRANCH_CHANGE, handleBranchChange);
+    window.addEventListener(AuthEvents.LOGIN, handleLogin);
+    window.addEventListener(AuthEvents.LOGOUT, handleLogout);
     return () => {
       window.removeEventListener("storage", handleStorageChange);
       window.removeEventListener(AuthEvents.BRANCH_CHANGE, handleBranchChange);
+      window.removeEventListener(AuthEvents.LOGIN, handleLogin);
+      window.removeEventListener(AuthEvents.LOGOUT, handleLogout);
     };
   }, []);
 

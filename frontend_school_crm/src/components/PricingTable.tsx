@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { getSubscriptionPlans, formatPrice } from "@/lib/subscription-api";
 import { SubscriptionPlan } from "@/types";
+import { useLanguage } from "@/hooks/use-language";
+import { getTranslation } from "@/lib/translations";
 
 interface PricingTableProps {
   onSelectPlan?: (plan: SubscriptionPlan) => void;
@@ -15,17 +17,17 @@ function CheckIcon() {
   );
 }
 
-function PlanFeatures({ plan }: { plan: SubscriptionPlan }) {
+function PlanFeatures({ plan, t }: { plan: SubscriptionPlan; t: (key: string) => string }) {
   const features: string[] = [];
 
-  if (plan.maxBranches) features.push(`Up to ${plan.maxBranches} branch${plan.maxBranches > 1 ? "es" : ""}`);
-  else features.push("Unlimited branches");
+  if (plan.maxBranches) features.push(t("upToBranches").replace("{count}", String(plan.maxBranches)));
+  else features.push(t("unlimitedBranches"));
 
-  if (plan.maxStudents) features.push(`Up to ${plan.maxStudents} students`);
-  else features.push("Unlimited students");
+  if (plan.maxStudents) features.push(t("upToStudents").replace("{count}", String(plan.maxStudents)));
+  else features.push(t("unlimitedStudents"));
 
-  if (plan.maxClasses) features.push(`Up to ${plan.maxClasses} classes`);
-  else features.push("Unlimited classes");
+  if (plan.maxClasses) features.push(t("upToClasses").replace("{count}", String(plan.maxClasses)));
+  else features.push(t("unlimitedClasses"));
 
   // Append any extra boolean features from the features map
   if (plan.features && typeof plan.features === "object") {
@@ -72,6 +74,8 @@ function PlanCardSkeleton() {
 }
 
 export default function PricingTable({ onSelectPlan, highlightPlanId }: PricingTableProps) {
+  const language = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -96,7 +100,7 @@ export default function PricingTable({ onSelectPlan, highlightPlanId }: PricingT
         <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" />
         </svg>
-        <p className="text-sm">No plans available at the moment.</p>
+        <p className="text-sm">{t("noPlansAvailable")}</p>
       </div>
     );
   }
@@ -124,12 +128,12 @@ export default function PricingTable({ onSelectPlan, highlightPlanId }: PricingT
             {/* Badge */}
             {isCurrent && (
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-xs font-semibold px-3 py-1 rounded-full shadow">
-                Current Plan
+                {t("currentPlanBadge")}
               </span>
             )}
             {!isCurrent && isPopular && (
               <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-xs font-semibold px-3 py-1 rounded-full shadow">
-                Most Popular
+                {t("mostPopularBadge")}
               </span>
             )}
 
@@ -150,8 +154,8 @@ export default function PricingTable({ onSelectPlan, highlightPlanId }: PricingT
               <span className={`text-3xl font-extrabold ${isCurrent ? "text-blue-700 dark:text-blue-300" : isPopular ? "text-indigo-700 dark:text-indigo-300" : "text-gray-900 dark:text-white"}`}>
                 {formatPrice(plan.price)}
               </span>
-              <span className="text-sm text-gray-500 dark:text-gray-400 ml-1 capitalize">
-                / {plan.billingPeriod}
+              <span className="text-sm text-gray-500 dark:text-gray-400 ml-1">
+                / {t(plan.billingPeriod)}
               </span>
             </div>
 
@@ -160,7 +164,7 @@ export default function PricingTable({ onSelectPlan, highlightPlanId }: PricingT
 
             {/* Features */}
             <div className="flex-1">
-              <PlanFeatures plan={plan} />
+              <PlanFeatures plan={plan} t={t} />
             </div>
 
             {/* CTA */}
@@ -175,7 +179,7 @@ export default function PricingTable({ onSelectPlan, highlightPlanId }: PricingT
                     : "bg-gray-900 hover:bg-gray-800 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white text-white focus:ring-gray-500"
                   }`}
               >
-                {isCurrent ? "Renew Plan" : "Select Plan"}
+                {isCurrent ? t("renewPlan") : t("selectPlan")}
               </button>
             )}
           </div>

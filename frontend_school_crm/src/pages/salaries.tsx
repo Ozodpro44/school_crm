@@ -39,7 +39,7 @@ import { useBranch } from "@/context/BranchContext";
 
 export default function SalariesPage() {
   const router = useRouter();
-  const { currentBranch } = useBranch();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
@@ -100,6 +100,16 @@ export default function SalariesPage() {
     ? `${currentBranch.currentFinancialMonth.year}-${currentBranch.currentFinancialMonth.month}`
     : undefined;
 
+  // The sidebar already hides this link for anyone lacking canViewSalaries
+  // (see Layout.tsx), but that alone doesn't stop someone from typing the
+  // URL directly — settings.tsx already guards its own page this way for
+  // canViewSettings, so this mirrors that pattern for consistency.
+  useEffect(() => {
+    if (!hasPermission("canViewSalaries")) {
+      router.push("/");
+    }
+  }, [router]);
+
   useEffect(() => {
     if (router.isReady) {
       const page = router.query.page ? parseInt(router.query.page as string, 10) : 1;
@@ -108,7 +118,13 @@ export default function SalariesPage() {
   }, [router.isReady, router.query.page]);
 
   useEffect(() => {
-    if (!currentBranch?.id) return;
+    // See the equivalent guard in assignments.tsx: without the branchLoading
+    // check, a branch that never resolves left isLoading stuck forever.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     if (!firstBranchLoadRef.current) {
       setCurrentPage(1);
@@ -121,7 +137,7 @@ export default function SalariesPage() {
       if (myId === loadRequestIdRef.current) setIsLoading(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentBranch?.id, financialMonthKey]);
+  }, [currentBranch?.id, financialMonthKey, branchLoading]);
 
   // Reload data when the user picks a different month/year. Skipped once
   // right after a branch switch — that reset already triggers its own fetch

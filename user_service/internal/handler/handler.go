@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -363,7 +364,16 @@ func (h *Handler) ListBranches(c *gin.Context) {
 // adminId) is a resource-exhaustion / tenant-spoofing vector. Ordinary
 // admin-onboarding creates its own branch — see auth_service.Register.
 func (h *Handler) CreateBranch(c *gin.Context) {
-	if !isSuperRole(c.GetHeader("X-User-Role")) {
+	// Was isSuperRole-only (developer/super_admin) — but branches.tsx's own
+	// "Add Branch" button, and the sidebar link that leads to it
+	// (Layout.tsx: `show: user?.role === "admin"`), are both built for an
+	// ordinary tenant admin managing their own multi-branch school. Every
+	// real admin clicking "Add Branch" got a 403 here. branch_admin is
+	// deliberately still excluded — adding a sibling branch is a
+	// whole-organization decision, matching canReassignRole's boundary
+	// elsewhere in this file.
+	role := c.GetHeader("X-User-Role")
+	if !isSuperRole(role) && role != "admin" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to create branches"})
 		return
 	}
@@ -378,8 +388,13 @@ func (h *Handler) CreateBranch(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	b, err := h.branches.Create(c.Request.Context(), body.Name, body.Address, body.Phone, body.MonthlyPayment, body.AdminID)
+	requesterID := c.GetHeader("X-User-ID")
+	b, err := h.branches.Create(c.Request.Context(), body.Name, body.Address, body.Phone, body.MonthlyPayment, body.AdminID, requesterID)
 	if err != nil {
+		if errors.Is(err, service.ErrBranchLimitReached) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -569,11 +584,36 @@ func (h *Handler) UpdatePermissions(c *gin.Context) {
 // ── Settings (branch-level config) ────────────────────────────────────────────
 
 type settingsResponse struct {
-	Name           string  `json:"name"`
-	MonthlyPayment float64 `json:"monthlyPayment"`
-	Currency       string  `json:"currency"`
-	UpdatedDate    string  `json:"updatedDate"`
-	CreatedDate    string  `json:"createdDate"`
+	Name             string  `json:"name"`
+	// OrganizationName is the school's own brand identity, distinct from
+	// this specific branch's name — see organizationName on the admin's user
+	// row (added alongside email verification: the "school name" given at
+	// signup used to be written ONLY into the first branch's `name` column,
+	// so it vanished the moment a second branch was opened under its own
+	// name, e.g. a receipt printed there showed no parent-brand identity at
+	// all). Resolved from the branch's admin, so every branch under one
+	// owner reports the same organization name regardless of which branch
+	// is currently selected.
+	OrganizationName string  `json:"organizationName,omitempty"`
+	MonthlyPayment   float64 `json:"monthlyPayment"`
+	Currency         string  `json:"currency"`
+	UpdatedDate      string  `json:"updatedDate"`
+	CreatedDate      string  `json:"createdDate"`
+}
+
+// organizationNameForAdmin looks up the organization_name owned by a
+// branch's admin. Best-effort: a lookup failure degrades to an empty string
+// (falls back to the branch's own name on the frontend) rather than failing
+// the whole settings request over a cosmetic field.
+func (h *Handler) organizationNameForAdmin(ctx context.Context, adminID *string) string {
+	if adminID == nil || *adminID == "" || h.db == nil {
+		return ""
+	}
+	var orgName sql.NullString
+	if err := h.db.QueryRowContext(ctx, `SELECT organization_name FROM users WHERE id = $1`, *adminID).Scan(&orgName); err != nil {
+		return ""
+	}
+	return orgName.String
 }
 
 func (h *Handler) GetSettings(c *gin.Context) {
@@ -614,11 +654,12 @@ func (h *Handler) GetSettings(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, settingsResponse{
-		Name:           b.Name,
-		MonthlyPayment: b.MonthlyPayment,
-		Currency:       b.Currency,
-		UpdatedDate:    b.UpdatedAt.Format("2006-01-02 15:04:05"),
-		CreatedDate:    b.CreatedAt.Format("2006-01-02 15:04:05"),
+		Name:             b.Name,
+		OrganizationName: h.organizationNameForAdmin(c.Request.Context(), b.AdminID),
+		MonthlyPayment:   b.MonthlyPayment,
+		Currency:         b.Currency,
+		UpdatedDate:      b.UpdatedAt.Format("2006-01-02 15:04:05"),
+		CreatedDate:      b.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 
@@ -653,17 +694,42 @@ func (h *Handler) UpdateSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	b, err := h.branches.Update(c.Request.Context(), branchIDStr, updates)
+
+	// organizationName lives on the admin's user row, not this branch — pull
+	// it out before handing the rest of the map to branches.Update, which
+	// would otherwise try (and fail) to SET a column branches doesn't have.
+	orgNameUpdate, hasOrgNameUpdate := updates["organizationName"].(string)
+	delete(updates, "organizationName")
+
+	var b *service.Branch
+	var err error
+	if len(updates) > 0 {
+		b, err = h.branches.Update(c.Request.Context(), branchIDStr, updates)
+	} else {
+		b, err = h.branches.GetByID(c.Request.Context(), branchIDStr)
+	}
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	if hasOrgNameUpdate && b.AdminID != nil && *b.AdminID != "" {
+		if _, err := h.db.ExecContext(c.Request.Context(),
+			`UPDATE users SET organization_name = $1, updated_at = NOW() WHERE id = $2`,
+			orgNameUpdate, *b.AdminID,
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	c.JSON(http.StatusOK, settingsResponse{
-		Name:           b.Name,
-		MonthlyPayment: b.MonthlyPayment,
-		Currency:       b.Currency,
-		UpdatedDate:    b.UpdatedAt.Format("2006-01-02 15:04:05"),
-		CreatedDate:    b.CreatedAt.Format("2006-01-02 15:04:05"),
+		Name:             b.Name,
+		OrganizationName: h.organizationNameForAdmin(c.Request.Context(), b.AdminID),
+		MonthlyPayment:   b.MonthlyPayment,
+		Currency:         b.Currency,
+		UpdatedDate:      b.UpdatedAt.Format("2006-01-02 15:04:05"),
+		CreatedDate:      b.CreatedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 

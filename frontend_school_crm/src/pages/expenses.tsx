@@ -68,7 +68,7 @@ import { useBranch } from "@/context/BranchContext";
 
 export default function ExpensesPage() {
   const router = useRouter();
-  const { currentBranch } = useBranch();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -174,9 +174,28 @@ export default function ExpensesPage() {
     ? `${currentBranch.currentFinancialMonth.year}-${currentBranch.currentFinancialMonth.month}`
     : undefined;
 
+  // The sidebar already hides this link for anyone lacking canViewExpenses
+  // (see Layout.tsx), but that alone doesn't stop someone from typing the
+  // URL directly — settings.tsx already guards its own page this way for
+  // canViewSettings, so this mirrors that pattern for consistency.
+  useEffect(() => {
+    if (!hasPermission("canViewExpenses")) {
+      router.push("/");
+    }
+  }, [router]);
+
   // Initialize state from URL params
   useEffect(() => {
-    if (!router.isReady || !currentBranch?.id) return;
+    if (!router.isReady) return;
+    // See the equivalent guard in assignments.tsx: without the branchLoading
+    // check, a branch that never resolves left isLoading stuck at its
+    // initial `true` forever — this effect never ran, so nothing ever
+    // called setIsLoading(false).
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
 
     if (initialLoadDoneRef.current) {
       // Branch switched or financial month changed — reset filters and reload
@@ -207,7 +226,7 @@ export default function ExpensesPage() {
     });
     loadBudgets(month as string | undefined, year ? parseInt(year as string) : undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady, currentBranch?.id, financialMonthKey]);
+  }, [router.isReady, currentBranch?.id, financialMonthKey, branchLoading]);
 
   // Reload data when page or items per page changes
   useEffect(() => {

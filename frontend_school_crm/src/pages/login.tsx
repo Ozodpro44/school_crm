@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -309,6 +310,23 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
+            )}
+
+            {/* /register exists and works (new school sign-up, auto-granted
+                a trial) but had no link anywhere pointing to it — a new
+                customer landing here had no way to discover it short of
+                typing the URL. Admin/Manager tab only: teachers don't
+                self-register a school, they're invited by one. */}
+            {mode === "admin" && (
+              <p className="mt-5 text-center text-sm text-slate-500 dark:text-slate-400">
+                {t("noAccountYet")}{" "}
+                <Link
+                  href="/register"
+                  className="font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
+                >
+                  {t("registerSchool")}
+                </Link>
+              </p>
             )}
           </CardContent>
         </Card>

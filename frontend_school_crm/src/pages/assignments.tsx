@@ -52,7 +52,7 @@ import { EmptyState } from "@/components/EmptyState";
 export default function AssignmentsPage() {
   const language = useLanguage();
   const currentUser = getCurrentUser();
-  const { currentBranch } = useBranch();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
 
   const [isLoading, setIsLoading] = useState(true);
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
@@ -75,9 +75,18 @@ export default function AssignmentsPage() {
   const notify = useNotify();
 
   useEffect(() => {
-    if (!currentBranch?.id) return;
+    // Without the branchLoading check, a user whose branch never resolves
+    // (branches API failure, brand-new admin with no branch yet, a stale
+    // selectedBranchId) hit this early return every render and isLoading —
+    // seeded true — never got cleared, so the page spun forever instead of
+    // showing an empty/error state.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
     loadData();
-  }, [currentBranch?.id]);
+  }, [currentBranch?.id, branchLoading]);
 
   const loadData = async () => {
     const branchId = currentBranch?.id;

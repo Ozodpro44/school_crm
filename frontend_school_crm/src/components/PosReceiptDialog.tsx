@@ -20,6 +20,8 @@ type PosReceiptDialogProps = {
   data: PosReceiptData | null;
   onClose: () => void;
   branchName?: string;
+  /** Parent brand across all of the school's branches — see Settings' "Tashkilot nomi". Shown above the branch name when set, so a multi-branch school's receipts carry its brand identity, not just the printing branch's own name. */
+  organizationName?: string;
   /**
    * Translation function — the dialog falls back to English defaults when a
    * key returns the same key (no translation defined).
@@ -44,6 +46,7 @@ export function PosReceiptDialog({
   data,
   onClose,
   branchName,
+  organizationName,
   t,
   formatMonth,
   formatMethod,
@@ -63,6 +66,11 @@ export function PosReceiptDialog({
                 <p className="font-bold text-lg print:text-base">
                   {t("receipt")}
                 </p>
+                {organizationName && (
+                  <p className="font-semibold text-sm print:text-sm">
+                    {organizationName}
+                  </p>
+                )}
                 <p className="text-xs text-slate-600 dark:text-slate-400 print:text-black print:text-opacity-70">
                   {branchName || "Branch"}
                 </p>

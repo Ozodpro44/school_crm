@@ -7,16 +7,18 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/school-crm/finance-service/internal/db"
 	"github.com/school-crm/finance-service/internal/service"
 )
 
 type Handler struct {
 	expenses *service.ExpenseService
 	budgets  *service.BudgetService
+	db       *db.DB
 }
 
-func New(expenses *service.ExpenseService, budgets *service.BudgetService) *Handler {
-	return &Handler{expenses: expenses, budgets: budgets}
+func New(expenses *service.ExpenseService, budgets *service.BudgetService, database *db.DB) *Handler {
+	return &Handler{expenses: expenses, budgets: budgets, db: database}
 }
 
 // requestBranchID resolves which branch a request targets: an explicit
@@ -80,6 +82,35 @@ func (h *Handler) requireDeletePermission(c *gin.Context) bool {
 	return true
 }
 
+// requireViewExpensesPermission enforces permissions.can_view_expenses — the
+// frontend already hides expense data/nav for roles without it, but nothing
+// server-side checked before this, so a manager/accountant with
+// can_view_expenses:false could still read every expense by calling this
+// endpoint directly. Admin-like roles bypass (same set as canDelete above):
+// an admin's own permissions row already has this true by construction (see
+// auth_service's CompleteRegistration), and a developer/super_admin operator
+// may have no row in this tenant's permissions table at all.
+func (h *Handler) requireViewExpensesPermission(c *gin.Context) bool {
+	role := c.GetHeader("X-User-Role")
+	if canDelete(role) {
+		return true
+	}
+	userID := c.GetHeader("X-User-ID")
+	var allowed bool
+	if userID == "" || h.db == nil {
+		allowed = false
+	} else if err := h.db.Read().QueryRowContext(c.Request.Context(),
+		`SELECT can_view_expenses FROM permissions WHERE user_id = $1`, userID,
+	).Scan(&allowed); err != nil {
+		allowed = false // no permissions row, or query error → deny by default
+	}
+	if !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
+		return false
+	}
+	return true
+}
+
 func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/expenses", h.ListExpenses)
 	r.POST("/expenses", h.CreateExpense)
@@ -102,6 +133,9 @@ func (h *Handler) ConsolidatedData(c *gin.Context) {
 		return
 	}
 	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if !h.requireViewExpensesPermission(c) {
 		return
 	}
 	resp, err := h.expenses.ConsolidatedData(
@@ -129,6 +163,9 @@ func (h *Handler) ListExpenses(c *gin.Context) {
 		return
 	}
 	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if !h.requireViewExpensesPermission(c) {
 		return
 	}
 	page, _ := strconv.Atoi(c.Query("page"))
@@ -194,6 +231,9 @@ func (h *Handler) GetExpense(c *gin.Context) {
 		return
 	}
 	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if !h.requireViewExpensesPermission(c) {
 		return
 	}
 	e, err := h.expenses.GetByIDScoped(c.Request.Context(), c.Param("id"), branchID)
@@ -266,6 +306,9 @@ func (h *Handler) ExpenseSummary(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
+	if !h.requireViewExpensesPermission(c) {
+		return
+	}
 	summary, err := h.expenses.Summary(c.Request.Context(), branchID, c.Query("month"), c.Query("year"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -283,6 +326,9 @@ func (h *Handler) ListBudgets(c *gin.Context) {
 		return
 	}
 	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if !h.requireViewExpensesPermission(c) {
 		return
 	}
 	now := time.Now()

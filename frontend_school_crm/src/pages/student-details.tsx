@@ -101,7 +101,7 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 export default function StudentDetailsPage() {
   const router = useRouter();
   const { id, from } = router.query;
-  const { currentBranch } = useBranch();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [isLoading, setIsLoading] = useState(true);
   const [student, setStudent] = useState<Student | null>(null);
@@ -155,13 +155,20 @@ export default function StudentDetailsPage() {
   const loadRequestIdRef = useRef(0);
 
   useEffect(() => {
-    if (!id || !currentBranch?.id) return;
+    if (!id) return;
+    // See the equivalent guard in assignments.tsx: without the branchLoading
+    // check, a branch that never resolves left isLoading stuck forever.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     const myId = ++loadRequestIdRef.current;
     loadData(myId).finally(() => {
       if (myId === loadRequestIdRef.current) setIsLoading(false);
     });
-  }, [id, currentBranch?.id]);
+  }, [id, currentBranch?.id, branchLoading]);
 
   useEffect(() => {
     if (from === "class") {
@@ -290,7 +297,9 @@ export default function StudentDetailsPage() {
     if (student) {
       setEditFormData({
         fullName: student.fullName,
-        classId: student.classId,
+        // A student with no class yet opens the form with an empty picker;
+        // the save handler already refuses to submit without one.
+        classId: student.classId ?? "",
         phone: student.phone,
         parentPhone: student.parentPhone,
         status: student.status,

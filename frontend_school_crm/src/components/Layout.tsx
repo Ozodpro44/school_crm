@@ -525,7 +525,7 @@ export function Layout({ children }: LayoutProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const language = useLanguage();
-  const { currentBranch, branches, setCurrentBranchById, clearBranches } = useBranch();
+  const { currentBranch, branches, isLoading: branchesLoading, setCurrentBranchById, clearBranches } = useBranch();
   const { settings, loading: settingsLoading } = useSettings();
   const [subInfo, setSubInfo] = useState<SubInfo | null>(null);
   // SidebarProvider (components/ui/sidebar.tsx) treats passing onOpenChange
@@ -560,6 +560,17 @@ export function Layout({ children }: LayoutProps) {
       }
     }
   }, [router.pathname, router, branches, setCurrentBranchById]);
+
+  // A freshly-verified admin has no branch yet — registration no longer
+  // manufactures one with fake placeholder address/phone (see auth_service's
+  // CompleteRegistration). Every branch-scoped page would otherwise render
+  // nothing but empty states, so send them to the mandatory setup step
+  // instead. Single centralized guard rather than touching all 25 pages.
+  useEffect(() => {
+    if (user && user.role === "admin" && !branchesLoading && branches.length === 0) {
+      router.push("/onboarding-branch");
+    }
+  }, [user, branchesLoading, branches.length, router]);
 
   useEffect(() => {
     const handleUserProfileUpdate = (event: Event) => {
@@ -660,9 +671,16 @@ export function Layout({ children }: LayoutProps) {
           title: t("main"),
           items: [
             { name: t("dashboard"), href: "/", icon: LayoutDashboard, show: true },
-            { name: t("students"), href: "/students", icon: Users, show: true },
-            { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: true },
-            { name: t("classes"), href: "/classes", icon: BookOpen, show: true },
+            // students/teachers/classes have dedicated canView* flags in the
+            // Permission model (see @/types), same as canViewReports below —
+            // but these were hardcoded `show: true` regardless, so a manager
+            // whose permissions explicitly withheld view access still saw
+            // and could navigate into these pages. Attendance/schedule/
+            // assignments/messaging have no such flag in the model (every
+            // branch member gets them) — that's unchanged.
+            { name: t("students"), href: "/students", icon: Users, show: hasPermission("canViewStudents") },
+            { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: hasPermission("canViewTeachers") },
+            { name: t("classes"), href: "/classes", icon: BookOpen, show: hasPermission("canViewClasses") },
             { name: t("attendance"), href: "/attendance", icon: ClipboardList, show: true },
             { name: t("timetable"), href: "/schedule", icon: Calendar, show: true },
             { name: t("assignments"), href: "/assignments", icon: ClipboardCheck, show: true },
@@ -672,10 +690,10 @@ export function Layout({ children }: LayoutProps) {
         {
           title: t("finance"),
           items: [
-            { name: t("payments"), href: "/payments", icon: DollarSign, show: true },
-            { name: t("quickPayment"), href: "/quick-pay", icon: Zap, show: true },
-            { name: t("salaries"), href: "/salaries", icon: Wallet, show: true },
-            { name: t("expenses"), href: "/expenses", icon: TrendingDown, show: true },
+            { name: t("payments"), href: "/payments", icon: DollarSign, show: hasPermission("canViewPayments") },
+            { name: t("quickPayment"), href: "/quick-pay", icon: Zap, show: hasPermission("canViewPayments") },
+            { name: t("salaries"), href: "/salaries", icon: Wallet, show: hasPermission("canViewSalaries") },
+            { name: t("expenses"), href: "/expenses", icon: TrendingDown, show: hasPermission("canViewExpenses") },
           ],
         },
         {
@@ -708,18 +726,24 @@ export function Layout({ children }: LayoutProps) {
         { name: t("help"), href: "/help", icon: HelpCircle },
       ]
     : [
-        { name: t("dashboardShort"), href: "/", icon: LayoutDashboard },
-        { name: t("students"), href: "/students", icon: Users },
-        { name: t("payments"), href: "/payments", icon: DollarSign },
-        { name: t("classes"), href: "/classes", icon: BookOpen },
-      ];
+        { name: t("dashboardShort"), href: "/", icon: LayoutDashboard, show: true },
+        // Same gap as navigationGroups above, just for the mobile shortcut
+        // bar: a manager without canViewStudents/canViewPayments/
+        // canViewClasses still got tab buttons straight to those pages.
+        { name: t("students"), href: "/students", icon: Users, show: hasPermission("canViewStudents") },
+        { name: t("payments"), href: "/payments", icon: DollarSign, show: hasPermission("canViewPayments") },
+        { name: t("classes"), href: "/classes", icon: BookOpen, show: hasPermission("canViewClasses") },
+        { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: hasPermission("canViewTeachers") },
+      ].filter((item) => item.show).slice(0, 4);
 
   // The brand slot shows the SCHOOL, not the branch: the branch name already
   // appears in the switcher directly below it, so showing it here too printed
   // the same string twice. While settings load we pass an empty string and
   // render a skeleton rather than the literal "Maktab nomi" placeholder the
   // old `t("schoolName")` fallback put on screen on every page load.
-  const schoolDisplayName = settingsLoading ? "" : settings?.name || t("schoolName");
+  const schoolDisplayName = settingsLoading
+    ? ""
+    : settings?.organizationName || settings?.name || t("schoolName");
   // Still needed for the mobile top bar, where non-admins see the branch as
   // plain text instead of the switcher.
   const branchDisplayName = currentBranch?.name || t("schoolName");
@@ -948,8 +972,18 @@ export function Layout({ children }: LayoutProps) {
               )}
             </div>
 
-            {/* Right: notification + avatar */}
+            {/* Right: subscription status + notification + avatar */}
             <div className="flex items-center gap-1.5 flex-shrink-0">
+              {/* The full subscription badge only lives in the desktop
+                  sidebar (`hidden md:flex`), so on mobile a trial running out
+                  — or already expired — was invisible until the admin
+                  happened to open Billing. This is the same collapsed
+                  (dot-only) badge the desktop sidebar shows when collapsed,
+                  reused here so mobile gets at least a coloured status dot
+                  that links to /billing. */}
+              {user?.role === "admin" && subInfo && (
+                <SubscriptionBadge {...subInfo} collapsed />
+              )}
               <NotificationBell direction="down" />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

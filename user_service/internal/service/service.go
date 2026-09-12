@@ -311,9 +311,26 @@ func NewBranchService(database *db.DB) *BranchService {
 	return &BranchService{db: database}
 }
 
-func (s *BranchService) Create(ctx context.Context, name, address, phone string, monthlyPayment float64, adminID *string) (*Branch, error) {
+// ErrBranchLimitReached is returned when the branch's owning admin has
+// already reached their subscription plan's max_branches quota.
+var ErrBranchLimitReached = errors.New("your subscription plan does not allow any more branches")
+
+func (s *BranchService) Create(ctx context.Context, name, address, phone string, monthlyPayment float64, adminID *string, requesterID string) (*Branch, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+
+	// The new branch's admin_id is who its quota counts against — usually the
+	// caller themselves, but a developer/super_admin creating a branch on
+	// behalf of a tenant admin passes adminID explicitly (see CreateBranch).
+	ownerID := requesterID
+	if adminID != nil && *adminID != "" {
+		ownerID = *adminID
+	}
+	if ownerID != "" {
+		if err := s.checkBranchLimit(ctx, ownerID); err != nil {
+			return nil, err
+		}
+	}
 
 	b := &Branch{
 		ID:             uuid.New().String(),
@@ -335,6 +352,45 @@ func (s *BranchService) Create(ctx context.Context, name, address, phone string,
 		return nil, err
 	}
 	return b, nil
+}
+
+// checkBranchLimit ports backend_school_crm's SubscriptionService.
+// CheckResourceLimit ("branches" case) — user_service now owns branch
+// creation and has no dependency on the monolith's subscription service, but
+// reads the same shared subscriptions/subscription_plans/branches tables.
+// A NULL max_branches (or no subscription row at all) means unlimited: the
+// separate SubscriptionGate is what blocks a lapsed/missing subscription.
+func (s *BranchService) checkBranchLimit(ctx context.Context, ownerUserID string) error {
+	var maxBranches sql.NullInt64
+	err := s.db.Conn().QueryRowContext(ctx, `
+		SELECT sp.max_branches
+		FROM subscriptions sub
+		JOIN subscription_plans sp ON sub.plan_id = sp.id
+		WHERE sub.user_id = $1
+		  AND sub.status IN ('active','trial','paused','pending_payment','past_due')
+		ORDER BY sub.created_at DESC
+		LIMIT 1`, ownerUserID,
+	).Scan(&maxBranches)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("check branch limit: %w", err)
+	}
+	if !maxBranches.Valid {
+		return nil
+	}
+
+	var count int
+	if err := s.db.Conn().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM branches WHERE admin_id = $1`, ownerUserID,
+	).Scan(&count); err != nil {
+		return fmt.Errorf("check branch limit: count branches: %w", err)
+	}
+	if int64(count) >= maxBranches.Int64 {
+		return fmt.Errorf("%w: plan allows %d, you already have %d", ErrBranchLimitReached, maxBranches.Int64, count)
+	}
+	return nil
 }
 
 func (s *BranchService) GetByID(ctx context.Context, id string) (*Branch, error) {

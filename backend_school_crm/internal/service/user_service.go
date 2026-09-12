@@ -166,17 +166,6 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 
 	isAdmin := models.UserRole(req.Role) == models.RoleAdmin
 
-	// Resolve the free-trial plan before opening the transaction — it is
-	// idempotent and does not need to be part of the atomic block.
-	var trialPlanID string
-	if isAdmin {
-		trialPlan, err := s.subscriptionService.GetOrCreateFreeTrial(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("register: get free trial plan: %w", err)
-		}
-		trialPlanID = trialPlan.ID
-	}
-
 	tx, err := s.db.BeginTx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("register: begin transaction: %w", err)
@@ -187,7 +176,7 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 	userID := uuid.New().String()
 
 	// Step 1: Insert the user row (branch_id is NULL until Step 3).
-	log.Printf("[UserService.Register] Step 1/6: inserting user %s", req.Email)
+	log.Printf("[UserService.Register] Step 1/5: inserting user %s", req.Email)
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO users (id, email, password_hash, role, full_name, created_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -216,7 +205,7 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 
 	// Step 2: Create the default branch inline, bypassing BranchService.Create
 	// so we avoid the subscription-limit guard that would reject a brand-new user.
-	log.Printf("[UserService.Register] Step 2/6: creating default branch for user %s", userID)
+	log.Printf("[UserService.Register] Step 2/5: creating default branch for user %s", userID)
 	branchID := uuid.New().String()
 	branchName := req.SchoolName
 	if branchName == "" {
@@ -233,7 +222,7 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 	}
 
 	// Step 3: Link the user to their new branch and mark the trial as used.
-	log.Printf("[UserService.Register] Step 3/6: linking branch %s to user %s", branchID, userID)
+	log.Printf("[UserService.Register] Step 3/5: linking branch %s to user %s", branchID, userID)
 	_, err = tx.ExecContext(ctx,
 		`UPDATE users SET branch_id = $1, trial_used_at = $2, updated_at = $3 WHERE id = $4`,
 		branchID, now, now, userID,
@@ -242,25 +231,24 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 		return nil, fmt.Errorf("register: update user branch_id: %w", err)
 	}
 
-	// Step 4: Create the 14-day trial subscription.
-	log.Printf("[UserService.Register] Step 4/6: creating trial subscription for user %s", userID)
-	endDate := now.AddDate(0, 0, 14)
-	paymentMethod := "free_trial"
-	notes := "Automatic 14-day free trial"
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO subscriptions
-		     (user_id, plan_id, branch_id, status, start_date, end_date, renewal_date, auto_renew, payment_method, notes)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		userID, trialPlanID, branchID, "trial",
-		now, endDate, endDate, false, paymentMethod, notes,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("register: create subscription: %w", err)
-	}
+	// Trial subscription creation used to happen here as a raw INSERT with a
+	// hardcoded 14-day end date. It was immediately superseded anyway: the
+	// caller (handlers.Register) always follows up with
+	// subscriptionService.AdminGrantTrial(user.ID, 30, …), which first
+	// expires every non-terminal subscription for this user and then inserts
+	// its OWN 30-day row. So every registration silently created a
+	// throwaway 14-day trial that was expired a moment later by the 30-day
+	// one — two inserts and an update where one insert does the job, and two
+	// competing trial lengths defined in two different places. If
+	// AdminGrantTrial's second insert ever failed partway through (its own
+	// expire-then-insert isn't wrapped in this transaction), the customer
+	// could have been left on the undocumented 14-day trial instead of the
+	// intended 30 with nothing in the UI to say so. Removed — AdminGrantTrial
+	// is the single source of truth for trial length now.
 
-	// Step 5: Initialize full admin permissions.
+	// Step 4: Initialize full admin permissions.
 	// Column list mirrors PermissionService.CreateForUser to stay in sync with the schema.
-	log.Printf("[UserService.Register] Step 5/6: initializing admin permissions for user %s", userID)
+	log.Printf("[UserService.Register] Step 4/5: initializing admin permissions for user %s", userID)
 	permID := uuid.New().String()
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO permissions (
@@ -289,7 +277,7 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 	}
 
 	// Step 6: Open the first financial month for the new branch.
-	log.Printf("[UserService.Register] Step 6/6: opening financial month for branch %s", branchID)
+	log.Printf("[UserService.Register] Step 5/5: opening financial month for branch %s", branchID)
 	fmID := uuid.New().String()
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO financial_months

@@ -61,7 +61,7 @@ import { useBranch } from "@/context/BranchContext";
 export default function ClassDetailsPage() {
   const router = useRouter();
   const { id } = router.query;
-  const { currentBranch } = useBranch();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [classData, setClassData] = useState<Class | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -163,14 +163,21 @@ export default function ClassDetailsPage() {
   const loadRequestIdRef = useRef(0);
 
   useEffect(() => {
-    if (!id || !currentBranch?.id) return;
+    if (!id) return;
+    // See the equivalent guard in assignments.tsx: without the branchLoading
+    // check, a branch that never resolves left isLoading stuck forever.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
     const myId = ++loadRequestIdRef.current;
     loadData(myId).finally(() => {
       if (myId === loadRequestIdRef.current) setIsLoading(false);
     });
-  }, [id, currentBranch?.id]);
+  }, [id, currentBranch?.id, branchLoading]);
 
   const loadData = async (myId?: number) => {
     // Callers refreshing after a mutation (remove student, delete class,

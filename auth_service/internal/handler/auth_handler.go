@@ -24,6 +24,7 @@ func (h *AuthHandler) Register(r *gin.RouterGroup) {
 	r.POST("/auth/login", h.Login)
 	r.POST("/auth/verify-login-otp", h.VerifyLoginOTP)
 	r.POST("/auth/register", h.RegisterUser)
+	r.POST("/auth/verify-registration-otp", h.VerifyRegistrationOTP)
 	r.POST("/auth/forgot-password", h.ForgotPassword)
 	r.POST("/auth/verify-otp", h.VerifyOTP)
 	r.POST("/auth/resend-otp", h.ResendOTP)
@@ -115,6 +116,10 @@ func (h *AuthHandler) VerifyLoginOTP(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": tokenStr, "user": user})
 }
 
+// RegisterUser starts (or resumes, for an email that registered but never
+// confirmed) a signup: it emails a 6-digit code and returns without a token
+// — nothing usable exists yet, since VerifyRegistrationOTP is what actually
+// creates the trial subscription and permissions row.
 func (h *AuthHandler) RegisterUser(c *gin.Context) {
 	var req service.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -122,13 +127,40 @@ func (h *AuthHandler) RegisterUser(c *gin.Context) {
 		return
 	}
 
-	user, err := h.svc.Register(c.Request.Context(), &req)
+	email, err := h.svc.Register(c.Request.Context(), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if err.Error() == "only admin accounts may register through this endpoint" {
+		switch err.Error() {
+		case "only admin accounts may register through this endpoint":
 			status = http.StatusForbidden
+		case "an account with this email already exists":
+			status = http.StatusConflict
+		case "please wait before requesting another code":
+			status = http.StatusTooManyRequests
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"emailVerificationRequired": true, "email": email})
+}
+
+// VerifyRegistrationOTP completes the signup started by RegisterUser: on a
+// correct code it activates the account (trial + permissions) and, exactly
+// like VerifyLoginOTP, immediately issues a real session and token.
+func (h *AuthHandler) VerifyRegistrationOTP(c *gin.Context) {
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+		OTP   string `json:"otp"   binding:"required,len=6"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	user, err := h.svc.CompleteRegistration(c.Request.Context(), req.Email, req.OTP)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 

@@ -48,7 +48,7 @@ type ReportType = "payment" | "salary" | "debtors" | "income" | "expenses" | "fo
 
 export default function ReportsPage() {
   const router = useRouter();
-  const { currentBranch } = useBranch();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [isFetching, setIsFetching] = useState(false);
   const [reportType, setReportType] = useState<ReportType>("payment");
@@ -89,7 +89,13 @@ export default function ReportsPage() {
       setIsLoading(false);
       return;
     }
-    if (!currentBranch?.id) return;
+    // See the equivalent guard in assignments.tsx: without the branchLoading
+    // check, a branch that never resolves left isLoading stuck forever.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
     const timer = setTimeout(async () => {
@@ -98,7 +104,7 @@ export default function ReportsPage() {
       setIsLoading(false);
     }, 300);
     return () => clearTimeout(timer);
-  }, [canViewReports, currentBranch?.id]);
+  }, [canViewReports, currentBranch?.id, branchLoading]);
 
   // Apply default dates when branch data loads
   useEffect(() => {

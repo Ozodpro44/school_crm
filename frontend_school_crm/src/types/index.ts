@@ -83,7 +83,15 @@ export interface User {
 export interface Student {
   id: string;
   fullName: string;
-  classId: string;
+  // Optional on purpose: students.class_id is nullable (migration 000027
+  // dropped the NOT NULL so the FK's ON DELETE SET NULL could actually work),
+  // and student_service serialises it as `*string` with `omitempty` — so the
+  // key is ABSENT for a student whose class was deleted or who hasn't been
+  // assigned one yet. student_service even has a "no class" filter
+  // (WHERE class_id IS NULL) for exactly these rows. Declaring it as a plain
+  // `string` told TypeScript a value was always there and hid the unassigned
+  // case from every caller.
+  classId?: string;
   phone: string;
   parentPhone: string;
   monthlyPayment: number;
@@ -187,7 +195,12 @@ export interface Income {
 }
 
 export interface Settings {
+  // The CURRENT branch's own name (e.g. "Chilonzor filiali").
   name: string;
+  // The school's overall brand identity, resolved from the branch's admin —
+  // stays the same across every branch that admin owns. Optional: absent for
+  // a branch whose admin never set one (organization_name is nullable).
+  organizationName?: string;
   monthlyPayment: number;
   currency: string;
   updatedDate: string;

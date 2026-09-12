@@ -69,7 +69,7 @@ func main() {
 
 	api := r.Group("/api/v1")
 	api.Use(middleware.JWTAuth(cfg.JWTSecret))
-	h := handler.New(teacherSvc, salarySvc)
+	h := handler.New(teacherSvc, salarySvc, database)
 	h.Register(api)
 
 	httpSrv := &http.Server{

@@ -225,6 +225,22 @@ export const settingsTranslations: Partial<Translation> = {
     en: "Enter branch name",
   },
 
+  organizationName: {
+    "uz-cyrl": "Ташкилот номи",
+    "uz-latn": "Tashkilot nomi",
+    en: "Organization Name",
+  },
+  organizationNameHint: {
+    "uz-cyrl": "Мактабингизнинг умумий номи — барча филиалларингизда бир хил кўринади",
+    "uz-latn": "Maktabingizning umumiy nomi — barcha filiallaringizda bir xil ko'rinadi",
+    en: "Your school's overall brand — shown the same across all of your branches",
+  },
+  enterOrganizationName: {
+    "uz-cyrl": "Ташкилот номини киритинг",
+    "uz-latn": "Tashkilot nomini kiriting",
+    en: "Enter organization name",
+  },
+
   branchPaymentSettings: {
     "uz-cyrl": "Филиал тўлов созламалари",
     "uz-latn": "Filial to‘lov sozlamalari",

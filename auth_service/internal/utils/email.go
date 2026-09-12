@@ -55,17 +55,59 @@ func (es *EmailSender) SendLoginOTPEmail(to, otp string) error {
             <p>If you did not attempt to sign in, you can safely ignore this email.</p>
         </div>
         <div class="footer">
-            <p>&copy; 2024 Wonderkids' CRM. All rights reserved.</p>
+            <p>&copy; 2024 School CRM. All rights reserved.</p>
         </div>
     </div>
 </body>
 </html>
 	`, otp)
 
-	return es.sendEmail(to, subject, body)
+	return es.sendEmail(to, subject, body, "login OTP")
 }
 
-func (es *EmailSender) sendEmail(to, subject, body string) error {
+// SendRegistrationOTPEmail emails the 6-digit code required to confirm
+// ownership of the address given at signup before the account is fully
+// activated (trial subscription + permissions granted).
+func (es *EmailSender) SendRegistrationOTPEmail(to, otp string) error {
+	subject := "Confirm your email — School CRM"
+	body := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4f46e5; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
+        .otp-code { font-size: 32px; font-weight: bold; text-align: center; color: #4f46e5; letter-spacing: 5px; margin: 20px 0; }
+        .footer { font-size: 12px; color: #666; text-align: center; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Welcome to School CRM</h2>
+        </div>
+        <div class="content">
+            <p>Hello,</p>
+            <p>Use the following code to confirm your email and activate your account:</p>
+            <div class="otp-code">%s</div>
+            <p>This code will expire in 10 minutes.</p>
+            <p>If you did not sign up for School CRM, you can safely ignore this email.</p>
+        </div>
+        <div class="footer">
+            <p>&copy; 2024 School CRM. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
+	`, otp)
+
+	return es.sendEmail(to, subject, body, "registration OTP")
+}
+
+func (es *EmailSender) sendEmail(to, subject, body, kind string) error {
 	if es.apiKey == "" {
 		return fmt.Errorf("resend API key not configured")
 	}
@@ -103,6 +145,6 @@ func (es *EmailSender) sendEmail(to, subject, body string) error {
 		return fmt.Errorf("resend API error (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
-	log.Printf("[EmailSender] login OTP sent to %s", to)
+	log.Printf("[EmailSender] %s sent to %s", kind, to)
 	return nil
 }

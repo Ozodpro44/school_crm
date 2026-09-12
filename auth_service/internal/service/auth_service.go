@@ -23,12 +23,13 @@ var ErrNotFound = errors.New("user not found")
 // ── Models ─────────────────────────────────────────────────────────────────────
 
 type User struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	FullName  string    `json:"fullName"`
-	Role      string    `json:"role"`
-	BranchID  string    `json:"branchId,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID               string    `json:"id"`
+	Email            string    `json:"email"`
+	FullName         string    `json:"fullName"`
+	Role             string    `json:"role"`
+	BranchID         string    `json:"branchId,omitempty"`
+	OrganizationName string    `json:"organizationName,omitempty"`
+	CreatedAt        time.Time `json:"createdAt"`
 }
 
 // ── Requests ──────────────────────────────────────────────────────────────────
@@ -121,11 +122,12 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*User,
 
 	var user User
 	var passwordHash string
-	var branchID sql.NullString
+	var branchID, orgName sql.NullString
+	var emailVerified bool
 	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT id, email, password_hash, role, full_name, branch_id, created_at FROM users WHERE email = $1`,
+		`SELECT id, email, password_hash, role, full_name, branch_id, organization_name, email_verified, created_at FROM users WHERE email = $1`,
 		email,
-	).Scan(&user.ID, &user.Email, &passwordHash, &user.Role, &user.FullName, &branchID, &user.CreatedAt)
+	).Scan(&user.ID, &user.Email, &passwordHash, &user.Role, &user.FullName, &branchID, &orgName, &emailVerified, &user.CreatedAt)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		recordFailure()
@@ -137,10 +139,23 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*User,
 	if branchID.Valid {
 		user.BranchID = branchID.String
 	}
-
+	if orgName.Valid {
+		user.OrganizationName = orgName.String
+	}
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password)); err != nil {
 		recordFailure()
 		return nil, errors.New("invalid credentials")
+	}
+
+	// Only reveal "unverified" to someone who already proved they know the
+	// password — checking this before the password comparison would let
+	// anyone probe whether a given email is a registered-but-unverified
+	// account without knowing its password. An unverified account has no
+	// subscription/permissions yet (Register only creates the row and emails
+	// the OTP), so logging in normally would otherwise hand back a token for
+	// an account that can't actually do anything, with no indication why.
+	if !emailVerified {
+		return nil, errors.New("please verify your email before signing in — check your inbox for the confirmation code")
 	}
 
 	if maxAttempts > 0 {
@@ -214,10 +229,10 @@ func (s *AuthService) VerifyLoginOTP(ctx context.Context, email, otp string) (*U
 	defer cancel()
 
 	var user User
-	var branchID sql.NullString
+	var branchID, orgName sql.NullString
 	err = s.db.Conn().QueryRowContext(ctx,
-		`SELECT id, email, role, full_name, branch_id, created_at FROM users WHERE email = $1`, email,
-	).Scan(&user.ID, &user.Email, &user.Role, &user.FullName, &branchID, &user.CreatedAt)
+		`SELECT id, email, role, full_name, branch_id, organization_name, created_at FROM users WHERE email = $1`, email,
+	).Scan(&user.ID, &user.Email, &user.Role, &user.FullName, &branchID, &orgName, &user.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -227,32 +242,155 @@ func (s *AuthService) VerifyLoginOTP(ctx context.Context, email, otp string) (*U
 	if branchID.Valid {
 		user.BranchID = branchID.String
 	}
+	if orgName.Valid {
+		user.OrganizationName = orgName.String
+	}
 	return &user, nil
 }
 
-// Register creates a new admin (school-owner) user and their own branch in a
-// single transaction. Non-admin registration is blocked — other roles are
-// created by an authenticated admin through user-management endpoints.
+// ── Registration (email-verified, two-step) ─────────────────────────────────
 //
-// A branch is created here (not left for later) because every downstream
-// service enforces tenant isolation via branch_id: an admin issued a token
-// with an empty branch_id would bypass that scoping entirely. This mirrors
-// the monolith's UserService.Register (backend_school_crm/internal/service/
-// user_service.go), minus the subscription/permissions/financial-month
-// bootstrapping steps — those now belong to payment_service/user_service/
-// finance_service respectively and aren't wired up cross-service yet.
-func (s *AuthService) Register(ctx context.Context, req *RegisterRequest) (*User, error) {
+// Register used to create the user, a branch, AND grant a trial subscription
+// + permissions row + financial month, all in one shot, with a token handed
+// back immediately — no proof the email address was real. That full
+// bootstrap was cut down during the microservices split to just
+// "insert user + insert branch": the comment above this function used to
+// claim the subscription/permissions/financial-month steps had "moved" to
+// payment_service/user_service/finance_service, but none of those services
+// ever actually gained the equivalent logic — so every real registration
+// silently produced an admin with NO subscription and NO permissions row,
+// while register.tsx's success screen told them a 30-day trial had started.
+//
+// This restores the full bootstrap (subscription + permissions), gates it
+// behind confirming the email address actually belongs to the registrant,
+// and no longer auto-creates a branch with placeholder data — the frontend
+// sends the admin through a mandatory "create your first branch" step (with
+// real name/address/phone) right after verifying, via user_service's normal
+// branch-creation endpoint, which by then has a trial subscription to check
+// its branch limit against.
+//
+// All the tables involved (subscriptions, subscription_plans, permissions,
+// branches) live in the SAME Postgres instance this service already
+// connects to — confirmed by checking DATABASE_URL wiring across services —
+// so this reaches them directly rather than inventing an inter-service call
+// for tables nothing else yet exposes an API for.
+
+func registrationOTPKey(email string) string          { return "auth:register-otp:" + email }
+func registrationOTPCooldownKey(email string) string  { return "auth:register-otp-cooldown:" + email }
+func registrationOTPAttemptsKey(email string) string  { return "auth:register-otp-attempts:" + email }
+
+// freeTrialDays is the length of the trial subscription granted once a new
+// admin confirms their email. Single source of truth — register.tsx's
+// success copy is driven by this same number via the API response, not a
+// hardcoded string on the frontend.
+const freeTrialDays = 30
+
+// Register validates the signup request and, if the email isn't already a
+// verified account, creates (or reuses, if a previous attempt never got
+// verified) an unverified user row and emails a 6-digit confirmation code.
+// No token is issued — nothing meaningful exists yet (no subscription, no
+// branch) until CompleteRegistration succeeds.
+func (s *AuthService) Register(ctx context.Context, req *RegisterRequest) (email string, err error) {
+	if req.Role != "admin" {
+		return "", errors.New("only admin accounts may register through this endpoint")
+	}
+
+	claimed, err := s.redis.SetNX(ctx, registrationOTPCooldownKey(req.Email), "1", otpResendCooldown).Result()
+	if err != nil {
+		return "", fmt.Errorf("check resend cooldown: %w", err)
+	}
+	if !claimed {
+		return "", errors.New("please wait before requesting another code")
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	if req.Role != "admin" {
-		return nil, errors.New("only admin accounts may register through this endpoint")
-	}
-
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, fmt.Errorf("hash password: %w", err)
+		return "", fmt.Errorf("hash password: %w", err)
 	}
+
+	var existingID string
+	var alreadyVerified bool
+	scanErr := s.db.Conn().QueryRowContext(ctx,
+		`SELECT id, email_verified FROM users WHERE email = $1`, req.Email,
+	).Scan(&existingID, &alreadyVerified)
+
+	switch {
+	case scanErr == nil && alreadyVerified:
+		return "", errors.New("an account with this email already exists")
+	case scanErr == nil && !alreadyVerified:
+		// A previous attempt never confirmed its OTP — treat this as a resend
+		// rather than failing on the email's UNIQUE constraint, and refresh
+		// the password/name/org in case they mistyped something the first time.
+		_, err = s.db.Conn().ExecContext(ctx,
+			`UPDATE users SET password_hash = $1, full_name = $2, organization_name = $3, updated_at = $4 WHERE id = $5`,
+			string(hash), req.FullName, req.SchoolName, time.Now().UTC(), existingID,
+		)
+		if err != nil {
+			return "", fmt.Errorf("update pending registration: %w", err)
+		}
+	case errors.Is(scanErr, sql.ErrNoRows):
+		id := uuid.New().String()
+		now := time.Now().UTC()
+		_, err = s.db.Conn().ExecContext(ctx,
+			`INSERT INTO users (id, email, password_hash, role, full_name, organization_name, email_verified, created_at, updated_at)
+			 VALUES ($1, $2, $3, $4, $5, $6, false, $7, $7)`,
+			id, req.Email, string(hash), req.Role, req.FullName, req.SchoolName, now,
+		)
+		if err != nil {
+			return "", fmt.Errorf("insert user: %w", err)
+		}
+	default:
+		return "", fmt.Errorf("check existing user: %w", scanErr)
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
+	if err != nil {
+		return "", fmt.Errorf("generate registration otp: %w", err)
+	}
+	otp := fmt.Sprintf("%06d", n.Int64())
+	if err := s.redis.Set(ctx, registrationOTPKey(req.Email), otp, 10*time.Minute).Err(); err != nil {
+		return "", fmt.Errorf("store registration otp: %w", err)
+	}
+
+	if s.emailSender == nil {
+		return "", errors.New("email delivery is not configured")
+	}
+	if err := s.emailSender.SendRegistrationOTPEmail(req.Email, otp); err != nil {
+		return "", fmt.Errorf("send registration otp: %w", err)
+	}
+
+	return req.Email, nil
+}
+
+// CompleteRegistration verifies the OTP sent by Register and, on success,
+// activates the account: marks the email verified, grants the free-trial
+// subscription, and creates the permissions row a fresh admin needs (mirrors
+// backend_school_crm's original UserService.Register bootstrap, minus the
+// branch/financial-month steps — those happen in the frontend's mandatory
+// first-branch onboarding step after this returns).
+func (s *AuthService) CompleteRegistration(ctx context.Context, email, otp string) (*User, error) {
+	attemptsKey := registrationOTPAttemptsKey(email)
+	attempts, _ := s.redis.Incr(ctx, attemptsKey).Result()
+	if attempts == 1 {
+		_ = s.redis.Expire(ctx, attemptsKey, otpLockoutWindow).Err()
+	}
+	if attempts > maxOTPAttempts {
+		_ = s.redis.Del(ctx, registrationOTPKey(email)).Err()
+		return nil, errors.New("too many attempts — request a new code")
+	}
+
+	stored, err := s.redis.Get(ctx, registrationOTPKey(email)).Result()
+	if err != nil || subtle.ConstantTimeCompare([]byte(stored), []byte(otp)) != 1 {
+		return nil, errors.New("invalid or expired code")
+	}
+	_ = s.redis.Del(ctx, registrationOTPKey(email))
+	_ = s.redis.Del(ctx, attemptsKey)
+
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
 
 	tx, err := s.db.Conn().BeginTx(ctx, nil)
 	if err != nil {
@@ -260,44 +398,129 @@ func (s *AuthService) Register(ctx context.Context, req *RegisterRequest) (*User
 	}
 	defer tx.Rollback() // no-op after Commit
 
-	id := uuid.New().String()
+	var id, fullName, role string
+	var orgName sql.NullString
+	var branchID sql.NullString
+	var alreadyVerified bool
+	var createdAt time.Time
+	err = tx.QueryRowContext(ctx,
+		`SELECT id, full_name, role, organization_name, branch_id, email_verified, created_at
+		 FROM users WHERE email = $1 FOR UPDATE`, email,
+	).Scan(&id, &fullName, &role, &orgName, &branchID, &alreadyVerified, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, errors.New("no pending registration for this email")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("fetch pending registration: %w", err)
+	}
+
+	// Re-verifying an already-activated account (e.g. a stale browser tab
+	// that still has an old OTP page open) must not grant a second trial.
+	if alreadyVerified {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit: %w", err)
+		}
+		u := &User{ID: id, Email: email, FullName: fullName, Role: role, CreatedAt: createdAt}
+		if orgName.Valid {
+			u.OrganizationName = orgName.String
+		}
+		if branchID.Valid {
+			u.BranchID = branchID.String
+		}
+		return u, nil
+	}
+
 	now := time.Now().UTC()
-
 	_, err = tx.ExecContext(ctx,
-		`INSERT INTO users (id, email, password_hash, role, full_name, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		id, req.Email, string(hash), req.Role, req.FullName, now, now,
+		`UPDATE users SET email_verified = true, email_verified_at = $1, trial_used_at = $1, updated_at = $1 WHERE id = $2`,
+		now, id,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("insert user: %w", err)
+		return nil, fmt.Errorf("mark email verified: %w", err)
 	}
 
-	branchID := uuid.New().String()
-	branchName := req.SchoolName
-	if branchName == "" {
-		branchName = req.FullName + " Branch"
-	}
-	_, err = tx.ExecContext(ctx,
-		`INSERT INTO branches (id, name, admin_id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`,
-		branchID, branchName, id, now, now,
-	)
+	trialPlanID, err := s.getOrCreateFreeTrialPlanID(ctx, tx)
 	if err != nil {
-		return nil, fmt.Errorf("create branch: %w", err)
+		return nil, err
 	}
 
+	endDate := now.AddDate(0, 0, freeTrialDays)
 	_, err = tx.ExecContext(ctx,
-		`UPDATE users SET branch_id = $1, updated_at = $2 WHERE id = $3`,
-		branchID, now, id,
+		`INSERT INTO subscriptions (user_id, plan_id, status, start_date, end_date, renewal_date, auto_renew, payment_method, notes)
+		 VALUES ($1, $2, 'trial', $3, $4, $4, false, 'free_trial', 'Auto-granted on email verification')`,
+		id, trialPlanID, now, endDate,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("link branch to user: %w", err)
+		return nil, fmt.Errorf("grant trial subscription: %w", err)
+	}
+
+	// Column list mirrors backend_school_crm's original UserService.Register
+	// bootstrap (Step 5) and user_service's PermissionService, so the schema
+	// stays in sync across all three copies of this INSERT.
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO permissions (
+		     id, user_id,
+		     can_view_students, can_edit_students, can_delete_students,
+		     can_view_teachers, can_edit_teachers, can_delete_teachers,
+		     can_view_classes,  can_edit_classes,  can_delete_classes,
+		     can_view_payments, can_edit_payments,
+		     can_view_salaries, can_edit_salaries,
+		     can_view_expenses, can_edit_expenses, can_delete_expenses,
+		     can_view_reports,  can_view_settings, can_edit_settings
+		 ) VALUES (
+		     $1, $2,
+		     true, true, true,
+		     true, true, true,
+		     true, true, true,
+		     true, true,
+		     true, true,
+		     true, true, true,
+		     true, true, true
+		 )
+		 ON CONFLICT (user_id) DO NOTHING`,
+		uuid.New().String(), id,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("init permissions: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit: %w", err)
 	}
 
-	return &User{ID: id, Email: req.Email, FullName: req.FullName, Role: req.Role, BranchID: branchID, CreatedAt: now}, nil
+	u := &User{ID: id, Email: email, FullName: fullName, Role: role, CreatedAt: createdAt}
+	if orgName.Valid {
+		u.OrganizationName = orgName.String
+	}
+	return u, nil
+}
+
+// getOrCreateFreeTrialPlanID mirrors backend_school_crm's
+// SubscriptionService.GetOrCreateFreeTrial — resolving the shared "Free
+// Trial" plan row (creating it once, idempotently, if this is a brand new
+// database) rather than requiring subscription_plans to be seeded manually
+// before anyone can register.
+func (s *AuthService) getOrCreateFreeTrialPlanID(ctx context.Context, tx *sql.Tx) (string, error) {
+	var id string
+	err := tx.QueryRowContext(ctx,
+		`SELECT id FROM subscription_plans WHERE name = 'Free Trial' AND status = 'active' LIMIT 1`,
+	).Scan(&id)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("fetch free trial plan: %w", err)
+	}
+	err = tx.QueryRowContext(ctx,
+		`INSERT INTO subscription_plans (id, name, description, price, billing_period, max_branches, max_students, max_classes, features, status, created_at, updated_at)
+		 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		 RETURNING id`,
+		"Free Trial", fmt.Sprintf("%d-day free trial for new users", freeTrialDays), 0, "yearly", 100, 10000, 1000, `{}`, "active",
+	).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("create free trial plan: %w", err)
+	}
+	return id, nil
 }
 
 // GetByID returns a user by ID (password fields omitted).
@@ -306,10 +529,10 @@ func (s *AuthService) GetByID(ctx context.Context, id string) (*User, error) {
 	defer cancel()
 
 	var u User
-	var branchID sql.NullString
+	var branchID, orgName sql.NullString
 	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT id, email, role, full_name, branch_id, created_at FROM users WHERE id = $1`, id,
-	).Scan(&u.ID, &u.Email, &u.Role, &u.FullName, &branchID, &u.CreatedAt)
+		`SELECT id, email, role, full_name, branch_id, organization_name, created_at FROM users WHERE id = $1`, id,
+	).Scan(&u.ID, &u.Email, &u.Role, &u.FullName, &branchID, &orgName, &u.CreatedAt)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -319,6 +542,9 @@ func (s *AuthService) GetByID(ctx context.Context, id string) (*User, error) {
 	}
 	if branchID.Valid {
 		u.BranchID = branchID.String
+	}
+	if orgName.Valid {
+		u.OrganizationName = orgName.String
 	}
 	return &u, nil
 }

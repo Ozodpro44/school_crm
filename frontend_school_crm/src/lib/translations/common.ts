@@ -1166,6 +1166,7 @@ export const commonTranslations: Partial<Translation> = {
 
   daily: { "uz-cyrl": "Кунлик", "uz-latn": "Kunlik", en: "Daily" },
   monthly: { "uz-cyrl": "Ойлик", "uz-latn": "Oylik", en: "Monthly" },
+  yearly: { "uz-cyrl": "Йиллик", "uz-latn": "Yillik", en: "Yearly" },
   dailyFourteenDays: {
     "uz-cyrl": "Кунлик - 14 кун",
     "uz-latn": "Kunlik - 14 kun",

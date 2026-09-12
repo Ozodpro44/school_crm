@@ -167,6 +167,16 @@ export default function StudentsPage() {
   const canEditStudents = useMemo(() => hasPermission("canEditStudents"), []);
   const canDeleteStudents = useMemo(() => hasPermission("canDeleteStudents"), []);
 
+  // The sidebar already hides this link for anyone lacking canViewStudents
+  // (see Layout.tsx), but that alone doesn't stop someone from typing the
+  // URL directly — mirrors the same page-level guard settings.tsx uses for
+  // canViewSettings.
+  useEffect(() => {
+    if (!hasPermission("canViewStudents")) {
+      router.push("/");
+    }
+  }, [router]);
+
   // Initialize state from URL params (React Query auto-fires when state changes)
   useEffect(() => {
     if (!router.isReady) return;

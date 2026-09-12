@@ -71,6 +71,10 @@ export interface LoginResponse {
   // setting is on — the caller must collect the emailed OTP and call
   // verifyLoginOtp() to actually complete the login.
   mfaRequired?: boolean;
+  // Present instead of token/user right after register() — nothing usable
+  // exists yet (no trial subscription, no permissions row) until the emailed
+  // code is confirmed via verifyRegistrationOtp().
+  emailVerificationRequired?: boolean;
   email?: string;
   user?: {
     id: string;
@@ -79,6 +83,9 @@ export interface LoginResponse {
     role: string;
     branchId?: string;
     branchIds?: string[];
+    // The school's own brand identity — distinct from any one branch's
+    // name. See the note on Settings.organizationName in @/types.
+    organizationName?: string;
     permissions?: Permissions;
   };
 }
@@ -105,7 +112,9 @@ export interface User {
 export interface Student {
   id: string;
   fullName: string;
-  classId: string;
+  // Nullable on the wire — see the note on Student in @/types. A student with
+  // no class (class deleted, or not yet assigned) omits this key entirely.
+  classId?: string;
   phone: string;
   parentPhone: string;
   monthlyPayment: number;
@@ -374,6 +383,9 @@ export interface Settings {
 
 export interface UpdateSettingsRequest {
   name?: string;
+  // Handled specially server-side (written to the admin's user row, not this
+  // branch) — see the note on Settings.organizationName in @/types.
+  organizationName?: string;
   monthlyPayment?: number;
   currency?: string;
   address?: string;
@@ -572,12 +584,29 @@ export async function verifyLoginOtp(email: string, otp: string): Promise<LoginR
 }
 
 /**
- * Register new user. Same persistence rules as login().
+ * Starts (or resumes, for an email that registered but never confirmed) a
+ * signup. Returns `{ emailVerificationRequired: true, email }` — nothing is
+ * persisted here, since no subscription/permissions exist until the emailed
+ * code is confirmed via verifyRegistrationOtp().
  */
 export async function register(request: RegisterRequest): Promise<LoginResponse> {
-  const response = await apiRequest<LoginResponse>("/auth/register", {
+  return apiRequest<LoginResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(request),
+  });
+}
+
+/**
+ * Completes a signup that register() paused for email verification — the
+ * caller collects the emailed OTP and submits it here. Same persistence
+ * rules as login() on success. The returned user has no branchId yet: the
+ * caller should route to the mandatory first-branch setup, not straight to
+ * the dashboard.
+ */
+export async function verifyRegistrationOtp(email: string, otp: string): Promise<LoginResponse> {
+  const response = await apiRequest<LoginResponse>("/auth/verify-registration-otp", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
   });
 
   if (response.token && response.user) {

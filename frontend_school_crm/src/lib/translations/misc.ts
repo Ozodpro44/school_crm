@@ -360,6 +360,117 @@ export const miscTranslations: Partial<Translation> = {
     en: "Access to this CRM requires an active subscription. Please contact your school administrator to renew or activate the subscription.",
   },
 
+  // billing.tsx — this whole page was hardcoded English (only the two keys
+  // above existed), so a director whose default UI language is Uzbek landed
+  // on an all-English page for the one screen that decides whether they pay.
+  currentPlanLabel: { "uz-cyrl": "Жорий тариф", "uz-latn": "Joriy tarif", en: "Current Plan" },
+  trialBadge: { "uz-cyrl": "СИНОВ", "uz-latn": "SINOV", en: "TRIAL" },
+  subscriptionActive: { "uz-cyrl": "Фаол", "uz-latn": "Faol", en: "Active" },
+  actionRequired: { "uz-cyrl": "Чора кўринг", "uz-latn": "Chora ko'ring", en: "Action Required" },
+  nextPayment: { "uz-cyrl": "Кейинги тўлов", "uz-latn": "Keyingi to'lov", en: "Next Payment" },
+  timeRemaining: { "uz-cyrl": "Қолган вақт", "uz-latn": "Qolgan vaqt", en: "Time Remaining" },
+  daysUnit: { "uz-cyrl": "кун", "uz-latn": "kun", en: "Days" },
+  needMoreCapacity: { "uz-cyrl": "Кўпроқ сиғим керакми?", "uz-latn": "Ko'proq sig'im kerakmi?", en: "Need more capacity?" },
+  browseHigherPlans: { "uz-cyrl": "Юқорироқ тарифларни кўринг", "uz-latn": "Yuqoriroq tariflarni ko'ring", en: "Browse higher plans" },
+  belowLabel: { "uz-cyrl": "қуйида.", "uz-latn": "quyida.", en: "below." },
+  resourceUsage: { "uz-cyrl": "Ресурслардан фойдаланиш", "uz-latn": "Resurslardan foydalanish", en: "Resource Usage" },
+  branchesLabel: { "uz-cyrl": "Филиаллар", "uz-latn": "Filiallar", en: "Branches" },
+
+  welcomeChoosePlan: {
+    "uz-cyrl": "Хуш келибсиз! Бошлаш учун тариф танланг.",
+    "uz-latn": "Xush kelibsiz! Boshlash uchun tarif tanlang.",
+    en: "Welcome! Choose a plan to get started.",
+  },
+  trialEndedBanner: { "uz-cyrl": "Синов муддати тугади.", "uz-latn": "Sinov muddati tugadi.", en: "Your trial period has ended." },
+  chooseToRestore: {
+    "uz-cyrl": "Кириш имконини тиклаш учун қуйидан тариф танланг.",
+    "uz-latn": "Kirish imkonini tiklash uchun quyidan tarif tanlang.",
+    en: "Choose a plan below to restore access.",
+  },
+  trialEndsInDays: {
+    // {days} substituted at the call site, matching the .replace("{x}", …)
+    // pattern already used elsewhere (verificationCodeSentTo, welcomeToSchool).
+    "uz-cyrl": "Синов муддати {days} кундан кейин тугайди.",
+    "uz-latn": "Sinov muddati {days} kundan keyin tugaydi.",
+    en: "Your trial period ends in {days} day(s).",
+  },
+  chooseToContinue: {
+    "uz-cyrl": "Узлуксиз ишлаш учун қуйидан тариф танланг.",
+    "uz-latn": "Uzluksiz ishlash uchun quyidan tarif tanlang.",
+    en: "Choose a plan below to continue without interruption.",
+  },
+  subscriptionExpiredBanner: { "uz-cyrl": "Обунангиз муддати тугади.", "uz-latn": "Obunangiz muddati tugadi.", en: "Your subscription has expired." },
+  subscriptionCancelledBanner: { "uz-cyrl": "Обунангиз бекор қилинди.", "uz-latn": "Obunangiz bekor qilindi.", en: "Your subscription has been cancelled." },
+  subscriptionPastDueBanner: {
+    "uz-cyrl": "Обуна тўлови кечиктирилди.",
+    "uz-latn": "Obuna to'lovi kechiktirildi.",
+    en: "Your subscription payment is past due.",
+  },
+  subscriptionInactiveBanner: { "uz-cyrl": "Обунангиз фаол эмас.", "uz-latn": "Obunangiz faol emas.", en: "Your subscription is inactive." },
+  chooseToRenew: { "uz-cyrl": "Янгилаш учун қуйидан тариф танланг.", "uz-latn": "Yangilash uchun quyidan tarif tanlang.", en: "Choose a plan below to renew." },
+  paymentPendingBanner: { "uz-cyrl": "Тўлов кутилмоқда.", "uz-latn": "To'lov kutilmoqda.", en: "Payment pending." },
+  completeOrChoose: {
+    "uz-cyrl": "Тўловни якунланг ёки бошқа тариф танланг.",
+    "uz-latn": "To'lovni yakunlang yoki boshqa tarif tanlang.",
+    en: "Complete payment or choose a different plan.",
+  },
+  subscriptionPausedBanner: { "uz-cyrl": "Обунангиз ҳозирча тўхтатилган.", "uz-latn": "Obunangiz hozircha to'xtatilgan.", en: "Your subscription is currently paused." },
+
+  changeOrUpgradePlan: { "uz-cyrl": "Тарифни ўзгартириш ёки ошириш", "uz-latn": "Tarifni o'zgartirish yoki oshirish", en: "Change or Upgrade Plan" },
+  subscriptionPlansTitle: { "uz-cyrl": "Обуна тарифлари", "uz-latn": "Obuna tariflari", en: "Subscription Plans" },
+  allPlansUpgradeAnytime: {
+    "uz-cyrl": "Барча тарифларда платформанинг тўлиқ имкониятлари мавжуд. Исталган вақтда ошириш мумкин.",
+    "uz-latn": "Barcha tariflarda platformaning to'liq imkoniyatlari mavjud. Istalgan vaqtda oshirish mumkin.",
+    en: "All plans include full platform features. Upgrade any time.",
+  },
+  selectPlanToActivate: {
+    "uz-cyrl": "School CRM'дан фойдаланишни бошлаш учун тариф танланг. Барча тарифларда тўлиқ имкониятлар мавжуд.",
+    "uz-latn": "School CRM'dan foydalanishni boshlash uchun tarif tanlang. Barcha tariflarda to'liq imkoniyatlar mavjud.",
+    en: "Select a plan to activate your school CRM access. All plans include full platform features.",
+  },
+
+  completeYourPurchase: { "uz-cyrl": "Харидни якунланг", "uz-latn": "Xaridni yakunlang", en: "Complete Your Purchase" },
+  choosePaymentMethod: { "uz-cyrl": "Тўлов усулини танланг", "uz-latn": "To'lov usulini tanlang", en: "Choose payment method" },
+  payNow: { "uz-cyrl": "Ҳозир тўлаш", "uz-latn": "Hozir to'lash", en: "Pay Now" },
+  processingPayment: { "uz-cyrl": "Ишланмоқда…", "uz-latn": "Ishlanmoqda…", en: "Processing…" },
+  payViaTelegram: { "uz-cyrl": "Telegram орқали тўлаш", "uz-latn": "Telegram orqali to'lash", en: "Pay via Telegram" },
+  amountLabel: { "uz-cyrl": "Сумма:", "uz-latn": "Summa:", en: "Amount:" },
+  openTelegram: { "uz-cyrl": "Telegram'ни очиш", "uz-latn": "Telegram'ni ochish", en: "Open Telegram" },
+  subscriptionCreatedTitle: { "uz-cyrl": "Обуна яратилди", "uz-latn": "Obuna yaratildi", en: "Subscription Created" },
+  subscriptionCreatedDesc: {
+    "uz-cyrl": "Обунангиз яратилди ва тўлов кутилмоқда. Ҳисобингизни фаоллаштириш учун банк ўтказмасини якунлашда администратор билан боғланинг.",
+    "uz-latn": "Obunangiz yaratildi va to'lov kutilmoqda. Hisobingizni faollashtirish uchun bank o'tkazmasini yakunlashda administrator bilan bog'laning.",
+    en: "Your subscription has been created and is pending payment. Please contact the administrator to complete the bank transfer and activate your account.",
+  },
+  subscriptionIdLabel: { "uz-cyrl": "Обуна ID рақами", "uz-latn": "Obuna ID raqami", en: "Subscription ID" },
+  doneLabel: { "uz-cyrl": "Тайёр", "uz-latn": "Tayyor", en: "Done" },
+  // PricingTable.tsx — rendered directly on billing.tsx, had no i18n at all.
+  upToBranches: {
+    "uz-cyrl": "{count} тагача филиал",
+    "uz-latn": "{count} tagacha filial",
+    en: "Up to {count} branch(es)",
+  },
+  unlimitedBranches: { "uz-cyrl": "Чексиз филиаллар", "uz-latn": "Cheksiz filiallar", en: "Unlimited branches" },
+  upToStudents: { "uz-cyrl": "{count} тагача ўқувчи", "uz-latn": "{count} tagacha o'quvchi", en: "Up to {count} students" },
+  unlimitedStudents: { "uz-cyrl": "Чексиз ўқувчилар", "uz-latn": "Cheksiz o'quvchilar", en: "Unlimited students" },
+  upToClasses: { "uz-cyrl": "{count} тагача синф", "uz-latn": "{count} tagacha sinf", en: "Up to {count} classes" },
+  unlimitedClasses: { "uz-cyrl": "Чексиз синфлар", "uz-latn": "Cheksiz sinflar", en: "Unlimited classes" },
+  noPlansAvailable: {
+    "uz-cyrl": "Ҳозирча тарифлар мавжуд эмас.",
+    "uz-latn": "Hozircha tariflar mavjud emas.",
+    en: "No plans available at the moment.",
+  },
+  currentPlanBadge: { "uz-cyrl": "Жорий тариф", "uz-latn": "Joriy tarif", en: "Current Plan" },
+  mostPopularBadge: { "uz-cyrl": "Энг оммабоп", "uz-latn": "Eng ommabop", en: "Most Popular" },
+  renewPlan: { "uz-cyrl": "Тарифни янгилаш", "uz-latn": "Tarifni yangilash", en: "Renew Plan" },
+  selectPlan: { "uz-cyrl": "Тарифни танлаш", "uz-latn": "Tarifni tanlash", en: "Select Plan" },
+
+  paymentFailedRetry: {
+    "uz-cyrl": "Тўлов амалга ошмади. Илтимос, қайта уриниб кўринг.",
+    "uz-latn": "To'lov amalga oshmadi. Iltimos, qayta urinib ko'ring.",
+    en: "Payment failed. Please try again.",
+  },
+
   // Profile
   myProfile: {
     "uz-cyrl": "Менинг профилим",

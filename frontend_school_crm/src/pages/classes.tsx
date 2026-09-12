@@ -49,7 +49,7 @@ import { EmptyState } from "@/components/EmptyState";
 export default function ClassesPage() {
   const router = useRouter();
   const qc = useQueryClient();
-  const { currentBranch } = useBranch();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -135,11 +135,28 @@ export default function ClassesPage() {
     }
   };
 
+  // The sidebar already hides this link for anyone lacking canViewClasses
+  // (see Layout.tsx), but that alone doesn't stop someone from typing the
+  // URL directly — mirrors the same page-level guard settings.tsx uses for
+  // canViewSettings.
   useEffect(() => {
-    if (!currentBranch?.id) return;
+    if (!hasPermission("canViewClasses")) {
+      router.push("/");
+    }
+  }, [router]);
+
+  useEffect(() => {
+    // See the comment on the equivalent guard in assignments.tsx: without
+    // the branchLoading check, a branch that never resolves left isLoading
+    // stuck at its initial `true` forever.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     loadData();
-  }, [currentBranch?.id]);
+  }, [currentBranch?.id, branchLoading]);
 
   // Refetch data when page regains focus
   useRefetchOnFocus(loadData);

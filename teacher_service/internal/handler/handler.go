@@ -5,16 +5,18 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/school-crm/teacher-service/internal/db"
 	"github.com/school-crm/teacher-service/internal/service"
 )
 
 type Handler struct {
 	teachers *service.TeacherService
 	salaries *service.SalaryService
+	db       *db.DB
 }
 
-func New(teachers *service.TeacherService, salaries *service.SalaryService) *Handler {
-	return &Handler{teachers: teachers, salaries: salaries}
+func New(teachers *service.TeacherService, salaries *service.SalaryService, database *db.DB) *Handler {
+	return &Handler{teachers: teachers, salaries: salaries, db: database}
 }
 
 // requestBranchID resolves which branch a request targets: an explicit
@@ -75,6 +77,36 @@ func canDelete(role string) bool {
 func (h *Handler) requireDeletePermission(c *gin.Context) bool {
 	if !canDelete(c.GetHeader("X-User-Role")) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
+		return false
+	}
+	return true
+}
+
+// requireViewSalariesPermission enforces permissions.can_view_salaries — the
+// frontend already hides salary data/nav for roles without it, but nothing
+// server-side checked before this, so a manager/accountant with
+// can_view_salaries:false could still read every teacher's salary by calling
+// this endpoint directly. Admin-like roles bypass (same set as canDelete
+// above): an admin's own permissions row already has this true by
+// construction (see auth_service's CompleteRegistration), and a
+// developer/super_admin operator may have no row in this tenant's
+// permissions table at all.
+func (h *Handler) requireViewSalariesPermission(c *gin.Context) bool {
+	role := c.GetHeader("X-User-Role")
+	if canDelete(role) {
+		return true
+	}
+	userID := c.GetHeader("X-User-ID")
+	var allowed bool
+	if userID == "" || h.db == nil {
+		allowed = false
+	} else if err := h.db.Conn().QueryRowContext(c.Request.Context(),
+		`SELECT can_view_salaries FROM permissions WHERE user_id = $1`, userID,
+	).Scan(&allowed); err != nil {
+		allowed = false // no permissions row, or query error → deny by default
+	}
+	if !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
 		return false
 	}
 	return true
@@ -220,6 +252,9 @@ func (h *Handler) ListSalaries(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
+	if !h.requireViewSalariesPermission(c) {
+		return
+	}
 	year, _ := strconv.Atoi(c.Query("year"))
 	salaries, err := h.salaries.GetByBranch(c.Request.Context(), branchID, c.Query("month"), year)
 	if err != nil {
@@ -303,6 +338,9 @@ func (h *Handler) TeacherSalaryHistory(c *gin.Context) {
 		return
 	}
 	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if !h.requireViewSalariesPermission(c) {
 		return
 	}
 	salaries, err := h.salaries.GetByTeacher(c.Request.Context(), c.Param("teacherId"), branchID)
