@@ -260,13 +260,15 @@ export function DataTable<T extends { id: string }>({
               ))
             : data.length === 0
             ? null // empty state handled below, shared with table
-            : data.map((row) =>
-                renderCard(
-                  row,
-                  selectedIds?.has(row.id) ?? false,
-                  () => onToggleSelect?.(row.id)
-                )
-              )}
+            : data.map((row) => (
+                <React.Fragment key={row.id}>
+                  {renderCard(
+                    row,
+                    selectedIds?.has(row.id) ?? false,
+                    () => onToggleSelect?.(row.id)
+                  )}
+                </React.Fragment>
+              ))}
         </div>
       )}
 
