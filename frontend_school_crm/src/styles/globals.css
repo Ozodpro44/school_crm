@@ -30,18 +30,21 @@
        Card's `shadow-xs` (a Tailwind v4 class that compiles to nothing on the
        v3 in use here) — left cards defined by a 1px border alone and made the
        whole UI look flat. */
-    --background: 210 20% 98%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* Indigo + Slate palette. Each token below is annotated with the exact
+       hex it was requested as, so a future change can find its source of
+       truth instead of reverse-engineering the HSL. */
+    --background: 210 40% 98%;       /* #F8FAFC */
+    --foreground: 222.2 47.4% 11.2%; /* #0F172A */
+    --card: 0 0% 100%;                /* #FFFFFF */
+    --card-foreground: 222.2 47.4% 11.2%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --primary: 243 75% 59%;           /* #4F46E5 */
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215.4 16.3% 46.9%; /* #64748B */
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
@@ -53,9 +56,9 @@
     --warning-foreground: 0 0% 100%;
     --info: 217 91% 60%;             /* blue-500 */
     --info-foreground: 0 0% 100%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --border: 214 32% 91%;           /* #E2E8F0 */
+    --input: 214 32% 91%;
+    --ring: 239 84% 67%;              /* #6366F1 */
     --radius: 0.5rem;
     /* Chart series: 1 = income/positive, 2 = expense/negative, then neutral
        accents. Kept in the same hue family as the dark palette below so a
@@ -65,31 +68,29 @@
     --chart-3: 217 83% 53%;
     --chart-4: 38 92% 45%;
     --chart-5: 265 60% 55%;
-    --sidebar: 0 0% 100%;
-    --sidebar-foreground: 222.2 84% 4.9%;
-    --sidebar-primary: 221.2 83.2% 53.3%;
+    --sidebar: 0 0% 100%;             /* #FFFFFF */
+    --sidebar-foreground: 222.2 47.4% 11.2%;
+    --sidebar-primary: 243 75% 59%;
     --sidebar-primary-foreground: 210 40% 98%;
     --sidebar-accent: 210 40% 96.1%;
     --sidebar-accent-foreground: 222.2 47.4% 11.2%;
-    --sidebar-border: 214.3 31.8% 91.4%;
-    --sidebar-ring: 221.2 83.2% 53.3%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 239 84% 67%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    /* One step lighter than --background so cards actually read as a surface.
-       These used to be identical, which flattened every card in dark mode. */
-    --card: 217 33% 10%;
+    --background: 222.2 47.4% 11.2%; /* #0F172A */
+    --foreground: 210 40% 98%;        /* #F8FAFC */
+    --card: 217.2 32.6% 17.5%;        /* #1E293B */
     --card-foreground: 210 40% 98%;
-    --popover: 217 33% 10%;
+    --popover: 217.2 32.6% 17.5%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
+    --primary: 234 89% 74%;            /* #818CF8 */
     --primary-foreground: 222.2 47.4% 11.2%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted-foreground: 215 20.2% 65.1%; /* #94A3B8 */
     --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
@@ -100,12 +101,9 @@
     --warning-foreground: 0 0% 100%;
     --info: 217 91% 55%;
     --info-foreground: 0 0% 100%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    /* Was 224.3 76.3% 48% — a dark blue that was nearly invisible as a focus
-       ring against the near-black background. Lightened so keyboard focus is
-       actually visible in dark mode. */
-    --ring: 217 91% 65%;
+    --border: 215.3 25% 26.7%;         /* #334155 */
+    --input: 215.3 25% 26.7%;
+    --ring: 239 84% 67%;               /* #6366F1 — same accent ring as light, for consistent focus styling across themes */
     /* Same hue family as the light palette, only lightened for a dark ground.
        Previously dark used an entirely different hue set, so chart series 1
        was terracotta in light and blue in dark — the series changed identity
@@ -115,14 +113,14 @@
     --chart-3: 217 85% 65%;
     --chart-4: 38 90% 58%;
     --chart-5: 265 70% 68%;
-    --sidebar: 222.2 84% 4.9%;
+    --sidebar: 220.9 39.3% 11%;        /* #111827 */
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 217.2 91.2% 59.8%;
+    --sidebar-primary: 234 89% 74%;
     --sidebar-primary-foreground: 222.2 47.4% 11.2%;
     --sidebar-accent: 217.2 32.6% 17.5%;
     --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217.2 32.6% 17.5%;
-    --sidebar-ring: 224.3 76.3% 48%;
+    --sidebar-border: 215.3 25% 26.7%;
+    --sidebar-ring: 239 84% 67%;
   }
 }
 
@@ -184,18 +182,19 @@
 
 @layer utilities {
   /* ─── Brand gradient utilities ───────────────────────────────────────── */
-  /* Single source of truth for the indigo→purple brand. Replaces the
-     repeated `bg-gradient-to-r from-indigo-600 to-purple-600 hover:…` chains.
-     Keep the visual unchanged; centralizing only. */
+  /* Single source of truth for the brand mark — Indigo + Slate palette
+     (#4F46E5 base → #818CF8 accent), no purple. Replaces the repeated
+     `bg-gradient-to-r from-indigo-600 to-purple-600 hover:…` chains. */
   .bg-brand {
-    background-image: linear-gradient(to right, rgb(79 70 229), rgb(147 51 234));
+    background-image: linear-gradient(to right, rgb(79 70 229), rgb(129 140 248));
   }
   .hover\:bg-brand-hover:hover {
-    background-image: linear-gradient(to right, rgb(67 56 202), rgb(126 34 206));
+    background-color: rgb(99 102 241);
+    background-image: none;
   }
   /* Diagonal variant — used for app logo / icon tiles. */
   .bg-brand-square {
-    background-image: linear-gradient(to bottom right, rgb(79 70 229), rgb(147 51 234));
+    background-image: linear-gradient(to bottom right, rgb(79 70 229), rgb(129 140 248));
   }
 
   /* ─── Typography scale ─────────────────────────────────────────────────
@@ -247,7 +246,7 @@
   @supports ((-webkit-background-clip: text) or (background-clip: text)) {
     @media not print {
       .text-brand-gradient {
-        background-image: linear-gradient(to right, rgb(79 70 229), rgb(147 51 234));
+        background-image: linear-gradient(to right, rgb(79 70 229), rgb(129 140 248));
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
@@ -283,7 +282,7 @@
 
   .gradient-border {
     position: relative;
-    background: linear-gradient(to right, #4f46e5, #9333ea);
+    background: linear-gradient(to right, #4f46e5, #6366f1);
     padding: 2px;
     border-radius: 0.5rem;
   }
