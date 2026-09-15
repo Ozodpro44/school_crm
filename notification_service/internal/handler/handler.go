@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/notification-service/internal/service"
@@ -75,7 +76,13 @@ func (h *Handler) List(c *gin.Context) {
 		return
 	}
 	unreadOnly := c.Query("unread") == "true"
-	notifs, err := h.svc.List(c.Request.Context(), branchID, unreadOnly, 50)
+	limit := 20
+	if raw := c.Query("limit"); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	notifs, err := h.svc.List(c.Request.Context(), branchID, unreadOnly, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

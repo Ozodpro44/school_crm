@@ -1121,7 +1121,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               />
 
               <div className="space-y-2">
-                <Label htmlFor="status">{t("status")} *</Label>
+                <Label htmlFor="status" className="h-5 flex items-center">{t("status")} *</Label>
                 <Select
                   value={formData.status}
                   onValueChange={(value: StudentStatus) =>
@@ -1141,8 +1141,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                 </Select>
               </div>
 
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <div className="h-5 flex items-center justify-between">
                   <Label htmlFor="monthlyPayment" className="text-sm font-medium">
                     {t("monthlyPayment")}
                     <span className="ml-0.5 text-red-500">*</span>

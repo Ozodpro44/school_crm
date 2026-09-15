@@ -59,8 +59,10 @@ export function FormDialog({
       <DialogContent
         className={cn("flex flex-col gap-0 p-0 overflow-hidden", maxWidth)}
       >
-        {/* Sticky header */}
-        <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-100 dark:border-slate-800">
+        {/* Sticky header — bg-slate-50 makes the separation from the
+            scrollable body actually visible; border-slate-100 alone reads
+            as almost no border against the dialog's white background. */}
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 shrink-0">
           <DialogTitle className="text-base font-semibold">{title}</DialogTitle>
         </DialogHeader>
 
@@ -75,7 +77,7 @@ export function FormDialog({
           </div>
 
           {/* Sticky footer */}
-          <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
             <div>{extraActions}</div>
             <div className="flex items-center gap-3">
               <Button
