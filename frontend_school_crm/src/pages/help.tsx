@@ -14,6 +14,11 @@ import {
   Wallet,
   BarChart3,
   HelpCircle,
+  CalendarCheck,
+  Calendar,
+  ClipboardList,
+  MessageSquare,
+  Receipt,
 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -64,8 +69,7 @@ export default function HelpPage() {
                       {t("addingStudents")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
-                      {t("addingStudentsDesc") ||
-                        'Click the "Add Student" button and fill in the required information including full name, class assignment, contact details, and monthly payment amount.'}
+                      {t("addingStudentsDesc")}
                     </p>
                   </div>
                   <div>
@@ -110,8 +114,7 @@ export default function HelpPage() {
                       {t("markingStudentsAsLeft")}
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
-                      {t("markingStudentsAsLeftDesc") ||
-                        'Use the "Mark as Left" button to automatically stop payment tracking for students who have left the school.'}
+                      {t("markingStudentsAsLeftDesc")}
                     </p>
                   </div>
                 </AccordionContent>
@@ -166,6 +169,98 @@ export default function HelpPage() {
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
                       {t("switchingStudentsDesc")}
+                    </p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="attendance">
+                <AccordionTrigger className="text-lg">
+                  <div className="flex items-center gap-3">
+                    <CalendarCheck className="w-5 h-5 text-teal-600" />
+                    {t("attendanceManagement")}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3">
+                  <div>
+                    <h4 className="font-semibold mb-2">
+                      {t("markingAttendance")}
+                    </h4>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      {t("markingAttendanceDesc")}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold mb-2">
+                      {t("viewingAttendanceStats")}
+                    </h4>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      {t("viewingAttendanceStatsDesc")}
+                    </p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="schedule">
+                <AccordionTrigger className="text-lg">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-sky-600" />
+                    {t("scheduleManagement")}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3">
+                  <div>
+                    <h4 className="font-semibold mb-2">
+                      {t("creatingSchedule")}
+                    </h4>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      {t("creatingScheduleDesc")}
+                    </p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="assignments">
+                <AccordionTrigger className="text-lg">
+                  <div className="flex items-center gap-3">
+                    <ClipboardList className="w-5 h-5 text-violet-600" />
+                    {t("assignmentManagement")}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3">
+                  <div>
+                    <h4 className="font-semibold mb-2">
+                      {t("creatingAssignments")}
+                    </h4>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      {t("creatingAssignmentsDesc")}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold mb-2">
+                      {t("trackingSubmissions")}
+                    </h4>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      {t("trackingSubmissionsDesc")}
+                    </p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="messaging">
+                <AccordionTrigger className="text-lg">
+                  <div className="flex items-center gap-3">
+                    <MessageSquare className="w-5 h-5 text-pink-600" />
+                    {t("messagingFeature")}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3">
+                  <div>
+                    <h4 className="font-semibold mb-2">
+                      {t("sendingMassMessages")}
+                    </h4>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      {t("sendingMassMessagesDesc")}
                     </p>
                   </div>
                 </AccordionContent>
@@ -229,6 +324,33 @@ export default function HelpPage() {
                     </h4>
                     <p className="text-slate-600 dark:text-slate-400">
                       {t("recordingSalariesDesc")}
+                    </p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem value="expenses">
+                <AccordionTrigger className="text-lg">
+                  <div className="flex items-center gap-3">
+                    <Receipt className="w-5 h-5 text-rose-600" />
+                    {t("expenseManagement")}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="space-y-3">
+                  <div>
+                    <h4 className="font-semibold mb-2">
+                      {t("recordingExpenses")}
+                    </h4>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      {t("recordingExpensesDesc")}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold mb-2">
+                      {t("expenseBudgets")}
+                    </h4>
+                    <p className="text-slate-600 dark:text-slate-400">
+                      {t("expenseBudgetsDesc")}
                     </p>
                   </div>
                 </AccordionContent>

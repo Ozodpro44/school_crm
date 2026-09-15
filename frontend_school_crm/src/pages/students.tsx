@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -148,6 +149,11 @@ export default function StudentsPage() {
     monthlyPayment: "",
     status: "active" as StudentStatus,
   });
+  // "Boshqa" toggle: monthlyPayment starts locked to the branch's own
+  // monthly payment (settings.monthlyPayment) and pre-filled with it: most
+  // students pay the standard rate, so this switch is only for the
+  // exception, not the default data-entry path.
+  const [useCustomPayment, setUseCustomPayment] = useState(false);
   const [formErrors, setFormErrors] = useState<{
     fullName?: string;
     phone?: string;
@@ -209,7 +215,7 @@ export default function StudentsPage() {
   const processCSVData = async (csvText: string) => {
     try {
       const lines = csvText.trim().split("\n");
-      const defaultPayment = settings?.monthlyPayment || 500000;
+      const defaultPayment = settings?.monthlyPayment || 0;
       const knownClasses = [...classes];
 
       let importedCount = 0;
@@ -425,7 +431,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       return;
     }
 
-    const defaultMonthlyPayment = settings?.monthlyPayment || 500000;
+    const defaultMonthlyPayment = settings?.monthlyPayment || 0;
     const monthlyPayment = formData.monthlyPayment.trim()
       ? parseInt(formData.monthlyPayment)
       : defaultMonthlyPayment;
@@ -481,6 +487,10 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       monthlyPayment: student.monthlyPayment.toString(),
       status: student.status,
     });
+    // Only unlock the field if this student's payment actually differs from
+    // the branch default — otherwise editing a standard-rate student would
+    // show the toggle on for no reason.
+    setUseCustomPayment(student.monthlyPayment !== settings?.monthlyPayment);
     setIsDialogOpen(true);
   };
 
@@ -634,15 +644,29 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     setIsDialogOpen(true);
   };
 
+  // Covers the rare case where the dialog is opened for a NEW student before
+  // useSettings() has finished its first fetch (resetForm ran with
+  // settings still undefined) — once it resolves, back-fill the branch's
+  // real payment instead of leaving the field permanently blank/wrong.
+  useEffect(() => {
+    if (isDialogOpen && !editingStudent && !useCustomPayment && settings?.monthlyPayment) {
+      setFormData((prev) =>
+        prev.monthlyPayment ? prev : { ...prev, monthlyPayment: settings.monthlyPayment.toString() }
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDialogOpen, settings?.monthlyPayment]);
+
   const resetForm = () => {
     setFormData({
       fullName: "",
       classId: "",
       phone: "",
       parentPhone: "",
-      monthlyPayment: "",
+      monthlyPayment: settings?.monthlyPayment ? settings.monthlyPayment.toString() : "",
       status: "active",
     });
+    setUseCustomPayment(false);
     setFormErrors({});
     setEditingStudent(null);
   };
@@ -1117,19 +1141,50 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                 </Select>
               </div>
 
-              <Field
-                id="monthlyPayment"
-                label={`${t("monthlyPayment")} *`}
-                type="text"
-                inputMode="numeric"
-                value={formatNumberWithSpaces(formData.monthlyPayment)}
-                error={formErrors.monthlyPayment}
-                placeholder="0"
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  setFormData({ ...formData, monthlyPayment: removeNumberFormatting(e.target.value).replace(/[^\d]/g, "") });
-                  clearFieldError("monthlyPayment");
-                }}
-              />
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="monthlyPayment" className="text-sm font-medium">
+                    {t("monthlyPayment")}
+                    <span className="ml-0.5 text-red-500">*</span>
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="useCustomPayment" className="text-xs font-normal text-slate-500 dark:text-slate-400 cursor-pointer">
+                      {t("customAmount")}
+                    </Label>
+                    <Switch
+                      id="useCustomPayment"
+                      checked={useCustomPayment}
+                      onCheckedChange={(checked) => {
+                        setUseCustomPayment(checked);
+                        if (!checked) {
+                          setFormData((prev) => ({
+                            ...prev,
+                            monthlyPayment: settings?.monthlyPayment ? settings.monthlyPayment.toString() : "",
+                          }));
+                          clearFieldError("monthlyPayment");
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                <Input
+                  id="monthlyPayment"
+                  type="text"
+                  inputMode="numeric"
+                  disabled={!useCustomPayment}
+                  aria-invalid={!!formErrors.monthlyPayment}
+                  className={formErrors.monthlyPayment ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  value={formatNumberWithSpaces(formData.monthlyPayment)}
+                  placeholder="0"
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    setFormData({ ...formData, monthlyPayment: removeNumberFormatting(e.target.value).replace(/[^\d]/g, "") });
+                    clearFieldError("monthlyPayment");
+                  }}
+                />
+                {formErrors.monthlyPayment && (
+                  <p className="text-xs text-red-500">{formErrors.monthlyPayment}</p>
+                )}
+              </div>
             </div>
           </FormDialog>
         </div>

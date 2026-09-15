@@ -13,8 +13,8 @@ export const helpTranslations: Partial<Translation> = {
     en: "User Guide",
   },
   faq: {
-    "uz-cyrl": "КСС (Кўп сўраладиган саволлар)",
-    "uz-latn": "KSS (Ko'p so'raladigan savollar)",
+    "uz-cyrl": "Кўп сўраладиган саволлар",
+    "uz-latn": "Ko'p so'raladigan savollar",
     en: "FAQ",
   },
   contactSupport: {
@@ -24,43 +24,45 @@ export const helpTranslations: Partial<Translation> = {
   },
   version: { "uz-cyrl": "Версия", "uz-latn": "Versiya", en: "Version" },
   helpDescription: {
-    "uz-cyrl": "Мактаб бошқарув тизимидан фойдаланишнинг тўлиқ қўлланмаси",
-    "uz-latn": "Maktab boshqaruv tizimdan foydalanishning to'liq qo'llanmasi",
+    "uz-cyrl": "Мактаб бошқарув тизимидан фойдаланиш бўйича тўлиқ қўлланма",
+    "uz-latn": "Maktab boshqaruv tizimidan foydalanish bo'yicha to'liq qo'llanma",
     en: "Complete guide to using the School Management System",
   },
   gettingStarted: {
-    "uz-cyrl": "Бошланиш",
-    "uz-latn": "Boshlash",
+    "uz-cyrl": "Бошлаш учун",
+    "uz-latn": "Boshlash uchun",
     en: "Getting Started",
   },
   gettingStartedText: {
     "uz-cyrl":
-      "Мактаб бошқарув тизимига хуш келибсиз! Бу кўп функционалли платформа сизга мактабнинг барча жихатларини бошқариш, шунингдек ўқувчилар, ўқитувчилар, синфлар, тўловлар ва молиявиятни ўқитиш ёрдам беради.",
+      "Мактаб бошқарув тизимига хуш келибсиз! Бу платформа орқали ўқувчилар, ўқитувчилар, синфлар, дарс жадвали, давомат, вазифалар, тўловлар ва молиявий ҳисоботларни бир жойдан бошқарасиз.",
     "uz-latn":
-      "Maktab boshqaruv tizimga xush kelibsiz! Bu ko'p funktsionalli platforma sizga maktabning barcha jihatlarini boshqarish, shuningdek o'quvchilar, o'qituvchilar, sinflar, to'lovlar va moliyaviyatni o'qitish yordam beradi.",
-    en: "Welcome to the Private School Management System! This comprehensive platform helps you manage all aspects of your school operations including students, teachers, classes, payments, and finances.",
+      "Maktab boshqaruv tizimiga xush kelibsiz! Bu platforma orqali o'quvchilar, o'qituvchilar, sinflar, dars jadvali, davomat, vazifalar, to'lovlar va moliyaviy hisobotlarni bir joydan boshqarasiz.",
+    en: "Welcome to the School Management System! This platform lets you manage students, teachers, classes, schedules, attendance, assignments, payments, and financial reports all in one place.",
   },
   featureGuide: {
     "uz-cyrl": "Функциялар қўлланмаси",
-    "uz-latn": "Funktsiyalar qo'llanmasi",
+    "uz-latn": "Funksiyalar qo'llanmasi",
     en: "Feature Guide",
   },
+
+  // ── Students ──────────────────────────────────────────────────────────
   studentManagement: {
     "uz-cyrl": "Ўқувчиларни бошқариш",
     "uz-latn": "O'quvchilarni boshqarish",
     en: "Student Management",
   },
   addingStudents: {
-    "uz-cyrl": "Ўқувчиларни қўшиш",
-    "uz-latn": "O'quvchilarni qo'shish",
+    "uz-cyrl": "Ўқувчи қўшиш",
+    "uz-latn": "O'quvchi qo'shish",
     en: "Adding Students",
   },
   addingStudentsDesc: {
     "uz-cyrl":
-      '"Ўқувчи қўшиш" тугмасини босинг ва шахсий исм, синф назарида қўйиш, алоқа маълумотлари ва ойлик тўлов миқдорини сақланг.',
+      "«Ўқувчи қўшиш» тугмасини босинг ва тўлиқ исм, синф, алоқа маълумотлари ҳамда ойлик тўлов миқдорини киритинг.",
     "uz-latn":
-      "\"O'quvchi qo'shish\" tugmasini bosing va shaxsiy ism, sinf nazarida qo'yish, aloqa ma'lumotlari va oylik to'lov miqdorini saqlang.",
-    en: 'Click the "Add Student" button and fill in the required information including full name, class assignment, contact details, and monthly payment amount.',
+      "\"O'quvchi qo'shish\" tugmasini bosing va to'liq ism, sinf, aloqa ma'lumotlari hamda oylik to'lov miqdorini kiriting.",
+    en: 'Click the "Add Student" button and fill in the full name, class, contact details, and monthly payment amount.',
   },
   managingStudentStatus: {
     "uz-cyrl": "Ўқувчи ҳолатини бошқариш",
@@ -68,69 +70,73 @@ export const helpTranslations: Partial<Translation> = {
     en: "Managing Student Status",
   },
   studentStatusHelp: {
-    "uz-cyrl": "Ўқувчилар уч ҳолатга эга бўлиши мумкин:",
-    "uz-latn": "O'quvchilar uch holatga ega bo'lishi mumkin:",
-    en: "Students can have three statuses:",
+    "uz-cyrl": "Ўқувчи учта ҳолатдан бирида бўлиши мумкин:",
+    "uz-latn": "O'quvchi uchta holatdan birida bo'lishi mumkin:",
+    en: "A student can have one of three statuses:",
   },
   activeStudentDesc: {
-    "uz-cyrl": "Ҳозирда қўйилди",
-    "uz-latn": "Hozirda qo'yildi",
+    "uz-cyrl": "Ҳозирда ўқияпти",
+    "uz-latn": "Hozirda o'qiyapti",
     en: "Currently enrolled",
   },
   leftStudentDesc: {
-    "uz-cyrl": "Артиқ қўйилмади",
-    "uz-latn": "Artiq qo'yilmadi",
+    "uz-cyrl": "Мактабни тарк этган",
+    "uz-latn": "Maktabni tark etgan",
     en: "No longer enrolled",
   },
   suspendedDesc: {
-    "uz-cyrl": "Вақтинчалик тўхтатилган",
-    "uz-latn": "Vaqtinchalik to'xtatilgan",
+    "uz-cyrl": "Вақтинча тўхтатилган",
+    "uz-latn": "Vaqtincha to'xtatilgan",
     en: "Temporarily suspended",
   },
   markingStudentsAsLeft: {
-    "uz-cyrl": "Ўқувчиларни чиқиб кетган сифатида белгилаш",
-    "uz-latn": "O'quvchilarni chiqib ketgan sifatida belgilash",
+    "uz-cyrl": "Ўқувчини «чиққан» деб белгилаш",
+    "uz-latn": "O'quvchini \"chiqqan\" deb belgilash",
     en: "Marking Students as Left",
   },
   markingStudentsAsLeftDesc: {
     "uz-cyrl":
-      '"Чиқиб кетган деб белгилаш" тугмасини ишлатинг, ўқувчилар мактабдан чиқиб кетсалар, тўловларни қайд қилишни avtomatik то\'хтатинг.',
+      "Ўқувчи мактабни тарк этганда «Чиққан деб белгилаш» тугмасидан фойдаланинг — бу ўша ўқувчи учун тўлов кузатувини автоматик тўхтатади.",
     "uz-latn":
-      "\"Chiqib ketgan deb belgilash\" tugmasini ishlating, o'quvchilar maktabdan chiqib ketsalar, to'lovlarni qayd qilishni avtomatik to'xtatinг.",
-    en: 'Use the "Mark as Left" button to automatically stop payment tracking for students who have left the school.',
+      "O'quvchi maktabni tark etganda \"Chiqqan deb belgilash\" tugmasidan foydalaning — bu o'sha o'quvchi uchun to'lov kuzatuvini avtomatik to'xtatadi.",
+    en: 'Use the "Mark as Left" button when a student leaves the school — it automatically stops payment tracking for that student.',
   },
+
+  // ── Teachers ──────────────────────────────────────────────────────────
   teacherManagement: {
     "uz-cyrl": "Ўқитувчиларни бошқариш",
     "uz-latn": "O'qituvchilarni boshqarish",
     en: "Teacher Management",
   },
   addingTeachers: {
-    "uz-cyrl": "Ўқитувчилар қўшиш",
-    "uz-latn": "O'qituvchilar qo'shish",
+    "uz-cyrl": "Ўқитувчи қўшиш",
+    "uz-latn": "O'qituvchi qo'shish",
     en: "Adding Teachers",
   },
   addingTeachersDesc: {
     "uz-cyrl":
-      "Ўқитувчи маълумотларини қайд қилинг, шунда исм, фанлар, алоқа маълумотлари ва ойлик иш ҳақи. Бир ўқитувчига бирнеча фан назарида қўйиш мумкин.",
+      "Ўқитувчининг исми, фанлари, алоқа маълумотлари ва ойлик иш ҳақини киритинг. Бир ўқитувчига бир нечта фан бириктириш мумкин.",
     "uz-latn":
-      "O'qituvchi ma'lumotlarini qayd qilinг, shunda ism, fanlar, aloqa ma'lumotlari va oylik ish haqi. Bir o'qituvchiga birnecha fan nazarida qo'yish mumkin.",
-    en: "Record teacher information including name, subjects, contact details, and monthly salary. You can assign multiple subjects to each teacher.",
+      "O'qituvchining ismi, fanlari, aloqa ma'lumotlari va oylik ish haqini kiriting. Bir o'qituvchiga bir nechta fan biriktirish mumkin.",
+    en: "Enter the teacher's name, subjects, contact details, and monthly salary. You can assign multiple subjects to each teacher.",
   },
   assigningClasses: {
-    "uz-cyrl": "Синфларни назарида қўйиш",
-    "uz-latn": "Sinflarni nazarida qo'yish",
+    "uz-cyrl": "Синф бириктириш",
+    "uz-latn": "Sinf biriktirish",
     en: "Assigning Classes",
   },
   assigningClassesDesc: {
     "uz-cyrl":
-      "Ўқитувчилар синф бошқарув бўлимида синфларга назарида қўйилади. Har bir sinf bir sinf o'qituvchisiga ega bo'lishi mumkin.",
+      "Ўқитувчилар «Синфлар» бўлимида синфга бириктирилади. Ҳар бир синфнинг битта раҳбар ўқитувчиси бўлиши мумкин.",
     "uz-latn":
-      "O'qituvchilar sinf boshqaruv bo'limida sinflarga nazarida qo'yiladi. Har bir sinf bir sinf o'qituvchisiga ega bo'lishi mumkin.",
-    en: "Teachers are assigned to classes through the Class Management section. Each class can have one class teacher.",
+      "O'qituvchilar \"Sinflar\" bo'limida sinfga biriktiriladi. Har bir sinfning bitta rahbar o'qituvchisi bo'lishi mumkin.",
+    en: "Teachers are assigned to a class from the Classes section. Each class can have one class teacher.",
   },
+
+  // ── Classes ───────────────────────────────────────────────────────────
   classManagement: {
-    "uz-cyrl": "Синф бошқарувдан",
-    "uz-latn": "Sinf boshqaruvdan",
+    "uz-cyrl": "Синфларни бошқариш",
+    "uz-latn": "Sinflarni boshqarish",
     en: "Class Management",
   },
   creatingClasses: {
@@ -140,39 +146,141 @@ export const helpTranslations: Partial<Translation> = {
   },
   creatingClassesDesc: {
     "uz-cyrl":
-      "Синф бўлимларини (мис. 7A, 8B, 9C) яратинг ва бир ўқитувчини бир ўқитувчига назарида қўйинг. Система avtomatik ҳар bir синфда ўқувчиларнинг рўйхатдан ўтиш жарёнини қайд қилади.",
+      "Синф бўлимларини (мас. 7А, 8Б, 9В) яратинг ва ҳар бирига раҳбар ўқитувчи бириктиринг. Тизим ҳар бир синфдаги ўқувчилар сонини автоматик кузатади.",
     "uz-latn":
-      "Sinf bo'limlarini (mis. 7A, 8B, 9C) yaratinг va bir o'qituvchini bir o'qituvchiga nazarida qo'yinг. Sistema avtomatik har bir sinfda o'quvchilarning royxatdan o'tish jaryoni qayd qiladi.",
+      "Sinf bo'limlarini (mas. 7A, 8B, 9V) yarating va har biriga rahbar o'qituvchi biriktiring. Tizim har bir sinfdagi o'quvchilar sonini avtomatik kuzatadi.",
     en: "Create class sections (e.g., 7A, 8B, 9C) and assign a class teacher to each. The system automatically tracks student enrollment per class.",
   },
   switchingStudents: {
-    "uz-cyrl": "Ўқувчиларни синфлар ўртасида ўтказиш",
-    "uz-latn": "O'quvchilarni sinflar o'rtasida o'tkazish",
+    "uz-cyrl": "Ўқувчини бошқа синфга ўтказиш",
+    "uz-latn": "O'quvchini boshqa sinfga o'tkazish",
     en: "Switching Students Between Classes",
   },
   switchingStudentsDesc: {
     "uz-cyrl":
-      "Ўқувчиларни бир синфдан икинчи синфга кўчириш мумкин. Ўқувчиларни танланг, мақсадли синфни танланг ва ўтказиш тугмасини ишлатинг.",
+      "Ўқувчини бир синфдан бошқасига ўтказиш мумкин: ўқувчини танланг, мақсадли синфни белгиланг ва «Ўтказиш» тугмасини босинг.",
     "uz-latn":
-      "O'quvchilarni bir sinfdan ikkinchi sinfga ko'chirish mumkin. O'quvchilarni tanlang, maqsadli sinfni tanlang va o'tkazish tugmasini ishlating.",
-    en: "You can move students from one class to another. Select the students, choose the target class, and use the Switch button to transfer them.",
+      "O'quvchini bir sinfdan boshqasiga o'tkazish mumkin: o'quvchini tanlang, maqsadli sinfni belgilang va \"O'tkazish\" tugmasini bosing.",
+    en: "You can move a student from one class to another: select the student, choose the target class, and press the Switch button.",
   },
+
+  // ── Attendance (new) ─────────────────────────────────────────────────
+  attendanceManagement: {
+    "uz-cyrl": "Давоматни бошқариш",
+    "uz-latn": "Davomatni boshqarish",
+    en: "Attendance",
+  },
+  markingAttendance: {
+    "uz-cyrl": "Давоматни белгилаш",
+    "uz-latn": "Davomatni belgilash",
+    en: "Marking Attendance",
+  },
+  markingAttendanceDesc: {
+    "uz-cyrl":
+      "«Давомат» бўлимида синф ва санани танлаб, ҳар бир ўқувчи учун ҳозир, кеч қолди ёки йўқ ҳолатини белгиланг.",
+    "uz-latn":
+      "\"Davomat\" bo'limida sinf va sanani tanlab, har bir o'quvchi uchun hozir, kech qoldi yoki yo'q holatini belgilang.",
+    en: "In the Attendance section, pick a class and date, then mark each student as present, late, or absent.",
+  },
+  viewingAttendanceStats: {
+    "uz-cyrl": "Давомат статистикаси",
+    "uz-latn": "Davomat statistikasi",
+    en: "Attendance Statistics",
+  },
+  viewingAttendanceStatsDesc: {
+    "uz-cyrl":
+      "Ойлик давомат фоизини ва кетма-кет дарсга келмаган ўқувчиларни (диққат талаб қиладиганлар) кўриш мумкин.",
+    "uz-latn":
+      "Oylik davomat foizini va ketma-ket darsga kelmagan o'quvchilarni (diqqat talab qiladiganlar) ko'rish mumkin.",
+    en: "View the monthly attendance percentage and students with consecutive absences who may need attention.",
+  },
+
+  // ── Schedule (new) ───────────────────────────────────────────────────
+  scheduleManagement: {
+    "uz-cyrl": "Дарс жадвали",
+    "uz-latn": "Dars jadvali",
+    en: "Schedule",
+  },
+  creatingSchedule: {
+    "uz-cyrl": "Дарс жадвалини тузиш",
+    "uz-latn": "Dars jadvalini tuzish",
+    en: "Building the Schedule",
+  },
+  creatingScheduleDesc: {
+    "uz-cyrl":
+      "Ҳар бир синф учун ҳафта кунлари бўйича дарс вақтини, фан ва ўқитувчини киритиб, дарс жадвалини яратинг.",
+    "uz-latn":
+      "Har bir sinf uchun hafta kunlari bo'yicha dars vaqtini, fan va o'qituvchini kiritib, dars jadvalini yarating.",
+    en: "Build a weekly timetable for each class by adding time slots with a subject and teacher.",
+  },
+
+  // ── Assignments (new) ────────────────────────────────────────────────
+  assignmentManagement: {
+    "uz-cyrl": "Вазифаларни бошқариш",
+    "uz-latn": "Vazifalarni boshqarish",
+    en: "Assignments",
+  },
+  creatingAssignments: {
+    "uz-cyrl": "Вазифа яратиш",
+    "uz-latn": "Vazifa yaratish",
+    en: "Creating Assignments",
+  },
+  creatingAssignmentsDesc: {
+    "uz-cyrl":
+      "Синф, фан, сарлавҳа ва топшириш муддатини кўрсатиб янги вазифа қўшинг.",
+    "uz-latn":
+      "Sinf, fan, sarlavha va topshirish muddatini ko'rsatib yangi vazifa qo'shing.",
+    en: "Add a new assignment by choosing the class and subject, then setting a title and due date.",
+  },
+  trackingSubmissions: {
+    "uz-cyrl": "Топширилганини кузатиш",
+    "uz-latn": "Topshirilganini kuzatish",
+    en: "Tracking Submissions",
+  },
+  trackingSubmissionsDesc: {
+    "uz-cyrl":
+      "Ҳар бир вазифа қанча ўқувчи томонидан топширилганини кўрсатади, муддати ўтган вазифалар алоҳида ажратиб кўрсатилади.",
+    "uz-latn":
+      "Har bir vazifa qancha o'quvchi tomonidan topshirilganini ko'rsatadi, muddati o'tgan vazifalar alohida ajratib ko'rsatiladi.",
+    en: "Each assignment shows how many students have submitted it, and overdue assignments are highlighted separately.",
+  },
+
+  // ── Messaging (new) ──────────────────────────────────────────────────
+  messagingFeature: {
+    "uz-cyrl": "Хабар юбориш",
+    "uz-latn": "Xabar yuborish",
+    en: "Messaging",
+  },
+  sendingMassMessages: {
+    "uz-cyrl": "Оммавий хабар юбориш",
+    "uz-latn": "Ommaviy xabar yuborish",
+    en: "Sending Mass Messages",
+  },
+  sendingMassMessagesDesc: {
+    "uz-cyrl":
+      "Синф ёки тўлов ҳолати бўйича қабул қилувчиларни танлаб, тайёр шаблон ёки ўз матнингиз билан ота-оналарга хабар юборинг.",
+    "uz-latn":
+      "Sinf yoki to'lov holati bo'yicha qabul qiluvchilarni tanlab, tayyor shablon yoki o'z matningiz bilan ota-onalarga xabar yuboring.",
+    en: "Filter recipients by class or payment status, then message parents using a ready-made template or your own text.",
+  },
+
+  // ── Payments ──────────────────────────────────────────────────────────
   paymentTracking: {
     "uz-cyrl": "Тўловларни қайд қилиш",
     "uz-latn": "To'lovlarni qayd qilish",
     en: "Payment Tracking",
   },
   recordingPayments: {
-    "uz-cyrl": "Тўловларни қайд қилиш",
-    "uz-latn": "To'lovlarni qayd qilish",
+    "uz-cyrl": "Тўлов қайд қилиш",
+    "uz-latn": "To'lov qayd qilish",
     en: "Recording Payments",
   },
   recordingPaymentsDesc: {
     "uz-cyrl":
-      "Ўқувчи тўловларини қайд қилиш учун ўқувчи танланг, сумма киритинг ва тўлов ҳолатини белгилаб қўйинг. Система avtomatik счёт номерларини тўзади.",
+      "Ўқувчини танланг, суммани киритинг ва тўлов ҳолатини белгиланг. Ҳисоб-фактура рақами тизим томонидан автоматик яратилади.",
     "uz-latn":
-      "O'quvchi to'lovlarini qayd qilish uchun o'quvchi tanlang, summa kiritinq va to'lov holatini belgilab qo'yinq. Sistema avtomatik schet nomerlarini tuzadi.",
-    en: "Track student fee payments by selecting the student, entering the amount, and marking the payment status. The system automatically generates invoice numbers.",
+      "O'quvchini tanlang, summani kiriting va to'lov holatini belgilang. Hisob-faktura raqami tizim tomonidan avtomatik yaratiladi.",
+    en: "Select the student, enter the amount, and set the payment status. The system automatically generates the invoice number.",
   },
   paymentStatus: {
     "uz-cyrl": "Тўлов ҳолати",
@@ -180,13 +288,13 @@ export const helpTranslations: Partial<Translation> = {
     en: "Payment Status",
   },
   paidDesc: {
-    "uz-cyrl": "Тўлов қабул қилинди",
-    "uz-latn": "To'lov qabul qilindi",
+    "uz-cyrl": "Тўлов қабул қилинган",
+    "uz-latn": "To'lov qabul qilingan",
     en: "Payment received",
   },
   unpaidDesc: {
-    "uz-cyrl": "Тўлов кутилаётур",
-    "uz-latn": "To'lov kutilaytgur",
+    "uz-cyrl": "Тўлов кутилмоқда",
+    "uz-latn": "To'lov kutilmoqda",
     en: "Payment pending",
   },
   partialDesc: {
@@ -194,124 +302,158 @@ export const helpTranslations: Partial<Translation> = {
     "uz-latn": "Qisman to'langan",
     en: "Partially paid",
   },
+
+  // ── Expenses (new) ───────────────────────────────────────────────────
+  expenseManagement: {
+    "uz-cyrl": "Харажатларни бошқариш",
+    "uz-latn": "Xarajatlarni boshqarish",
+    en: "Expenses",
+  },
+  recordingExpenses: {
+    "uz-cyrl": "Харажат қайд қилиш",
+    "uz-latn": "Xarajat qayd qilish",
+    en: "Recording Expenses",
+  },
+  recordingExpensesDesc: {
+    "uz-cyrl":
+      "Тоифа, сумма, тўлов усули ва санани кўрсатиб харажатни қайд қилинг — жадвал ва диаграммаларда дарҳол акс этади.",
+    "uz-latn":
+      "Toifa, summa, to'lov usuli va sanani ko'rsatib xarajatni qayd qiling — jadval va diagrammalarda darhol aks etadi.",
+    en: "Record an expense with its category, amount, payment method, and date — it appears in the table and charts immediately.",
+  },
+  expenseBudgets: {
+    "uz-cyrl": "Тоифа бўйича бюджет",
+    "uz-latn": "Toifa bo'yicha byudjet",
+    en: "Category Budgets",
+  },
+  expenseBudgetsDesc: {
+    "uz-cyrl":
+      "Ҳар бир харажат тоифаси учун ойлик бюджет белгиланг — бюджетдан ошиб кетилса, тизим огоҳлантиради.",
+    "uz-latn":
+      "Har bir xarajat toifasi uchun oylik byudjet belgilang — byudjetdan oshib ketilsa, tizim ogohlantiradi.",
+    en: "Set a monthly budget for each expense category — the system warns you when spending goes over it.",
+  },
+
+  // ── Salaries ──────────────────────────────────────────────────────────
   salaryManagement: {
-    "uz-cyrl": "Иш ҳақи бошқарувдан",
-    "uz-latn": "Ish haqi boshqaruvdan",
+    "uz-cyrl": "Иш ҳақини бошқариш",
+    "uz-latn": "Ish haqini boshqarish",
     en: "Salary Management",
   },
   recordingSalaries: {
-    "uz-cyrl": "Иш ҳақи қайд қилиш",
-    "uz-latn": "Ish haqi qayd qilish",
+    "uz-cyrl": "Иш ҳақини қайд қилиш",
+    "uz-latn": "Ish haqini qayd qilish",
     en: "Recording Salaries",
   },
   recordingSalariesDesc: {
     "uz-cyrl":
-      "Ўқитувчи иш ҳақи тўловларни ойлик қайд қилинг. Система avtomatik сумма ўқитувчинг ойлик иш ҳақи асосида тўлдиради, лекин қажириш керак бўлса ўзгартириш мумкин.",
+      "Ўқитувчиларнинг ойлик иш ҳақи тўловларини қайд қилинг. Сумма ўқитувчининг белгиланган ойлик маошидан автоматик олинади, лекин зарур бўлса ўзгартириш мумкин.",
     "uz-latn":
-      "O'qituvchi ish haqi to'lovlarni oylik qayd qilinг. Sistema avtomatik summa o'qituvchning oylik ish haqi asosida to'ldiradi, lekin tahrif kerak bo'lsa o'zgartirish mumkin.",
-    en: "Track teacher salary payments monthly. The system auto-fills the amount based on the teacher's monthly salary but allows manual adjustments if needed.",
+      "O'qituvchilarning oylik ish haqi to'lovlarini qayd qiling. Summa o'qituvchining belgilangan oylik maoshidan avtomatik olinadi, lekin zarur bo'lsa o'zgartirish mumkin.",
+    en: "Record teachers' monthly salary payments. The amount is auto-filled from the teacher's set monthly salary but can be adjusted if needed.",
   },
+
+  // ── Reports ───────────────────────────────────────────────────────────
   reportsExport: {
-    "uz-cyrl": "Ҳисоботлар ва Экспорт",
-    "uz-latn": "Hisobotlar va Eksport",
+    "uz-cyrl": "Ҳисоботлар ва экспорт",
+    "uz-latn": "Hisobotlar va eksport",
     en: "Reports & Export",
   },
   generatingReports: {
-    "uz-cyrl": "Ҳисоботлар яратиш",
-    "uz-latn": "Hisobotlar yaratish",
+    "uz-cyrl": "Ҳисобот яратиш",
+    "uz-latn": "Hisobot yaratish",
     en: "Generating Reports",
   },
   generatingReportsDesc: {
     "uz-cyrl":
-      "Ойлик ёки йиллик молиявий ҳисоботларни яратинг, даромад, харажатлар ва фойдани кўрсатув. Қайта риёя давридан танланг ва PDF ёки CSV форматига экспорт қилинг.",
+      "Даромад, харажат ва фойдани кўрсатувчи ойлик молиявий ҳисоботларни яратинг. Даврни танланг ва PDF ёки CSV форматида экспорт қилинг.",
     "uz-latn":
-      "Oylik yoki yillik moliyaviy hisobotlarni yaratinг, daromad, xarajatlar va foyni ko'rinish. Qayta davridан tanlang va PDF yoki CSV formatiga eksport qilinг.",
-    en: "Generate monthly or yearly financial reports showing income, expenses, and profit. Select the reporting period and export to PDF or CSV format.",
+      "Daromad, xarajat va foydani ko'rsatuvchi oylik moliyaviy hisobotlarni yarating. Davrni tanlang va PDF yoki CSV formatida eksport qiling.",
+    en: "Generate monthly financial reports showing income, expenses, and profit. Choose the period and export to PDF or CSV.",
   },
   exportOptions: {
-    "uz-cyrl": "Экспорт варианти",
-    "uz-latn": "Eksport varianti",
+    "uz-cyrl": "Экспорт вариантлари",
+    "uz-latn": "Eksport variantlari",
     en: "Export Options",
   },
   pdfDesc: {
-    "uz-cyrl": "Чопга оптимизланган ҳисоботлар",
-    "uz-latn": "Chopga optimizlangan hisobotlar",
-    en: "Professional formatted reports for printing",
+    "uz-cyrl": "Чоп этиш учун тайёр форматланган ҳисобот",
+    "uz-latn": "Chop etish uchun tayyor formatlangan hisobot",
+    en: "Professionally formatted report, ready to print",
   },
   csvDesc: {
-    "uz-cyrl": "Excel'дағи бўлак маълумотлари яна таҳлил қилиш учун",
-    "uz-latn": "Excel'dagi bo'lak ma'lumotlari yana tahlil qilish uchun",
+    "uz-cyrl": "Excel'да қўшимча таҳлил қилиш учун жадвал маълумотлари",
+    "uz-latn": "Excel'da qo'shimcha tahlil qilish uchun jadval ma'lumotlari",
     en: "Spreadsheet data for further analysis in Excel",
   },
+
+  // ── Tips ──────────────────────────────────────────────────────────────
   tipsAndBestPractices: {
-    "uz-cyrl": "Маслаҳатлар ва Энг яхши амалиётлар",
-    "uz-latn": "Maslahatlar va Eng yaxshi amaliyotlar",
+    "uz-cyrl": "Маслаҳатлар ва тавсиялар",
+    "uz-latn": "Maslahatlar va tavsiyalar",
     en: "Tips & Best Practices",
   },
   regularDataBackups: {
-    "uz-cyrl": "Мунтазам маълумотларни захиралаш",
-    "uz-latn": "Muntazam ma'lumotlarni zaxiralash",
-    en: "Regular Data Backups",
+    "uz-cyrl": "Ҳисоботларни мунтазам экспорт қилинг",
+    "uz-latn": "Hisobotlarni muntazam eksport qiling",
+    en: "Export Reports Regularly",
   },
   regularDataBackupsDesc: {
     "uz-cyrl":
-      "Маълумотларни muntazam CSV форматига экспорт қилинг. Бу тизим браузер сақловидан фойдаланади, шунинг учун браузер маълумотларини тозалаш барча ҳисоботлар ўчириб юборади.",
+      "Молиявий ва бошқа ҳисоботларни вақти-вақти билан CSV форматида юклаб олиб, ўз архивингизда сақланг.",
     "uz-latn":
-      "Ma'lumotlarni muntazam CSV formatiga eksport qilinг. Bu tizim brauzer saqloshidan foydalanadi, shuning uchun brauzer ma'lumotlarini tozalash barcha hisobotlar o'chirib yuboradi.",
-    en: "Export your data regularly to CSV format as a backup. This system uses browser storage, so clearing browser data will remove all records.",
+      "Moliyaviy va boshqa hisobotlarni vaqti-vaqti bilan CSV formatida yuklab olib, o'z arxivingizda saqlang.",
+    en: "Periodically download financial and other reports as CSV and keep them in your own archive.",
   },
   useSearchFeatures: {
-    "uz-cyrl": "Қидириш имкониятидан фойдаланинг",
-    "uz-latn": "Qidirish imkoniyatidan foydalaning",
-    en: "Use Search Features",
+    "uz-cyrl": "Қидирувдан фойдаланинг",
+    "uz-latn": "Qidiruvdan foydalaning",
+    en: "Use Search",
   },
   useSearchFeaturesDesc: {
     "uz-cyrl":
-      "Har bir саҳифада қидириш функцияси бор. Ўқувчилар, ўқитувчилар ёки ҳисоботларни тез топишг ишлатинг.",
+      "Юқоридаги саҳифа сарлавҳасидаги қидирув орқали ўқувчи, ўқитувчи ёки синфни исми бўйича дарҳол топинг. Кўпгина рўйхат саҳифаларида ҳам ўз қидируви мавжуд.",
     "uz-latn":
-      "Har bir sahifada qidirish funktsiyasi bor. O'quvchilar, o'qituvchilar yoki hisobotlarni tez topish uchun ishlating.",
-    en: "Every page has search functionality. Use it to quickly find students, teachers, or records.",
+      "Yuqoridagi sahifa sarlavhasidagi qidiruv orqali o'quvchi, o'qituvchi yoki sinfni ismi bo'yicha darhol toping. Ko'pgina ro'yxat sahifalarida ham o'z qidiruvi mavjud.",
+    en: "Use the search bar in the top header to instantly find a student, teacher, or class by name. Most list pages also have their own local search.",
   },
   monitorDashboard: {
     "uz-cyrl": "Бошқарув панелини мунтазам кузатиб боринг",
-    "uz-latn": "Boshqaruv panelinini muntazam kuzatib boring",
+    "uz-latn": "Boshqaruv panelini muntazam kuzatib boring",
     en: "Monitor the Dashboard",
   },
   monitorDashboardDesc: {
     "uz-cyrl":
-      "Кутилаётган тўловлар, тўланмаган иш ҳақи ва умумий молиявий соғлиғи ҳақида тез маълумотлар учун har bir kun информацион панельни tekshiring.",
+      "Кутилаётган тўловлар, тўланмаган иш ҳақи ва умумий молиявий ҳолат ҳақида тезкор маълумот учун бошқарув панелини ҳар куни текширинг.",
     "uz-latn":
-      "Kutilayotgan to'lovlar, to'lanmagan ish haqi va umumiy moliyaviy sog'ligi haqida tez ma'lumotlar uchun har bir kun informatsion panelni tekshirinг.",
-    en: "Check the dashboard daily for quick insights into pending payments, unpaid salaries, and overall financial health.",
+      "Kutilayotgan to'lovlar, to'lanmagan ish haqi va umumiy moliyaviy holat haqida tezkor ma'lumot uchun boshqaruv panelini har kuni tekshiring.",
+    en: "Check the dashboard daily for a quick view of pending payments, unpaid salaries, and overall financial health.",
   },
   needMoreHelp: {
-    "uz-cyrl": "Ғалда ёрдам керакми?",
-    "uz-latn": "Galda yordam kerakmi?",
+    "uz-cyrl": "Кўпроқ ёрдам керакми?",
+    "uz-latn": "Ko'proq yordam kerakmi?",
     en: "Need More Help?",
   },
   needMoreHelpDesc: {
     "uz-cyrl":
-      "Агар сизга қўшимча ёрдам керак бўлса ёки ўзига хос функциялар ҳақида саволларингиз бўлса:",
+      "Агар сизга қўшимча ёрдам керак бўлса ёки муайян функциялар бўйича саволингиз бўлса:",
     "uz-latn":
-      "Agar sizga qo'shimcha yordam kerak bo'lsa yoki o'ziga xos funktsiyalar haqida savollaringiz bo'lsa:",
-    en: "If you need additional assistance or have questions about specific features:",
+      "Agar sizga qo'shimcha yordam kerak bo'lsa yoki muayyan funksiyalar bo'yicha savolingiz bo'lsa:",
+    en: "If you need additional assistance or have a question about a specific feature:",
   },
   checkReadme: {
-    "uz-cyrl": "Техник ҳужјатлар учун README.md файлини tekshiring",
-    "uz-latn": "Texnik hujjatlar uchun README.md faylini tekshirinг",
-    en: "Check the README.md file for technical documentation",
+    "uz-cyrl": "Пастдаги мавзулар бўйича шу қўлланмани қайта кўриб чиқинг",
+    "uz-latn": "Pastdagi mavzular bo'yicha shu qo'llanmani qayta ko'rib chiqing",
+    en: "Revisit the topics in this guide above",
   },
   reviewSampleData: {
-    "uz-cyrl": "Тизим қандай ишлашини кўриш учун намуна маълумотларини куруниз",
-    "uz-latn":
-      "Tizim qanday ishlavni ko'rish uchun namuna ma'lumotlarini ko'rinг",
-    en: "Review the sample data to see how the system works",
+    "uz-cyrl": "Функция қандай ишлашини кўриш учун синов сифатида озгина маълумот киритиб кўринг",
+    "uz-latn": "Funksiya qanday ishlashini ko'rish uchun sinov sifatida ozgina ma'lumot kiritib ko'ring",
+    en: "Try entering a small amount of test data to see how a feature works",
   },
   contactAdmin: {
-    "uz-cyrl":
-      "Мактаб бўйича o'rnatish учун сизнинг система админист ratortiga bog'laniing",
-    "uz-latn":
-      "Maktab bo'ycha o'rnatish uchun sizning sistema administratorga bog'laning",
+    "uz-cyrl": "Мактабингизга хос созлашлар учун тизим администраторингизга мурожаат қилинг",
+    "uz-latn": "Maktabingizga xos sozlashlar uchun tizim administratoringizga murojaat qiling",
     en: "Contact your system administrator for school-specific setup",
   },
 };

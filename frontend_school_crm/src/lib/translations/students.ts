@@ -19,6 +19,12 @@ export const studentTranslations: Partial<Translation> = {
     en: "Monthly Payment",
   },
 
+  customAmount: {
+    "uz-cyrl": "Бошқа",
+    "uz-latn": "Boshqa",
+    en: "Custom",
+  },
+
   left: { "uz-cyrl": "Кетган", "uz-latn": "Ketgan", en: "Left" },
 
   suspended: {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/student-service/internal/service"
@@ -119,13 +120,14 @@ func (h *Handler) ListStudents(c *gin.Context) {
 
 func (h *Handler) CreateStudent(c *gin.Context) {
 	var body struct {
-		FullName       string  `json:"fullName"       binding:"required"`
-		Phone          string  `json:"phone"`
-		ParentPhone    string  `json:"parentPhone"`
-		ClassID        *string `json:"classId"`
-		MonthlyPayment float64 `json:"monthlyPayment" binding:"required,gt=0"`
-		Status         string  `json:"status"         binding:"required"`
-		BranchID       string  `json:"branchId"       binding:"required"`
+		FullName       string     `json:"fullName"       binding:"required"`
+		Phone          string     `json:"phone"`
+		ParentPhone    string     `json:"parentPhone"`
+		ClassID        *string    `json:"classId"`
+		MonthlyPayment float64    `json:"monthlyPayment" binding:"required,gt=0"`
+		Status         string     `json:"status"         binding:"required"`
+		BranchID       string     `json:"branchId"       binding:"required"`
+		EnrollmentDate *time.Time `json:"enrollmentDate"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -133,6 +135,16 @@ func (h *Handler) CreateStudent(c *gin.Context) {
 	}
 	if !h.requireBranchAccess(c, body.BranchID) {
 		return
+	}
+	// The frontend always sends today's date here, but default server-side
+	// too so any other caller that omits it doesn't leave enrollment_date
+	// permanently NULL (which previously happened for every student, since
+	// this field wasn't even in the bound struct — the frontend's value was
+	// silently discarded and student-details.tsx always showed "—").
+	enrollmentDate := body.EnrollmentDate
+	if enrollmentDate == nil {
+		now := time.Now().UTC()
+		enrollmentDate = &now
 	}
 	st, err := h.students.Create(c.Request.Context(), &service.Student{
 		FullName:       body.FullName,
@@ -142,6 +154,7 @@ func (h *Handler) CreateStudent(c *gin.Context) {
 		MonthlyPayment: body.MonthlyPayment,
 		Status:         body.Status,
 		BranchID:       body.BranchID,
+		EnrollmentDate: enrollmentDate,
 	})
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

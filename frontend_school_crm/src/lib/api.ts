@@ -1752,11 +1752,20 @@ export async function getUnreadCount(): Promise<number> {
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
-  return apiRequest(`/notifications/${id}/read`, { method: "PUT" });
+  // Without branchId, notification_service falls back to the JWT's fixed
+  // home branch (X-User-Branch-ID), not the branch currently switched to
+  // (getStoredBranchId) — an admin/manager viewing a different branch would
+  // have this silently target the wrong branch's row (0 rows updated),
+  // same as getNotifications/getUnreadCount already account for below.
+  const branchId = getStoredBranchId();
+  const q = buildQuery({ branchId });
+  return apiRequest(`/notifications/${id}/read${q}`, { method: "PUT" });
 }
 
 export async function markAllNotificationsRead(): Promise<void> {
-  return apiRequest("/notifications/read-all", { method: "PUT" });
+  const branchId = getStoredBranchId();
+  const q = buildQuery({ branchId });
+  return apiRequest(`/notifications/read-all${q}`, { method: "PUT" });
 }
 
 // ============================================================================
