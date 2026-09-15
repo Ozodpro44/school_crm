@@ -74,6 +74,12 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
 import {
   Popover,
@@ -800,12 +806,6 @@ export function Layout({ children }: LayoutProps) {
   const setLanguage = useSetLanguage();
   const handleBranchChange = (branchId: string) => setCurrentBranchById(branchId);
 
-  const cycleLanguage = () => {
-    const idx = LANGUAGES.findIndex((l) => l.value === language);
-    const next = LANGUAGES[(idx + 1) % LANGUAGES.length]!;
-    setLanguage(next.value);
-  };
-
   const t = (key: string) => getTranslation(key, language);
 
   const isTeacher = user?.role === "teacher";
@@ -1072,13 +1072,26 @@ export function Layout({ children }: LayoutProps) {
                     <span className="text-xs text-slate-500">{t("theme")}</span>
                     <ThemeSwitch />
                   </div>
-                  <DropdownMenuItem onClick={cycleLanguage} className="gap-2 cursor-pointer py-1.5">
-                    <Globe className="h-4 w-4 text-slate-400" />
-                    <span className="text-sm flex-1">{t("language")}</span>
-                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
-                      {LANGUAGES.find((l) => l.value === language)?.label ?? language}
-                    </span>
-                  </DropdownMenuItem>
+                  <DropdownMenuSub>
+                    <DropdownMenuSubTrigger className="gap-2 cursor-pointer py-1.5">
+                      <Globe className="h-4 w-4 text-slate-400" />
+                      <span className="text-sm flex-1">{t("language")}</span>
+                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
+                        {LANGUAGES.find((l) => l.value === language)?.label ?? language}
+                      </span>
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuPortal>
+                      <DropdownMenuSubContent className="p-1.5">
+                        <DropdownMenuRadioGroup value={language} onValueChange={(v) => setLanguage(v as Language)}>
+                          {LANGUAGES.map((l) => (
+                            <DropdownMenuRadioItem key={l.value} value={l.value} className="cursor-pointer py-1.5">
+                              {l.label}
+                            </DropdownMenuRadioItem>
+                          ))}
+                        </DropdownMenuRadioGroup>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuPortal>
+                  </DropdownMenuSub>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => router.push("/profile")} className="gap-2 cursor-pointer py-1.5">
                     <UserCog className="h-4 w-4 text-slate-400" />
@@ -1186,13 +1199,26 @@ export function Layout({ children }: LayoutProps) {
                   <UserCog className="h-4 w-4 text-slate-400" />
                   <span className="text-sm font-medium">{t("account")}</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={cycleLanguage} className="rounded-md gap-2 cursor-pointer py-2">
-                  <Globe className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm font-medium flex-1">{t("language")}</span>
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
-                    {LANGUAGES.find((l) => l.value === language)?.label ?? language}
-                  </span>
-                </DropdownMenuItem>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger className="rounded-md gap-2 cursor-pointer py-2">
+                    <Globe className="h-4 w-4 text-slate-400" />
+                    <span className="text-sm font-medium flex-1">{t("language")}</span>
+                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
+                      {LANGUAGES.find((l) => l.value === language)?.label ?? language}
+                    </span>
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuPortal>
+                    <DropdownMenuSubContent className="p-1.5">
+                      <DropdownMenuRadioGroup value={language} onValueChange={(v) => setLanguage(v as Language)}>
+                        {LANGUAGES.map((l) => (
+                          <DropdownMenuRadioItem key={l.value} value={l.value} className="cursor-pointer py-1.5">
+                            {l.label}
+                          </DropdownMenuRadioItem>
+                        ))}
+                      </DropdownMenuRadioGroup>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuPortal>
+                </DropdownMenuSub>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleLogout}
