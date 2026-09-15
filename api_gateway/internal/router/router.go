@@ -159,7 +159,13 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		legacyAuth.Any("/subscriptions", gin.WrapH(proxy.Handler(paymentProxy)))
 		legacyAuth.Any("/subscriptions/current", gin.WrapH(proxy.Handler(monolithProxy)))
 		legacyAuth.Any("/subscriptions/:id", gin.WrapH(proxy.Handler(paymentProxy)))
-		legacyAuth.Any("/subscriptions/:id/*subaction", gin.WrapH(proxy.Handler(paymentProxy)))
+		// payment_service has never implemented any per-subscription subaction
+		// (cancel/status/usage/payments) — only GET /subscriptions (list)
+		// exists there (confirmed via grep). Every one of these has always
+		// been proxied here into a guaranteed 404; all four are real monolith
+		// routes (RegisterSubscriptionProtectedRoutes in backend_school_crm),
+		// so route the whole subaction wildcard there instead.
+		legacyAuth.Any("/subscriptions/:id/*subaction", gin.WrapH(proxy.Handler(monolithProxy)))
 
 		// users / branches / permissions / settings / audit-logs
 		legacyAuth.Any("/users", gin.WrapH(proxy.Handler(userProxy)))
@@ -247,7 +253,13 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		// Note: /*action wildcard conflicts with the static /plans route registered above.
 		// Named param :id takes priority after static segments, so /plans still routes correctly.
 		paymentRoutes.Any("/subscriptions/:id", gin.WrapH(proxy.Handler(paymentProxy)))
-		paymentRoutes.Any("/subscriptions/:id/*subaction", gin.WrapH(proxy.Handler(paymentProxy)))
+		// payment_service has never implemented any per-subscription subaction
+		// (cancel/status/usage/payments) — only GET /subscriptions (list)
+		// exists there (confirmed via grep). Every one of these has always
+		// been proxied here into a guaranteed 404; all four are real monolith
+		// routes (RegisterSubscriptionProtectedRoutes in backend_school_crm),
+		// so route the whole subaction wildcard there instead.
+		paymentRoutes.Any("/subscriptions/:id/*subaction", gin.WrapH(proxy.Handler(monolithProxy)))
 	}
 
 	// ── Users, branches, permissions, settings, audit-logs → user_service ────

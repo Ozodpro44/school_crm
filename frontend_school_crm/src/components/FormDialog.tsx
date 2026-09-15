@@ -19,6 +19,8 @@ type FormDialogProps = {
   submitLabel?: string;
   /** Label shown while submitting */
   submittingLabel?: string;
+  /** Label shown on the cancel button */
+  cancelLabel?: string;
   isPending?: boolean;
   /** Extra width class, defaults to max-w-lg */
   maxWidth?: string;
@@ -46,6 +48,7 @@ export function FormDialog({
   onSubmit,
   submitLabel = "Save",
   submittingLabel = "Saving…",
+  cancelLabel = "Cancel",
   isPending = false,
   maxWidth = "max-w-lg",
   children,
@@ -81,7 +84,7 @@ export function FormDialog({
                 onClick={() => onOpenChange(false)}
                 disabled={isPending}
               >
-                Cancel
+                {cancelLabel}
               </Button>
               <Button type="submit" disabled={isPending}>
                 {isPending ? (

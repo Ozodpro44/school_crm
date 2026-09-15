@@ -10,7 +10,8 @@ import {
   getActivePaymentTypes,
   type ActivePaymentType,
 } from "@/lib/subscription-api";
-import { formatPrice, getDaysUntilExpiry } from "@/lib/subscription-api";
+import { getDaysUntilExpiry } from "@/lib/subscription-api";
+import { formatCurrency } from "@/lib/exportUtils";
 import type { SubscriptionPlan, SubscriptionResponse, SubscriptionUsage } from "@/types";
 import { getCurrentUser } from "@/lib/auth";
 import { useLanguage } from "@/hooks/use-language";
@@ -568,7 +569,7 @@ export default function BillingPage() {
                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                       {selectedPlan.name} &mdash;{" "}
                       <span className="font-semibold text-gray-700 dark:text-gray-300">
-                        {formatPrice(selectedPlan.price)}/{t(selectedPlan.billingPeriod)}
+                        {formatCurrency(selectedPlan.price)}/{t(selectedPlan.billingPeriod)}
                       </span>
                     </p>
                   </div>
@@ -672,7 +673,7 @@ export default function BillingPage() {
                   <div className="inline-flex items-center gap-2 bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-2 mb-5">
                     <span className="text-xs text-gray-500 dark:text-gray-400">{t("amountLabel")}</span>
                     <span className="text-sm font-bold text-gray-900 dark:text-white">
-                      {formatPrice(paymentState.telegramData.amount)}
+                      {formatCurrency(paymentState.telegramData.amount)}
                     </span>
                   </div>
                 </div>

@@ -245,6 +245,7 @@ export interface Class {
   studentIds: string[];
   branchId: string;
   studentCount: number;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -275,6 +276,7 @@ export interface Teacher {
   phone: string;
   email: string;
   branchId: string;
+  isActive: boolean;
   joinedDate?: string;
   createdAt: string;
   updatedAt: string;

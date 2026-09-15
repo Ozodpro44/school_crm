@@ -492,7 +492,17 @@ export function BulkPaymentDialog({
                         const student = bulkStudentsList.find(
                           (s) => s.id === id,
                         );
-                        return sum + (student?.monthlyPayment || 0);
+                        if (!student) return sum;
+                        const paidTotal = existingPayments
+                          .filter(
+                            (p) =>
+                              p.studentId === id &&
+                              p.month === bulkPaymentData.month &&
+                              p.year === parseInt(bulkPaymentData.year),
+                          )
+                          .reduce((s, p) => s + p.amount, 0);
+                        const remaining = student.monthlyPayment - paidTotal;
+                        return sum + (remaining > 0 ? remaining : 0);
                       }, 0),
                     )}
                   </p>

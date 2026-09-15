@@ -56,6 +56,7 @@ var ErrNotFound = errors.New("not found")
 var ErrInvalidInput = errors.New("invalid input")
 var ErrDuplicate = errors.New("duplicate")
 var ErrAlreadyPaid = errors.New("salary already paid")
+var ErrTeacherLimitReached = errors.New("teacher limit reached")
 
 // ── TeacherService ─────────────────────────────────────────────────────────────
 
@@ -190,7 +191,66 @@ type CreateTeacherRequest struct {
 	JoinedDate    *time.Time `json:"joinedDate"`
 }
 
+// checkTeacherLimit ports backend_school_crm's SubscriptionService.
+// CheckResourceLimit ("teachers" case) — teacher_service owns teacher
+// creation independently and has no dependency on the monolith's
+// subscription service, but reads the same shared
+// subscriptions/subscription_plans/branches/teachers tables. A NULL
+// max_teachers (or no subscription row at all) means unlimited: the
+// separate SubscriptionGate is what blocks a lapsed/missing subscription.
+func (s *TeacherService) checkTeacherLimit(ctx context.Context, branchID string) error {
+	var ownerUserID string
+	if err := s.db.Conn().QueryRowContext(ctx,
+		`SELECT admin_id FROM branches WHERE id = $1`, branchID,
+	).Scan(&ownerUserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("check teacher limit: resolve branch owner: %w", err)
+	}
+	if ownerUserID == "" {
+		return nil
+	}
+
+	var maxTeachers sql.NullInt64
+	err := s.db.Conn().QueryRowContext(ctx, `
+		SELECT sp.max_teachers
+		FROM subscriptions sub
+		JOIN subscription_plans sp ON sub.plan_id = sp.id
+		WHERE sub.user_id = $1
+		  AND sub.status IN ('active','trial','paused','pending_payment','past_due')
+		ORDER BY sub.created_at DESC
+		LIMIT 1`, ownerUserID,
+	).Scan(&maxTeachers)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("check teacher limit: %w", err)
+	}
+	if !maxTeachers.Valid {
+		return nil
+	}
+
+	var count int
+	if err := s.db.Conn().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM teachers
+		 WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
+		   AND is_active = true`, ownerUserID,
+	).Scan(&count); err != nil {
+		return fmt.Errorf("check teacher limit: count teachers: %w", err)
+	}
+	if int64(count) >= maxTeachers.Int64 {
+		return fmt.Errorf("%w: plan allows %d, you already have %d", ErrTeacherLimitReached, maxTeachers.Int64, count)
+	}
+	return nil
+}
+
 func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) (*Teacher, error) {
+	if err := s.checkTeacherLimit(ctx, req.BranchID); err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
 	t := &Teacher{
 		ID:            uuid.New().String(),
@@ -259,9 +319,15 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 // (not just a pre-check) so it's safe even under a concurrent branch
 // reassignment: the WHERE clause itself decides whether the row is touched.
 func (s *TeacherService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Teacher, error) {
-	allowed := map[string]bool{
-		"full_name": true, "monthly_salary": true,
-		"phone": true, "email": true, "joined_date": true,
+	// Keyed by the camelCase JSON field name frontend_school_crm's
+	// updateTeacher actually sends (fullName, monthlySalary, joinedDate, ...)
+	// — a prior snake_case-keyed map silently dropped fullName and
+	// monthlySalary on every teacher edit (only phone/email happened to
+	// match either casing), so name/salary changes always looked saved but
+	// never persisted.
+	allowed := map[string]string{
+		"fullName": "full_name", "monthlySalary": "monthly_salary",
+		"phone": "phone", "email": "email", "joinedDate": "joined_date",
 	}
 
 	// Extract subjects separately — stored in teacher_subjects, not a column.
@@ -285,10 +351,11 @@ func (s *TeacherService) Update(ctx context.Context, id, branchID string, fields
 	args := []interface{}{}
 	n := 1
 	for k, v := range fields {
-		if !allowed[k] {
+		col, ok := allowed[k]
+		if !ok {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
+		parts = append(parts, fmt.Sprintf("%s = $%d", col, n))
 		args = append(args, v)
 		n++
 	}

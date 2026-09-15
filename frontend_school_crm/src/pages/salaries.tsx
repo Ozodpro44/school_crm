@@ -413,10 +413,15 @@ export default function SalariesPage() {
     .filter((t) => !unpaidTeacherIds.has(t.id))
     .reduce((sum, t) => sum + (t.monthlySalary || 0), 0);
 
-  // Pending = partial records + teachers with no record at all
-  const totalPending =
-    salaries.filter((s) => s.status === "partial").reduce((sum, s) => sum + s.amount, 0) +
-    unpaidTeacherTotal;
+  // Pending = outstanding balance on partial records + teachers with no record at all
+  const partialPendingTotal = salaries
+    .filter((s) => s.status === "partial")
+    .reduce((sum, s) => {
+      const teacher = teachers.find((t) => t.id === s.teacherId);
+      const owed = (teacher?.monthlySalary || 0) - s.amount;
+      return sum + (owed > 0 ? owed : 0);
+    }, 0);
+  const totalPending = partialPendingTotal + unpaidTeacherTotal;
 
   // Count of teachers not yet paid (for the subtitle)
   const unpaidTeacherCount = teachers.filter((t) => !unpaidTeacherIds.has(t.id)).length;
@@ -582,6 +587,7 @@ export default function SalariesPage() {
             onSubmit={handleSubmit}
             submitLabel={editingSalaryId ? t("update") : t("recordSalaryPayment")}
             submittingLabel={t("recording")}
+            cancelLabel={t("cancel")}
             isPending={isSubmitting}
             maxWidth="max-w-2xl"
           >

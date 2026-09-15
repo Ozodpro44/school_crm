@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -158,6 +159,13 @@ func (h *Handler) CreateTeacher(c *gin.Context) {
 	}
 	t, err := h.teachers.Create(c.Request.Context(), &req)
 	if err != nil {
+		if errors.Is(err, service.ErrTeacherLimitReached) {
+			c.JSON(http.StatusPaymentRequired, gin.H{
+				"error":  "subscription_limit_reached",
+				"detail": err.Error(),
+			})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -153,6 +155,101 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*model
 		log.Printf("[UserService.Login] Failed to fetch permissions for user %s: %v", user.ID, err)
 	} else {
 		user.Permissions = permissions
+	}
+
+	return user, nil
+}
+
+// pendingRegistration is what InitiateRegistration stores in Redis under
+// pending_registration:<email> until CompleteRegistration confirms the OTP.
+// Nothing is written to Postgres until then — a signup that never verifies
+// leaves no user/branch/permissions rows behind at all.
+type pendingRegistration struct {
+	OTP string          `json:"otp"`
+	Req RegisterRequest `json:"req"`
+}
+
+// InitiateRegistration validates a signup, stores it (unhashed nowhere —
+// the password sits in Redis only as long as the pending_registration TTL)
+// alongside a fresh OTP, and emails the code. No Postgres row exists yet;
+// CompleteRegistration is what actually creates the account.
+func (s *UserService) InitiateRegistration(ctx context.Context, req *RegisterRequest) error {
+	if s.redisClient == nil || s.emailSender == nil {
+		return errors.New("redis or email service not configured")
+	}
+
+	// Public registration only ever creates admin (school-owner) accounts —
+	// mirrors the check handlers.Register used to do before this existed.
+	if req.Role != string(models.RoleAdmin) {
+		return errors.New("only admin accounts may register through this endpoint")
+	}
+
+	var existingID string
+	err := s.db.GetConn().QueryRowContext(ctx, `SELECT id FROM users WHERE email = $1`, req.Email).Scan(&existingID)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("initiate registration: check existing email: %w", err)
+	}
+	if existingID != "" {
+		return errors.New("an account with this email already exists")
+	}
+
+	otp := utils.GenerateOTP()
+	pending := pendingRegistration{OTP: otp, Req: *req}
+	data, err := json.Marshal(pending)
+	if err != nil {
+		return fmt.Errorf("initiate registration: encode pending signup: %w", err)
+	}
+
+	if err := s.redisClient.SetPendingRegistration(ctx, req.Email, string(data)); err != nil {
+		log.Printf("[UserService.InitiateRegistration] Failed to store pending signup: %v", err)
+		return errors.New("failed to start registration")
+	}
+
+	if err := s.emailSender.SendRegistrationVerificationEmail(req.Email, otp); err != nil {
+		log.Printf("[UserService.InitiateRegistration] Failed to send verification email: %v", err)
+		return errors.New("failed to send verification email")
+	}
+
+	log.Printf("[UserService.InitiateRegistration] Verification OTP sent to %s", req.Email)
+	return nil
+}
+
+// CompleteRegistration verifies the OTP from InitiateRegistration and, only
+// on success, actually creates the account (via Register) and marks the
+// email verified.
+func (s *UserService) CompleteRegistration(ctx context.Context, email, otp string) (*models.User, error) {
+	if s.redisClient == nil {
+		return nil, errors.New("redis service not configured")
+	}
+
+	data, err := s.redisClient.GetPendingRegistration(ctx, email)
+	if err != nil {
+		return nil, errors.New("verification code expired or invalid — please sign up again")
+	}
+
+	var pending pendingRegistration
+	if err := json.Unmarshal([]byte(data), &pending); err != nil {
+		return nil, fmt.Errorf("complete registration: decode pending signup: %w", err)
+	}
+
+	if subtle.ConstantTimeCompare([]byte(pending.OTP), []byte(otp)) != 1 {
+		return nil, errors.New("invalid verification code")
+	}
+
+	_ = s.redisClient.DeletePendingRegistration(ctx, email)
+
+	user, err := s.Register(ctx, &pending.Req)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := s.db.GetConn().ExecContext(ctx,
+		`UPDATE users SET email_verified = true, email_verified_at = $1 WHERE id = $2`,
+		utils.GetLocalTime(), user.ID,
+	); err != nil {
+		// Non-fatal — the account is fully created and usable; only the
+		// verification timestamp bookkeeping failed to persist.
+		log.Printf("[UserService.CompleteRegistration] Failed to mark email verified for %s: %v", user.ID, err)
 	}
 
 	return user, nil

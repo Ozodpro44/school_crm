@@ -48,6 +48,7 @@ type Class struct {
 	TeacherID    *string   `json:"teacherId,omitempty"`
 	BranchID     string    `json:"branchId"`
 	StudentCount int       `json:"studentCount"`
+	IsActive     bool      `json:"isActive"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 }
@@ -319,18 +320,28 @@ func (s *StudentService) Create(ctx context.Context, st *Student) (*Student, err
 // reassignment: the WHERE clause itself is what decides whether the row is
 // touched. A branch mismatch or missing id both surface as ErrNotFound.
 func (s *StudentService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Student, error) {
-	allowed := map[string]bool{
-		"full_name": true, "phone": true, "parent_phone": true, "class_id": true,
-		"monthly_payment": true, "status": true, "enrollment_date": true,
+	// Keyed by the camelCase JSON field name frontend_school_crm's
+	// updateStudent(id, updates: Partial<Student>) actually sends (fullName,
+	// classId, monthlyPayment, enrollmentDate, ...) — it JSON.stringifies the
+	// TS Student type as-is, never snake_case. A prior snake_case-keyed
+	// version of this map silently dropped every field here except the
+	// coincidentally-matching "phone"/"status", so editing a student's name,
+	// class, payment amount, or enrollment date always appeared to succeed
+	// (200 OK) but never persisted.
+	allowed := map[string]string{
+		"fullName": "full_name", "phone": "phone", "parentPhone": "parent_phone",
+		"classId": "class_id", "monthlyPayment": "monthly_payment",
+		"status": "status", "enrollmentDate": "enrollment_date",
 	}
 	parts := []string{}
 	args := []interface{}{}
 	n := 1
 	for k, v := range fields {
-		if !allowed[k] {
+		col, ok := allowed[k]
+		if !ok {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
+		parts = append(parts, fmt.Sprintf("%s = $%d", col, n))
 		args = append(args, v)
 		n++
 	}
@@ -391,7 +402,7 @@ func (s *ClassService) GetAll(ctx context.Context, branchID string) ([]Class, er
 	rows, err := s.db.Conn().QueryContext(ctx, `
 		SELECT c.id, c.name, c.teacher_id, c.branch_id,
 		       COUNT(s.id) FILTER (WHERE s.status = 'active') AS student_count,
-		       c.created_at, c.updated_at
+		       c.is_active, c.created_at, c.updated_at
 		FROM classes c
 		LEFT JOIN students s ON s.class_id = c.id
 		WHERE c.branch_id = $1
@@ -404,7 +415,7 @@ func (s *ClassService) GetAll(ctx context.Context, branchID string) ([]Class, er
 	var classes []Class
 	for rows.Next() {
 		var c Class
-		if err := rows.Scan(&c.ID, &c.Name, &c.TeacherID, &c.BranchID, &c.StudentCount, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.TeacherID, &c.BranchID, &c.StudentCount, &c.IsActive, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		classes = append(classes, c)
@@ -418,8 +429,8 @@ func (s *ClassService) GetByID(ctx context.Context, id string) (*Class, error) {
 
 	var c Class
 	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT id, name, teacher_id, branch_id, created_at, updated_at FROM classes WHERE id = $1`, id,
-	).Scan(&c.ID, &c.Name, &c.TeacherID, &c.BranchID, &c.CreatedAt, &c.UpdatedAt)
+		`SELECT id, name, teacher_id, branch_id, is_active, created_at, updated_at FROM classes WHERE id = $1`, id,
+	).Scan(&c.ID, &c.Name, &c.TeacherID, &c.BranchID, &c.IsActive, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -499,15 +510,19 @@ func (s *ClassService) Create(ctx context.Context, name, branchID string, teache
 // Update applies a partial update, scoped to branchID directly in the SQL —
 // see StudentService.Update's comment for why.
 func (s *ClassService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Class, error) {
-	allowed := map[string]bool{"name": true, "teacher_id": true}
+	// See StudentService.Update's comment: frontend_school_crm's updateClass
+	// sends camelCase ({name, teacherId}) straight through, so a snake_case
+	// "teacher_id" key here silently dropped every teacher (re)assignment.
+	allowed := map[string]string{"name": "name", "teacherId": "teacher_id"}
 	parts := []string{}
 	args := []interface{}{}
 	n := 1
 	for k, v := range fields {
-		if !allowed[k] {
+		col, ok := allowed[k]
+		if !ok {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
+		parts = append(parts, fmt.Sprintf("%s = $%d", col, n))
 		args = append(args, v)
 		n++
 	}

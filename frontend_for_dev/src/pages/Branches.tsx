@@ -27,6 +27,7 @@ import {
 } from "@/services/api-client";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation, tf } from "@/lib/i18n";
+import { UserPicker } from "@/components/UserPicker";
 
 const emptyForm = { name: "", address: "", phone: "", monthlyPayment: 0, adminId: "" };
 
@@ -201,11 +202,9 @@ export default function Branches() {
       </div>
       <div className="space-y-2">
         <Label>{t("adminUserId")}</Label>
-        <Input
-          placeholder={t("adminUserIdPlaceholder")}
+        <UserPicker
           value={form.adminId}
-          onChange={(e) => setForm({ ...form, adminId: e.target.value })}
-          className="font-mono text-sm"
+          onChange={(adminId) => setForm({ ...form, adminId })}
         />
       </div>
     </div>

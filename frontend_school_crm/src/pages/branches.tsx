@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { AmountInput } from "@/components/ui/amount-input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import * as api from "@/lib/api";
@@ -234,6 +236,14 @@ export default function BranchesPage() {
         <div className="flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary shrink-0" />
           <span className="font-medium text-slate-900 dark:text-slate-100">{branch.name}</span>
+          {branch.isActive === false && (
+            <span
+              title={t("inactiveDueToPlanTooltip")}
+              className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
+            >
+              {t("inactiveBadge")}
+            </span>
+          )}
         </div>
       ),
     },
@@ -375,26 +385,21 @@ export default function BranchesPage() {
 
                 <div className="grid gap-2">
                   <Label htmlFor="phone">{t("phone")} *</Label>
-                  <Input
+                  <PhoneInput
                     id="phone"
-                    type="tel"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    placeholder="+998 90 123 45 67"
+                    onChange={(value) => setFormData({ ...formData, phone: value })}
                     required
                   />
                 </div>
 
                 <div className="grid gap-2">
                   <Label htmlFor="monthlyPayment">{t("monthlyPaymentForBranch")} *</Label>
-                   <Input
+                   <AmountInput
                      id="monthlyPayment"
-                     type="number"
                      value={formData.monthlyPayment}
-                     onChange={(e) => setFormData({ ...formData, monthlyPayment: parseInt(e.target.value) || 100000 })}
-                     placeholder="500000"
-                     step="500"
-                     min="500"
+                     onChange={(value) => setFormData({ ...formData, monthlyPayment: parseInt(value) || 100000 })}
+                     placeholder="500 000"
                      required
                    />
                 </div>

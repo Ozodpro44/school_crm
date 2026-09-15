@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
@@ -29,10 +30,10 @@ const subActiveCacheTTL = 5 * time.Minute
 // GetSubscriptionPlans retrieves all available subscription plans
 func (s *SubscriptionService) GetSubscriptionPlans(ctx context.Context) ([]models.SubscriptionPlan, error) {
 	query := `
-		SELECT id, name, description, price, billing_period, max_branches, max_students, max_classes, features, status, created_at, updated_at
+		SELECT id, name, description, price, billing_period, max_branches, max_students, max_classes, max_teachers, features, status, is_featured, sort_order, created_at, updated_at
 		FROM subscription_plans
 		WHERE status = 'active'
-		ORDER BY price ASC
+		ORDER BY sort_order ASC, price ASC
 	`
 
 	rows, err := s.database.GetConn().QueryContext(ctx, query)
@@ -45,7 +46,8 @@ func (s *SubscriptionService) GetSubscriptionPlans(ctx context.Context) ([]model
 	for rows.Next() {
 		var plan models.SubscriptionPlan
 		if err := rows.Scan(&plan.ID, &plan.Name, &plan.Description, &plan.Price, &plan.BillingPeriod,
-			&plan.MaxBranches, &plan.MaxStudents, &plan.MaxClasses, &plan.Features, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt); err != nil {
+			&plan.MaxBranches, &plan.MaxStudents, &plan.MaxClasses, &plan.MaxTeachers, &plan.Features, &plan.Status,
+			&plan.IsFeatured, &plan.SortOrder, &plan.CreatedAt, &plan.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan subscription plan: %w", err)
 		}
 		plans = append(plans, plan)
@@ -163,47 +165,60 @@ func (s *SubscriptionService) CancelSubscription(ctx context.Context, subscripti
 	return nil
 }
 
-// GetSubscriptionUsage retrieves usage metrics for a subscription
+// GetSubscriptionUsage returns live current-vs-limit counts for a
+// subscription. This used to read from the `subscription_usage` table,
+// which nothing anywhere ever writes to (confirmed: UpdateSubscriptionUsage
+// below has zero callers) — every subscription always showed 0/N for every
+// metric. Counting live, the same way CheckResourceLimit does when
+// enforcing these limits on write, is the only way the number shown here
+// ever matches reality.
 func (s *SubscriptionService) GetSubscriptionUsage(ctx context.Context, subscriptionID string) ([]models.SubscriptionUsage, error) {
-	query := `
-		SELECT id, subscription_id, metric_name, current_usage, limit_value, reset_date, updated_at
-		FROM subscription_usage
-		WHERE subscription_id = $1
-	`
-
-	rows, err := s.database.GetConn().QueryContext(ctx, query, subscriptionID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch subscription usage: %w", err)
+	var ownerUserID string
+	var plan models.SubscriptionPlan
+	err := s.database.GetConn().QueryRowContext(ctx, `
+		SELECT sub.user_id, sp.max_branches, sp.max_students, sp.max_classes, sp.max_teachers
+		FROM subscriptions sub
+		JOIN subscription_plans sp ON sub.plan_id = sp.id
+		WHERE sub.id = $1
+	`, subscriptionID).Scan(&ownerUserID, &plan.MaxBranches, &plan.MaxStudents, &plan.MaxClasses, &plan.MaxTeachers)
+	if err == sql.ErrNoRows {
+		return nil, nil
 	}
-	defer rows.Close()
+	if err != nil {
+		return nil, fmt.Errorf("get subscription usage: fetch subscription/plan: %w", err)
+	}
 
-	var usages []models.SubscriptionUsage
-	for rows.Next() {
-		var usage models.SubscriptionUsage
-		if err := rows.Scan(&usage.ID, &usage.SubscriptionID, &usage.MetricName, &usage.CurrentUsage, &usage.LimitValue, &usage.ResetDate, &usage.UpdatedAt); err != nil {
-			return nil, fmt.Errorf("failed to scan subscription usage: %w", err)
+	metrics := []struct {
+		name     string
+		limit    *int
+		countSQL string
+	}{
+		{"branches", plan.MaxBranches, `SELECT COUNT(*) FROM branches WHERE admin_id = $1 AND is_active = true`},
+		{"students", plan.MaxStudents, `SELECT COUNT(*) FROM students WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND status != 'left'`},
+		{"classes", plan.MaxClasses, `SELECT COUNT(*) FROM classes WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND is_active = true`},
+		{"teachers", plan.MaxTeachers, `SELECT COUNT(*) FROM teachers WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND is_active = true`},
+	}
+
+	now := time.Now().UTC()
+	usages := make([]models.SubscriptionUsage, 0, len(metrics))
+	for _, m := range metrics {
+		var count int
+		if err := s.database.GetConn().QueryRowContext(ctx, m.countSQL, ownerUserID).Scan(&count); err != nil {
+			return nil, fmt.Errorf("get subscription usage: count %s: %w", m.name, err)
 		}
-		usages = append(usages, usage)
+		usages = append(usages, models.SubscriptionUsage{
+			ID:             subscriptionID + ":" + m.name,
+			SubscriptionID: subscriptionID,
+			MetricName:     m.name,
+			CurrentUsage:   count,
+			LimitValue:     m.limit,
+			UpdatedAt:      now,
+		})
 	}
 
-	return usages, rows.Err()
+	return usages, nil
 }
 
-// UpdateSubscriptionUsage updates usage metric for a subscription
-func (s *SubscriptionService) UpdateSubscriptionUsage(ctx context.Context, subscriptionID, metricName string, increment int) error {
-	query := `
-		UPDATE subscription_usage
-		SET current_usage = current_usage + $1, updated_at = CURRENT_TIMESTAMP
-		WHERE subscription_id = $2 AND metric_name = $3
-	`
-
-	_, err := s.database.GetConn().ExecContext(ctx, query, increment, subscriptionID, metricName)
-	if err != nil {
-		return fmt.Errorf("failed to update subscription usage: %w", err)
-	}
-
-	return nil
-}
 
 // RecordPayment records a subscription payment
 func (s *SubscriptionService) RecordPayment(ctx context.Context, payment *models.SubscriptionPayment) error {
@@ -336,14 +351,14 @@ func (s *SubscriptionService) CreateSubscriptionPlan(ctx context.Context, plan *
 	}
 
 	query := `
-		INSERT INTO subscription_plans (id, name, description, price, billing_period, max_branches, max_students, max_classes, features, status, created_at, updated_at)
-		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-		RETURNING id, name, description, price, billing_period, max_branches, max_students, max_classes, features, status, created_at, updated_at
+		INSERT INTO subscription_plans (id, name, description, price, billing_period, max_branches, max_students, max_classes, max_teachers, features, status, is_featured, sort_order, created_at, updated_at)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+		RETURNING id, name, description, price, billing_period, max_branches, max_students, max_classes, max_teachers, features, status, is_featured, sort_order, created_at, updated_at
 	`
 
 	err := s.database.GetConn().QueryRowContext(ctx, query,
-		plan.Name, plan.Description, plan.Price, plan.BillingPeriod, plan.MaxBranches, plan.MaxStudents, plan.MaxClasses, plan.Features, status,
-	).Scan(&plan.ID, &plan.Name, &plan.Description, &plan.Price, &plan.BillingPeriod, &plan.MaxBranches, &plan.MaxStudents, &plan.MaxClasses, &plan.Features, &plan.Status, &plan.CreatedAt, &plan.UpdatedAt)
+		plan.Name, plan.Description, plan.Price, plan.BillingPeriod, plan.MaxBranches, plan.MaxStudents, plan.MaxClasses, plan.MaxTeachers, plan.Features, status, plan.IsFeatured, plan.SortOrder,
+	).Scan(&plan.ID, &plan.Name, &plan.Description, &plan.Price, &plan.BillingPeriod, &plan.MaxBranches, &plan.MaxStudents, &plan.MaxClasses, &plan.MaxTeachers, &plan.Features, &plan.Status, &plan.IsFeatured, &plan.SortOrder, &plan.CreatedAt, &plan.UpdatedAt)
 
 	if err != nil {
 		return fmt.Errorf("failed to create subscription plan: %w", err)
@@ -373,11 +388,14 @@ func (s *SubscriptionService) UpdateSubscriptionPlan(ctx context.Context, id str
 			max_branches   = COALESCE($5, max_branches),
 			max_students   = COALESCE($6, max_students),
 			max_classes    = COALESCE($7, max_classes),
-			features       = COALESCE($8::jsonb, features),
-			status         = COALESCE($9, status),
+			max_teachers   = COALESCE($8, max_teachers),
+			features       = COALESCE($9::jsonb, features),
+			status         = COALESCE($10, status),
+			is_featured    = COALESCE($11, is_featured),
+			sort_order     = COALESCE($12, sort_order),
 			updated_at     = CURRENT_TIMESTAMP
-		WHERE id = $10
-	`, req.Name, req.Description, req.Price, req.BillingPeriod, req.MaxBranches, req.MaxStudents, req.MaxClasses, featuresArg, req.Status, id)
+		WHERE id = $13
+	`, req.Name, req.Description, req.Price, req.BillingPeriod, req.MaxBranches, req.MaxStudents, req.MaxClasses, req.MaxTeachers, featuresArg, req.Status, req.IsFeatured, req.SortOrder, id)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to update subscription plan: %w", err)
@@ -478,9 +496,19 @@ func (s *SubscriptionService) AdminGetSubscription(ctx context.Context, id strin
 // AdminCreateSubscription creates a subscription on behalf of a user (developer action).
 func (s *SubscriptionService) AdminCreateSubscription(ctx context.Context, req *models.AdminCreateSubscriptionRequest) (*models.AdminSubscriptionView, error) {
 	now := time.Now().UTC()
-	endDate := now.AddDate(0, 1, 0)
+	startDate := now
+	if req.StartDate != nil {
+		startDate = req.StartDate.UTC()
+	}
+	endDate := startDate.AddDate(0, 1, 0)
 	if req.BillingPeriod == "yearly" {
-		endDate = now.AddDate(1, 0, 0)
+		endDate = startDate.AddDate(1, 0, 0)
+	}
+	if req.EndDate != nil {
+		endDate = req.EndDate.UTC()
+	}
+	if !endDate.After(startDate) {
+		return nil, fmt.Errorf("admin create subscription: end date must be after start date")
 	}
 	if req.Status == "" {
 		req.Status = "active"
@@ -505,7 +533,7 @@ func (s *SubscriptionService) AdminCreateSubscription(ctx context.Context, req *
 		INSERT INTO subscriptions (user_id, plan_id, branch_id, status, start_date, end_date, renewal_date, auto_renew, payment_method, notes)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id
-	`, req.UserID, req.PlanID, req.BranchID, req.Status, now, endDate, endDate, req.AutoRenew, req.PaymentMethod, req.Notes,
+	`, req.UserID, req.PlanID, req.BranchID, req.Status, startDate, endDate, endDate, req.AutoRenew, req.PaymentMethod, req.Notes,
 	).Scan(&id)
 	if err != nil {
 		return nil, fmt.Errorf("admin create subscription: %w", err)
@@ -553,6 +581,9 @@ func (s *SubscriptionService) AdminUpdateSubscription(ctx context.Context, id st
 		}
 	}
 
+	var userID string
+	_ = s.database.GetConn().QueryRowContext(ctx, `SELECT user_id FROM subscriptions WHERE id = $1`, id).Scan(&userID)
+
 	_, err := s.database.GetConn().ExecContext(ctx, `
 		UPDATE subscriptions
 		SET
@@ -570,15 +601,108 @@ func (s *SubscriptionService) AdminUpdateSubscription(ctx context.Context, id st
 		return nil, fmt.Errorf("admin update subscription: %w", err)
 	}
 
-	if s.cache != nil {
-		var userID string
-		_ = s.database.GetConn().QueryRowContext(ctx, `SELECT user_id FROM subscriptions WHERE id = $1`, id).Scan(&userID)
-		if userID != "" {
-			_ = s.cache.Delete(ctx, fmt.Sprintf("crm:sub_active:%s", userID))
+	// A plan change can shrink limits below what the school already has in
+	// use (e.g. 2 branches -> a 1-branch plan). Deactivate the overflow
+	// (most-recently-created first) rather than leaving them silently
+	// over-limit forever — CheckResourceLimit would otherwise never let
+	// this school create anything new again even after this "downgrade"
+	// away from a plan they were already exceeding pre-change.
+	if req.PlanID != nil && userID != "" {
+		newPlan, planErr := s.GetSubscriptionPlanByID(ctx, *req.PlanID)
+		if planErr == nil && newPlan != nil {
+			if deactErr := s.DeactivateExcessResources(ctx, userID, newPlan); deactErr != nil {
+				return nil, fmt.Errorf("admin update subscription: deactivate excess resources: %w", deactErr)
+			}
 		}
 	}
 
+	if s.cache != nil && userID != "" {
+		_ = s.cache.Delete(ctx, fmt.Sprintf("crm:sub_active:%s", userID))
+	}
+
 	return s.AdminGetSubscription(ctx, id)
+}
+
+// DeactivateExcessResources deactivates the most-recently-created
+// branches/classes/teachers/students that now exceed newPlan's limits,
+// most-recent-first — historical data (payments, salaries, past
+// attendance, etc.) is left untouched, only the resource itself stops
+// being usable for new activity. A nil limit on newPlan means unlimited
+// for that metric, so nothing is touched. Safe to call even when nothing
+// is over the new limit (no-op per metric in that case).
+func (s *SubscriptionService) DeactivateExcessResources(ctx context.Context, ownerUserID string, newPlan *models.SubscriptionPlan) error {
+	type overflowCheck struct {
+		metric   string
+		limit    *int
+		idsSQL   string
+		deactSQL string
+	}
+
+	checks := []overflowCheck{
+		{
+			metric:   "branches",
+			limit:    newPlan.MaxBranches,
+			idsSQL:   `SELECT id FROM branches WHERE admin_id = $1 AND is_active = true ORDER BY created_at DESC`,
+			deactSQL: `UPDATE branches SET is_active = false, updated_at = NOW() WHERE id = ANY($1)`,
+		},
+		{
+			metric:   "classes",
+			limit:    newPlan.MaxClasses,
+			idsSQL:   `SELECT id FROM classes WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND is_active = true ORDER BY created_at DESC`,
+			deactSQL: `UPDATE classes SET is_active = false, updated_at = NOW() WHERE id = ANY($1)`,
+		},
+		{
+			metric:   "teachers",
+			limit:    newPlan.MaxTeachers,
+			idsSQL:   `SELECT id FROM teachers WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND is_active = true ORDER BY created_at DESC`,
+			deactSQL: `UPDATE teachers SET is_active = false, updated_at = NOW() WHERE id = ANY($1)`,
+		},
+		{
+			metric:   "students",
+			limit:    newPlan.MaxStudents,
+			idsSQL:   `SELECT id FROM students WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND status = 'active' ORDER BY created_at DESC`,
+			deactSQL: `UPDATE students SET status = 'suspended', updated_at = NOW() WHERE id = ANY($1)`,
+		},
+	}
+
+	for _, c := range checks {
+		if c.limit == nil {
+			continue
+		}
+		limit := *c.limit
+
+		rows, err := s.database.GetConn().QueryContext(ctx, c.idsSQL, ownerUserID)
+		if err != nil {
+			return fmt.Errorf("deactivate excess %s: list: %w", c.metric, err)
+		}
+		var ids []string
+		for rows.Next() {
+			var rid string
+			if err := rows.Scan(&rid); err != nil {
+				rows.Close()
+				return fmt.Errorf("deactivate excess %s: scan: %w", c.metric, err)
+			}
+			ids = append(ids, rid)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return fmt.Errorf("deactivate excess %s: %w", c.metric, err)
+		}
+		rows.Close()
+
+		if len(ids) <= limit {
+			continue
+		}
+		// ids is ordered most-recently-created first (DESC), so the
+		// *leading* slice — everything before the `limit` oldest entries
+		// that get to stay active — is exactly the newest overflow.
+		excess := ids[:len(ids)-limit]
+
+		if _, err := s.database.GetConn().ExecContext(ctx, c.deactSQL, pq.Array(excess)); err != nil {
+			return fmt.Errorf("deactivate excess %s: update: %w", c.metric, err)
+		}
+	}
+	return nil
 }
 
 // AdminDeleteSubscription hard-cancels and removes a subscription.
@@ -617,7 +741,7 @@ func (s *SubscriptionService) GetUserSubscriptionWithPlan(ctx context.Context, u
 			sub.start_date, sub.end_date, sub.renewal_date, sub.auto_renew,
 			sub.payment_method, sub.notes, sub.cancelled_at, sub.created_at, sub.updated_at,
 			sp.id, sp.name, sp.description, sp.price, sp.billing_period,
-			sp.max_branches, sp.max_students, sp.max_classes, sp.features, sp.status
+			sp.max_branches, sp.max_students, sp.max_classes, sp.max_teachers, sp.features, sp.status
 		FROM subscriptions sub
 		JOIN subscription_plans sp ON sub.plan_id = sp.id
 		WHERE sub.user_id = $1
@@ -632,7 +756,7 @@ func (s *SubscriptionService) GetUserSubscriptionWithPlan(ctx context.Context, u
 		&v.StartDate, &v.EndDate, &v.RenewalDate, &v.AutoRenew,
 		&v.PaymentMethod, &v.Notes, &v.CancelledAt, &v.CreatedAt, &v.UpdatedAt,
 		&v.Plan.ID, &v.Plan.Name, &v.Plan.Description, &v.Plan.Price, &v.Plan.BillingPeriod,
-		&v.Plan.MaxBranches, &v.Plan.MaxStudents, &v.Plan.MaxClasses, &v.Plan.Features, &v.Plan.Status,
+		&v.Plan.MaxBranches, &v.Plan.MaxStudents, &v.Plan.MaxClasses, &v.Plan.MaxTeachers, &v.Plan.Features, &v.Plan.Status,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -761,6 +885,8 @@ func (s *SubscriptionService) CheckResourceLimit(ctx context.Context, ownerUserI
 		limitPtr = sub.Plan.MaxClasses
 	case "branches":
 		limitPtr = sub.Plan.MaxBranches
+	case "teachers":
+		limitPtr = sub.Plan.MaxTeachers
 	default:
 		return fmt.Errorf("CheckResourceLimit: unknown metric %q", metric)
 	}
@@ -783,10 +909,17 @@ func (s *SubscriptionService) CheckResourceLimit(ctx context.Context, ownerUserI
 		err = s.database.GetConn().QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM classes
 			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
+			  AND is_active = true
 		`, ownerUserID).Scan(&currentCount)
 	case "branches":
 		err = s.database.GetConn().QueryRowContext(ctx, `
-			SELECT COUNT(*) FROM branches WHERE admin_id = $1
+			SELECT COUNT(*) FROM branches WHERE admin_id = $1 AND is_active = true
+		`, ownerUserID).Scan(&currentCount)
+	case "teachers":
+		err = s.database.GetConn().QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM teachers
+			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
+			  AND is_active = true
 		`, ownerUserID).Scan(&currentCount)
 	}
 	if err != nil {
@@ -803,14 +936,14 @@ func (s *SubscriptionService) CheckResourceLimit(ctx context.Context, ownerUserI
 // GetSubscriptionPlanByID retrieves a single plan by ID.
 func (s *SubscriptionService) GetSubscriptionPlanByID(ctx context.Context, planID string) (*models.SubscriptionPlan, error) {
 	query := `
-		SELECT id, name, description, price, billing_period, max_branches, max_students, max_classes, features, status, created_at, updated_at
+		SELECT id, name, description, price, billing_period, max_branches, max_students, max_classes, max_teachers, features, status, is_featured, sort_order, created_at, updated_at
 		FROM subscription_plans WHERE id = $1
 	`
 	var p models.SubscriptionPlan
 	err := s.database.GetConn().QueryRowContext(ctx, query, planID).Scan(
 		&p.ID, &p.Name, &p.Description, &p.Price, &p.BillingPeriod,
-		&p.MaxBranches, &p.MaxStudents, &p.MaxClasses, &p.Features, &p.Status,
-		&p.CreatedAt, &p.UpdatedAt,
+		&p.MaxBranches, &p.MaxStudents, &p.MaxClasses, &p.MaxTeachers, &p.Features, &p.Status,
+		&p.IsFeatured, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -824,8 +957,8 @@ func (s *SubscriptionService) GetSubscriptionPlanByID(ctx context.Context, planI
 // GetAllSubscriptionPlans returns all plans (active and inactive) for admin use.
 func (s *SubscriptionService) GetAllSubscriptionPlans(ctx context.Context) ([]models.SubscriptionPlan, error) {
 	query := `
-		SELECT id, name, description, price, billing_period, max_branches, max_students, max_classes, features, status, created_at, updated_at
-		FROM subscription_plans ORDER BY price ASC
+		SELECT id, name, description, price, billing_period, max_branches, max_students, max_classes, max_teachers, features, status, is_featured, sort_order, created_at, updated_at
+		FROM subscription_plans ORDER BY sort_order ASC, price ASC
 	`
 	rows, err := s.database.GetConn().QueryContext(ctx, query)
 	if err != nil {
@@ -837,8 +970,8 @@ func (s *SubscriptionService) GetAllSubscriptionPlans(ctx context.Context) ([]mo
 	for rows.Next() {
 		var p models.SubscriptionPlan
 		if err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.Price, &p.BillingPeriod,
-			&p.MaxBranches, &p.MaxStudents, &p.MaxClasses, &p.Features, &p.Status,
-			&p.CreatedAt, &p.UpdatedAt); err != nil {
+			&p.MaxBranches, &p.MaxStudents, &p.MaxClasses, &p.MaxTeachers, &p.Features, &p.Status,
+			&p.IsFeatured, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("plan scan: %w", err)
 		}
 		plans = append(plans, p)

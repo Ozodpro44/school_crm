@@ -3,23 +3,27 @@ package models
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
 // SubscriptionPlan represents a subscription plan
 type SubscriptionPlan struct {
-	ID              string     `json:"id" db:"id"`
-	Name            string     `json:"name" db:"name"`
-	Description     *string    `json:"description" db:"description"`
-	Price           float64    `json:"price" db:"price"`
-	BillingPeriod   string     `json:"billingPeriod" db:"billing_period"` // monthly, yearly (accept camelCase from frontend)
-	MaxBranches     *int       `json:"maxBranches" db:"max_branches"`
-	MaxStudents     *int       `json:"maxStudents" db:"max_students"`
-	MaxClasses      *int       `json:"maxClasses" db:"max_classes"`
-	Features        JSONMap    `json:"features" db:"features"`
-	Status          string     `json:"status" db:"status"` // active, inactive
-	CreatedAt       time.Time  `json:"createdAt" db:"created_at"`
-	UpdatedAt       time.Time  `json:"updatedAt" db:"updated_at"`
+	ID            string    `json:"id" db:"id"`
+	Name          string    `json:"name" db:"name"`
+	Description   *string   `json:"description" db:"description"`
+	Price         float64   `json:"price" db:"price"`
+	BillingPeriod string    `json:"billingPeriod" db:"billing_period"` // monthly, yearly (accept camelCase from frontend)
+	MaxBranches   *int      `json:"maxBranches" db:"max_branches"`
+	MaxStudents   *int      `json:"maxStudents" db:"max_students"`
+	MaxClasses    *int      `json:"maxClasses" db:"max_classes"`
+	MaxTeachers   *int      `json:"maxTeachers" db:"max_teachers"`
+	Features      JSONMap   `json:"features" db:"features"`
+	Status        string    `json:"status" db:"status"` // active, inactive
+	IsFeatured    bool      `json:"isFeatured" db:"is_featured"`
+	SortOrder     int       `json:"sortOrder" db:"sort_order"`
+	CreatedAt     time.Time `json:"createdAt" db:"created_at"`
+	UpdatedAt     time.Time `json:"updatedAt" db:"updated_at"`
 }
 
 // UpdateSubscriptionPlanRequest allows a partial update of a plan. A nil
@@ -39,8 +43,11 @@ type UpdateSubscriptionPlanRequest struct {
 	MaxBranches   *int            `json:"maxBranches"`
 	MaxStudents   *int            `json:"maxStudents"`
 	MaxClasses    *int            `json:"maxClasses"`
+	MaxTeachers   *int            `json:"maxTeachers"`
 	Features      json.RawMessage `json:"features"`
 	Status        *string         `json:"status"`
+	IsFeatured    *bool           `json:"isFeatured"`
+	SortOrder     *int            `json:"sortOrder"`
 }
 
 // Subscription represents a user's subscription
@@ -64,14 +71,19 @@ type Subscription struct {
 }
 
 // SubscriptionUsage tracks usage against subscription plan limits
+// SubscriptionUsage's JSON tags are camelCase to match every other response
+// in this API (AdminSubscription, SubscriptionPlan, etc.) — this struct used
+// to be the one outlier still on snake_case, invisible only because
+// GetSubscriptionUsage always returned an empty array before, so the
+// frontend's field-name mismatch (it reads .currentUsage) never surfaced.
 type SubscriptionUsage struct {
-	ID               string     `json:"id" db:"id"`
-	SubscriptionID   string     `json:"subscription_id" db:"subscription_id"`
-	MetricName       string     `json:"metric_name" db:"metric_name"` // branches, students, classes
-	CurrentUsage     int        `json:"current_usage" db:"current_usage"`
-	LimitValue       *int       `json:"limit_value" db:"limit_value"`
-	ResetDate        *time.Time `json:"reset_date" db:"reset_date"`
-	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
+	ID             string     `json:"id" db:"id"`
+	SubscriptionID string     `json:"subscriptionId" db:"subscription_id"`
+	MetricName     string     `json:"metricName" db:"metric_name"` // branches, students, classes, teachers
+	CurrentUsage   int        `json:"currentUsage" db:"current_usage"`
+	LimitValue     *int       `json:"limitValue" db:"limit_value"`
+	ResetDate      *time.Time `json:"resetDate" db:"reset_date"`
+	UpdatedAt      time.Time  `json:"updatedAt" db:"updated_at"`
 }
 
 // SubscriptionPayment records a subscription payment/charge
@@ -94,13 +106,28 @@ type SubscriptionPayment struct {
 // JSONMap is a custom type for JSONB fields
 type JSONMap map[string]interface{}
 
-// Scan implements the sql.Scanner interface
-func (j JSONMap) Scan(value interface{}) error {
+// Scan implements the sql.Scanner interface. Needs a pointer receiver: with
+// a value receiver, json.Unmarshal(bytes, &j) inside the method only ever
+// populates the method's local copy of a nil map (allocating a new backing
+// map that the copy points at) — the caller's field, passed as &plan.Features
+// to rows.Scan, is left nil forever. This silently dropped every plan's
+// `features` on every read (the value round-tripped fine going INTO the DB
+// via Value() below, just never came back out).
+func (j *JSONMap) Scan(value interface{}) error {
+	if value == nil {
+		*j = JSONMap{}
+		return nil
+	}
 	bytes, ok := value.([]byte)
 	if !ok {
-		return json.Unmarshal([]byte("{}"), &j)
+		return fmt.Errorf("JSONMap.Scan: unsupported source type %T", value)
 	}
-	return json.Unmarshal(bytes, &j)
+	var m JSONMap
+	if err := json.Unmarshal(bytes, &m); err != nil {
+		return err
+	}
+	*j = m
+	return nil
 }
 
 // Value implements the driver.Valuer interface
@@ -170,14 +197,16 @@ type AdminSubscriptionView struct {
 
 // AdminCreateSubscriptionRequest is the payload for dev-admin subscription creation.
 type AdminCreateSubscriptionRequest struct {
-	UserID        string  `json:"userId"        binding:"required"`
-	PlanID        string  `json:"planId"        binding:"required"`
-	BranchID      *string `json:"branchId"`
-	Status        string  `json:"status"`
-	AutoRenew     bool    `json:"autoRenew"`
-	PaymentMethod *string `json:"paymentMethod"`
-	Notes         *string `json:"notes"`
-	BillingPeriod string  `json:"billingPeriod"` // used to compute end_date
+	UserID        string     `json:"userId"        binding:"required"`
+	PlanID        string     `json:"planId"        binding:"required"`
+	BranchID      *string    `json:"branchId"`
+	Status        string     `json:"status"`
+	AutoRenew     bool       `json:"autoRenew"`
+	PaymentMethod *string    `json:"paymentMethod"`
+	Notes         *string    `json:"notes"`
+	BillingPeriod string     `json:"billingPeriod"` // used to compute end_date when StartDate/EndDate aren't given
+	StartDate     *time.Time `json:"startDate"`      // defaults to now
+	EndDate       *time.Time `json:"endDate"`        // defaults to StartDate + billing period
 }
 
 // AdminUpdateSubscriptionRequest allows partial update of a subscription.

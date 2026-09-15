@@ -18,6 +18,7 @@ import {
   formatNumberWithSpaces,
   removeNumberFormatting,
   formatPhoneNumber,
+  formatPhoneAsYouType,
   isValidUzbekPhone,
 } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
@@ -230,7 +231,17 @@ export default function TeachersPage() {
         <div className="flex items-center gap-3">
           <InitialsAvatar name={teacher.fullName} size="md" />
           <div className="min-w-0">
-            <p className="font-medium text-slate-900 dark:text-slate-100 truncate">{teacher.fullName}</p>
+            <p className="font-medium text-slate-900 dark:text-slate-100 truncate flex items-center gap-2">
+              {teacher.fullName}
+              {teacher.isActive === false && (
+                <span
+                  title={t("inactiveDueToPlanTooltip")}
+                  className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
+                >
+                  {t("inactiveBadge")}
+                </span>
+              )}
+            </p>
             <div className="flex items-center gap-1 mt-0.5">
               <BookOpen className="w-3 h-3 text-slate-400" />
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
@@ -329,6 +340,7 @@ export default function TeachersPage() {
           onSubmit={handleSubmit}
           submitLabel={editingTeacher ? t("update") : t("create")}
           submittingLabel={editingTeacher ? t("updating") : t("creating")}
+          cancelLabel={t("cancel")}
           isPending={createMutation.isPending || updateMutation.isPending}
           maxWidth="max-w-2xl"
         >
@@ -355,8 +367,8 @@ export default function TeachersPage() {
             )}
             <Field id="phone" label={t("phone")} type="tel" required
               value={formData.phone} error={formErrors.phone}
-              placeholder="+998 XX XXX-XX-XX"
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, phone: e.target.value }); clearFieldError("phone"); }}
+              placeholder="+998 (91) 123-45-68"
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, phone: formatPhoneAsYouType(e.target.value) }); clearFieldError("phone"); }}
             />
             <Field id="monthlySalary" label={t("salary")} required
               value={formatNumberWithSpaces(formData.monthlySalary)} error={formErrors.monthlySalary} placeholder="10 000"

@@ -62,6 +62,7 @@ export interface Branch {
   monthlyPayment: number;
   adminId?: string;
   managerIds: string[];
+  isActive: boolean;
   currentFinancialMonthId?: string;
   currentFinancialMonth?: FinancialMonth;
   createdAt: string;
@@ -77,6 +78,7 @@ export interface User {
   permissions?: Permission;
   branchId?: string;
   branchIds?: string[];
+  organizationName?: string;
   createdAt: string;
 }
 
@@ -122,6 +124,7 @@ export interface Teacher {
   email: string;
   userId?: string;
   branchId: string;
+  isActive: boolean;
   joinedDate?: string;
   createdAt: string;
   updatedAt: string;
@@ -134,6 +137,7 @@ export interface Class {
   studentIds: string[];
   branchId: string;
   studentCount: number;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -224,7 +228,9 @@ export interface SubscriptionPlan {
   maxBranches?: number;
   maxStudents?: number;
   maxClasses?: number;
+  maxTeachers?: number;
   features: Record<string, boolean | string | number>;
+  isFeatured?: boolean;
   status: "active" | "inactive";
   createdAt: string;
   updatedAt: string;

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/school-crm/backend/internal/db"
@@ -19,19 +20,20 @@ func NewReportService(database *db.Database) *ReportService {
 
 // PaymentReportItem represents a payment report entry
 type PaymentReportItem struct {
-	ID            string     `json:"id"`
-	StudentID     string     `json:"studentId"`
-	StudentName   string     `json:"studentName"`
-	ClassName     string     `json:"className"`
-	Amount        float64    `json:"amount"`
-	Month         string     `json:"month"`
-	Year          int        `json:"year"`
-	Status        string     `json:"status"`
-	PaymentMethod string     `json:"paymentMethod"`
-	PaidDate      *time.Time `json:"paidDate"`
-	CreatedBy     *string    `json:"createdBy"`
-	CreatedByName string     `json:"createdByName"`
-	CreatedAt     time.Time  `json:"createdAt"`
+	ID             string     `json:"id"`
+	StudentID      string     `json:"studentId"`
+	StudentName    string     `json:"studentName"`
+	ClassName      string     `json:"className"`
+	Amount         float64    `json:"amount"`
+	Month          string     `json:"month"`
+	Year           int        `json:"year"`
+	Status         string     `json:"status"`
+	PaymentMethod  string     `json:"paymentMethod"`
+	PaidDate       *time.Time `json:"paidDate"`
+	CreatedBy      *string    `json:"createdBy"`
+	CreatedByName  string     `json:"createdByName"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	EnrollmentDate *time.Time `json:"enrollmentDate"`
 }
 
 // SalaryReportItem represents a salary report entry
@@ -189,7 +191,8 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 		p.paid_date,
 		p.created_by,
 		COALESCE(u.full_name, p.created_by::TEXT, '') as created_by_name,
-		p.created_at
+		p.created_at,
+		st.enrollment_date
 	FROM payments p
 	JOIN students st ON p.student_id = st.id
 	LEFT JOIN classes c ON st.class_id = c.id
@@ -242,6 +245,7 @@ func (s *ReportService) GetPaymentReport(ctx context.Context, branchID string, s
 			&item.CreatedBy,
 			&item.CreatedByName,
 			&item.CreatedAt,
+			&item.EnrollmentDate,
 		); err != nil {
 			return []PaymentReportItem{}, 0, err
 		}
@@ -380,7 +384,7 @@ func (s *ReportService) GetDebtorsReport(ctx context.Context, branchID string, m
 
 		if dueAmount > 0 { // Only include actual debtors
 			item := DebtorReportItem{
-				ID:             id + "-" + month + "-" + string(rune(year)),
+				ID:             id + "-" + month + "-" + strconv.Itoa(year),
 				StudentID:      id,
 				StudentName:    name,
 				ClassName:      className.String,
@@ -563,13 +567,12 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 	income := totalIncome.Float64
 	salaries := totalSalaries.Float64
 	expenses := totalExpenses.Float64
-	totalExp := salaries + expenses
-	profit := income - totalExp
+	profit := income - salaries - expenses
 
 	return &FinancialSummary{
 		TotalIncome:      income,
 		TotalSalaries:    salaries,
-		TotalExpenses:    totalExp,
+		TotalExpenses:    expenses,
 		NetProfit:        profit,
 		PaymentsByMethod: paymentsByMethod,
 		SalariesByStatus: salariesByStatus,
@@ -602,7 +605,7 @@ func (s *ReportService) GetDashboardData(ctx context.Context, branchID string, m
 	}
 
 	err = s.db.GetConn().QueryRowContext(ctx,
-		"SELECT COUNT(*) FROM teachers WHERE branch_id = $1", branchID).
+		"SELECT COUNT(*) FROM teachers WHERE branch_id = $1 AND is_active = true", branchID).
 		Scan(&totalTeachers)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -1028,7 +1031,7 @@ func (s *ReportService) GetForecastData(ctx context.Context, branchID string, mo
 	err = s.db.GetConn().QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(monthly_salary), 0)
 		FROM teachers
-		WHERE branch_id = $1 AND status = 'active'
+		WHERE branch_id = $1 AND is_active = true
 	`, branchID).Scan(&projectedSalary)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
@@ -1174,7 +1177,7 @@ func (s *ReportService) GetBranchesOverview(ctx context.Context, branchIDs []str
 
 		// Teacher count
 		_ = s.db.GetConn().QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM teachers WHERE branch_id = $1 AND status = 'active'`, bid).
+			`SELECT COUNT(*) FROM teachers WHERE branch_id = $1 AND is_active = true`, bid).
 			Scan(&item.TeacherCount)
 
 		// Revenue (paid/partial payments this month)

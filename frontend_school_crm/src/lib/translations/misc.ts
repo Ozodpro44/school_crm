@@ -455,6 +455,14 @@ export const miscTranslations: Partial<Translation> = {
   unlimitedStudents: { "uz-cyrl": "Чексиз ўқувчилар", "uz-latn": "Cheksiz o'quvchilar", en: "Unlimited students" },
   upToClasses: { "uz-cyrl": "{count} тагача синф", "uz-latn": "{count} tagacha sinf", en: "Up to {count} classes" },
   unlimitedClasses: { "uz-cyrl": "Чексиз синфлар", "uz-latn": "Cheksiz sinflar", en: "Unlimited classes" },
+  upToTeachers: { "uz-cyrl": "{count} тагача ўқитувчи", "uz-latn": "{count} tagacha o'qituvchi", en: "Up to {count} teachers" },
+  unlimitedTeachers: { "uz-cyrl": "Чексиз ўқитувчилар", "uz-latn": "Cheksiz o'qituvchilar", en: "Unlimited teachers" },
+  inactiveBadge: { "uz-cyrl": "Нофаол", "uz-latn": "Nofaol", en: "Inactive" },
+  inactiveDueToPlanTooltip: {
+    "uz-cyrl": "Тариф лимитидан ошгани учун деактивлаштирилган. Эски маълумотлар сақланган, лекин янги амаллар учун фойдаланиб бўлмайди.",
+    "uz-latn": "Tarif limitidan oshgani uchun deaktivlashtirilgan. Eski ma'lumotlar saqlangan, lekin yangi amallar uchun foydalanib bo'lmaydi.",
+    en: "Deactivated because it exceeds your current plan's limit. Existing data is preserved, but it can't be used for new activity.",
+  },
   noPlansAvailable: {
     "uz-cyrl": "Ҳозирча тарифлар мавжуд эмас.",
     "uz-latn": "Hozircha tariflar mavjud emas.",

@@ -34,11 +34,30 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation, tf } from "@/lib/i18n";
+import { UserPicker } from "@/components/UserPicker";
+
+// <input type="date"> gives "YYYY-MM-DD"; the backend's *time.Time fields
+// need full RFC3339 to unmarshal.
+const toRFC3339 = (d: string) => (d ? `${d}T00:00:00Z` : undefined);
 
 // Must match the backend's actual enum exactly (subscriptions.status check
 // constraint) — "pending" here previously didn't exist server-side at all
 // (the real value is "pending_payment"), and "past_due" was missing.
 const STATUS_OPTIONS = ["active", "trial", "pending_payment", "past_due", "expired", "cancelled", "paused"];
+
+// Maps each raw status value to its translation key — the badges, filter
+// dropdown, and the two Status <Select>s previously rendered these raw
+// (e.g. "pending_payment") instead of going through the translation system,
+// even though the stat-filter buttons right above them already did.
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  active: "statActive",
+  trial: "statTrial",
+  pending_payment: "statPendingPayment",
+  past_due: "statPastDue",
+  expired: "statExpiredSub",
+  cancelled: "statCancelled",
+  paused: "statPaused",
+};
 
 function statusBadgeClass(status: string) {
   const s = status?.toLowerCase();
@@ -64,6 +83,7 @@ export default function Subscriptions() {
   const { user } = useAuth();
   const { language } = useLanguage();
   const t = (key: string) => getTranslation(key, language);
+  const statusLabel = (status: string) => t(STATUS_LABEL_KEYS[status?.toLowerCase()] ?? status);
   // Grant Trial / Delete are gated server-side to RequireDeveloperRole("admin")
   // (see backend_school_crm/internal/handlers/admin_subscription.go) — a
   // "developer"-tier account always gets 403 "insufficient developer role"
@@ -91,6 +111,7 @@ export default function Subscriptions() {
   // Create form
   const [createForm, setCreateForm] = useState({
     userId: "", planId: "", status: "active", autoRenew: true, notes: "",
+    startDate: "", endDate: "",
   });
 
   // Edit form
@@ -137,6 +158,10 @@ export default function Subscriptions() {
       toast.error(t("userIdPlanRequired"));
       return;
     }
+    if (createForm.startDate && createForm.endDate && createForm.endDate <= createForm.startDate) {
+      toast.error(t("endDateMustBeAfterStart"));
+      return;
+    }
     setSaving(true);
     try {
       const created = await createSubscription({
@@ -145,10 +170,12 @@ export default function Subscriptions() {
         status: createForm.status,
         autoRenew: createForm.autoRenew,
         notes: createForm.notes || undefined,
+        startDate: toRFC3339(createForm.startDate),
+        endDate: toRFC3339(createForm.endDate),
       });
       setSubs((prev) => [created, ...prev]);
       setCreateOpen(false);
-      setCreateForm({ userId: "", planId: "", status: "active", autoRenew: true, notes: "" });
+      setCreateForm({ userId: "", planId: "", status: "active", autoRenew: true, notes: "", startDate: "", endDate: "" });
       toast.success(t("subscriptionCreated"));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("failedToCreateSubscription"));
@@ -167,10 +194,6 @@ export default function Subscriptions() {
       // flag instead. (endDate/renewalDate have no such escape hatch yet —
       // leaving a date blank just leaves the stored date untouched.)
       const notesWasCleared = (selected.notes ?? "") !== "" && editForm.notes.trim() === "";
-      // The backend's EndDate/RenewalDate fields are *time.Time, whose JSON
-      // unmarshaling requires full RFC3339 — a bare "YYYY-MM-DD" from the
-      // <input type="date"> fails to parse ("cannot parse \"\" as \"T\"").
-      const toRFC3339 = (d: string) => (d ? `${d}T00:00:00Z` : undefined);
       // Only send a date if the developer actually edited it. The form
       // pre-fills both dates from the current subscription, so re-sending
       // them unchanged used to suppress AdminUpdateSubscription's own
@@ -331,7 +354,7 @@ export default function Subscriptions() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("allStatuses")}</SelectItem>
-              {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{statusLabel(s)}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={planFilter} onValueChange={setPlanFilter}>
@@ -389,7 +412,7 @@ export default function Subscriptions() {
                       <td className="px-4 py-3">
                         <span className={cn("inline-flex items-center gap-1", statusBadgeClass(sub.status))}>
                           <StatusIcon className="w-2.5 h-2.5" />
-                          {sub.status}
+                          {statusLabel(sub.status)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-foreground">
@@ -467,11 +490,9 @@ export default function Subscriptions() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>{t("userId")}</Label>
-              <Input
-                placeholder={t("userUuidPlaceholder")}
+              <UserPicker
                 value={createForm.userId}
-                onChange={(e) => setCreateForm({ ...createForm, userId: e.target.value })}
-                className="font-mono text-sm"
+                onChange={(userId) => setCreateForm({ ...createForm, userId })}
               />
             </div>
             <div className="space-y-2">
@@ -492,9 +513,31 @@ export default function Subscriptions() {
               <Select value={createForm.status} onValueChange={(v) => setCreateForm({ ...createForm, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{statusLabel(s)}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{t("startDate")}</Label>
+                <Input
+                  type="date"
+                  value={createForm.startDate}
+                  onChange={(e) => setCreateForm({ ...createForm, startDate: e.target.value })}
+                  className="bg-background"
+                />
+                <p className="text-xs text-muted-foreground">{t("startDateAutoHint")}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>{t("endDate")}</Label>
+                <Input
+                  type="date"
+                  value={createForm.endDate}
+                  onChange={(e) => setCreateForm({ ...createForm, endDate: e.target.value })}
+                  className="bg-background"
+                />
+                <p className="text-xs text-muted-foreground">{t("endDateAutoHint")}</p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>{t("notes")}</Label>
@@ -538,7 +581,7 @@ export default function Subscriptions() {
               <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{statusLabel(s)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

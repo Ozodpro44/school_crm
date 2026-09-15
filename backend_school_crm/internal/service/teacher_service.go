@@ -169,6 +169,12 @@ func (s *TeacherService) GetByUserID(ctx context.Context, userID string) (*model
 	if err != nil {
 		return nil, err
 	}
+
+	teacher.Subjects, err = s.getSubjects(ctx, teacher.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	return teacher, nil
 }
 

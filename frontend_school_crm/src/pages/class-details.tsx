@@ -211,7 +211,12 @@ export default function ClassDetailsPage() {
 
         // Fetch only students in this class + payments in parallel
         const [studentsResponse, paymentsResponse] = await Promise.all([
-          apiListStudents(branchId, 1, 300, { classId: classDataFetched.id }),
+          // status: "active" — matches classes.tsx's card count (an active-only
+          // COUNT(*) FILTER in ClassService.GetAll), so the two pages agree on
+          // what "student count" means for the same class instead of this one
+          // silently including left/suspended students who still hold a
+          // class_id.
+          apiListStudents(branchId, 1, 300, { classId: classDataFetched.id, status: "active" }),
           apiListPayments({ branchId, month: currentMonth, year: currentYear, limit: 500, page: 1 }),
         ]);
         if (requestId !== loadRequestIdRef.current) return;

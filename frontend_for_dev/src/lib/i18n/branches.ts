@@ -27,7 +27,6 @@ export const branches: Translation = {
   branchNameLabel: { en: "Branch Name *", ru: "Название филиала *", uz: "Filial nomi *" },
   monthlyPaymentUsdLabel: { en: "Monthly Payment ($) *", ru: "Ежемесячный платёж ($) *", uz: "Oylik to'lov ($) *" },
   adminUserId: { en: "Admin User ID", ru: "ID пользователя-администратора", uz: "Admin foydalanuvchi ID" },
-  adminUserIdPlaceholder: { en: "Optional — UUID of the branch admin", ru: "Необязательно — UUID администратора филиала", uz: "Ixtiyoriy — filial admini UUID'i" },
   branchNameRequired: { en: "Branch name is required", ru: "Требуется название филиала", uz: "Filial nomi talab qilinadi" },
   addressRequired: { en: "Address is required", ru: "Требуется адрес", uz: "Manzil talab qilinadi" },
   phoneRequired: { en: "Phone is required", ru: "Требуется телефон", uz: "Telefon talab qilinadi" },

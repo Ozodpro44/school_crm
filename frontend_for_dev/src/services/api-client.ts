@@ -213,6 +213,9 @@ export async function getSubscription(id: string): Promise<AdminSubscription> {
 export async function createSubscription(req: {
   userId: string; planId: string; branchId?: string;
   status?: string; autoRenew?: boolean; paymentMethod?: string; notes?: string;
+  // RFC3339 strings. Both optional — the backend defaults startDate to now
+  // and endDate to startDate + the plan's billing period when omitted.
+  startDate?: string; endDate?: string;
 }): Promise<AdminSubscription> {
   return request<AdminSubscription>("/dev/subscriptions", { method: "POST", body: JSON.stringify(req) });
 }
@@ -250,8 +253,11 @@ export interface SubscriptionPlan {
   maxBranches?: number;
   maxStudents?: number;
   maxClasses?: number;
+  maxTeachers?: number;
   features: Record<string, unknown>;
   isActive?: boolean;
+  isFeatured?: boolean;
+  sortOrder?: number;
   status?: string;
   createdAt: string;
   updatedAt: string;
@@ -264,16 +270,16 @@ export async function listPlans(): Promise<SubscriptionPlan[]> {
 
 export async function createPlan(req: {
   name: string; description?: string; price: number; billingPeriod: string;
-  maxBranches?: number; maxStudents?: number; maxClasses?: number;
-  features?: Record<string, unknown>; status?: string;
+  maxBranches?: number; maxStudents?: number; maxClasses?: number; maxTeachers?: number;
+  features?: Record<string, unknown>; status?: string; isFeatured?: boolean; sortOrder?: number;
 }): Promise<SubscriptionPlan> {
   return request<SubscriptionPlan>("/dev/subscription-plans", { method: "POST", body: JSON.stringify(req) });
 }
 
 export async function updatePlan(id: string, req: Partial<{
   name: string; description: string; price: number; billingPeriod: string;
-  maxBranches: number; maxStudents: number; maxClasses: number;
-  features: Record<string, unknown>; status: string;
+  maxBranches: number; maxStudents: number; maxClasses: number; maxTeachers: number;
+  features: Record<string, unknown>; status: string; isFeatured: boolean; sortOrder: number;
 }>): Promise<SubscriptionPlan> {
   return request<SubscriptionPlan>(`/dev/subscription-plans/${id}`, { method: "PUT", body: JSON.stringify(req) });
 }

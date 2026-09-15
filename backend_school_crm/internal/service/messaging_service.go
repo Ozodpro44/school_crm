@@ -148,13 +148,13 @@ func (s *MessagingService) buildRecipientsQuery(req *models.SendMessageRequest) 
 					fmt.Sprintf(`NOT EXISTS (
 						SELECT 1 FROM payments p
 						WHERE p.student_id = s.id AND p.month = '%s' AND p.year = %d
-					)`, now.Format("January"), now.Year()))
+					)`, now.Format("01"), now.Year()))
 			case "paid":
 				conds = append(conds,
 					fmt.Sprintf(`EXISTS (
 						SELECT 1 FROM payments p
 						WHERE p.student_id = s.id AND p.month = '%s' AND p.year = %d AND p.status = 'paid'
-					)`, now.Format("January"), now.Year()))
+					)`, now.Format("01"), now.Year()))
 			}
 		}
 		if req.Filters.EnrolledAfter != "" {

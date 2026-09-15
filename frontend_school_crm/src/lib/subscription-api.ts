@@ -368,13 +368,6 @@ export function getDaysUntilRenewal(subscription: Subscription | null): number {
 /**
  * Format price for display
  */
-export function formatPrice(price: number, currency: string = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-  }).format(price);
-}
-
 /**
  * Get plan badge color based on features
  */

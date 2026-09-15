@@ -169,20 +169,41 @@ export default function SchedulePage() {
   const className = (classId: string) =>
     classes.find((c) => c.id === classId)?.name || "—";
 
+  // Title/filter/button are static chrome — none of it needs `slots` or
+  // `classes` to render, so only the weekly grid below still branches on
+  // `isLoading` (it used to gate the whole page, hiding the header too).
+  const header = (
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div>
+        <h1 className="text-display text-slate-900 dark:text-slate-100">
+          {t("timetable")}
+        </h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-1">{t("schedule")}</p>
+      </div>
+      <div className="flex gap-3">
+        <Select value={selectedClassId} onValueChange={setSelectedClassId} disabled={isLoading}>
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allClasses")}</SelectItem>
+            {classes.map((c) => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button onClick={openAdd} disabled={isLoading}>
+          <Plus className="w-4 h-4 mr-2" />
+          {t("addSlot")}
+        </Button>
+      </div>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-6">
-        {/* Header */}
-        <div className="flex justify-between items-center gap-4">
-          <div className="space-y-2">
-            <Skeleton className="h-9 w-48" />
-            <Skeleton className="h-4 w-32" />
-          </div>
-          <div className="flex gap-3">
-            <Skeleton className="h-10 w-44 rounded-md" />
-            <Skeleton className="h-10 w-28 rounded-md" />
-          </div>
-        </div>
+        {header}
         {/* Weekly grid — 6 day columns, each with a header + 3 slot cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -204,32 +225,7 @@ export default function SchedulePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-display text-slate-900 dark:text-slate-100">
-            {t("timetable")}
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">{t("schedule")}</p>
-        </div>
-        <div className="flex gap-3">
-          <Select value={selectedClassId} onValueChange={setSelectedClassId}>
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("allClasses")}</SelectItem>
-              {classes.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={openAdd}>
-            <Plus className="w-4 h-4 mr-2" />
-            {t("addSlot")}
-          </Button>
-        </div>
-      </div>
+      {header}
 
       {/* Weekly Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">

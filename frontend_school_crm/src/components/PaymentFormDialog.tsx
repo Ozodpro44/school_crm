@@ -369,7 +369,7 @@ export function PaymentFormDialog({
               p.status === "partial",
           );
           for (const p of relatedPartial) {
-            try { await apiUpdatePayment(p.id, { status: "paid" }); } catch { /* best-effort */ }
+            try { await apiUpdatePayment(p.id, { status: "paid", paidDate: new Date().toISOString() }); } catch { /* best-effort */ }
           }
         }
 
@@ -432,6 +432,7 @@ export function PaymentFormDialog({
       onSubmit={handleSubmit}
       submitLabel={isEditing ? t("saveChanges") : t("recordPayment")}
       submittingLabel={t("recording")}
+      cancelLabel={t("cancel")}
       isPending={isSubmitting}
       maxWidth="max-w-2xl"
     >

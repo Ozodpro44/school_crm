@@ -63,6 +63,49 @@ func (es *EmailSender) SendOTPEmail(to, otp string) error {
 	return es.sendEmail(to, subject, body)
 }
 
+// SendRegistrationVerificationEmail sends the signup-verification OTP.
+// Deliberately separate from SendOTPEmail (password reset) — reusing that
+// one would have emailed new signups "You requested to reset your
+// password," which is both confusing and wrong.
+func (es *EmailSender) SendRegistrationVerificationEmail(to, otp string) error {
+	subject := "Verify your email"
+	body := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+        .content { background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
+        .otp-code { font-size: 32px; font-weight: bold; text-align: center; color: #4F46E5; letter-spacing: 5px; margin: 20px 0; }
+        .footer { font-size: 12px; color: #666; text-align: center; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Confirm your email</h2>
+        </div>
+        <div class="content">
+            <p>Hello,</p>
+            <p>Thanks for signing up. Use the following code to verify your email and finish creating your account:</p>
+            <div class="otp-code">%s</div>
+            <p>This code will expire in 15 minutes.</p>
+            <p>If you did not sign up for Wonderkids' CRM, please ignore this email.</p>
+        </div>
+        <div class="footer">
+            <p>&copy; 2024 Wonderkids' CRM. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
+	`, otp)
+
+	return es.sendEmail(to, subject, body)
+}
+
 // SendPasswordResetEmail sends password reset link to user's email
 func (es *EmailSender) SendPasswordResetEmail(to, resetToken, resetLink string) error {
 	subject := "Password Reset Link"

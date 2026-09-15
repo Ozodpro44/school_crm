@@ -42,4 +42,6 @@ export const common: Translation = {
   collapse: { en: "Collapse", ru: "Свернуть", uz: "Yig'ish" },
   on: { en: "ON", ru: "ВКЛ", uz: "YOQ" },
   off: { en: "OFF", ru: "ВЫКЛ", uz: "O'CHIQ" },
+  selectUser: { en: "Select user…", ru: "Выбрать пользователя…", uz: "Foydalanuvchini tanlang…" },
+  searchUsersPlaceholder: { en: "Search by name or email…", ru: "Поиск по имени или email…", uz: "Ism yoki email bo'yicha qidiring…" },
 };

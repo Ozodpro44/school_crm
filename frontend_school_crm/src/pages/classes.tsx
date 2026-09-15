@@ -461,46 +461,11 @@ export default function ClassesPage() {
     (s) => !s.classId && s.status === "active"
   );
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        {/* Header Skeleton */}
-        <div className="space-y-2">
-          <Skeleton className="h-10 w-48" />
-          <Skeleton className="h-4 w-64" />
-        </div>
-
-        {/* Action Buttons Skeleton */}
-        <div className="flex gap-2">
-          <Skeleton className="h-10 w-40" />
-          <Skeleton className="h-10 w-40" />
-        </div>
-
-        {/* Search Skeleton */}
-        <Skeleton className="h-10 w-full sm:w-64" />
-
-        {/* Cards Skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-5 w-32" />
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-3/4" />
-                <div className="flex gap-2 pt-2">
-                  <Skeleton className="h-8 w-20" />
-                  <Skeleton className="h-8 w-20" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
+  // Title/buttons/search below are all static chrome (translated labels,
+  // dialog triggers, local `searchTerm` state) — none of it needs `classes`
+  // to render, so only the card grid further down still branches on
+  // `isLoading`. This used to gate the whole page behind one early return,
+  // hiding the header and "Add class" button until the fetch finished.
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -751,30 +716,57 @@ export default function ClassesPage() {
                 className="pl-10"
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
-                <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">
-                  {filteredClasses.length} {t("classes")}
-                </span>
-                <span className="sm:hidden">
-                  {filteredClasses.length} {t("classes")}
-                </span>
-              </Badge>
-              <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
-                <Users className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">
-                  {filteredClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0)}{" "}
-                  {t("assignedStudents")}
-                </span>
-                <span className="sm:hidden">
-                  {filteredClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0)}
-                </span>
-              </Badge>
-            </div>
+            {isLoading ? (
+              <div className="flex gap-2">
+                <Skeleton className="h-6 w-20 rounded-full" />
+                <Skeleton className="h-6 w-28 rounded-full" />
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
+                  <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">
+                    {filteredClasses.length} {t("classes")}
+                  </span>
+                  <span className="sm:hidden">
+                    {filteredClasses.length} {t("classes")}
+                  </span>
+                </Badge>
+                <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
+                  <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">
+                    {filteredClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0)}{" "}
+                    {t("assignedStudents")}
+                  </span>
+                  <span className="sm:hidden">
+                    {filteredClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0)}
+                  </span>
+                </Badge>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+              {[...Array(6)].map((_, i) => (
+                <Card key={i}>
+                  <CardHeader>
+                    <Skeleton className="h-5 w-32" />
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-3/4" />
+                    <div className="flex gap-2 pt-2">
+                      <Skeleton className="h-8 w-20" />
+                      <Skeleton className="h-8 w-20" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {filteredClasses.map((classData) => {
               return (
@@ -798,8 +790,16 @@ export default function ClassesPage() {
                           <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <CardTitle className="truncate">
+                          <CardTitle className="truncate flex items-center gap-2">
                             {classData.name}
+                            {classData.isActive === false && (
+                              <span
+                                title={t("inactiveDueToPlanTooltip")}
+                                className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
+                              >
+                                {t("inactiveBadge")}
+                              </span>
+                            )}
                           </CardTitle>
                           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 truncate">
                             {getTeacherName(classData.teacherId)}
@@ -863,6 +863,8 @@ export default function ClassesPage() {
               title={t("noClassesYet")}
               action={canCreateClasses ? { label: t("addClass"), onClick: () => { resetForm(); setIsDialogOpen(true); } } : undefined}
             />
+          )}
+            </>
           )}
         </CardContent>
       </Card>

@@ -71,6 +71,28 @@ export function formatPhoneNumber(phone: string): string {
 }
 
 /**
+ * Live-formats a phone number as the user types, building up
+ * "+998 (XX) XXX-XX-XX" progressively instead of requiring a complete
+ * number. Used by PhoneInput's onChange — unlike formatPhoneNumber (which
+ * returns the raw input unchanged for anything under 9 digits, meant for
+ * read-only display), this never bails out early, so a partial number
+ * always renders in the target format as it's being entered.
+ */
+export function formatPhoneAsYouType(raw: string): string {
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("998")) digits = digits.slice(3);
+  digits = digits.slice(0, 9);
+  if (digits.length === 0) return "";
+
+  let out = `+998 (${digits.slice(0, 2)}`;
+  if (digits.length >= 2) out += ")";
+  if (digits.length > 2) out += ` ${digits.slice(2, 5)}`;
+  if (digits.length > 5) out += `-${digits.slice(5, 7)}`;
+  if (digits.length > 7) out += `-${digits.slice(7, 9)}`;
+  return out;
+}
+
+/**
  * Validates if a phone number is in valid Uzbekistan format
  */
 export function isValidUzbekPhone(phone: string): boolean {

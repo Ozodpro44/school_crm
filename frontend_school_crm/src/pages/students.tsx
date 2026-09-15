@@ -52,7 +52,7 @@ import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { formatPhoneNumber, isValidUzbekPhone, toTitleCase } from "@/lib/utils";
+import { formatPhoneNumber, formatPhoneAsYouType, isValidUzbekPhone, toTitleCase, formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useSettings } from "@/hooks/use-settings";
 import { PageHeader } from "@/components/PageHeader";
@@ -1028,6 +1028,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
             onSubmit={handleSubmit}
             submitLabel={editingStudent ? t("update") : t("create")}
             submittingLabel={editingStudent ? t("updating") : t("creating")}
+            cancelLabel={t("cancel")}
             isPending={isSubmitting}
             maxWidth="max-w-2xl"
           >
@@ -1075,9 +1076,9 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                 type="tel"
                 value={formData.phone}
                 error={formErrors.phone}
-                placeholder="+998 XX XXX-XX-XX"
+                placeholder="+998 (91) 123-45-68"
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  setFormData({ ...formData, phone: e.target.value });
+                  setFormData({ ...formData, phone: formatPhoneAsYouType(e.target.value) });
                   clearFieldError("phone");
                 }}
               />
@@ -1088,9 +1089,9 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                 type="tel"
                 value={formData.parentPhone}
                 error={formErrors.parentPhone}
-                placeholder="+998 XX XXX-XX-XX"
+                placeholder="+998 (91) 123-45-68"
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  setFormData({ ...formData, parentPhone: e.target.value });
+                  setFormData({ ...formData, parentPhone: formatPhoneAsYouType(e.target.value) });
                   clearFieldError("parentPhone");
                 }}
               />
@@ -1119,14 +1120,13 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               <Field
                 id="monthlyPayment"
                 label={`${t("monthlyPayment")} *`}
-                type="number"
-                min="0"
-                step="500"
-                value={formData.monthlyPayment}
+                type="text"
+                inputMode="numeric"
+                value={formatNumberWithSpaces(formData.monthlyPayment)}
                 error={formErrors.monthlyPayment}
                 placeholder="0"
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  setFormData({ ...formData, monthlyPayment: e.target.value });
+                  setFormData({ ...formData, monthlyPayment: removeNumberFormatting(e.target.value).replace(/[^\d]/g, "") });
                   clearFieldError("monthlyPayment");
                 }}
               />

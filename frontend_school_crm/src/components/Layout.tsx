@@ -48,12 +48,12 @@ import {
   Calendar,
   MessageSquare,
   ClipboardCheck,
+  Search,
 } from "lucide-react";
 
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -96,7 +96,13 @@ import {
   getUnreadCount,
   markNotificationRead,
   markAllNotificationsRead,
+  getStudentsConsolidatedData,
+  listTeachers,
+  listClasses,
   type AppNotification,
+  type StudentListRow,
+  type Teacher,
+  type Class,
 } from "@/lib/api";
 
 // ── Notification bell ─────────────────────────────────────────────────────────
@@ -307,6 +313,166 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+// ── Global search ──────────────────────────────────────────────────────────────
+// Reuses the same fetch functions each list page already calls (students'
+// server-side `search` filter; teachers/classes are small enough per branch
+// to filter client-side) rather than standing up a new aggregating endpoint.
+
+function GlobalSearch({ branchId }: { branchId?: string }) {
+  const gsLanguage = useLanguage();
+  const gt = (key: string) => getTranslation(key, gsLanguage);
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState<{
+    students: StudentListRow[];
+    teachers: Teacher[];
+    classes: Class[];
+  }>({ students: [], teachers: [], classes: [] });
+  const panelRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (!branchId || q.length < 2) {
+      setResults({ students: [], teachers: [], classes: [] });
+      setLoading(false);
+      return;
+    }
+    const lower = q.toLowerCase();
+    setLoading(true);
+    const timer = setTimeout(() => {
+      Promise.allSettled([
+        getStudentsConsolidatedData(branchId, 1, 5, { search: q }),
+        listTeachers(branchId),
+        listClasses(branchId),
+      ]).then(([studentsRes, teachersRes, classesRes]) => {
+        setResults({
+          students: studentsRes.status === "fulfilled" ? studentsRes.value.items.slice(0, 5) : [],
+          teachers: teachersRes.status === "fulfilled"
+            ? teachersRes.value
+                .filter((tc) => tc.fullName.toLowerCase().includes(lower) || tc.email?.toLowerCase().includes(lower))
+                .slice(0, 5)
+            : [],
+          classes: classesRes.status === "fulfilled"
+            ? classesRes.value.filter((c) => c.name.toLowerCase().includes(lower)).slice(0, 5)
+            : [],
+        });
+      }).finally(() => setLoading(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query, branchId]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target as Node) &&
+        inputRef.current && !inputRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const goTo = (href: string) => {
+    router.push(href);
+    setQuery("");
+    setOpen(false);
+  };
+
+  const hasResults = results.students.length + results.teachers.length + results.classes.length > 0;
+  const showPanel = open && query.trim().length >= 2;
+
+  return (
+    <div className="relative w-full max-w-xs">
+      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+      <input
+        ref={inputRef}
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder={gt("search")}
+        className="w-full h-9 pl-9 pr-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-indigo-400 dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none transition-colors"
+      />
+      {showPanel && (
+        <div
+          ref={panelRef}
+          className="absolute left-0 right-0 mt-2 min-w-[320px] max-h-[420px] overflow-y-auto rounded-2xl border border-slate-200/50 dark:border-slate-800/50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-2xl z-50 p-2"
+        >
+          {loading ? (
+            <div className="py-8 text-center text-sm text-slate-400">{gt("searching")}</div>
+          ) : !hasResults ? (
+            <div className="py-8 text-center text-sm text-slate-400">{gt("noResults")}</div>
+          ) : (
+            <>
+              {results.students.length > 0 && (
+                <div className="mb-2">
+                  <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">{gt("students")}</p>
+                  {results.students.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => goTo(`/student-details?id=${s.id}&from=search`)}
+                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <Users className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{s.fullName}</p>
+                        {s.class?.name && <p className="text-xs text-slate-400 truncate">{s.class.name}</p>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {results.teachers.length > 0 && (
+                <div className="mb-2">
+                  <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">{gt("teachers")}</p>
+                  {results.teachers.map((tc) => (
+                    <button
+                      key={tc.id}
+                      onClick={() => goTo("/teachers")}
+                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <GraduationCap className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{tc.fullName}</p>
+                        {tc.email && <p className="text-xs text-slate-400 truncate">{tc.email}</p>}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {results.classes.length > 0 && (
+                <div>
+                  <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">{gt("classes")}</p>
+                  {results.classes.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => goTo(`/class-details?id=${c.id}`)}
+                      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    >
+                      <BookOpen className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                      <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{c.name}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -776,29 +942,6 @@ export function Layout({ children }: LayoutProps) {
           {/* Content */}
           <SidebarContent className="px-2 py-3 gap-0">
 
-            {/* Branch switcher — admin, expanded only */}
-            {branches.length > 0 && user?.role === "admin" && (
-              <div className="mb-3 px-1 group-data-[collapsible=icon]:hidden">
-                <Select value={currentBranch?.id || "__none__"} onValueChange={(v) => v !== "__none__" && handleBranchChange(v)}>
-                  <SelectTrigger className="w-full h-9 bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-xs rounded-lg">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Building2 className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
-                      <SelectValue placeholder={t("selectBranch")} />
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[...branches]
-                      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-                      .map((branch) => (
-                        <SelectItem key={branch.id} value={branch.id}>
-                          {branch.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
             {/* Navigation groups — no collapsible, always visible */}
             {navigationGroups.map((group, groupIdx) => {
               const visibleItems = group.items.filter((i) => i.show);
@@ -861,77 +1004,6 @@ export function Layout({ children }: LayoutProps) {
               <SidebarSubscriptionBadgeSection subInfo={subInfo} />
             )}
           </SidebarContent>
-
-          {/* Footer — notification bell + user */}
-          <SidebarFooter className="p-2 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
-            <div className="flex items-center gap-1 px-1 mb-1.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
-              <NotificationBell align="left" />
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="w-full flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-1.5 active:scale-[0.98]">
-                  <Avatar className="h-7 w-7 flex-shrink-0 ring-2 ring-slate-100 dark:ring-slate-800">
-                    <AvatarFallback className="bg-indigo-600 text-white text-[11px] font-bold">
-                      {user?.fullName.charAt(0)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 text-left min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate leading-none mb-0.5">
-                      {user?.fullName}
-                    </p>
-                    <p className="text-[10px] text-slate-400 capitalize truncate">
-                      {user?.role?.replace("_", " ")}
-                    </p>
-                  </div>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 group-data-[collapsible=icon]:hidden opacity-60" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-56 p-1.5 shadow-xl border-slate-200 dark:border-slate-800"
-                side="right"
-                align="end"
-                sideOffset={10}
-              >
-                <div className="px-2 py-1.5 mb-1">
-                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
-                    {user?.fullName}
-                  </p>
-                  <p className="text-[10px] text-slate-400 capitalize">
-                    {user?.role?.replace("_", " ")}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between px-2 py-1.5 mb-1 border-t border-slate-100 dark:border-slate-800">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                    {t("theme")}
-                  </span>
-                  <ThemeSwitch />
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => router.push("/profile")}
-                  className="rounded-md gap-2 cursor-pointer py-2"
-                >
-                  <UserCog className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm font-medium">{t("account")}</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={cycleLanguage} className="rounded-md gap-2 cursor-pointer py-2">
-                  <Globe className="h-4 w-4 text-slate-400" />
-                  <span className="text-sm font-medium flex-1">{t("language")}</span>
-                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
-                    {LANGUAGES.find((l) => l.value === language)?.label ?? language}
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleLogout}
-                  className="rounded-md gap-2 cursor-pointer py-2 text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span className="text-sm font-medium">{t("logout")}</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarFooter>
         </Sidebar>
 
         {/* ──────────────────────────── MAIN CONTENT ── */}
@@ -1020,6 +1092,117 @@ export function Layout({ children }: LayoutProps) {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+          </header>
+
+          {/* ── Desktop top bar — branch switcher + search + notification + profile ──
+              Notification/profile used to live in the sidebar's
+              SidebarFooter, pinned below the nav list — that permanently
+              ate ~110px of sidebar height, so on shorter screens the nav
+              list (Boshqaruv/Yordam groups, subscription badge) was clipped
+              and only reachable by scrolling the nav area specifically.
+              The branch switcher had its own separate block above the nav
+              groups too. Moving all of it up here (mirroring the mobile
+              header, which already solved the footer problem the same way)
+              gives the sidebar its full height back for navigation only.
+              `sticky top-0` (not `fixed`) deliberately piggybacks on
+              SidebarInset's already-correct, collapse-aware horizontal
+              position instead of reimplementing it — a `fixed` header would
+              need the same peer/data-state offset logic SidebarInset uses,
+              which only reaches direct siblings of the sidebar's gap div,
+              not a header nested inside SidebarInset. */}
+          <header className="hidden md:flex sticky top-0 z-30 h-14 flex-shrink-0 items-center gap-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6">
+            {/* Branch switcher */}
+            {branches.length > 0 && user?.role === "admin" && (
+              <div className="w-56 flex-shrink-0">
+                <Select value={currentBranch?.id || "__none__"} onValueChange={(v) => v !== "__none__" && handleBranchChange(v)}>
+                  <SelectTrigger className="w-full h-9 bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-xs rounded-lg">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Building2 className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />
+                      <SelectValue placeholder={t("selectBranch")} />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[...branches]
+                      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                      .map((branch) => (
+                        <SelectItem key={branch.id} value={branch.id}>
+                          {branch.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Global search */}
+            <GlobalSearch branchId={currentBranch?.id} />
+
+            <div className="flex-1" />
+
+            <NotificationBell direction="down" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2.5 rounded-lg pl-2 pr-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-[0.98]">
+                  <Avatar className="h-7 w-7 flex-shrink-0 ring-2 ring-slate-100 dark:ring-slate-800">
+                    <AvatarFallback className="bg-indigo-600 text-white text-[11px] font-bold">
+                      {user?.fullName.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="text-left min-w-0 hidden lg:block">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate leading-none mb-0.5 max-w-[140px]">
+                      {user?.fullName}
+                    </p>
+                    <p className="text-[10px] text-slate-400 capitalize truncate">
+                      {user?.role?.replace("_", " ")}
+                    </p>
+                  </div>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 opacity-60" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                className="w-56 p-1.5 shadow-xl border-slate-200 dark:border-slate-800"
+                align="end"
+                sideOffset={10}
+              >
+                <div className="px-2 py-1.5 mb-1">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                    {user?.fullName}
+                  </p>
+                  <p className="text-[10px] text-slate-400 capitalize">
+                    {user?.role?.replace("_", " ")}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between px-2 py-1.5 mb-1 border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    {t("theme")}
+                  </span>
+                  <ThemeSwitch />
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => router.push("/profile")}
+                  className="rounded-md gap-2 cursor-pointer py-2"
+                >
+                  <UserCog className="h-4 w-4 text-slate-400" />
+                  <span className="text-sm font-medium">{t("account")}</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={cycleLanguage} className="rounded-md gap-2 cursor-pointer py-2">
+                  <Globe className="h-4 w-4 text-slate-400" />
+                  <span className="text-sm font-medium flex-1">{t("language")}</span>
+                  <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 px-1.5 py-0.5 rounded">
+                    {LANGUAGES.find((l) => l.value === language)?.label ?? language}
+                  </span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="rounded-md gap-2 cursor-pointer py-2 text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="text-sm font-medium">{t("logout")}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </header>
 
           {/* Page content — pt-14 on mobile offsets the fixed header */}

@@ -16,23 +16,27 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/school-crm/user-service/internal/db"
 )
 
 // ── Models ─────────────────────────────────────────────────────────────────────
 
 type User struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	FullName  string    `json:"fullName"`
-	Role      string    `json:"role"`
-	BranchID  *string   `json:"branchId,omitempty"`
-	Phone     *string   `json:"phone,omitempty"`
-	AvatarURL *string   `json:"avatarUrl,omitempty"`
-	Language  string    `json:"language"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID               string    `json:"id"`
+	Email            string    `json:"email"`
+	FullName         string    `json:"fullName"`
+	Role             string    `json:"role"`
+	BranchID         *string   `json:"branchId,omitempty"`
+	Phone            *string   `json:"phone,omitempty"`
+	AvatarURL        *string   `json:"avatarUrl,omitempty"`
+	Language         string    `json:"language"`
+	OrganizationName *string   `json:"organizationName,omitempty"`
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
 type FinancialMonth struct {
@@ -48,6 +52,7 @@ type Branch struct {
 	MonthlyPayment        float64         `json:"monthlyPayment"`
 	Currency              string          `json:"currency"`
 	AdminID               *string         `json:"adminId,omitempty"`
+	IsActive              bool            `json:"isActive"`
 	CurrentFinancialMonth *FinancialMonth `json:"currentFinancialMonth,omitempty"`
 	CreatedAt             time.Time       `json:"createdAt"`
 	UpdatedAt             time.Time       `json:"updatedAt"`
@@ -108,10 +113,10 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*User, error) {
 	var u User
 	err := s.db.Conn().QueryRowContext(ctx,
 		`SELECT id, email, full_name, role, branch_id, phone, avatar_url,
-		        COALESCE(language, 'en'), created_at, updated_at
+		        COALESCE(language, 'en'), organization_name, created_at, updated_at
 		 FROM users WHERE id = $1`, id,
 	).Scan(&u.ID, &u.Email, &u.FullName, &u.Role, &u.BranchID,
-		&u.Phone, &u.AvatarURL, &u.Language, &u.CreatedAt, &u.UpdatedAt)
+		&u.Phone, &u.AvatarURL, &u.Language, &u.OrganizationName, &u.CreatedAt, &u.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -162,6 +167,48 @@ func (s *UserService) GetAll(ctx context.Context, branchID string) ([]User, erro
 	return users, rows.Err()
 }
 
+// Create inserts a new user (a manager or branch_admin account, created by
+// an admin/branch_admin from the Managers page) and links them to branchID
+// via branch_managers — the same junction table GetAll already joins on, so
+// a branch_admin created here shows up in the branch's manager list exactly
+// like a manager does, without needing branches.admin_id (which represents
+// full branch ownership, a separate concept set only at branch-creation
+// time).
+func (s *UserService) Create(ctx context.Context, email, password, fullName, role, branchID string) (*User, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, err
+	}
+
+	id := uuid.NewString()
+	now := time.Now().UTC()
+	_, err = s.db.Conn().ExecContext(ctx,
+		`INSERT INTO users (id, email, password_hash, full_name, role, branch_id, language, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, 'en', $7, $7)`,
+		id, email, string(hash), fullName, role, branchID, now,
+	)
+	if err != nil {
+		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
+			return nil, ErrAlreadyExists
+		}
+		return nil, err
+	}
+
+	if branchID != "" {
+		if _, err := s.db.Conn().ExecContext(ctx,
+			`INSERT INTO branch_managers (id, branch_id, manager_id, created_at) VALUES ($1, $2, $3, $4)`,
+			uuid.NewString(), branchID, id, now,
+		); err != nil {
+			return nil, err
+		}
+	}
+
+	return s.GetByID(ctx, id)
+}
+
 // Update applies self-service profile fields only. role and branch_id are
 // deliberately excluded — they control authorization and tenant scoping, so
 // reassigning them goes through UpdateRoleBranch, which the handler gates to
@@ -170,6 +217,7 @@ func (s *UserService) GetAll(ctx context.Context, branchID string) ([]User, erro
 func (s *UserService) Update(ctx context.Context, id string, fields map[string]interface{}) (*User, error) {
 	allowed := map[string]bool{
 		"full_name": true, "phone": true, "avatar_url": true, "language": true,
+		"organization_name": true,
 	}
 
 	parts := []string{}
@@ -359,6 +407,21 @@ func (s *BranchService) Create(ctx context.Context, name, address, phone string,
 	if err != nil {
 		return nil, err
 	}
+
+	// Seed the branch's first OPEN financial month. Without this, GetByID's
+	// "current open month" lookup and SwitchMonth (which requires an
+	// existing OPEN row to close) both have nothing to find — the Settings
+	// page's "Joriy oy" card was stuck on its loading state forever because
+	// currentFinancialMonth was permanently nil, not because it was slow.
+	fm := FinancialMonth{Month: int(b.CreatedAt.Month()), Year: b.CreatedAt.Year()}
+	if _, fmErr := s.db.Conn().ExecContext(ctx,
+		`INSERT INTO financial_months (id, branch_id, year, month, status, payment_amount, opened_at)
+		 VALUES ($1,$2,$3,$4,'OPEN',$5,$6)`,
+		uuid.New().String(), b.ID, fm.Year, fm.Month, b.MonthlyPayment, b.CreatedAt,
+	); fmErr == nil {
+		b.CurrentFinancialMonth = &fm
+	}
+
 	return b, nil
 }
 
@@ -391,7 +454,7 @@ func (s *BranchService) checkBranchLimit(ctx context.Context, ownerUserID string
 
 	var count int
 	if err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM branches WHERE admin_id = $1`, ownerUserID,
+		`SELECT COUNT(*) FROM branches WHERE admin_id = $1 AND is_active = true`, ownerUserID,
 	).Scan(&count); err != nil {
 		return fmt.Errorf("check branch limit: count branches: %w", err)
 	}
@@ -408,9 +471,9 @@ func (s *BranchService) GetByID(ctx context.Context, id string) (*Branch, error)
 	var b Branch
 	var address, phone sql.NullString
 	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at
+		`SELECT id, name, address, phone, monthly_payment, currency, admin_id, is_active, created_at, updated_at
 		 FROM branches WHERE id = $1`, id,
-	).Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.CreatedAt, &b.UpdatedAt)
+	).Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.IsActive, &b.CreatedAt, &b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -437,7 +500,7 @@ func (s *BranchService) GetAll(ctx context.Context) ([]Branch, error) {
 	defer cancel()
 
 	rows, err := s.db.Conn().QueryContext(ctx,
-		`SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at
+		`SELECT id, name, address, phone, monthly_payment, currency, admin_id, is_active, created_at, updated_at
 		 FROM branches ORDER BY name`)
 	if err != nil {
 		return nil, err
@@ -448,7 +511,7 @@ func (s *BranchService) GetAll(ctx context.Context) ([]Branch, error) {
 	for rows.Next() {
 		var b Branch
 		var address, phone sql.NullString
-		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.IsActive, &b.CreatedAt, &b.UpdatedAt); err != nil {
 			return nil, err
 		}
 		b.Address, b.Phone = address.String, phone.String
@@ -469,7 +532,7 @@ func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]Bra
 	defer cancel()
 
 	rows, err := s.db.Conn().QueryContext(ctx,
-		`SELECT DISTINCT b.id, b.name, b.address, b.phone, b.monthly_payment, b.currency, b.admin_id, b.created_at, b.updated_at
+		`SELECT DISTINCT b.id, b.name, b.address, b.phone, b.monthly_payment, b.currency, b.admin_id, b.is_active, b.created_at, b.updated_at
 		 FROM branches b
 		 LEFT JOIN branch_managers bm ON bm.branch_id = b.id AND bm.manager_id = $1
 		 WHERE b.admin_id = $1 OR bm.manager_id IS NOT NULL
@@ -483,7 +546,7 @@ func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]Bra
 	for rows.Next() {
 		var b Branch
 		var address, phone sql.NullString
-		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.IsActive, &b.CreatedAt, &b.UpdatedAt); err != nil {
 			return nil, err
 		}
 		b.Address, b.Phone = address.String, phone.String
@@ -493,18 +556,25 @@ func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]Bra
 }
 
 func (s *BranchService) Update(ctx context.Context, id string, fields map[string]interface{}) (*Branch, error) {
-	allowed := map[string]bool{
-		"name": true, "address": true, "phone": true, "monthly_payment": true,
-		"currency": true, "admin_id": true,
+	// Keyed by the camelCase JSON field name frontend_school_crm's
+	// updateBranch(id, updates: Partial<Branch>) actually sends (monthlyPayment,
+	// adminId, ...) — a prior snake_case-keyed map silently dropped both of
+	// those on every branch edit (only name/address/phone/currency happened
+	// to match either casing), so editing a branch's monthly payment or
+	// admin always looked saved but never persisted.
+	allowed := map[string]string{
+		"name": "name", "address": "address", "phone": "phone",
+		"monthlyPayment": "monthly_payment", "currency": "currency", "adminId": "admin_id",
 	}
 	parts := []string{}
 	args := []interface{}{}
 	n := 1
 	for k, v := range fields {
-		if !allowed[k] {
+		col, ok := allowed[k]
+		if !ok {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
+		parts = append(parts, fmt.Sprintf("%s = $%d", col, n))
 		args = append(args, v)
 		n++
 	}

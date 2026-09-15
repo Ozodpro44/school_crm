@@ -114,19 +114,51 @@ export default function MessagingPage() {
     }
   };
 
+  // Title and tab bar are static chrome (translated labels, local
+  // `activeTab` state) — only the unread-count badge needs `history`, so it
+  // just hides itself while loading instead of the whole header waiting.
+  const header = (
+    <>
+      <div>
+        <h1 className="text-display text-slate-900 dark:text-slate-100">
+          {t("messaging")}
+        </h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-1">
+          {t("messagingDescription")}
+        </p>
+      </div>
+
+      {/* Tabs */}
+      <div className="border-b border-slate-200 dark:border-slate-700">
+        <nav className="flex gap-1">
+          {(["compose", "history"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab
+                  ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                  : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900"
+              }`}
+            >
+              {tab === "compose" ? <Send className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
+              {tab === "compose" ? t("composeMessage") : t("messageHistory")}
+              {tab === "history" && !isLoading && history.length > 0 && (
+                <Badge className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs">
+                  {history.length}
+                </Badge>
+              )}
+            </button>
+          ))}
+        </nav>
+      </div>
+    </>
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-6">
-        {/* Title */}
-        <div className="space-y-2">
-          <Skeleton className="h-9 w-40" />
-          <Skeleton className="h-4 w-64" />
-        </div>
-        {/* Tab bar */}
-        <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 pb-px">
-          <Skeleton className="h-10 w-36" />
-          <Skeleton className="h-10 w-36" />
-        </div>
+        {header}
         {/* Content grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Compose panel */}
@@ -163,39 +195,7 @@ export default function MessagingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-display text-slate-900 dark:text-slate-100">
-          {t("messaging")}
-        </h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-1">
-          {t("messagingDescription")}
-        </p>
-      </div>
-
-      {/* Tabs */}
-      <div className="border-b border-slate-200 dark:border-slate-700">
-        <nav className="flex gap-1">
-          {(["compose", "history"] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab
-                  ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                  : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900"
-              }`}
-            >
-              {tab === "compose" ? <Send className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
-              {tab === "compose" ? t("composeMessage") : t("messageHistory")}
-              {tab === "history" && history.length > 0 && (
-                <Badge className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs">
-                  {history.length}
-                </Badge>
-              )}
-            </button>
-          ))}
-        </nav>
-      </div>
+      {header}
 
       {activeTab === "compose" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

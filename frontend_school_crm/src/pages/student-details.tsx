@@ -44,7 +44,7 @@ import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { useNotify } from "@/hooks/use-notify";
 import { hasPermission, getCurrentUser } from "@/lib/auth";
-import { formatPhoneNumber, toTitleCase, formatDate } from "@/lib/utils";
+import { formatPhoneNumber, formatPhoneAsYouType, toTitleCase, formatDate, formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { useBranch } from "@/context/BranchContext";
 import {
   getStudent,
@@ -1032,14 +1032,14 @@ export default function StudentDetailsPage() {
             <div className="space-y-2">
               <Label htmlFor="edit-phone">{t("phone")} *</Label>
               <Input id="edit-phone" type="tel" value={editFormData.phone}
-                placeholder="+998 XX XXX-XX-XX"
-                onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })} />
+                placeholder="+998 (91) 123-45-68"
+                onChange={(e) => setEditFormData({ ...editFormData, phone: formatPhoneAsYouType(e.target.value) })} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-parentPhone">{t("parentPhone")} *</Label>
               <Input id="edit-parentPhone" type="tel" value={editFormData.parentPhone}
-                placeholder="+998 XX XXX-XX-XX"
-                onChange={(e) => setEditFormData({ ...editFormData, parentPhone: e.target.value })} />
+                placeholder="+998 (91) 123-45-68"
+                onChange={(e) => setEditFormData({ ...editFormData, parentPhone: formatPhoneAsYouType(e.target.value) })} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-status">{t("status")} *</Label>
@@ -1057,9 +1057,9 @@ export default function StudentDetailsPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-monthlyPayment">{t("monthlyPayment")} *</Label>
-              <Input id="edit-monthlyPayment" type="number" min="0" step="500"
-                value={editFormData.monthlyPayment}
-                onChange={(e) => setEditFormData({ ...editFormData, monthlyPayment: e.target.value })}
+              <Input id="edit-monthlyPayment" type="text" inputMode="numeric"
+                value={formatNumberWithSpaces(editFormData.monthlyPayment)}
+                onChange={(e) => setEditFormData({ ...editFormData, monthlyPayment: removeNumberFormatting(e.target.value).replace(/[^\d]/g, "") })}
                 placeholder="0" />
             </div>
             <div className="flex justify-end gap-3 pt-4">

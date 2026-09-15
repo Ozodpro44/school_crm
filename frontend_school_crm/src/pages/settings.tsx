@@ -179,7 +179,6 @@ export default function SettingsPage() {
         monthlyPayment: settings.monthlyPayment,
         currency: settings.currency,
         name: settings.name,
-        organizationName: settings.organizationName,
       };
 
       const updatedSettings = await updateSettings(updatePayload, currentBranch?.id);
@@ -218,16 +217,29 @@ export default function SettingsPage() {
     return JSON.stringify(settings) !== JSON.stringify(originalSettings);
   };
 
+  // Title/Save button are static chrome — `hasChanges()` already returns
+  // false while `settings` is null, so the button is naturally disabled
+  // during loading with no extra check needed. Only the field cards below
+  // still branch on `loading` (it used to hide this header too).
+  const header = (
+    <div className="flex justify-between items-center">
+      <PageHeader title={t("settings")} subtitle={t("manageSystemSettings")} />
+      <Button
+        onClick={handleSave}
+        disabled={
+          loading || !hasPermission("canEditSettings") || !hasChanges() || isSaving || !!monthlyPaymentError
+        }
+      >
+        <Save className="mr-2 h-4 w-4" />
+        {isSaving ? t("saving") : t("save")}
+      </Button>
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-36" />
-            <Skeleton className="h-4 w-56" />
-          </div>
-          <Skeleton className="h-10 w-28" />
-        </div>
+        {header}
         {[...Array(3)].map((_, i) => (
           <div key={i} className="rounded-lg border">
             <div className="p-6 border-b space-y-1">
@@ -252,18 +264,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <PageHeader title={t("settings")} subtitle={t("manageSystemSettings")} />
-        <Button
-          onClick={handleSave}
-          disabled={
-            !hasPermission("canEditSettings") || !hasChanges() || isSaving || !!monthlyPaymentError
-          }
-        >
-          <Save className="mr-2 h-4 w-4" />
-          {isSaving ? t("saving") : t("save")}
-        </Button>
-      </div>
+      {header}
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* General Settings */}
@@ -276,17 +277,6 @@ export default function SettingsPage() {
             <CardDescription>{t("branchName")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="organizationName">{t("organizationName")}</Label>
-              <Input
-                id="organizationName"
-                value={settings.organizationName || ""}
-                onChange={(e) => handleChange("organizationName", e.target.value)}
-                disabled={!hasPermission("canEditSettings")}
-                placeholder={t("enterOrganizationName")}
-              />
-              <p className="text-xs text-muted-foreground">{t("organizationNameHint")}</p>
-            </div>
             <div className="space-y-2">
               <Label htmlFor="name">{t("branchName")}</Label>
               <Input

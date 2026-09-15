@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { getSubscriptionPlans, formatPrice } from "@/lib/subscription-api";
+import { getSubscriptionPlans } from "@/lib/subscription-api";
+import { formatCurrency } from "@/lib/exportUtils";
 import { SubscriptionPlan } from "@/types";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -28,6 +29,9 @@ function PlanFeatures({ plan, t }: { plan: SubscriptionPlan; t: (key: string) =>
 
   if (plan.maxClasses) features.push(t("upToClasses").replace("{count}", String(plan.maxClasses)));
   else features.push(t("unlimitedClasses"));
+
+  if (plan.maxTeachers) features.push(t("upToTeachers").replace("{count}", String(plan.maxTeachers)));
+  else features.push(t("unlimitedTeachers"));
 
   // Append any extra boolean features from the features map
   if (plan.features && typeof plan.features === "object") {
@@ -105,14 +109,16 @@ export default function PricingTable({ onSelectPlan, highlightPlanId }: PricingT
     );
   }
 
-  // Mark the middle plan (or second plan) as "popular" if there are 2+ plans
+  // Prefer the developer-set "featured" flag; only guess a position
+  // (middle plan, or the second of two) if no plan has been marked.
+  const hasExplicitFeatured = plans.some((p) => p.isFeatured);
   const popularIdx = plans.length >= 3 ? 1 : plans.length === 2 ? 1 : 0;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
       {plans.map((plan, idx) => {
         const isCurrent = highlightPlanId === plan.id;
-        const isPopular = idx === popularIdx && plans.length > 1;
+        const isPopular = plans.length > 1 && (hasExplicitFeatured ? plan.isFeatured : idx === popularIdx);
 
         return (
           <div
@@ -152,7 +158,7 @@ export default function PricingTable({ onSelectPlan, highlightPlanId }: PricingT
             {/* Price */}
             <div className="mb-2">
               <span className={`text-3xl font-extrabold ${isCurrent ? "text-blue-700 dark:text-blue-300" : isPopular ? "text-indigo-700 dark:text-indigo-300" : "text-gray-900 dark:text-white"}`}>
-                {formatPrice(plan.price)}
+                {formatCurrency(plan.price)}
               </span>
               <span className="text-sm text-gray-500 dark:text-gray-400 ml-1">
                 / {t(plan.billingPeriod)}

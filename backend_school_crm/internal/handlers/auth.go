@@ -121,27 +121,60 @@ func Register(userService *service.UserService, subscriptionService *service.Sub
 			return
 		}
 
-		log.Printf("[REGISTER] Attempting to register user: %s (Role: %s)", req.Email, req.Role)
+		log.Printf("[REGISTER] Starting email verification for: %s (Role: %s)", req.Email, req.Role)
 
-		user, err := userService.Register(c.Request.Context(), &req)
-		if err != nil {
-			log.Printf("[REGISTER ERROR] Registration failed for %s: %v", req.Email, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Nothing is persisted to Postgres yet — InitiateRegistration only
+		// stores the pending signup + OTP in Redis and emails the code.
+		// VerifyRegistrationOTP is what actually creates the account.
+		if err := userService.InitiateRegistration(c.Request.Context(), &req); err != nil {
+			log.Printf("[REGISTER ERROR] Failed to initiate registration for %s: %v", req.Email, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		log.Printf("[REGISTER SUCCESS] User %s (ID: %s) registered successfully", req.Email, user.ID)
+		log.Printf("[REGISTER] Verification OTP sent to %s", req.Email)
 
-		// Auto-grant a 30-day free trial so the new school owner (and their staff)
-		// can access the CRM immediately after registration.
-		if _, err := subscriptionService.AdminGrantTrial(c.Request.Context(), user.ID, 30, "Auto-granted on registration"); err != nil {
-			log.Printf("[REGISTER WARNING] Failed to auto-grant trial for %s: %v", user.ID, err)
-			// Non-fatal — user is still created; they can subscribe manually.
-		} else {
-			log.Printf("[REGISTER] 30-day trial granted to %s", user.ID)
+		c.JSON(http.StatusOK, gin.H{
+			"emailVerificationRequired": true,
+			"email":                     req.Email,
+		})
+	}
+}
+
+// VerifyRegistrationOTP confirms the code InitiateRegistration emailed and,
+// only on success, actually creates the account: runs UserService.Register
+// (user + default branch + permissions + first financial month), grants
+// the 30-day trial, and issues a token — the same steps Register used to
+// do unconditionally before email verification gated any of it.
+func VerifyRegistrationOTP(userService *service.UserService, subscriptionService *service.SubscriptionService, jwtSecret string, settingsStore *platformsettings.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Email string `json:"email" binding:"required,email"`
+			OTP   string `json:"otp"   binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
 
-		// Generate JWT token for the newly registered user
+		user, err := userService.CompleteRegistration(c.Request.Context(), req.Email, req.OTP)
+		if err != nil {
+			log.Printf("[VERIFY-REGISTRATION-OTP ERROR] %s: %v", req.Email, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		log.Printf("[VERIFY-REGISTRATION-OTP SUCCESS] User %s (ID: %s) verified and created", req.Email, user.ID)
+
+		// Auto-grant a 30-day free trial so the new school owner (and their staff)
+		// can access the CRM immediately after verifying.
+		if _, err := subscriptionService.AdminGrantTrial(c.Request.Context(), user.ID, 30, "Auto-granted on registration"); err != nil {
+			log.Printf("[VERIFY-REGISTRATION-OTP WARNING] Failed to auto-grant trial for %s: %v", user.ID, err)
+			// Non-fatal — user is still created; they can subscribe manually.
+		} else {
+			log.Printf("[VERIFY-REGISTRATION-OTP] 30-day trial granted to %s", user.ID)
+		}
+
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &middleware.CustomClaims{
 			UserID: user.ID,
 			Role:   string(user.Role),
@@ -154,12 +187,10 @@ func Register(userService *service.UserService, subscriptionService *service.Sub
 
 		tokenString, err := token.SignedString([]byte(jwtSecret))
 		if err != nil {
-			log.Printf("[REGISTER ERROR] Failed to generate token for %s: %v", req.Email, err)
+			log.Printf("[VERIFY-REGISTRATION-OTP ERROR] Failed to generate token for %s: %v", req.Email, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 			return
 		}
-
-		log.Printf("[REGISTER] JWT token generated for user %s", req.Email)
 
 		c.JSON(http.StatusCreated, gin.H{
 			"token": tokenString,

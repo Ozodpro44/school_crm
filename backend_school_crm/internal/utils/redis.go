@@ -2,9 +2,10 @@ package utils
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/big"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -34,10 +35,18 @@ func NewRedisClient(redisURL string) (*RedisClient, error) {
 	return &RedisClient{client: client}, nil
 }
 
-// GenerateOTP generates a random 6-digit OTP
+// GenerateOTP generates a cryptographically random 6-digit OTP. math/rand
+// (seeded from wall-clock time) let an attacker who knows roughly when a
+// request fired narrow the OTP space dramatically — a real weakness for a
+// code that gates account creation and a free trial grant.
 func GenerateOTP() string {
-	rand.Seed(time.Now().UnixNano())
-	return fmt.Sprintf("%06d", rand.Intn(1000000))
+	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		// crypto/rand failing means the OS entropy source is broken — not
+		// something to silently paper over with a weaker fallback.
+		panic(fmt.Sprintf("GenerateOTP: crypto/rand unavailable: %v", err))
+	}
+	return fmt.Sprintf("%06d", n.Int64())
 }
 
 // SetOTP stores OTP in Redis with 10 minutes expiration
@@ -73,6 +82,28 @@ func (rc *RedisClient) GetPasswordReset(ctx context.Context, email string) (stri
 // DeletePasswordReset removes password reset token from Redis
 func (rc *RedisClient) DeletePasswordReset(ctx context.Context, email string) error {
 	key := fmt.Sprintf("reset:%s", email)
+	return rc.client.Del(ctx, key).Err()
+}
+
+// SetPendingRegistration stores a not-yet-created signup (OTP + the
+// request needed to actually create the account) with a 15 minute
+// expiration — long enough to find and read a verification email, short
+// enough that an abandoned signup doesn't squat on an email indefinitely.
+func (rc *RedisClient) SetPendingRegistration(ctx context.Context, email, data string) error {
+	key := fmt.Sprintf("pending_registration:%s", email)
+	return rc.client.Set(ctx, key, data, 15*time.Minute).Err()
+}
+
+// GetPendingRegistration retrieves a pending signup's stored JSON blob.
+func (rc *RedisClient) GetPendingRegistration(ctx context.Context, email string) (string, error) {
+	key := fmt.Sprintf("pending_registration:%s", email)
+	return rc.client.Get(ctx, key).Result()
+}
+
+// DeletePendingRegistration removes a pending signup after it's completed
+// (or abandoned in favor of a fresh one, which overwrites this key anyway).
+func (rc *RedisClient) DeletePendingRegistration(ctx context.Context, email string) error {
+	key := fmt.Sprintf("pending_registration:%s", email)
 	return rc.client.Del(ctx, key).Err()
 }
 

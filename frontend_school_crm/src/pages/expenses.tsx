@@ -21,6 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { FormDialog } from "@/components/FormDialog";
 import { Field } from "@/components/Field";
+import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { Expense, PaymentMethod } from "@/types";
 import {
   Plus,
@@ -838,6 +839,7 @@ export default function ExpensesPage() {
             onSubmit={handleSubmit}
             submitLabel={editingExpense ? t("update") : t("addExpense")}
             submittingLabel={editingExpense ? t("updating") : t("creating")}
+            cancelLabel={t("cancel")}
             isPending={isSubmitting}
             maxWidth="max-w-2xl"
           >
@@ -873,13 +875,13 @@ export default function ExpensesPage() {
               <Field
                 id="amount"
                 label={`${t("amount")} *`}
-                type="number"
-                value={formData.amount}
+                type="text"
+                inputMode="decimal"
+                value={formatNumberWithSpaces(formData.amount)}
                 error={formErrors.amount}
                 placeholder="0"
-                step="0.01"
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                  setFormData({ ...formData, amount: e.target.value });
+                  setFormData({ ...formData, amount: removeNumberFormatting(e.target.value).replace(/[^\d.]/g, "") });
                   if (formErrors.amount) setFormErrors((er) => ({ ...er, amount: undefined }));
                 }}
               />
@@ -1109,12 +1111,11 @@ export default function ExpensesPage() {
             <div className="space-y-2">
               <Label>{t("budgetAmount")}</Label>
               <Input
-                type="number"
-                min="0"
-                step="1000"
+                type="text"
+                inputMode="numeric"
                 placeholder="0"
-                value={budgetEditAmount}
-                onChange={(e) => setBudgetEditAmount(e.target.value)}
+                value={formatNumberWithSpaces(budgetEditAmount)}
+                onChange={(e) => setBudgetEditAmount(removeNumberFormatting(e.target.value).replace(/[^\d]/g, ""))}
               />
             </div>
             {budgetEditCategory && budgets.find((b) => b.category === budgetEditCategory) && (
@@ -1166,8 +1167,6 @@ export default function ExpensesPage() {
           <SelectContent>
             <SelectItem value="all">{t("allMethods")}</SelectItem>
             <SelectItem value="cash">{t("cash")}</SelectItem>
-            <SelectItem value="click">Click</SelectItem>
-            <SelectItem value="terminal">{t("terminal")}</SelectItem>
             <SelectItem value="card">{t("card")}</SelectItem>
             <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
           </SelectContent>

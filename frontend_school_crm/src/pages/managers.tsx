@@ -566,6 +566,7 @@ export default function ManagersPage() {
           onSubmit={handleSubmit}
           submitLabel={editingManager ? t("update") : t("create")}
           submittingLabel={editingManager ? t("updating") : t("creating")}
+          cancelLabel={t("cancel")}
           isPending={isSubmitting || !!(editingManager && !hasPermissionsChanged())}
           maxWidth="max-w-4xl"
         >

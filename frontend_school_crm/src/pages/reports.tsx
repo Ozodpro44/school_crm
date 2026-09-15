@@ -332,6 +332,13 @@ export default function ReportsPage() {
               minute: "2-digit",
             })
           : "N/A",
+        enrollmentDate: item.enrollmentDate
+          ? new Date(item.enrollmentDate).toLocaleDateString("uz-UZ", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+            })
+          : "N/A",
         addedBy: getUserName(item.createdBy || "", item.createdByName),
       }));
 
@@ -690,6 +697,7 @@ export default function ReportsPage() {
           columns = [
             t("fullName"),
             t("class"),
+            t("enrollmentDate"),
             t("amount"),
             t("month"),
             t("year"),
@@ -711,7 +719,7 @@ export default function ReportsPage() {
           } else if (reportType === "salary") {
             csv += `${item.teacherName},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
           } else {
-            csv += `${item.studentName},${item.className},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
+            csv += `${item.studentName},${item.className},${item.enrollmentDate},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
           }
         });
       }
@@ -759,6 +767,7 @@ export default function ReportsPage() {
       columns = [
         { header: t("fullName"), key: "studentName" },
         { header: t("class"), key: "className" },
+        { header: t("enrollmentDate"), key: "enrollmentDate" },
         { header: t("amount"), key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
         { header: t("month"), key: "month", align: "center" },
         { header: t("year"), key: "year", align: "center" },
@@ -821,14 +830,39 @@ export default function ReportsPage() {
     downloadCSV(buildPrintOptions("csv"));
   };
 
+  // `canViewReports` comes from the already-loaded session (hasPermission),
+  // not the report fetch — checking it before `isLoading` means a forbidden
+  // user never sees the loading skeleton at all, instead of flashing it
+  // before the forbidden message replaces it.
+  if (!canViewReports) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 space-y-4">
+        <AlertCircle className="w-16 h-16 text-red-500" />
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("forbidden")}</h2>
+        <p className="text-slate-600 dark:text-slate-400 text-center max-w-md">
+          {t("noPermissionReports")}
+        </p>
+      </div>
+    );
+  }
+
+  // Title is static chrome (translated, no report data needed), so it
+  // renders immediately instead of waiting behind the loading skeleton.
+  const header = (
+    <div>
+      <h1 className="text-display text-slate-900 dark:text-slate-100">
+        {t("reports")}
+      </h1>
+      <p className="text-slate-600 dark:text-slate-400 mt-1">
+        {t("reportsSubtitle") || t("generateDetailedReports")}
+      </p>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-6">
-        {/* PageHeader */}
-        <div className="space-y-2">
-          <Skeleton className="h-9 w-40" />
-          <Skeleton className="h-4 w-60" />
-        </div>
+        {header}
         {/* FilterBar — matches the actual filter bar shape */}
         <Card>
           <CardHeader className="pb-2"><Skeleton className="h-5 w-32" /></CardHeader>
@@ -867,28 +901,9 @@ export default function ReportsPage() {
     );
   }
 
-  if (!canViewReports) {
-    return (
-      <div className="flex flex-col items-center justify-center h-96 space-y-4">
-        <AlertCircle className="w-16 h-16 text-red-500" />
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("forbidden")}</h2>
-        <p className="text-slate-600 dark:text-slate-400 text-center max-w-md">
-          {t("noPermissionReports")}
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-display text-slate-900 dark:text-slate-100">
-          {t("reports")}
-        </h1>
-        <p className="text-slate-600 dark:text-slate-400 mt-1">
-          {t("reportsSubtitle") || t("generateDetailedReports")}
-        </p>
-      </div>
+      {header}
 
       {/* Filters */}
       <Card>
@@ -1094,50 +1109,83 @@ export default function ReportsPage() {
       {/* Summary */}
       {reportType !== "income" && reportType !== "forecast" && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="border-l-4 border-l-blue-500">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                {t("totalAmount")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                {formatCurrency(summary.total)}
-              </div>
-            </CardContent>
-          </Card>
+          {isFetching ? (
+            [1, 2, 3].map((i) => (
+              <Card key={i}>
+                <CardHeader className="pb-2"><Skeleton className="h-4 w-24" /></CardHeader>
+                <CardContent><Skeleton className="h-8 w-28" /></CardContent>
+              </Card>
+            ))
+          ) : (
+            <>
+              <Card className="border-l-4 border-l-blue-500">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                    {t("totalAmount")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    {formatCurrency(summary.total)}
+                  </div>
+                </CardContent>
+              </Card>
 
-          <Card className="border-l-4 border-l-green-500">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                {t("count")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                {summary.count}
-              </div>
-            </CardContent>
-          </Card>
+              <Card className="border-l-4 border-l-green-500">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                    {t("count")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    {summary.count}
+                  </div>
+                </CardContent>
+              </Card>
 
-          <Card className="border-l-4 border-l-purple-500">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                {t("average")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                {formatCurrency(summary.avg)}
-              </div>
-            </CardContent>
-          </Card>
+              <Card className="border-l-4 border-l-purple-500">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                    {t("average")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                    {formatCurrency(summary.avg)}
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
       )}
 
       {/* Forecast UI */}
       {reportType === "forecast" && (
-        forecastData ? (
+        isFetching ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Card key={i}>
+                  <CardHeader className="pb-2"><Skeleton className="h-4 w-28" /></CardHeader>
+                  <CardContent>
+                    <Skeleton className="h-7 w-24" />
+                    <Skeleton className="h-3 w-32 mt-2" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <Card>
+              <CardHeader className="pb-2"><Skeleton className="h-5 w-40" /></CardHeader>
+              <CardContent><Skeleton className="h-3 w-full rounded-full" /></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><Skeleton className="h-5 w-32" /></CardHeader>
+              <CardContent><Skeleton className="h-[300px] w-full" /></CardContent>
+            </Card>
+          </div>
+        ) : forecastData ? (
           <div className="space-y-6">
             {/* KPI cards row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1273,6 +1321,28 @@ export default function ReportsPage() {
 
       {/* Report Data */}
       {reportType !== "forecast" && (reportType === "income" ? (
+        isFetching ? (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Card key={i}>
+                  <CardHeader className="pb-2"><Skeleton className="h-4 w-24" /></CardHeader>
+                  <CardContent><Skeleton className="h-8 w-28" /></CardContent>
+                </Card>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader><Skeleton className="h-5 w-40" /></CardHeader>
+                <CardContent><Skeleton className="h-[300px] w-full" /></CardContent>
+              </Card>
+              <Card>
+                <CardHeader><Skeleton className="h-5 w-48" /></CardHeader>
+                <CardContent><Skeleton className="h-[300px] w-full" /></CardContent>
+              </Card>
+            </div>
+          </>
+        ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {reportData.map((item, idx) => (
@@ -1375,12 +1445,26 @@ export default function ReportsPage() {
             )}
           </div>
         </>
+        )
       ) : (
         <Card>
           <CardHeader>
             <CardTitle>{t("reportDetails")}</CardTitle>
           </CardHeader>
           <CardContent>
+            {isFetching ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="flex items-center gap-4 px-1 py-2">
+                    <Skeleton className="h-4 w-40 flex-shrink-0" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-4 w-24 flex-shrink-0" />
+                    <Skeleton className="h-6 w-16 rounded-full flex-shrink-0" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+            <>
             <div className="overflow-x-auto">
               {reportType === "debtors" && (
                 <table className="w-full text-sm">
@@ -1509,6 +1593,11 @@ export default function ReportsPage() {
                           {t("class")}
                         </th>
                       )}
+                      {reportType === "payment" && (
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 dark:text-slate-400">
+                          {t("enrollmentDate")}
+                        </th>
+                      )}
                       <th className="text-right py-3 px-4 font-medium text-slate-600 dark:text-slate-400">
                         {t("amount")}
                       </th>
@@ -1543,6 +1632,11 @@ export default function ReportsPage() {
                         {reportType === "payment" && (
                           <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
                             {item.className}
+                          </td>
+                        )}
+                        {reportType === "payment" && (
+                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                            {item.enrollmentDate}
                           </td>
                         )}
                         <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-medium">
@@ -1638,6 +1732,8 @@ export default function ReportsPage() {
                   </Button>
                 </div>
               </div>
+            )}
+            </>
             )}
           </CardContent>
         </Card>

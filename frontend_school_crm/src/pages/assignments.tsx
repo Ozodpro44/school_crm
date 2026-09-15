@@ -164,7 +164,7 @@ export default function AssignmentsPage() {
       // freshly-created assignment showing no progress indicator and never
       // getting the overdue red-border treatment until the page reloaded.
       const cls = classes.find((c) => c.id === form.classId);
-      setAssignments([{ ...a, totalStudents: cls?.studentCount ?? 0, submittedCount: 0 }, ...assignments]);
+      setAssignments([{ ...a, totalStudents: cls?.studentIds?.length ?? 0, submittedCount: 0 }, ...assignments]);
       notify.success(t("success"));
       setDialogOpen(false);
     } catch {
@@ -207,10 +207,43 @@ export default function AssignmentsPage() {
 
   const isOverdue = (dueDate: string) => new Date(dueDate) < new Date();
 
+  // Title/filter/button are static chrome — none of them need `assignments`
+  // or `classes` to render their shape, so they no longer wait behind
+  // `isLoading` (the old skeleton was just a title bar + 3 generic blocks,
+  // with no placeholder at all for the class filter or "Add" button).
+  const header = (
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div>
+        <h1 className="text-display text-slate-900 dark:text-slate-100">
+          {t("assignments")}
+        </h1>
+        {isLoading ? (
+          <Skeleton className="h-4 w-24 mt-1" />
+        ) : (
+          <p className="text-slate-500 dark:text-slate-400 mt-1">{assignments.length} {t("totalCount")}</p>
+        )}
+      </div>
+      <div className="flex gap-3">
+        <Select value={classFilter} onValueChange={setClassFilter} disabled={isLoading}>
+          <SelectTrigger className="w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allClasses")}</SelectItem>
+            {classes.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Button onClick={() => setDialogOpen(true)} disabled={isLoading}>
+          <Plus className="w-4 h-4 mr-2" />{t("addAssignment")}
+        </Button>
+      </div>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-64" />
+        {header}
         {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
       </div>
     );
@@ -218,29 +251,7 @@ export default function AssignmentsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-display text-slate-900 dark:text-slate-100">
-            {t("assignments")}
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">{assignments.length} {t("totalCount")}</p>
-        </div>
-        <div className="flex gap-3">
-          <Select value={classFilter} onValueChange={setClassFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("allClasses")}</SelectItem>
-              {classes.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />{t("addAssignment")}
-          </Button>
-        </div>
-      </div>
+      {header}
 
       {/* Assignment list */}
       {filteredAssignments.length === 0 ? (

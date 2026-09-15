@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { AmountInput } from "@/components/ui/amount-input";
 import {
   Card,
   CardContent,
@@ -130,12 +132,10 @@ export default function OnboardingBranchPage() {
 
             <div className="space-y-2">
               <Label htmlFor="phone">{t("phone")} *</Label>
-              <Input
+              <PhoneInput
                 id="phone"
-                type="tel"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+998 90 123 45 67"
+                onChange={setPhone}
                 required
                 disabled={loading}
                 className="h-11"
@@ -144,11 +144,10 @@ export default function OnboardingBranchPage() {
 
             <div className="space-y-2">
               <Label htmlFor="monthlyPayment">{t("monthlyPaymentForBranch")} *</Label>
-              <Input
+              <AmountInput
                 id="monthlyPayment"
-                type="number"
                 value={monthlyPayment}
-                onChange={(e) => setMonthlyPayment(parseInt(e.target.value) || 0)}
+                onChange={(value) => setMonthlyPayment(parseInt(value) || 0)}
                 required
                 disabled={loading}
                 className="h-11"

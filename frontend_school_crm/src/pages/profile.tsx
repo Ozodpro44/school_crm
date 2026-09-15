@@ -114,7 +114,7 @@ export default function ProfilePage() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<UserSession | null>(null);
   const [isRevoking, setIsRevoking] = useState(false);
-  const [editFormData, setEditFormData] = useState({ fullName: "", email: "" });
+  const [editFormData, setEditFormData] = useState({ fullName: "", email: "", organizationName: "" });
   const [passwordFormData, setPasswordFormData] = useState({
     currentPassword: "",
     newPassword: "",
@@ -133,6 +133,16 @@ export default function ProfilePage() {
     setUser(currentUser);
     setIsLoading(false);
     setCurrentSessionId(decodeSessionId(getAuthToken()));
+
+    // organizationName isn't part of the cached login user — it's fetched
+    // fresh here (admin only, it's the tenant brand identity and the
+    // backend rejects writes to it from any other role) so the edit modal
+    // has a real current value instead of always starting blank.
+    if (currentUser.role === "admin") {
+      apiRequest<UserType>(`/users/${currentUser.id}`)
+        .then((full) => setUser((prev) => (prev ? { ...prev, organizationName: full.organizationName } : prev)))
+        .catch(() => {});
+    }
 
     listSessions()
       .then(setSessions)
@@ -165,7 +175,11 @@ export default function ProfilePage() {
 
   const openEditModal = () => {
     if (!user) return;
-    setEditFormData({ fullName: user.fullName || "", email: user.email || "" });
+    setEditFormData({
+      fullName: user.fullName || "",
+      email: user.email || "",
+      organizationName: user.organizationName || "",
+    });
     setFormErrors({});
     setIsEditModalOpen(true);
   };
@@ -219,6 +233,7 @@ export default function ProfilePage() {
         body: JSON.stringify({
           full_name: editFormData.fullName,
           email: editFormData.email,
+          ...(user.role === "admin" ? { organization_name: editFormData.organizationName } : {}),
         }),
       });
       setUser(updatedUser);
@@ -262,10 +277,36 @@ export default function ProfilePage() {
     });
   };
 
+  // Header is static (translated title + back button, no fetched data), so
+  // it renders immediately in both the loading and loaded states below
+  // instead of being replaced by a generic skeleton bar — that skeleton
+  // previously had no back-button placeholder either, so the header
+  // visibly shifted horizontally once the real one appeared.
+  const header = (
+    <div className="flex items-center gap-4">
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => router.back()}
+        className="hover:bg-slate-100 dark:hover:bg-slate-800"
+      >
+        <ArrowLeft className="w-5 h-5" />
+      </Button>
+      <div>
+        <h1 className="text-display text-slate-900 dark:text-slate-100">
+          {t("myProfile")}
+        </h1>
+        <p className="text-slate-600 dark:text-slate-400 mt-1">
+          {t("viewAndManageProfile")}
+        </p>
+      </div>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="max-w-4xl mx-auto space-y-6">
-        <Skeleton className="h-10 w-48" />
+        {header}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Skeleton className="h-64" />
           <Skeleton className="h-64 md:col-span-2" />
@@ -284,25 +325,7 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => router.back()}
-          className="hover:bg-slate-100 dark:hover:bg-slate-800"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-        <div>
-          <h1 className="text-display text-slate-900 dark:text-slate-100">
-            {t("myProfile")}
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
-            {t("viewAndManageProfile")}
-          </p>
-        </div>
-      </div>
+      {header}
 
       {/* Profile card + contact */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -362,8 +385,12 @@ export default function ProfilePage() {
         </Card>
       </div>
 
-      {/* Permissions */}
-      {Object.keys(permissions).length > 0 && (
+      {/* Permissions — meaningless for admin: hasPermission() short-circuits
+          to true for that role regardless of this object, and the displayed
+          breakdown here is a client-side default fallback (getCurrentUser in
+          lib/auth.ts), not a real per-user grant, so showing it on an
+          admin's own profile just presents fabricated data as if it mattered. */}
+      {user.role !== "admin" && Object.keys(permissions).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -507,6 +534,17 @@ export default function ProfilePage() {
               />
               {formErrors.email && <p className="text-xs text-red-500">{formErrors.email}</p>}
             </div>
+            {user?.role === "admin" && (
+              <div className="space-y-2">
+                <Label htmlFor="organizationName">{t("organizationName")}</Label>
+                <Input
+                  id="organizationName"
+                  value={editFormData.organizationName}
+                  onChange={(e) => setEditFormData({ ...editFormData, organizationName: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">{t("organizationNameHint")}</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditModalOpen(false)} disabled={isSaving}>

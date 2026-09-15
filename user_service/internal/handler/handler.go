@@ -32,6 +32,7 @@ func New(
 func (h *Handler) Register(r *gin.RouterGroup) {
 	// Users
 	r.GET("/users", h.ListUsers)
+	r.POST("/users", h.CreateUser)
 	r.GET("/users/:id", h.GetUser)
 	r.PUT("/users/:id", h.UpdateUser)
 	r.DELETE("/users/:id", h.DeleteUser)
@@ -100,6 +101,66 @@ func (h *Handler) ListUsers(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": users})
+}
+
+// createUserRequest matches the payload the Managers page actually sends
+// (frontend_school_crm/src/pages/managers.tsx) — full_name in snake_case,
+// the rest camelCase, mirroring the shape that page's ad-hoc apiRequest call
+// uses rather than the (differently-shaped, branchId-less) createUser()
+// helper in lib/api.ts.
+type createUserRequest struct {
+	FullName string `json:"full_name" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=6"`
+	Role     string `json:"role" binding:"required"`
+	BranchID string `json:"branchId" binding:"required"`
+}
+
+// CreateUser creates a manager or branch_admin account and links it to
+// branchID via branch_managers. Only admin-tier and branch_admin callers may
+// create accounts; a branch_admin may only create plain "manager" accounts
+// (not other admins/branch_admins) and only within a branch they themselves
+// can access — mirrors the equivalent, now-unreachable check in the
+// deprecated monolith fallback (backend_school_crm/internal/handlers/user.go).
+func (h *Handler) CreateUser(c *gin.Context) {
+	callerRole := c.GetHeader("X-User-Role")
+	if callerRole != "admin" && callerRole != "branch_admin" && !isSuperRole(callerRole) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+
+	var req createUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if callerRole == "branch_admin" {
+		if req.Role != "manager" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "branch_admin can only create manager accounts"})
+			return
+		}
+		allowed, err := h.branches.HasBranchAccess(c.Request.Context(), c.GetHeader("X-User-ID"), callerRole, req.BranchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+	}
+
+	u, err := h.users.Create(c.Request.Context(), req.Email, req.Password, req.FullName, req.Role, req.BranchID)
+	if err != nil {
+		if err == service.ErrAlreadyExists {
+			c.JSON(http.StatusConflict, gin.H{"error": "a user with this email already exists"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, u)
 }
 
 // canAccessUser reports whether callerID/callerRole may read/modify target:
@@ -184,6 +245,14 @@ func (h *Handler) UpdateUser(c *gin.Context) {
 	}
 	if wantsBranch && !canReassignBranch(callerRole) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to change branch_id"})
+		return
+	}
+	// organization_name is the tenant's brand identity, meaningful only on
+	// the admin who owns the branches — block anyone else from setting it on
+	// their own row (it would just be silently unused, but there's no reason
+	// to let a manager/teacher write to it at all).
+	if _, wantsOrgName := body["organization_name"]; wantsOrgName && callerRole != "admin" && !isSuperRole(callerRole) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to change organization_name"})
 		return
 	}
 
