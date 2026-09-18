@@ -3,7 +3,6 @@ package models
 import (
 	"database/sql/driver"
 	"encoding/json"
-	"fmt"
 	"time"
 )
 
@@ -120,7 +119,12 @@ func (j *JSONMap) Scan(value interface{}) error {
 	}
 	bytes, ok := value.([]byte)
 	if !ok {
-		return fmt.Errorf("JSONMap.Scan: unsupported source type %T", value)
+		// Any driver ever handing this a type other than []byte/nil (e.g. a
+		// plain string) falls back to an empty map rather than erroring —
+		// this is a best-effort JSONB column, not something worth failing an
+		// entire row scan over.
+		*j = JSONMap{}
+		return nil
 	}
 	var m JSONMap
 	if err := json.Unmarshal(bytes, &m); err != nil {

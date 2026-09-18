@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -239,8 +240,13 @@ func WriteLog(database *db.Database, level, module, message string, meta map[str
 			metaJSON = string(b)
 		}
 	}
+	// WithSuppressedQueryLog is required here, not just tidiness: this INSERT
+	// runs on the same query-logged *sql.DB as everything else, so without
+	// it, enabling "Query Logging" would make WriteLog call itself for every
+	// query forever (this INSERT logged -> LogQueryFunc -> WriteLog -> this
+	// INSERT again...), hanging the process and starving the connection pool.
 	_, err := database.GetConn().ExecContext(
-		nil,
+		db.WithSuppressedQueryLog(context.Background()),
 		`INSERT INTO logs (level, module, message, metadata) VALUES ($1, $2, $3, $4)`,
 		strings.ToUpper(level), module, message, metaJSON,
 	)
