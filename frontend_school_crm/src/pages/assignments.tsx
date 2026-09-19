@@ -164,7 +164,7 @@ export default function AssignmentsPage() {
       // freshly-created assignment showing no progress indicator and never
       // getting the overdue red-border treatment until the page reloaded.
       const cls = classes.find((c) => c.id === form.classId);
-      setAssignments([{ ...a, totalStudents: cls?.studentIds?.length ?? 0, submittedCount: 0 }, ...assignments]);
+      setAssignments([{ ...a, totalStudents: cls?.studentCount ?? 0, submittedCount: 0 }, ...assignments]);
       notify.success(t("success"));
       setDialogOpen(false);
     } catch {
