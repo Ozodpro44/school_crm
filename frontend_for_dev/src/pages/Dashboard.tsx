@@ -42,7 +42,10 @@ function formatUptime(seconds?: number) {
 
 function StatusBadge({ status }: { status: string }) {
   const s = (status || "").toLowerCase();
-  const ok = s === "ok" || s === "healthy" || s === "up";
+  // backend_school_crm's /health reports database.status as "connected" (see
+  // cmd/main.go's health handler) — without it here, a genuinely healthy DB
+  // connection always rendered as the red/critical badge.
+  const ok = s === "ok" || s === "healthy" || s === "up" || s === "connected";
   return (
     <span className={cn(
       "inline-flex items-center gap-1.5 text-xs font-semibold px-2 py-0.5 rounded-full",
