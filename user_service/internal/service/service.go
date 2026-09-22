@@ -543,9 +543,10 @@ func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]Bra
 	defer cancel()
 
 	rows, err := s.db.Conn().QueryContext(ctx,
-		`SELECT DISTINCT b.id, b.name, b.address, b.phone, b.monthly_payment, b.currency, b.admin_id, b.is_active, b.created_at, b.updated_at
+		`SELECT DISTINCT b.id, b.name, b.address, b.phone, b.monthly_payment, b.currency, b.admin_id, u.full_name, b.is_active, b.created_at, b.updated_at
 		 FROM branches b
 		 LEFT JOIN branch_managers bm ON bm.branch_id = b.id AND bm.manager_id = $1
+		 LEFT JOIN users u ON u.id = b.admin_id
 		 WHERE b.admin_id = $1 OR bm.manager_id IS NOT NULL
 		 ORDER BY b.name`, adminID)
 	if err != nil {
@@ -556,11 +557,14 @@ func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]Bra
 	var branches []Branch
 	for rows.Next() {
 		var b Branch
-		var address, phone sql.NullString
-		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.IsActive, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		var address, phone, adminName sql.NullString
+		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &adminName, &b.IsActive, &b.CreatedAt, &b.UpdatedAt); err != nil {
 			return nil, err
 		}
 		b.Address, b.Phone = address.String, phone.String
+		if adminName.Valid {
+			b.AdminName = &adminName.String
+		}
 		branches = append(branches, b)
 	}
 	return branches, rows.Err()
