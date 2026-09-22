@@ -13,7 +13,7 @@ import type { User } from "@/lib/api";
 import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { Plus, Building2, MapPin, Phone, Edit, Trash2, Users, DollarSign, Loader2 } from "lucide-react";
+import { Plus, Building2, MapPin, Phone, Edit, Users, DollarSign } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { Badge } from "@/components/ui/badge";
@@ -53,8 +53,6 @@ export default function BranchesPage() {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAdminSubmitting, setIsAdminSubmitting] = useState(false);
-  const [isDeleteLoading, setIsDeleteLoading] = useState(false);
-  const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasCheckedAuth) {
@@ -154,25 +152,6 @@ export default function BranchesPage() {
       adminId: branch.adminId || "",
     });
     setIsDialogOpen(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (confirm(t("branchDeleteConfirmation"))) {
-      setDeletingBranchId(id);
-      setIsDeleteLoading(true);
-      try {
-        await api.deleteBranch(id);
-        notify.success(t("success"), t("branchDeleted"));
-        await loadData();
-        await refreshBranches();
-      } catch (error) {
-        console.error("Error deleting branch:", error);
-        notify.error(t("error"), t("failedToDeleteBranch"));
-      } finally {
-        setIsDeleteLoading(false);
-        setDeletingBranchId(null);
-      }
-    }
   };
 
   const resetForm = () => {
@@ -305,6 +284,11 @@ export default function BranchesPage() {
       headerClassName: "text-right",
       cellClassName: "text-right",
       render: (branch) => (
+        // Deleting a branch (tenant) is platform-only — the backend restricts
+        // DeleteBranch to developer/super_admin, roles that can't even reach
+        // this admin-only page, so a delete button here could never succeed.
+        // That deletion flow already exists properly in the developer portal
+        // (Branches.tsx there), which is where it belongs.
         <div className="flex items-center justify-end gap-2">
           <Button
             variant="ghost"
@@ -312,18 +296,6 @@ export default function BranchesPage() {
             onClick={() => handleEdit(branch)}
           >
             <Edit className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleDelete(branch.id)}
-            disabled={isDeleteLoading && deletingBranchId === branch.id}
-          >
-            {isDeleteLoading && deletingBranchId === branch.id ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4 text-destructive" />
-            )}
           </Button>
         </div>
       ),
