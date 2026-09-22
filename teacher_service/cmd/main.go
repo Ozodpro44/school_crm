@@ -46,6 +46,37 @@ func main() {
 	teacherSvc := service.NewTeacherService(database)
 	salarySvc := service.NewSalaryService(database)
 
+	// Trash purge: rows soft-deleted more than 30 days ago (the longer of
+	// the two restore windows — 7 days for a regular admin, 30 for
+	// developer/super_admin) are permanently removed. A purged teacher's
+	// still-soft-deleted login (users row) is cleaned up in the same pass,
+	// since nothing else will ever restore it once the teacher itself is
+	// gone for good.
+	go func() {
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if _, err := database.Conn().ExecContext(context.Background(),
+				`DELETE FROM users WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'
+				 AND id IN (SELECT user_id FROM teachers WHERE user_id IS NOT NULL AND deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days')`,
+			); err != nil {
+				slog.Error("trash purge: teacher logins", "error", err)
+			}
+			if n, err := database.Conn().ExecContext(context.Background(),
+				`DELETE FROM teachers WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`); err != nil {
+				slog.Error("trash purge: teachers", "error", err)
+			} else if rows, _ := n.RowsAffected(); rows > 0 {
+				slog.Info("trash purge: teachers", "purged", rows)
+			}
+			if n, err := database.Conn().ExecContext(context.Background(),
+				`DELETE FROM salaries WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`); err != nil {
+				slog.Error("trash purge: salaries", "error", err)
+			} else if rows, _ := n.RowsAffected(); rows > 0 {
+				slog.Info("trash purge: salaries", "purged", rows)
+			}
+		}
+	}()
+
 	grpcSrv := teachergrpc.NewTeacherGRPCServer(teacherSvc)
 	go func() {
 		slog.Info("gRPC listening", "port", cfg.GRPCPort)

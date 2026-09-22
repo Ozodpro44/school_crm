@@ -117,7 +117,7 @@ func (s *TeacherService) GetAll(ctx context.Context, branchID string) ([]Teacher
 		       COALESCE(array_agg(ts.subject) FILTER (WHERE ts.subject IS NOT NULL), '{}')
 		FROM teachers t
 		LEFT JOIN teacher_subjects ts ON ts.teacher_id = t.id
-		WHERE t.branch_id = $1 AND t.is_active = true
+		WHERE t.branch_id = $1 AND t.is_active = true AND t.deleted_at IS NULL
 		GROUP BY t.id ORDER BY t.full_name
 		LIMIT 1000`, branchID)
 	if err != nil {
@@ -150,7 +150,7 @@ func (s *TeacherService) GetByID(ctx context.Context, id string) (*Teacher, erro
 		       COALESCE(array_agg(ts.subject) FILTER (WHERE ts.subject IS NOT NULL), '{}')
 		FROM teachers t
 		LEFT JOIN teacher_subjects ts ON ts.teacher_id = t.id
-		WHERE t.id = $1
+		WHERE t.id = $1 AND t.deleted_at IS NULL
 		GROUP BY t.id`, id,
 	).Scan(&t.ID, &t.FullName, &t.MonthlySalary,
 		&t.Phone, &t.Email, &t.BranchID, &t.UserID, &t.JoinedDate, &t.IsActive, &t.CreatedAt, &t.UpdatedAt,
@@ -236,7 +236,7 @@ func (s *TeacherService) checkTeacherLimit(ctx context.Context, branchID string)
 	if err := s.db.Conn().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM teachers
 		 WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
-		   AND is_active = true`, ownerUserID,
+		   AND is_active = true AND deleted_at IS NULL`, ownerUserID,
 	).Scan(&count); err != nil {
 		return fmt.Errorf("check teacher limit: count teachers: %w", err)
 	}
@@ -375,7 +375,7 @@ func (s *TeacherService) Update(ctx context.Context, id, branchID string, fields
 	// go straight to mutating teacher_subjects for an arbitrary id with no
 	// branch check at all.
 	var ownerBranch string
-	err = tx.QueryRowContext(ctx, "SELECT branch_id FROM teachers WHERE id = $1", id).Scan(&ownerBranch)
+	err = tx.QueryRowContext(ctx, "SELECT branch_id FROM teachers WHERE id = $1 AND deleted_at IS NULL", id).Scan(&ownerBranch)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && ownerBranch != branchID) {
 		return nil, ErrNotFound
 	}
@@ -418,7 +418,7 @@ func (s *TeacherService) Update(ctx context.Context, id, branchID string, fields
 	return s.GetByID(ctx, id)
 }
 
-func (s *TeacherService) Delete(ctx context.Context, id, branchID string) error {
+func (s *TeacherService) Delete(ctx context.Context, id, branchID, deletedBy string) error {
 	t, err := s.GetByIDScoped(ctx, id, branchID)
 	if err != nil {
 		return err
@@ -437,24 +437,118 @@ func (s *TeacherService) Delete(ctx context.Context, id, branchID string) error 
 	// (ON DELETE CASCADE), so a hard DELETE here would silently destroy that
 	// teacher's entire paid/unpaid salary history. Deactivating instead keeps
 	// the financial record intact and out of active rosters (GetAll filters
-	// on is_active). branch_id in the WHERE clause too, not just the
+	// on is_active). deleted_at/deleted_by additionally drive the Trash
+	// feature (when/who, and the 7-30 day restore window) — is_active alone
+	// can't answer those. branch_id in the WHERE clause too, not just the
 	// pre-check above — the pre-check and this statement aren't atomic with
 	// each other, so this is what actually guarantees a cross-branch delete
 	// can't slip through.
-	res, err := tx.ExecContext(ctx, "UPDATE teachers SET is_active = false WHERE id = $1 AND branch_id = $2", id, branchID)
+	res, err := tx.ExecContext(ctx,
+		"UPDATE teachers SET is_active = false, deleted_at = now(), deleted_by = $3 WHERE id = $1 AND branch_id = $2 AND deleted_at IS NULL",
+		id, branchID, deletedBy)
 	if err != nil {
 		return err
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return ErrNotFound
 	}
-	// Revoke login access by removing the linked user account, if present.
+	// Soft-delete the linked login too (not hard-delete): a teacher
+	// restored within the window needs to be able to log in again
+	// immediately, which a permanently-removed users row would prevent.
+	// auth_service/user_service reject login for a deleted_at-set user.
 	if t.UserID != nil {
-		if _, err := tx.ExecContext(ctx, "DELETE FROM users WHERE id = $1", *t.UserID); err != nil {
+		if _, err := tx.ExecContext(ctx,
+			"UPDATE users SET deleted_at = now(), deleted_by = $2 WHERE id = $1 AND deleted_at IS NULL", *t.UserID, deletedBy); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+// Restore un-deletes a teacher soft-deleted within the last 30 days (the
+// longer of the two trash windows — callers enforce the shorter 7-day
+// window for non-super-role callers before reaching here), reinstating
+// their login at the same time if they had one.
+func (s *TeacherService) Restore(ctx context.Context, id, branchID string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var userID sql.NullString
+	err = tx.QueryRowContext(ctx,
+		"SELECT user_id FROM teachers WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
+		id, branchID).Scan(&userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE teachers SET is_active = true, deleted_at = NULL, deleted_by = NULL WHERE id = $1", id); err != nil {
+		return err
+	}
+	if userID.Valid {
+		if _, err := tx.ExecContext(ctx,
+			"UPDATE users SET deleted_at = NULL, deleted_by = NULL WHERE id = $1", userID.String); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// TrashedTeacher is a Teacher soft-deleted within the caller's restore window.
+type TrashedTeacher struct {
+	Teacher
+	DeletedAt time.Time `json:"deletedAt"`
+	DeletedBy *string   `json:"deletedBy,omitempty"`
+}
+
+// ListTrash returns teachers soft-deleted within the last windowDays,
+// scoped to branchID (regular caller) or platform-wide when "" (super role).
+func (s *TeacherService) ListTrash(ctx context.Context, branchID string, windowDays int) ([]TrashedTeacher, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	query := `
+		SELECT t.id, t.full_name, t.monthly_salary,
+		       COALESCE(t.phone,''), COALESCE(t.email,''), t.branch_id,
+		       t.user_id, t.joined_date, t.is_active, t.created_at, t.updated_at,
+		       COALESCE(array_agg(ts.subject) FILTER (WHERE ts.subject IS NOT NULL), '{}'),
+		       t.deleted_at, t.deleted_by
+		FROM teachers t
+		LEFT JOIN teacher_subjects ts ON ts.teacher_id = t.id
+		WHERE t.deleted_at IS NOT NULL AND t.deleted_at > now() - make_interval(days => $1)`
+	args := []interface{}{windowDays}
+	if branchID != "" {
+		query += " AND t.branch_id = $2"
+		args = append(args, branchID)
+	}
+	query += " GROUP BY t.id ORDER BY t.deleted_at DESC"
+
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedTeacher
+	for rows.Next() {
+		var t TrashedTeacher
+		if err := rows.Scan(&t.ID, &t.FullName, &t.MonthlySalary,
+			&t.Phone, &t.Email, &t.BranchID, &t.UserID, &t.JoinedDate, &t.IsActive, &t.CreatedAt, &t.UpdatedAt,
+			pq.Array(&t.Subjects), &t.DeletedAt, &t.DeletedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // ── SalaryService ─────────────────────────────────────────────────────────────
@@ -497,7 +591,7 @@ func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, cr
 	// and hiding the record from the teacher's real branch history.
 	var teacherBranch string
 	if err := s.db.Conn().QueryRowContext(ctx,
-		"SELECT branch_id FROM teachers WHERE id = $1 AND is_active = true", req.TeacherID,
+		"SELECT branch_id FROM teachers WHERE id = $1 AND is_active = true AND deleted_at IS NULL", req.TeacherID,
 	).Scan(&teacherBranch); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("%w: teacher not found", ErrInvalidInput)
@@ -551,7 +645,7 @@ func (s *SalaryService) GetByTeacher(ctx context.Context, teacherID, branchID st
 		       s.payment_method, s.status, s.notes, s.paid_date, s.branch_id, s.created_by, s.created_at
 		FROM salaries s
 		LEFT JOIN teachers t ON t.id = s.teacher_id
-		WHERE s.teacher_id = $1 AND s.branch_id = $2
+		WHERE s.teacher_id = $1 AND s.branch_id = $2 AND s.deleted_at IS NULL
 		ORDER BY s.year DESC, s.month DESC`, teacherID, branchID)
 	if err != nil {
 		return nil, err
@@ -564,7 +658,7 @@ func (s *SalaryService) GetByBranch(ctx context.Context, branchID, month string,
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	where := "WHERE s.branch_id = $1"
+	where := "WHERE s.branch_id = $1 AND s.deleted_at IS NULL"
 	args := []interface{}{branchID}
 	n := 2
 	if month != "" {
@@ -654,11 +748,12 @@ func (s *SalaryService) Update(ctx context.Context, id, branchID string, fields 
 
 // Delete removes a salary record, scoped to branchID directly in the DELETE
 // statement — see TeacherService.Delete's comment for why.
-func (s *SalaryService) Delete(ctx context.Context, id, branchID string) error {
+func (s *SalaryService) Delete(ctx context.Context, id, branchID, deletedBy string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 	res, err := s.db.Conn().ExecContext(ctx,
-		"DELETE FROM salaries WHERE id = $1 AND branch_id = $2", id, branchID)
+		"UPDATE salaries SET deleted_at = now(), deleted_by = $3 WHERE id = $1 AND branch_id = $2 AND deleted_at IS NULL",
+		id, branchID, deletedBy)
 	if err != nil {
 		return err
 	}
@@ -666,6 +761,70 @@ func (s *SalaryService) Delete(ctx context.Context, id, branchID string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Restore un-deletes a salary soft-deleted within the last 30 days (the
+// longer of the two trash windows — callers enforce the shorter 7-day
+// window for non-super-role callers before reaching here).
+func (s *SalaryService) Restore(ctx context.Context, id, branchID string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE salaries SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
+		id, branchID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// TrashedSalary is a Salary soft-deleted within the caller's restore window.
+type TrashedSalary struct {
+	Salary
+	DeletedAt time.Time `json:"deletedAt"`
+	DeletedBy *string   `json:"deletedBy,omitempty"`
+}
+
+// ListTrash returns salaries soft-deleted within the last windowDays,
+// scoped to branchID (regular caller) or platform-wide when "" (super role).
+func (s *SalaryService) ListTrash(ctx context.Context, branchID string, windowDays int) ([]TrashedSalary, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	query := `
+		SELECT s.id, s.teacher_id, COALESCE(t.full_name,''), s.amount, s.month, s.year,
+		       s.payment_method, s.status, s.notes, s.paid_date, s.branch_id, s.created_by, s.created_at,
+		       s.deleted_at, s.deleted_by
+		FROM salaries s
+		LEFT JOIN teachers t ON t.id = s.teacher_id
+		WHERE s.deleted_at IS NOT NULL AND s.deleted_at > now() - make_interval(days => $1)`
+	args := []interface{}{windowDays}
+	if branchID != "" {
+		query += " AND s.branch_id = $2"
+		args = append(args, branchID)
+	}
+	query += " ORDER BY s.deleted_at DESC"
+
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedSalary
+	for rows.Next() {
+		var s2 TrashedSalary
+		if err := rows.Scan(&s2.ID, &s2.TeacherID, &s2.TeacherName, &s2.Amount, &s2.Month, &s2.Year,
+			&s2.PaymentMethod, &s2.Status, &s2.Notes, &s2.PaidDate, &s2.BranchID, &s2.CreatedBy, &s2.CreatedAt,
+			&s2.DeletedAt, &s2.DeletedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, s2)
+	}
+	return out, rows.Err()
 }
 
 func (s *SalaryService) getByID(ctx context.Context, id string) (*Salary, error) {
@@ -678,7 +837,7 @@ func (s *SalaryService) getByID(ctx context.Context, id string) (*Salary, error)
 		       s.payment_method, s.status, s.notes, s.paid_date, s.branch_id, s.created_by, s.created_at
 		FROM salaries s
 		LEFT JOIN teachers t ON t.id = s.teacher_id
-		WHERE s.id = $1`, id,
+		WHERE s.id = $1 AND s.deleted_at IS NULL`, id,
 	).Scan(&sal.ID, &sal.TeacherID, &sal.TeacherName, &sal.Amount, &sal.Month, &sal.Year,
 		&sal.PaymentMethod, &sal.Status, &sal.Notes, &sal.PaidDate,
 		&sal.BranchID, &sal.CreatedBy, &sal.CreatedAt)

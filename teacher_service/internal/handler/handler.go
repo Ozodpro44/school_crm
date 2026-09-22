@@ -83,6 +83,14 @@ func (h *Handler) requireDeletePermission(c *gin.Context) bool {
 	return true
 }
 
+// isSuperRole reports whether role is a platform-level role that operates
+// across every branch/tenant, rather than being scoped to one — used to
+// pick the Trash view's window (30 days platform-wide) vs a regular
+// caller's (7 days, own branch only).
+func isSuperRole(role string) bool {
+	return role == "developer" || role == "super_admin"
+}
+
 // requireViewSalariesPermission enforces permissions.can_view_salaries — the
 // frontend already hides salary data/nav for roles without it, but nothing
 // server-side checked before this, so a manager/accountant with
@@ -120,12 +128,16 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/teachers/:id", h.GetTeacher)
 	r.PUT("/teachers/:id", h.UpdateTeacher)
 	r.DELETE("/teachers/:id", h.DeleteTeacher)
+	r.POST("/teachers/:id/restore", h.RestoreTeacher)
+	r.GET("/trash/teachers", h.ListTeacherTrash)
 
 	// Salaries
 	r.GET("/salaries", h.ListSalaries)
 	r.POST("/salaries", h.CreateSalary)
 	r.PUT("/salaries/:id", h.UpdateSalary)
 	r.DELETE("/salaries/:id", h.DeleteSalary)
+	r.POST("/salaries/:id/restore", h.RestoreSalary)
+	r.GET("/trash/salaries", h.ListSalaryTrash)
 	r.GET("/salaries/teacher/:teacherId", h.TeacherSalaryHistory)
 }
 
@@ -235,7 +247,7 @@ func (h *Handler) DeleteTeacher(c *gin.Context) {
 	}
 	id := c.Param("id")
 	t, _ := h.teachers.GetByIDScoped(c.Request.Context(), id, branchID)
-	if err := h.teachers.Delete(c.Request.Context(), id, branchID); err != nil {
+	if err := h.teachers.Delete(c.Request.Context(), id, branchID, c.GetHeader("X-User-ID")); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "teacher not found"})
 			return
@@ -247,6 +259,57 @@ func (h *Handler) DeleteTeacher(c *gin.Context) {
 		h.teachers.Audit(c.Request.Context(), t.BranchID, c.GetHeader("X-User-ID"), "delete", "teacher", id, "Teacher deleted: "+t.FullName)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "teacher deleted"})
+}
+
+// RestoreTeacher undoes a soft-delete, same authorization as DeleteTeacher.
+func (h *Handler) RestoreTeacher(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.teachers.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "teacher not found in trash"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "teacher restored"})
+}
+
+// ListTeacherTrash returns soft-deleted teachers within the caller's
+// window: 7 days scoped to their branch, 30 days platform-wide for
+// developer/super_admin.
+func (h *Handler) ListTeacherTrash(c *gin.Context) {
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	branchID := requestBranchID(c)
+	if isSuperRole(role) {
+		windowDays = 30
+		branchID = ""
+	} else if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	} else if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	items, err := h.teachers.ListTrash(c.Request.Context(), branchID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedTeacher{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 // ── Salaries ──────────────────────────────────────────────────────────────────
@@ -328,7 +391,7 @@ func (h *Handler) DeleteSalary(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.salaries.Delete(c.Request.Context(), c.Param("id"), branchID); err != nil {
+	if err := h.salaries.Delete(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-ID")); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "salary not found"})
 			return
@@ -337,6 +400,57 @@ func (h *Handler) DeleteSalary(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "salary deleted"})
+}
+
+// RestoreSalary undoes a soft-delete, same authorization as DeleteSalary.
+func (h *Handler) RestoreSalary(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.salaries.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "salary not found in trash"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "salary restored"})
+}
+
+// ListSalaryTrash returns soft-deleted salaries within the caller's window:
+// 7 days scoped to their branch, 30 days platform-wide for
+// developer/super_admin.
+func (h *Handler) ListSalaryTrash(c *gin.Context) {
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	branchID := requestBranchID(c)
+	if isSuperRole(role) {
+		windowDays = 30
+		branchID = ""
+	} else if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	} else if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	items, err := h.salaries.ListTrash(c.Request.Context(), branchID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedSalary{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 func (h *Handler) TeacherSalaryHistory(c *gin.Context) {

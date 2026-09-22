@@ -272,6 +272,8 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		userRoutes.Any("/branches", gin.WrapH(proxy.Handler(userProxy)))
 		userRoutes.Any("/branches/:id", gin.WrapH(proxy.Handler(userProxy)))
 		userRoutes.Any("/branches/:id/*subaction", gin.WrapH(proxy.Handler(userProxy)))
+		userRoutes.Any("/trash/branches", gin.WrapH(proxy.Handler(userProxy)))
+		userRoutes.Any("/trash/users", gin.WrapH(proxy.Handler(userProxy)))
 		userRoutes.Any("/permissions/:id", gin.WrapH(proxy.Handler(userProxy)))
 		userRoutes.Any("/permissions/:id/*subaction", gin.WrapH(proxy.Handler(userProxy)))
 		userRoutes.Any("/settings", gin.WrapH(proxy.Handler(userProxy)))
@@ -328,6 +330,8 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		teacherRoutes.Any("/salaries", gin.WrapH(proxy.Handler(teacherProxy)))
 		teacherRoutes.Any("/salaries/:id", gin.WrapH(proxy.Handler(teacherProxy)))
 		teacherRoutes.Any("/salaries/:id/*subaction", gin.WrapH(proxy.Handler(teacherProxy)))
+		teacherRoutes.Any("/trash/teachers", gin.WrapH(proxy.Handler(teacherProxy)))
+		teacherRoutes.Any("/trash/salaries", gin.WrapH(proxy.Handler(teacherProxy)))
 	}
 
 	// ── Expenses + budgets → finance_service (P5.2) ──────────────────────────

@@ -115,7 +115,7 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*User, error) {
 	err := s.db.Conn().QueryRowContext(ctx,
 		`SELECT id, email, full_name, role, branch_id, phone, avatar_url,
 		        COALESCE(language, 'en'), organization_name, created_at, updated_at
-		 FROM users WHERE id = $1`, id,
+		 FROM users WHERE id = $1 AND deleted_at IS NULL`, id,
 	).Scan(&u.ID, &u.Email, &u.FullName, &u.Role, &u.BranchID,
 		&u.Phone, &u.AvatarURL, &u.Language, &u.OrganizationName, &u.CreatedAt, &u.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -141,13 +141,13 @@ func (s *UserService) GetAll(ctx context.Context, branchID string) ([]User, erro
 			       COALESCE(u.language, 'en'), u.created_at, u.updated_at
 			FROM users u
 			LEFT JOIN branch_managers bm ON bm.manager_id = u.id
-			WHERE u.branch_id = $1 OR bm.branch_id = $1
+			WHERE (u.branch_id = $1 OR bm.branch_id = $1) AND u.deleted_at IS NULL
 			ORDER BY u.full_name`
 		args = []interface{}{branchID}
 	} else {
 		query = `SELECT id, email, full_name, role, branch_id, phone, avatar_url,
 			        COALESCE(language, 'en'), created_at, updated_at
-			 FROM users ORDER BY full_name`
+			 FROM users WHERE deleted_at IS NULL ORDER BY full_name`
 	}
 
 	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
@@ -300,10 +300,16 @@ func (s *UserService) UpdateRoleBranch(ctx context.Context, id string, role, bra
 	return s.GetByID(ctx, id)
 }
 
-func (s *UserService) Delete(ctx context.Context, id string) error {
+// Delete soft-deletes the user: recoverable via Restore for 7 days (30 for
+// developer/super_admin) rather than gone immediately. A teacher's own
+// login (users row) is soft-deleted the same way by TeacherService.Delete,
+// in the same transaction as the teacher row, so a restored teacher can log
+// in again right away.
+func (s *UserService) Delete(ctx context.Context, id, deletedBy string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	res, err := s.db.Conn().ExecContext(ctx, "DELETE FROM users WHERE id = $1", id)
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE users SET deleted_at = now(), deleted_by = $2 WHERE id = $1 AND deleted_at IS NULL", id, deletedBy)
 	if err != nil {
 		return err
 	}
@@ -315,6 +321,71 @@ func (s *UserService) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Restore un-deletes a user soft-deleted within the last 30 days (the
+// longer of the two trash windows — callers enforce the shorter 7-day
+// window for non-super-role callers before reaching here).
+func (s *UserService) Restore(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE users SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND deleted_at IS NOT NULL", id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// TrashedUser is a User soft-deleted within the caller's restore window.
+type TrashedUser struct {
+	User
+	DeletedAt time.Time `json:"deletedAt"`
+	DeletedBy *string   `json:"deletedBy,omitempty"`
+}
+
+// ListTrash returns users soft-deleted within the last windowDays, scoped
+// to branchID when given (a non-super caller only ever sees their own
+// branch's trash; branchID == "" means platform-wide, only ever passed for
+// a super-role caller).
+func (s *UserService) ListTrash(ctx context.Context, branchID string, windowDays int) ([]TrashedUser, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	query := `SELECT id, email, full_name, role, branch_id, phone, avatar_url,
+	                 COALESCE(language, 'en'), created_at, updated_at, deleted_at, deleted_by
+	          FROM users
+	          WHERE deleted_at IS NOT NULL AND deleted_at > now() - make_interval(days => $1)`
+	args := []interface{}{windowDays}
+	if branchID != "" {
+		query += " AND branch_id = $2"
+		args = append(args, branchID)
+	}
+	query += " ORDER BY deleted_at DESC"
+
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedUser
+	for rows.Next() {
+		var u TrashedUser
+		if err := rows.Scan(&u.ID, &u.Email, &u.FullName, &u.Role, &u.BranchID,
+			&u.Phone, &u.AvatarURL, &u.Language, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt, &u.DeletedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
 }
 
 // ── BranchService ─────────────────────────────────────────────────────────────
@@ -455,7 +526,7 @@ func (s *BranchService) checkBranchLimit(ctx context.Context, ownerUserID string
 
 	var count int
 	if err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM branches WHERE admin_id = $1 AND is_active = true`, ownerUserID,
+		`SELECT COUNT(*) FROM branches WHERE admin_id = $1 AND is_active = true AND deleted_at IS NULL`, ownerUserID,
 	).Scan(&count); err != nil {
 		return fmt.Errorf("check branch limit: count branches: %w", err)
 	}
@@ -473,7 +544,7 @@ func (s *BranchService) GetByID(ctx context.Context, id string) (*Branch, error)
 	var address, phone sql.NullString
 	err := s.db.Conn().QueryRowContext(ctx,
 		`SELECT id, name, address, phone, monthly_payment, currency, admin_id, is_active, created_at, updated_at
-		 FROM branches WHERE id = $1`, id,
+		 FROM branches WHERE id = $1 AND deleted_at IS NULL`, id,
 	).Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.IsActive, &b.CreatedAt, &b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -509,6 +580,7 @@ func (s *BranchService) GetAll(ctx context.Context) ([]Branch, error) {
 		`SELECT b.id, b.name, b.address, b.phone, b.monthly_payment, b.currency, b.admin_id, u.full_name, b.is_active, b.created_at, b.updated_at
 		 FROM branches b
 		 LEFT JOIN users u ON u.id = b.admin_id
+		 WHERE b.deleted_at IS NULL
 		 ORDER BY b.name`)
 	if err != nil {
 		return nil, err
@@ -547,7 +619,7 @@ func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]Bra
 		 FROM branches b
 		 LEFT JOIN branch_managers bm ON bm.branch_id = b.id AND bm.manager_id = $1
 		 LEFT JOIN users u ON u.id = b.admin_id
-		 WHERE b.admin_id = $1 OR bm.manager_id IS NOT NULL
+		 WHERE (b.admin_id = $1 OR bm.manager_id IS NOT NULL) AND b.deleted_at IS NULL
 		 ORDER BY b.name`, adminID)
 	if err != nil {
 		return nil, err
@@ -612,10 +684,19 @@ func (s *BranchService) Update(ctx context.Context, id string, fields map[string
 	return s.GetByID(ctx, id)
 }
 
-func (s *BranchService) Delete(ctx context.Context, id string) error {
+// Delete soft-deletes the branch: recoverable via Restore for 7 days (30
+// for developer/super_admin) rather than gone immediately. branches
+// cascade-deletes into nearly every other table (classes, students,
+// teachers, payments, salaries, expenses, attendance, notes, contact_log,
+// schedule, message_log, assignments, financial_months, subscriptions), so
+// a hard DELETE here would silently destroy a school's entire history —
+// soft-deleting is what makes it safe to let a branch's own owner delete
+// their own branch at all (see DeleteBranch's authorization check).
+func (s *BranchService) Delete(ctx context.Context, id, deletedBy string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	res, err := s.db.Conn().ExecContext(ctx, "DELETE FROM branches WHERE id = $1", id)
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE branches SET deleted_at = now(), deleted_by = $2 WHERE id = $1 AND deleted_at IS NULL", id, deletedBy)
 	if err != nil {
 		return err
 	}
@@ -627,6 +708,74 @@ func (s *BranchService) Delete(ctx context.Context, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Restore un-deletes a branch soft-deleted within the last 30 days (the
+// longer of the two trash windows — callers enforce the shorter 7-day
+// window for non-super-role callers before reaching here).
+func (s *BranchService) Restore(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE branches SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND deleted_at IS NOT NULL", id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// TrashedBranch is a Branch soft-deleted within the caller's restore window.
+type TrashedBranch struct {
+	Branch
+	DeletedAt time.Time `json:"deletedAt"`
+	DeletedBy *string   `json:"deletedBy,omitempty"`
+}
+
+// ListTrash returns branches soft-deleted within the last windowDays. When
+// adminID is given (non-super caller), only that admin's own branches are
+// returned; "" means platform-wide (super-role callers only).
+func (s *BranchService) ListTrash(ctx context.Context, adminID string, windowDays int) ([]TrashedBranch, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	query := `SELECT b.id, b.name, b.address, b.phone, b.monthly_payment, b.currency, b.admin_id, u.full_name, b.is_active, b.created_at, b.updated_at, b.deleted_at, b.deleted_by
+	          FROM branches b
+	          LEFT JOIN users u ON u.id = b.admin_id
+	          WHERE b.deleted_at IS NOT NULL AND b.deleted_at > now() - make_interval(days => $1)`
+	args := []interface{}{windowDays}
+	if adminID != "" {
+		query += " AND b.admin_id = $2"
+		args = append(args, adminID)
+	}
+	query += " ORDER BY b.deleted_at DESC"
+
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedBranch
+	for rows.Next() {
+		var b TrashedBranch
+		var address, phone, adminName sql.NullString
+		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &adminName, &b.IsActive, &b.CreatedAt, &b.UpdatedAt, &b.DeletedAt, &b.DeletedBy); err != nil {
+			return nil, err
+		}
+		b.Address, b.Phone = address.String, phone.String
+		if adminName.Valid {
+			b.AdminName = &adminName.String
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
 }
 
 // SwitchMonth closes the current open financial month and opens the next one.

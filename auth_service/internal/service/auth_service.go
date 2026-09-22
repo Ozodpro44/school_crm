@@ -124,8 +124,12 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*User,
 	var passwordHash string
 	var branchID, orgName sql.NullString
 	var emailVerified bool
+	// deleted_at IS NULL: a soft-deleted teacher's login must not work again
+	// until they're restored (see TeacherService.Delete/Restore in
+	// teacher_service — it soft-deletes/reinstates this same row instead of
+	// hard-deleting it, precisely so restore can bring login back too).
 	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT id, email, password_hash, role, full_name, branch_id, organization_name, email_verified, created_at FROM users WHERE email = $1`,
+		`SELECT id, email, password_hash, role, full_name, branch_id, organization_name, email_verified, created_at FROM users WHERE email = $1 AND deleted_at IS NULL`,
 		email,
 	).Scan(&user.ID, &user.Email, &passwordHash, &user.Role, &user.FullName, &branchID, &orgName, &emailVerified, &user.CreatedAt)
 
@@ -541,7 +545,7 @@ func (s *AuthService) GetByID(ctx context.Context, id string) (*User, error) {
 	var u User
 	var branchID, orgName sql.NullString
 	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT id, email, role, full_name, branch_id, organization_name, created_at FROM users WHERE id = $1`, id,
+		`SELECT id, email, role, full_name, branch_id, organization_name, created_at FROM users WHERE id = $1 AND deleted_at IS NULL`, id,
 	).Scan(&u.ID, &u.Email, &u.Role, &u.FullName, &branchID, &orgName, &u.CreatedAt)
 
 	if errors.Is(err, sql.ErrNoRows) {

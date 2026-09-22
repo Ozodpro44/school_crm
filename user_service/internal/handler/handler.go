@@ -36,6 +36,8 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/users/:id", h.GetUser)
 	r.PUT("/users/:id", h.UpdateUser)
 	r.DELETE("/users/:id", h.DeleteUser)
+	r.POST("/users/:id/restore", h.RestoreUser)
+	r.GET("/trash/users", h.ListUserTrash)
 
 	// Branches
 	r.GET("/branches", h.ListBranches)
@@ -43,6 +45,8 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/branches/:id", h.GetBranch)
 	r.PUT("/branches/:id", h.UpdateBranch)
 	r.DELETE("/branches/:id", h.DeleteBranch)
+	r.POST("/branches/:id/restore", h.RestoreBranch)
+	r.GET("/trash/branches", h.ListBranchTrash)
 	r.POST("/branches/:id/switch-month", h.SwitchMonth)
 
 	// Permissions
@@ -372,7 +376,7 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete users"})
 		return
 	}
-	if err := h.users.Delete(c.Request.Context(), existing.ID); err != nil {
+	if err := h.users.Delete(c.Request.Context(), existing.ID, c.GetHeader("X-User-ID")); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 			return
@@ -381,6 +385,44 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "user deleted"})
+}
+
+// RestoreUser undoes a soft-delete — same authorization as DeleteUser.
+func (h *Handler) RestoreUser(c *gin.Context) {
+	if !isSuperRole(c.GetHeader("X-User-Role")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to restore users"})
+		return
+	}
+	if err := h.users.Restore(c.Request.Context(), c.Param("id")); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found in trash"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "user restored"})
+}
+
+// ListUserTrash returns soft-deleted users within the caller's window: 7
+// days scoped to the caller's own branch, 30 days platform-wide for
+// developer/super_admin. Same authorization as DeleteUser/RestoreUser
+// (platform-level roles only) since deleting a user was already
+// platform-only before this feature existed.
+func (h *Handler) ListUserTrash(c *gin.Context) {
+	if !isSuperRole(c.GetHeader("X-User-Role")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to view user trash"})
+		return
+	}
+	items, err := h.users.ListTrash(c.Request.Context(), "", 30)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedUser{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 // ── Branches ──────────────────────────────────────────────────────────────────
@@ -548,15 +590,32 @@ func (h *Handler) SwitchMonth(c *gin.Context) {
 	c.JSON(http.StatusOK, b)
 }
 
-// DeleteBranch is restricted to platform-level roles — deleting a tenant is
-// not something a branch's own admin should be able to self-service through
-// this endpoint.
+// DeleteBranch is restricted to platform-level roles or the branch's own
+// owning admin (not a branch_manager — narrower than canAccessBranch).
+// Deleting a tenant used to be platform-only full stop, since a hard DELETE
+// here cascades into nearly every other table (classes, students, teachers,
+// payments, salaries, expenses, attendance, ...) and could wipe a school's
+// entire history in one click. Now that Delete is soft (recoverable via
+// Restore for 7-30 days), letting the owner delete their own branch is safe.
 func (h *Handler) DeleteBranch(c *gin.Context) {
-	if !isSuperRole(c.GetHeader("X-User-Role")) {
+	callerRole := c.GetHeader("X-User-Role")
+	callerID := c.GetHeader("X-User-ID")
+
+	existing, err := h.branches.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	isOwner := existing.AdminID != nil && *existing.AdminID == callerID
+	if !isSuperRole(callerRole) && !isOwner {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete branches"})
 		return
 	}
-	if err := h.branches.Delete(c.Request.Context(), c.Param("id")); err != nil {
+	if err := h.branches.Delete(c.Request.Context(), existing.ID, callerID); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
 			return
@@ -565,6 +624,67 @@ func (h *Handler) DeleteBranch(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "branch deleted"})
+}
+
+// RestoreBranch undoes a soft-delete — same authorization as DeleteBranch
+// (platform roles, or the branch's own owning admin).
+func (h *Handler) RestoreBranch(c *gin.Context) {
+	callerRole := c.GetHeader("X-User-Role")
+	callerID := c.GetHeader("X-User-ID")
+	windowDays := 7
+	if isSuperRole(callerRole) {
+		windowDays = 30
+	}
+
+	trashed, err := h.branches.ListTrash(c.Request.Context(), "", windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var found *service.TrashedBranch
+	for i := range trashed {
+		if trashed[i].ID == c.Param("id") {
+			found = &trashed[i]
+			break
+		}
+	}
+	if found == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "branch not found in trash"})
+		return
+	}
+	isOwner := found.AdminID != nil && *found.AdminID == callerID
+	if !isSuperRole(callerRole) && !isOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to restore this branch"})
+		return
+	}
+	if err := h.branches.Restore(c.Request.Context(), found.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "branch restored"})
+}
+
+// ListBranchTrash returns soft-deleted branches within the caller's window:
+// 7 days for a normal owning admin (their own branches only), 30 days and
+// platform-wide for developer/super_admin.
+func (h *Handler) ListBranchTrash(c *gin.Context) {
+	callerRole := c.GetHeader("X-User-Role")
+	callerID := c.GetHeader("X-User-ID")
+	windowDays := 7
+	adminID := callerID
+	if isSuperRole(callerRole) {
+		windowDays = 30
+		adminID = ""
+	}
+	items, err := h.branches.ListTrash(c.Request.Context(), adminID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedBranch{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 // ── Permissions ───────────────────────────────────────────────────────────────

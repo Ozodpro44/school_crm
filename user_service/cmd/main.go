@@ -65,6 +65,30 @@ func main() {
 	branchSvc := service.NewBranchService(database)
 	permSvc := service.NewPermissionService(database, rdb)
 
+	// Trash purge: rows soft-deleted more than 30 days ago (the longer of
+	// the two restore windows — 7 days for a regular admin, 30 for
+	// developer/super_admin) are permanently removed. Runs on a simple
+	// ticker rather than new scheduler infra, matching this codebase's
+	// existing pattern of per-service background loops.
+	go func() {
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if n, err := database.Conn().ExecContext(context.Background(),
+				`DELETE FROM branches WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`); err != nil {
+				slog.Error("trash purge: branches", "error", err)
+			} else if rows, _ := n.RowsAffected(); rows > 0 {
+				slog.Info("trash purge: branches", "purged", rows)
+			}
+			if n, err := database.Conn().ExecContext(context.Background(),
+				`DELETE FROM users WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`); err != nil {
+				slog.Error("trash purge: users", "error", err)
+			} else if rows, _ := n.RowsAffected(); rows > 0 {
+				slog.Info("trash purge: users", "purged", rows)
+			}
+		}
+	}()
+
 	grpcSrv := usergrpc.NewUserGRPCServer(userSvc, branchSvc, permSvc)
 	go func() {
 		slog.Info("gRPC listening", "port", cfg.GRPCPort)
