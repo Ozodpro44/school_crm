@@ -1123,7 +1123,12 @@ export function Layout({ children }: LayoutProps) {
               need the same peer/data-state offset logic SidebarInset uses,
               which only reaches direct siblings of the sidebar's gap div,
               not a header nested inside SidebarInset. */}
-          <header className="hidden md:flex sticky top-0 z-30 h-14 flex-shrink-0 items-center gap-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6">
+          {/* will-change-transform forces this onto its own compositor
+              layer — without it, this sticky header would sometimes paint
+              at a stale scroll offset (visually lagging behind the real,
+              already-updated scroll position) after a fast/smooth-scrolled
+              page, a known Chromium position:sticky compositing quirk. */}
+          <header className="hidden md:flex sticky top-0 z-30 h-14 flex-shrink-0 items-center gap-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 will-change-transform">
             {/* Branch switcher */}
             {branches.length > 0 && user?.role === "admin" && (
               <div className="w-56 flex-shrink-0">
