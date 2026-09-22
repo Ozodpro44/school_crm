@@ -211,6 +211,16 @@ func (s *PaymentService) create(ctx context.Context, req *CreatePaymentRequest, 
 		return nil, fmt.Errorf("student already has a paid payment for %s/%d", req.Month, req.Year)
 	}
 
+	// A payment created directly as "paid" (bulk quick-pay, or a manual
+	// create that skips the paidDate field) needs paid_date set here — no
+	// caller reliably fills it in themselves, and leaving it null on a
+	// "paid" row is what left payment-date columns showing N/A downstream.
+	paidDate := req.PaidDate
+	if req.Status == "paid" && paidDate == nil {
+		now := time.Now().UTC()
+		paidDate = &now
+	}
+
 	p := &Payment{
 		ID:            uuid.New().String(),
 		StudentID:     req.StudentID,
@@ -221,7 +231,7 @@ func (s *PaymentService) create(ctx context.Context, req *CreatePaymentRequest, 
 		Status:        req.Status,
 		InvoiceNumber: req.InvoiceNumber,
 		Notes:         req.Notes,
-		PaidDate:      req.PaidDate,
+		PaidDate:      paidDate,
 		BranchID:      req.BranchID,
 		CreatedBy:     &createdBy,
 		CreatedAt:     time.Now().UTC(),
@@ -337,9 +347,19 @@ func (s *PaymentService) Update(ctx context.Context, id string, req *UpdatePayme
 		args = append(args, *req.Notes)
 		n++
 	}
+	// Same invariant as create(): a payment transitioning to "paid" always
+	// gets a paid_date, even if the caller didn't set one explicitly — this
+	// is the update-path counterpart of that default, so marking a payment
+	// paid via any endpoint (not just the ones that remember to pass
+	// paidDate) still records when it was actually paid.
 	if req.PaidDate != nil {
 		setParts = append(setParts, fmt.Sprintf("paid_date = $%d", n))
 		args = append(args, *req.PaidDate)
+		n++
+	} else if req.Status != nil && *req.Status == "paid" && existing.PaidDate == nil {
+		now := time.Now().UTC()
+		setParts = append(setParts, fmt.Sprintf("paid_date = $%d", n))
+		args = append(args, now)
 		n++
 	}
 
