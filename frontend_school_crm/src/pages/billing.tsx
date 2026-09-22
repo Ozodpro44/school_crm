@@ -451,7 +451,9 @@ export default function BillingPage() {
                       <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">{t("nextPayment")}</p>
                     </div>
                     <p className="text-sm font-bold text-slate-900 dark:text-white">
-                      {currentSub.renewal_date ? new Date(currentSub.renewal_date).toLocaleDateString() : 'N/A'}
+                      {currentSub.renewal_date
+                        ? new Date(currentSub.renewal_date).toLocaleDateString("en-GB").replace(/\//g, ".")
+                        : 'N/A'}
                     </p>
                   </div>
                   <div className="p-4 rounded-2xl bg-white/50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-700/50">
