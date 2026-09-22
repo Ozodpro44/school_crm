@@ -7,9 +7,7 @@ export default function Document() {
     // "uz-latn"); it used to be hardcoded "en", which told screen readers and
     // browser translation that an Uzbek UI was English. LanguageContext keeps
     // this attribute in sync when the user switches language.
-    // data-scroll-behavior is required by Next 15 to keep it from warning
-    // about the global `scroll-behavior: smooth`.
-    <Html lang="uz" data-scroll-behavior="smooth">
+    <Html lang="uz">
       <Head>
         {/* Favicons and App Icons */}
         <link rel="icon" href="/favicon.ico" />
@@ -26,7 +24,7 @@ export default function Document() {
       </Head>
       <body
         className={cn(
-          "min-h-screen w-full scroll-smooth bg-background text-foreground antialiased"
+          "min-h-screen w-full bg-background text-foreground antialiased"
         )}
       >
         <Main />
