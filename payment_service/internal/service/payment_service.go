@@ -308,6 +308,28 @@ func (s *PaymentService) monthLocked(ctx context.Context, branchID, month string
 	return status == "CLOSED", nil
 }
 
+// currentFinancialMonth resolves the branch's open financial month, falling
+// back to the calendar month when none is open. financial_months.month is a
+// plain integer column (1-12), but payments.month is a zero-padded
+// varchar(2) ("01".."12") — every filter/report in this codebase (and the
+// messaging/reports services) compares against that padded form. Scanning
+// the integer straight into a string here would silently produce "9"
+// instead of "09" for Jan-Sep, a mismatch that doesn't error, it just makes
+// the payment invisible to anything filtering by the padded month string.
+func (s *PaymentService) currentFinancialMonth(ctx context.Context, branchID string) (month string, year int) {
+	var monthNum int
+	err := s.db.Conn().QueryRowContext(ctx,
+		`SELECT month, year FROM financial_months
+		 WHERE branch_id = $1 AND status = 'OPEN'
+		 ORDER BY created_at DESC LIMIT 1`, branchID,
+	).Scan(&monthNum, &year)
+	if err != nil {
+		now := time.Now()
+		return fmt.Sprintf("%02d", int(now.Month())), now.Year()
+	}
+	return fmt.Sprintf("%02d", monthNum), year
+}
+
 // Update applies a partial update to an existing payment.
 func (s *PaymentService) Update(ctx context.Context, id string, req *UpdatePaymentRequest) (*Payment, error) {
 	existing, err := s.GetByID(ctx, id)
@@ -562,20 +584,7 @@ func (s *PaymentService) List(ctx context.Context, f ListFilter) (*PaymentListRe
 
 // BulkCreate creates payments for multiple students in the current financial month.
 func (s *PaymentService) BulkCreate(ctx context.Context, branchID, defaultMethod string, entries []BulkEntry, createdBy string) []map[string]interface{} {
-	// Fetch current financial month for the branch
-	var curMonth string
-	var curYear int
-	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT month, year FROM financial_months
-		 WHERE branch_id = $1 AND status = 'OPEN'
-		 ORDER BY created_at DESC LIMIT 1`, branchID,
-	).Scan(&curMonth, &curYear)
-	if err != nil {
-		// Fallback to calendar month
-		now := time.Now()
-		curMonth = fmt.Sprintf("%02d", int(now.Month()))
-		curYear = now.Year()
-	}
+	curMonth, curYear := s.currentFinancialMonth(ctx, branchID)
 
 	results := make([]map[string]interface{}, 0, len(entries))
 	anySucceeded := false
@@ -822,18 +831,7 @@ func (s *PaymentService) ConsolidatedData(ctx context.Context, branchID, month, 
 
 func (s *PaymentService) consolidatedDataUncached(ctx context.Context, branchID, month, year, page, limit, cursor, search, status, paymentMethod, classID string) (*ConsolidatedPaymentResponse, error) {
 	if month == "" || year == "" {
-		var curMonth string
-		var curYear int
-		err := s.db.Conn().QueryRowContext(ctx,
-			`SELECT month, year FROM financial_months
-			 WHERE branch_id = $1 AND status = 'OPEN'
-			 ORDER BY created_at DESC LIMIT 1`, branchID,
-		).Scan(&curMonth, &curYear)
-		if err != nil {
-			now := time.Now()
-			curMonth = fmt.Sprintf("%02d", int(now.Month()))
-			curYear = now.Year()
-		}
+		curMonth, curYear := s.currentFinancialMonth(ctx, branchID)
 		if month == "" {
 			month = curMonth
 		}
@@ -959,18 +957,7 @@ func (s *PaymentService) SearchStudents(ctx context.Context, f SearchStudentsFil
 	defer cancel()
 
 	// Resolve current financial month for this branch.
-	var curMonth string
-	var curYear int
-	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT month, year FROM financial_months
-		 WHERE branch_id = $1 AND status = 'OPEN'
-		 ORDER BY created_at DESC LIMIT 1`, f.BranchID,
-	).Scan(&curMonth, &curYear)
-	if err != nil {
-		now := time.Now()
-		curMonth = fmt.Sprintf("%02d", int(now.Month()))
-		curYear = now.Year()
-	}
+	curMonth, curYear := s.currentFinancialMonth(ctx, f.BranchID)
 
 	if f.Limit <= 0 || f.Limit > 500 {
 		f.Limit = 200
