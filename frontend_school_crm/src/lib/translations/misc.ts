@@ -335,7 +335,13 @@ export const miscTranslations: Partial<Translation> = {
   attendanceHistory:    { "uz-cyrl": "Давомат тарихи",    "uz-latn": "Davomat tarixi",     en: "Attendance" },
   notes:                { "uz-cyrl": "Изоҳлар",           "uz-latn": "Izohlar",            en: "Notes" },
   contactLog:           { "uz-cyrl": "Алоқа журнали",     "uz-latn": "Aloqa jurnali",      en: "Contact Log" },
-  runningBalance:       { "uz-cyrl": "Қолдиқ баланс",     "uz-latn": "Qoldiq balans",      en: "Balance" },
+  // This column shows a cumulative sum of payments up to and including that
+  // row (see paymentsWithBalance in student-details.tsx), not how much is
+  // still owed — "Qoldiq balans" ("remaining/outstanding balance") said the
+  // opposite of what the number means, so a parent reading e.g. "400,000"
+  // after two payments would think that's still owed, when it's what's
+  // already been paid.
+  runningBalance:       { "uz-cyrl": "Жами тўланган (шу вақтгача)", "uz-latn": "Jami to'langan (shu vaqtgacha)", en: "Total Paid (cumulative)" },
   writeNote:            { "uz-cyrl": "Изоҳ ёзинг...",     "uz-latn": "Izoh yozing...",     en: "Write a note..." },
   addContact:           { "uz-cyrl": "Алоқа қўшиш",       "uz-latn": "Aloqa qo'shish",    en: "Log Contact" },
   contactType:          { "uz-cyrl": "Алоқа тури",        "uz-latn": "Aloqa turi",         en: "Contact type" },
