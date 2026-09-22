@@ -61,6 +61,7 @@ export interface Branch {
   phone: string;
   monthlyPayment: number;
   adminId?: string;
+  adminName?: string;
   managerIds: string[];
   isActive: boolean;
   currentFinancialMonthId?: string;

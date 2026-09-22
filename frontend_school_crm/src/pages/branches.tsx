@@ -265,7 +265,7 @@ export default function BranchesPage() {
       render: (branch) =>
         branch.adminId ? (
           <Badge variant="secondary">
-            {users.find((u) => u.id === branch.adminId)?.fullName || branch.adminId}
+            {branch.adminName || users.find((u) => u.id === branch.adminId)?.fullName || branch.adminId}
           </Badge>
         ) : (
           <Button

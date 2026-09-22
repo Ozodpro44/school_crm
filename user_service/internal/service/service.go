@@ -52,6 +52,7 @@ type Branch struct {
 	MonthlyPayment        float64         `json:"monthlyPayment"`
 	Currency              string          `json:"currency"`
 	AdminID               *string         `json:"adminId,omitempty"`
+	AdminName             *string         `json:"adminName,omitempty"`
 	IsActive              bool            `json:"isActive"`
 	CurrentFinancialMonth *FinancialMonth `json:"currentFinancialMonth,omitempty"`
 	CreatedAt             time.Time       `json:"createdAt"`
@@ -499,9 +500,16 @@ func (s *BranchService) GetAll(ctx context.Context) ([]Branch, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
+	// Joined here (rather than resolved client-side from a separately-fetched
+	// users list) because the admin of a branch isn't necessarily scoped to
+	// any single branch_id — an account can own several branches, so a
+	// branch-filtered /users lookup can never find them, leaving the
+	// frontend nothing to resolve admin_id against but the raw UUID.
 	rows, err := s.db.Conn().QueryContext(ctx,
-		`SELECT id, name, address, phone, monthly_payment, currency, admin_id, is_active, created_at, updated_at
-		 FROM branches ORDER BY name`)
+		`SELECT b.id, b.name, b.address, b.phone, b.monthly_payment, b.currency, b.admin_id, u.full_name, b.is_active, b.created_at, b.updated_at
+		 FROM branches b
+		 LEFT JOIN users u ON u.id = b.admin_id
+		 ORDER BY b.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -510,11 +518,14 @@ func (s *BranchService) GetAll(ctx context.Context) ([]Branch, error) {
 	var branches []Branch
 	for rows.Next() {
 		var b Branch
-		var address, phone sql.NullString
-		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.IsActive, &b.CreatedAt, &b.UpdatedAt); err != nil {
+		var address, phone, adminName sql.NullString
+		if err := rows.Scan(&b.ID, &b.Name, &address, &phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &adminName, &b.IsActive, &b.CreatedAt, &b.UpdatedAt); err != nil {
 			return nil, err
 		}
 		b.Address, b.Phone = address.String, phone.String
+		if adminName.Valid {
+			b.AdminName = &adminName.String
+		}
 		branches = append(branches, b)
 	}
 	return branches, rows.Err()
