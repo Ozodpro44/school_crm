@@ -268,13 +268,17 @@ export default function ProfilePage() {
     }
   };
 
+  // "uz-UZ" with month:"long" falls back to a raw ICU token like "M09"
+  // instead of a real month name — the runtime's ICU data for this locale
+  // doesn't have a long-month pattern. en-GB numeric formatting is what the
+  // rest of the app already uses for exactly this reason.
   const formatDate = (dateString?: string) => {
     if (!dateString) return "—";
-    return new Date(dateString).toLocaleDateString("uz-UZ", {
+    return new Date(dateString).toLocaleDateString("en-GB", {
       year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+      month: "2-digit",
+      day: "2-digit",
+    }).replace(/\//g, ".");
   };
 
   // Header is static (translated title + back button, no fetched data), so
