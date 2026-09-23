@@ -135,7 +135,7 @@ export default function TrashPage() {
     } finally {
       setLoading(false);
     }
-  }, [notify, t]);
+  }, []);
 
   useEffect(() => {
     load();
