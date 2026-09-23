@@ -245,6 +245,7 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		paymentRoutes.Any("/payments", gin.WrapH(proxy.Handler(paymentProxy)))
 		paymentRoutes.Any("/payments/:id", gin.WrapH(proxy.Handler(paymentProxy)))
 		paymentRoutes.Any("/payments/:id/*subaction", gin.WrapH(proxy.Handler(paymentProxy)))
+		paymentRoutes.Any("/trash/payments", gin.WrapH(proxy.Handler(paymentProxy)))
 		paymentRoutes.Any("/subscriptions", gin.WrapH(proxy.Handler(paymentProxy)))
 		// /subscriptions/current is a monolith route (gets the active subscription for the
 		// authenticated user). Register it as a static segment BEFORE the :id wildcard so
@@ -299,6 +300,9 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		studentRoutes.Any("/assignments", gin.WrapH(proxy.Handler(studentProxy)))
 		studentRoutes.Any("/assignments/:id", gin.WrapH(proxy.Handler(studentProxy)))
 		studentRoutes.Any("/assignments/:id/*subaction", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/trash/students", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/trash/classes", gin.WrapH(proxy.Handler(studentProxy)))
+		studentRoutes.Any("/trash/assignments", gin.WrapH(proxy.Handler(studentProxy)))
 	}
 
 	// ── Consolidated fan-out endpoints (P4.4) ─────────────────────────────────
@@ -317,6 +321,16 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		// → payments (payment_service) + students (student_service) in parallel
 		consolidated.GET("/payments", func(c *gin.Context) {
 			consolidatedPayments(c, cfg.PaymentServiceURL, cfg.StudentServiceURL)
+		})
+
+		// GET /api/v1/consolidated/trash?branchId=
+		// → all 9 trashable resources across 5 services in parallel. branchId
+		// is optional here (unlike the two above) since a developer/super_admin
+		// caller legitimately has none — each downstream trash endpoint applies
+		// its own role-based window (7 days own-branch / 30 days platform-wide)
+		// independently, using the same JWT this just forwards.
+		consolidated.GET("/trash", func(c *gin.Context) {
+			consolidatedTrash(c, cfg.UserServiceURL, cfg.StudentServiceURL, cfg.TeacherServiceURL, cfg.PaymentServiceURL, cfg.FinanceServiceURL)
 		})
 	}
 
@@ -341,6 +355,7 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 		financeRoutes.Any("/expenses", gin.WrapH(proxy.Handler(financeProxy)))
 		financeRoutes.Any("/expenses/:id", gin.WrapH(proxy.Handler(financeProxy)))
 		financeRoutes.Any("/expenses/:id/*subaction", gin.WrapH(proxy.Handler(financeProxy)))
+		financeRoutes.Any("/trash/expenses", gin.WrapH(proxy.Handler(financeProxy)))
 		financeRoutes.Any("/expense-budgets", gin.WrapH(proxy.Handler(financeProxy)))
 	}
 
@@ -491,6 +506,74 @@ func consolidatedPayments(c *gin.Context, paymentSvcURL, studentSvcURL string) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"payments": pr.data, "students": sr.data})
+}
+
+// consolidatedTrash fans out to all 9 trashable resources across 5 services
+// in parallel: branches/users (user_service), students/classes/assignments
+// (student_service), teachers/salaries (teacher_service), payments
+// (payment_service), expenses (finance_service). One partial upstream
+// failure doesn't fail the whole response — the Trash page is a nice-to-have
+// aggregate view, not a page whose correctness depends on every resource
+// type loading; a failed one just comes back as an empty list with an
+// "errors" entry naming it, same tolerance principle as a dashboard widget.
+func consolidatedTrash(c *gin.Context, userSvcURL, studentSvcURL, teacherSvcURL, paymentSvcURL, financeSvcURL string) {
+	branchQS := ""
+	if branchID := c.Query("branchId"); branchID != "" {
+		branchQS = "?branchId=" + branchID
+	}
+
+	type resource struct {
+		key     string
+		svcBase string
+		path    string
+	}
+	resources := []resource{
+		{"branches", userSvcURL, "/api/v1/trash/branches" + branchQS},
+		{"users", userSvcURL, "/api/v1/trash/users" + branchQS},
+		{"students", studentSvcURL, "/api/v1/trash/students" + branchQS},
+		{"classes", studentSvcURL, "/api/v1/trash/classes" + branchQS},
+		{"assignments", studentSvcURL, "/api/v1/trash/assignments" + branchQS},
+		{"teachers", teacherSvcURL, "/api/v1/trash/teachers" + branchQS},
+		{"salaries", teacherSvcURL, "/api/v1/trash/salaries" + branchQS},
+		{"payments", paymentSvcURL, "/api/v1/trash/payments" + branchQS},
+		{"expenses", financeSvcURL, "/api/v1/trash/expenses" + branchQS},
+	}
+
+	type result struct {
+		key  string
+		data interface{}
+		err  error
+	}
+	ch := make(chan result, len(resources))
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 8*time.Second)
+	defer cancel()
+	authHeader := c.GetHeader("Authorization")
+
+	for _, res := range resources {
+		res := res
+		go func() {
+			var data interface{}
+			err := fetchJSON(ctx, res.svcBase, res.path, authHeader, &data)
+			ch <- result{res.key, data, err}
+		}()
+	}
+
+	out := gin.H{}
+	var errored []string
+	for i := 0; i < len(resources); i++ {
+		r := <-ch
+		if r.err != nil {
+			out[r.key] = gin.H{"items": []interface{}{}}
+			errored = append(errored, r.key)
+			continue
+		}
+		out[r.key] = r.data
+	}
+	if len(errored) > 0 {
+		out["errors"] = errored
+	}
+	c.JSON(http.StatusOK, out)
 }
 
 // corsMiddleware only reflects Origin back when it's on the configured

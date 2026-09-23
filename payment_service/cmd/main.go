@@ -62,6 +62,24 @@ func main() {
 	// ── Services ──────────────────────────────────────────────────────────────
 	paymentSvc := service.New(database, rdb)
 
+	// Trash purge: payments soft-deleted more than 30 days ago (the longer
+	// of the two restore windows — 7 days for a regular admin, 30 for
+	// developer/super_admin) are permanently removed. Runs on a simple
+	// ticker rather than new scheduler infra, matching this codebase's
+	// existing pattern of per-service background loops.
+	go func() {
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if n, err := database.Conn().ExecContext(context.Background(),
+				`DELETE FROM payments WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`); err != nil {
+				slog.Error("trash purge: payments", "error", err)
+			} else if rows, _ := n.RowsAffected(); rows > 0 {
+				slog.Info("trash purge: payments", "purged", rows)
+			}
+		}
+	}()
+
 	// ── gRPC server ───────────────────────────────────────────────────────────
 	grpcSrv := paymentgrpc.NewPaymentGRPCServer(paymentSvc)
 	go func() {

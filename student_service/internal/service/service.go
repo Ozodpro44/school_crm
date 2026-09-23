@@ -136,7 +136,7 @@ func (s *StudentService) CountActive(ctx context.Context, branchID string) (int,
 
 	var count int
 	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM students WHERE branch_id = $1 AND status = 'active'`, branchID,
+		`SELECT COUNT(*) FROM students WHERE branch_id = $1 AND status = 'active' AND deleted_at IS NULL`, branchID,
 	).Scan(&count)
 	return count, err
 }
@@ -156,7 +156,7 @@ func (s *StudentService) List(ctx context.Context, f ListFilter) (*StudentListRe
 	useCursor := f.Cursor != ""
 	offset := (page - 1) * limit
 
-	where := "WHERE s.branch_id = $1"
+	where := "WHERE s.branch_id = $1 AND s.deleted_at IS NULL"
 	args := []interface{}{f.BranchID}
 	n := 2
 
@@ -258,7 +258,7 @@ func (s *StudentService) GetByID(ctx context.Context, id string) (*Student, erro
 		       s.enrollment_date, s.created_at, s.updated_at
 		FROM students s
 		LEFT JOIN classes c ON c.id = s.class_id
-		WHERE s.id = $1`, id,
+		WHERE s.id = $1 AND s.deleted_at IS NULL`, id,
 	).Scan(
 		&st.ID, &st.FullName, &st.Phone, &st.ParentPhone,
 		&st.ClassID, &className,
@@ -368,14 +368,19 @@ func (s *StudentService) Update(ctx context.Context, id, branchID string, fields
 	return s.GetByID(ctx, id)
 }
 
-// Delete removes a student, scoped to branchID directly in the DELETE
-// statement — see Update's comment on why the filter belongs in the SQL
-// rather than a separate pre-check.
-func (s *StudentService) Delete(ctx context.Context, id, branchID string) error {
+// Delete soft-deletes a student, scoped to branchID directly in the
+// UPDATE statement — see Update's comment on why the filter belongs in
+// the SQL rather than a separate pre-check. students.id is referenced by
+// payments/attendance/student_notes/contact_log/assignment_submissions,
+// all ON DELETE CASCADE — a hard DELETE here would silently destroy a
+// student's entire financial and academic history, so this is recoverable
+// via Restore for 7-30 days instead of gone immediately.
+func (s *StudentService) Delete(ctx context.Context, id, branchID, deletedBy string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 	res, err := s.db.Conn().ExecContext(ctx,
-		"DELETE FROM students WHERE id = $1 AND branch_id = $2", id, branchID)
+		"UPDATE students SET deleted_at = now(), deleted_by = $3 WHERE id = $1 AND branch_id = $2 AND deleted_at IS NULL",
+		id, branchID, deletedBy)
 	if err != nil {
 		return err
 	}
@@ -383,6 +388,79 @@ func (s *StudentService) Delete(ctx context.Context, id, branchID string) error 
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Restore un-deletes a student soft-deleted within the last 30 days (the
+// longer of the two trash windows — callers enforce the shorter 7-day
+// window for non-super-role callers before reaching here).
+func (s *StudentService) Restore(ctx context.Context, id, branchID string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE students SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
+		id, branchID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// TrashedStudent is a Student soft-deleted within the caller's restore window.
+type TrashedStudent struct {
+	Student
+	DeletedAt time.Time `json:"deletedAt"`
+	DeletedBy *string   `json:"deletedBy,omitempty"`
+}
+
+// ListTrash returns students soft-deleted within the last windowDays,
+// scoped to branchID (regular caller) or platform-wide when "" (super role).
+func (s *StudentService) ListTrash(ctx context.Context, branchID string, windowDays int) ([]TrashedStudent, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	query := `
+		SELECT s.id, s.full_name,
+		       COALESCE(s.phone,''), COALESCE(s.parent_phone,''),
+		       s.class_id, COALESCE(c.name,''),
+		       s.monthly_payment, s.status, s.branch_id,
+		       s.enrollment_date, s.created_at, s.updated_at, s.deleted_at, s.deleted_by
+		FROM students s
+		LEFT JOIN classes c ON c.id = s.class_id
+		WHERE s.deleted_at IS NOT NULL AND s.deleted_at > now() - make_interval(days => $1)`
+	args := []interface{}{windowDays}
+	if branchID != "" {
+		query += " AND s.branch_id = $2"
+		args = append(args, branchID)
+	}
+	query += " ORDER BY s.deleted_at DESC"
+
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedStudent
+	for rows.Next() {
+		var st TrashedStudent
+		var className string
+		if err := rows.Scan(
+			&st.ID, &st.FullName, &st.Phone, &st.ParentPhone,
+			&st.ClassID, &className,
+			&st.MonthlyPayment, &st.Status, &st.BranchID,
+			&st.EnrollmentDate, &st.CreatedAt, &st.UpdatedAt, &st.DeletedAt, &st.DeletedBy,
+		); err != nil {
+			return nil, err
+		}
+		if className != "" {
+			st.ClassName = className
+		}
+		out = append(out, st)
+	}
+	return out, rows.Err()
 }
 
 // ── ClassService ──────────────────────────────────────────────────────────────
@@ -401,11 +479,11 @@ func (s *ClassService) GetAll(ctx context.Context, branchID string) ([]Class, er
 
 	rows, err := s.db.Conn().QueryContext(ctx, `
 		SELECT c.id, c.name, c.teacher_id, c.branch_id,
-		       COUNT(s.id) FILTER (WHERE s.status = 'active') AS student_count,
+		       COUNT(s.id) FILTER (WHERE s.status = 'active' AND s.deleted_at IS NULL) AS student_count,
 		       c.is_active, c.created_at, c.updated_at
 		FROM classes c
 		LEFT JOIN students s ON s.class_id = c.id
-		WHERE c.branch_id = $1
+		WHERE c.branch_id = $1 AND c.deleted_at IS NULL
 		GROUP BY c.id ORDER BY c.name`, branchID)
 	if err != nil {
 		return nil, err
@@ -429,7 +507,7 @@ func (s *ClassService) GetByID(ctx context.Context, id string) (*Class, error) {
 
 	var c Class
 	err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT id, name, teacher_id, branch_id, is_active, created_at, updated_at FROM classes WHERE id = $1`, id,
+		`SELECT id, name, teacher_id, branch_id, is_active, created_at, updated_at FROM classes WHERE id = $1 AND deleted_at IS NULL`, id,
 	).Scan(&c.ID, &c.Name, &c.TeacherID, &c.BranchID, &c.IsActive, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -551,11 +629,16 @@ func (s *ClassService) Update(ctx context.Context, id, branchID string, fields m
 
 // Delete removes a class, scoped to branchID directly in the DELETE
 // statement — see StudentService.Delete's comment for why.
-func (s *ClassService) Delete(ctx context.Context, id, branchID string) error {
+// Delete soft-deletes a class: students.class_id SET NULLs on a hard
+// delete (safe), but attendance/class_schedule/assignments tied to the
+// class CASCADE (not safe) — soft-deleting keeps that history recoverable
+// via Restore for 7-30 days.
+func (s *ClassService) Delete(ctx context.Context, id, branchID, deletedBy string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 	res, err := s.db.Conn().ExecContext(ctx,
-		"DELETE FROM classes WHERE id = $1 AND branch_id = $2", id, branchID)
+		"UPDATE classes SET deleted_at = now(), deleted_by = $3 WHERE id = $1 AND branch_id = $2 AND deleted_at IS NULL",
+		id, branchID, deletedBy)
 	if err != nil {
 		return err
 	}
@@ -563,6 +646,68 @@ func (s *ClassService) Delete(ctx context.Context, id, branchID string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Restore un-deletes a class soft-deleted within the last 30 days (the
+// longer of the two trash windows — callers enforce the shorter 7-day
+// window for non-super-role callers before reaching here).
+func (s *ClassService) Restore(ctx context.Context, id, branchID string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE classes SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
+		id, branchID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// TrashedClass is a Class soft-deleted within the caller's restore window.
+type TrashedClass struct {
+	Class
+	DeletedAt time.Time `json:"deletedAt"`
+	DeletedBy *string   `json:"deletedBy,omitempty"`
+}
+
+// ListTrash returns classes soft-deleted within the last windowDays,
+// scoped to branchID (regular caller) or platform-wide when "" (super role).
+func (s *ClassService) ListTrash(ctx context.Context, branchID string, windowDays int) ([]TrashedClass, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	query := `
+		SELECT c.id, c.name, c.teacher_id, c.branch_id,
+		       COUNT(s.id) FILTER (WHERE s.status = 'active' AND s.deleted_at IS NULL) AS student_count,
+		       c.is_active, c.created_at, c.updated_at, c.deleted_at, c.deleted_by
+		FROM classes c
+		LEFT JOIN students s ON s.class_id = c.id
+		WHERE c.deleted_at IS NOT NULL AND c.deleted_at > now() - make_interval(days => $1)`
+	args := []interface{}{windowDays}
+	if branchID != "" {
+		query += " AND c.branch_id = $2"
+		args = append(args, branchID)
+	}
+	query += " GROUP BY c.id ORDER BY c.deleted_at DESC"
+
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedClass
+	for rows.Next() {
+		var c TrashedClass
+		if err := rows.Scan(&c.ID, &c.Name, &c.TeacherID, &c.BranchID, &c.StudentCount, &c.IsActive, &c.CreatedAt, &c.UpdatedAt, &c.DeletedAt, &c.DeletedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 // ── ConsolidatedData ──────────────────────────────────────────────────────────
@@ -646,7 +791,7 @@ func (s *StudentService) ConsolidatedData(ctx context.Context, f ConsolidatedFil
 	useCursor := f.Cursor != ""
 	offset := (page - 1) * limit
 
-	where := "WHERE s.branch_id = $1"
+	where := "WHERE s.branch_id = $1 AND s.deleted_at IS NULL"
 	args := []interface{}{f.BranchID}
 	n := 2
 
@@ -758,7 +903,7 @@ func (s *StudentService) ConsolidatedData(ctx context.Context, f ConsolidatedFil
 	}
 
 	classRows, err := s.db.Conn().QueryContext(ctx,
-		`SELECT id, name FROM classes WHERE branch_id = $1 ORDER BY name`, f.BranchID)
+		`SELECT id, name FROM classes WHERE branch_id = $1 AND deleted_at IS NULL ORDER BY name`, f.BranchID)
 	if err != nil {
 		return nil, err
 	}
@@ -808,7 +953,7 @@ func (s *StudentService) SearchWithPayments(ctx context.Context, branchID, searc
 
 	args := []interface{}{branchID}
 	n := 2
-	where := "WHERE s.branch_id = $1 AND s.status = 'active'"
+	where := "WHERE s.branch_id = $1 AND s.status = 'active' AND s.deleted_at IS NULL"
 	if search != "" {
 		where += fmt.Sprintf(" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)", n, n)
 		args = append(args, "%"+search+"%")
@@ -865,7 +1010,7 @@ func (s *ClassService) GetByTeacherID(ctx context.Context, teacherID string) ([]
 
 	rows, err := s.db.Conn().QueryContext(ctx,
 		`SELECT id, name, teacher_id, branch_id, created_at, updated_at
-		 FROM classes WHERE teacher_id = $1 ORDER BY name`, teacherID)
+		 FROM classes WHERE teacher_id = $1 AND deleted_at IS NULL ORDER BY name`, teacherID)
 	if err != nil {
 		return nil, err
 	}
@@ -1053,6 +1198,7 @@ func (s *AttendanceService) GetMonthSummary(ctx context.Context, classID, branch
 		WHERE a.class_id = $1 AND a.branch_id = $2
 		  AND EXTRACT(year  FROM a.date) = $3
 		  AND EXTRACT(month FROM a.date) = $4
+		  AND st.deleted_at IS NULL
 		GROUP BY st.id, st.full_name
 		ORDER BY st.full_name`, classID, branchID, year, month)
 	if err != nil {
@@ -1085,6 +1231,7 @@ func (s *AttendanceService) GetAbsenceAlerts(ctx context.Context, branchID strin
 		JOIN attendance a ON a.student_id = st.id
 		WHERE a.branch_id = $1
 		  AND st.status = 'active'
+		  AND st.deleted_at IS NULL
 		  AND a.date >= CURRENT_DATE - INTERVAL '14 days'
 		  AND a.status = 'absent'
 		GROUP BY st.id, st.full_name
@@ -1360,9 +1507,9 @@ func (s *AssignmentService) ListByBranch(ctx context.Context, branchID, classID 
 		       a.created_at, a.updated_at
 		FROM assignments a
 		LEFT JOIN classes c ON c.id = a.class_id
-		LEFT JOIN students s ON s.class_id = a.class_id AND s.status = 'active'
+		LEFT JOIN students s ON s.class_id = a.class_id AND s.status = 'active' AND s.deleted_at IS NULL
 		LEFT JOIN assignment_submissions sub ON sub.assignment_id = a.id
-		WHERE a.branch_id = $1`
+		WHERE a.branch_id = $1 AND a.deleted_at IS NULL`
 	args := []interface{}{branchID}
 	if classID != "" {
 		args = append(args, classID)
@@ -1421,7 +1568,7 @@ func (s *AssignmentService) Create(ctx context.Context, req *CreateAssignmentReq
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO assignment_submissions (id, assignment_id, student_id)
 		SELECT gen_random_uuid(), $1, s.id
-		FROM students s WHERE s.class_id=$2 AND s.status='active'
+		FROM students s WHERE s.class_id=$2 AND s.status='active' AND s.deleted_at IS NULL
 		ON CONFLICT DO NOTHING
 	`, id, req.ClassID)
 	if err != nil {
@@ -1433,10 +1580,12 @@ func (s *AssignmentService) Create(ctx context.Context, req *CreateAssignmentReq
 	return &a, nil
 }
 
-func (s *AssignmentService) Delete(ctx context.Context, id, branchID string) error {
+func (s *AssignmentService) Delete(ctx context.Context, id, branchID, deletedBy string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	res, err := s.db.Conn().ExecContext(ctx, `DELETE FROM assignments WHERE id=$1 AND branch_id=$2`, id, branchID)
+	res, err := s.db.Conn().ExecContext(ctx,
+		`UPDATE assignments SET deleted_at = now(), deleted_by = $3 WHERE id=$1 AND branch_id=$2 AND deleted_at IS NULL`,
+		id, branchID, deletedBy)
 	if err != nil {
 		return err
 	}
@@ -1445,6 +1594,72 @@ func (s *AssignmentService) Delete(ctx context.Context, id, branchID string) err
 		return fmt.Errorf("assignment not found")
 	}
 	return nil
+}
+
+// Restore un-deletes an assignment soft-deleted within the last 30 days
+// (the longer of the two trash windows — callers enforce the shorter
+// 7-day window for non-super-role callers before reaching here).
+func (s *AssignmentService) Restore(ctx context.Context, id, branchID string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	res, err := s.db.Conn().ExecContext(ctx,
+		`UPDATE assignments SET deleted_at = NULL, deleted_by = NULL WHERE id=$1 AND branch_id=$2 AND deleted_at IS NOT NULL`,
+		id, branchID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("assignment not found in trash")
+	}
+	return nil
+}
+
+// TrashedAssignment is an Assignment soft-deleted within the caller's
+// restore window.
+type TrashedAssignment struct {
+	Assignment
+	DeletedAt time.Time `json:"deletedAt"`
+	DeletedBy *string   `json:"deletedBy,omitempty"`
+}
+
+// ListTrash returns assignments soft-deleted within the last windowDays,
+// scoped to branchID (regular caller) or platform-wide when "" (super role).
+func (s *AssignmentService) ListTrash(ctx context.Context, branchID string, windowDays int) ([]TrashedAssignment, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	query := `
+		SELECT a.id, a.branch_id, a.class_id, COALESCE(c.name,'') AS class_name, a.teacher_id,
+		       a.subject, a.title, a.description, a.due_date::text, a.created_by,
+		       a.created_at, a.updated_at, a.deleted_at, a.deleted_by
+		FROM assignments a
+		LEFT JOIN classes c ON c.id = a.class_id
+		WHERE a.deleted_at IS NOT NULL AND a.deleted_at > now() - make_interval(days => $1)`
+	args := []interface{}{windowDays}
+	if branchID != "" {
+		query += " AND a.branch_id = $2"
+		args = append(args, branchID)
+	}
+	query += " ORDER BY a.deleted_at DESC"
+
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedAssignment
+	for rows.Next() {
+		var a TrashedAssignment
+		if err := rows.Scan(&a.ID, &a.BranchID, &a.ClassID, &a.ClassName, &a.TeacherID,
+			&a.Subject, &a.Title, &a.Description, &a.DueDate, &a.CreatedBy,
+			&a.CreatedAt, &a.UpdatedAt, &a.DeletedAt, &a.DeletedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 // GetSubmissions returns submissions for an assignment, scoped to branchID

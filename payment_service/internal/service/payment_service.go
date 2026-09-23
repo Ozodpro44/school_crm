@@ -202,7 +202,7 @@ func (s *PaymentService) create(ctx context.Context, req *CreatePaymentRequest, 
 	// Guard: one paid payment per student per month
 	var count int
 	if err := tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM payments WHERE student_id=$1 AND month=$2 AND year=$3 AND status='paid'`,
+		`SELECT COUNT(*) FROM payments WHERE student_id=$1 AND month=$2 AND year=$3 AND status='paid' AND deleted_at IS NULL`,
 		req.StudentID, req.Month, req.Year,
 	).Scan(&count); err != nil {
 		return nil, fmt.Errorf("check existing payment: %w", err)
@@ -269,7 +269,7 @@ func (s *PaymentService) GetByID(ctx context.Context, id string) (*Payment, erro
 		       u.full_name
 		FROM payments p
 		LEFT JOIN users u ON u.id = p.created_by
-		WHERE p.id = $1`, id,
+		WHERE p.id = $1 AND p.deleted_at IS NULL`, id,
 	).Scan(
 		&p.ID, &p.StudentID, &p.Amount, &p.Month, &p.Year, &p.PaymentMethod,
 		&p.Status, &p.InvoiceNumber, &p.Notes, &p.PaidDate,
@@ -405,7 +405,9 @@ func (s *PaymentService) Update(ctx context.Context, id string, req *UpdatePayme
 }
 
 // Delete removes a payment by ID.
-func (s *PaymentService) Delete(ctx context.Context, id string) error {
+// Delete soft-deletes the payment: recoverable via Restore for 7 days (30
+// for developer/super_admin) rather than gone immediately.
+func (s *PaymentService) Delete(ctx context.Context, id, deletedBy string) error {
 	existing, err := s.GetByID(ctx, id)
 	if err != nil {
 		return err
@@ -422,11 +424,80 @@ func (s *PaymentService) Delete(ctx context.Context, id string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	_, err = s.db.Conn().ExecContext(ctx, `DELETE FROM payments WHERE id = $1`, id)
+	_, err = s.db.Conn().ExecContext(ctx,
+		`UPDATE payments SET deleted_at = now(), deleted_by = $2 WHERE id = $1 AND deleted_at IS NULL`, id, deletedBy)
 	if err == nil {
 		s.invalidateCache(existing.BranchID)
 	}
 	return err
+}
+
+// Restore un-deletes a payment soft-deleted within the last 30 days (the
+// longer of the two trash windows — callers enforce the shorter 7-day
+// window for non-super-role callers before reaching here).
+func (s *PaymentService) Restore(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	var branchID string
+	err := s.db.Conn().QueryRowContext(ctx,
+		`UPDATE payments SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND deleted_at IS NOT NULL RETURNING branch_id`,
+		id,
+	).Scan(&branchID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	s.invalidateCache(branchID)
+	return nil
+}
+
+// TrashedPayment is a Payment soft-deleted within the caller's restore window.
+type TrashedPayment struct {
+	Payment
+	DeletedAt time.Time `json:"deletedAt"`
+	DeletedBy *string   `json:"deletedBy,omitempty"`
+}
+
+// ListTrash returns payments soft-deleted within the last windowDays,
+// scoped to branchID (regular caller) or platform-wide when "" (super role).
+func (s *PaymentService) ListTrash(ctx context.Context, branchID string, windowDays int) ([]TrashedPayment, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	query := `
+		SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method,
+		       p.status, p.invoice_number, p.notes, p.paid_date,
+		       p.branch_id, p.created_by, p.financial_month_id, p.created_at,
+		       p.deleted_at, p.deleted_by
+		FROM payments p
+		WHERE p.deleted_at IS NOT NULL AND p.deleted_at > now() - make_interval(days => $1)`
+	args := []interface{}{windowDays}
+	if branchID != "" {
+		query += " AND p.branch_id = $2"
+		args = append(args, branchID)
+	}
+	query += " ORDER BY p.deleted_at DESC"
+
+	rows, err := s.db.Conn().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedPayment
+	for rows.Next() {
+		var tp TrashedPayment
+		if err := rows.Scan(&tp.ID, &tp.StudentID, &tp.Amount, &tp.Month, &tp.Year, &tp.PaymentMethod,
+			&tp.Status, &tp.InvoiceNumber, &tp.Notes, &tp.PaidDate,
+			&tp.BranchID, &tp.CreatedBy, &tp.FinancialMonthID, &tp.CreatedAt,
+			&tp.DeletedAt, &tp.DeletedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, tp)
+	}
+	return out, rows.Err()
 }
 
 // List returns payments with pagination, filtering, and optional cursor.
@@ -450,7 +521,7 @@ func (s *PaymentService) List(ctx context.Context, f ListFilter) (*PaymentListRe
 	offset := (page - 1) * limit
 
 	// Dynamic WHERE clause
-	where := "WHERE p.branch_id = $1"
+	where := "WHERE p.branch_id = $1 AND p.deleted_at IS NULL"
 	args := []interface{}{f.BranchID}
 	n := 2
 
@@ -631,7 +702,7 @@ func (s *PaymentService) Summary(ctx context.Context, branchID, month string, ye
 			SUM(CASE WHEN status = 'unpaid'  THEN amount ELSE 0 END),
 			SUM(CASE WHEN status = 'partial' THEN amount ELSE 0 END)
 		FROM payments
-		WHERE branch_id = $1 AND month = $2 AND year = $3`,
+		WHERE branch_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL`,
 		branchID, month, year,
 	).Scan(&paid, &unpaid, &partial)
 	if err != nil {
@@ -674,7 +745,7 @@ func (s *PaymentService) StudentHistory(ctx context.Context, studentID string) (
 		       u.full_name
 		FROM payments p
 		LEFT JOIN users u ON u.id = p.created_by
-		WHERE p.student_id = $1
+		WHERE p.student_id = $1 AND p.deleted_at IS NULL
 		ORDER BY p.year DESC, p.month DESC, p.created_at DESC`, studentID)
 	if err != nil {
 		return nil, err
@@ -872,7 +943,7 @@ func (s *PaymentService) consolidatedDataUncached(ctx context.Context, branchID,
 		SELECT payment_method,
 		       COALESCE(SUM(amount) FILTER (WHERE status IN ('paid','partial')), 0)
 		FROM payments
-		WHERE branch_id = $1 AND month = $2 AND year = $3
+		WHERE branch_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL
 		GROUP BY payment_method`, branchID, month, yearInt)
 	if err != nil {
 		slog.Warn("consolidated data: totalPaid/byMethod query failed", "branch_id", branchID, "error", err)
@@ -899,7 +970,7 @@ func (s *PaymentService) consolidatedDataUncached(ctx context.Context, branchID,
 		LEFT JOIN (
 			SELECT student_id, SUM(amount) AS paid
 			FROM payments
-			WHERE branch_id=$1 AND month=$2 AND year=$3 AND status IN ('paid','partial')
+			WHERE branch_id=$1 AND month=$2 AND year=$3 AND status IN ('paid','partial') AND deleted_at IS NULL
 			GROUP BY student_id
 		) pa ON pa.student_id=s.id
 		WHERE s.branch_id=$1 AND s.status='active'
@@ -963,7 +1034,7 @@ func (s *PaymentService) SearchStudents(ctx context.Context, f SearchStudentsFil
 		f.Limit = 200
 	}
 
-	where := "WHERE s.branch_id = $1"
+	where := "WHERE s.branch_id = $1 AND s.deleted_at IS NULL"
 	args := []interface{}{f.BranchID}
 	n := 2
 
@@ -995,6 +1066,7 @@ func (s *PaymentService) SearchStudents(ctx context.Context, f SearchStudentsFil
 			WHERE branch_id = $1
 			  AND month = $%d
 			  AND year  = $%d
+			  AND deleted_at IS NULL
 			GROUP BY student_id
 		)
 		SELECT s.id, s.full_name, COALESCE(s.class_id::text,''),
@@ -1024,6 +1096,7 @@ func (s *PaymentService) SearchStudents(ctx context.Context, f SearchStudentsFil
 			WHERE branch_id = $1
 			  AND month = $%d
 			  AND year  = $%d
+			  AND deleted_at IS NULL
 			GROUP BY student_id
 		)
 		SELECT COUNT(*) FROM students s

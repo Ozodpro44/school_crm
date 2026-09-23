@@ -82,6 +82,14 @@ func (h *Handler) requireDeletePermission(c *gin.Context) bool {
 	return true
 }
 
+// isSuperRole reports whether role is a platform-level role that operates
+// across every branch/tenant, rather than being scoped to one — used to
+// pick the Trash view's window (30 days platform-wide) vs a regular
+// caller's (7 days, own branch only).
+func isSuperRole(role string) bool {
+	return role == "developer" || role == "super_admin"
+}
+
 // requireViewExpensesPermission enforces permissions.can_view_expenses — the
 // frontend already hides expense data/nav for roles without it, but nothing
 // server-side checked before this, so a manager/accountant with
@@ -120,6 +128,8 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/expenses/:id", h.GetExpense)
 	r.PUT("/expenses/:id", h.UpdateExpense)
 	r.DELETE("/expenses/:id", h.DeleteExpense)
+	r.POST("/expenses/:id/restore", h.RestoreExpense)
+	r.GET("/trash/expenses", h.ListExpenseTrash)
 
 	r.GET("/expense-budgets", h.ListBudgets)
 	r.PUT("/expense-budgets", h.UpsertBudget)
@@ -286,7 +296,7 @@ func (h *Handler) DeleteExpense(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.expenses.Delete(c.Request.Context(), c.Param("id"), branchID); err != nil {
+	if err := h.expenses.Delete(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-ID")); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "expense not found"})
 			return
@@ -295,6 +305,57 @@ func (h *Handler) DeleteExpense(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "expense deleted"})
+}
+
+// RestoreExpense undoes a soft-delete, same authorization as DeleteExpense.
+func (h *Handler) RestoreExpense(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.expenses.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "expense not found in trash"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "expense restored"})
+}
+
+// ListExpenseTrash returns soft-deleted expenses within the caller's
+// window: 7 days scoped to their branch, 30 days platform-wide for
+// developer/super_admin.
+func (h *Handler) ListExpenseTrash(c *gin.Context) {
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	branchID := requestBranchID(c)
+	if isSuperRole(role) {
+		windowDays = 30
+		branchID = ""
+	} else if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	} else if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	items, err := h.expenses.ListTrash(c.Request.Context(), branchID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedExpense{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 func (h *Handler) ExpenseSummary(c *gin.Context) {

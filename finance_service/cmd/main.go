@@ -46,6 +46,24 @@ func main() {
 	expenseSvc := service.NewExpenseService(database)
 	budgetSvc := service.NewBudgetService(database)
 
+	// Trash purge: expenses soft-deleted more than 30 days ago (the longer
+	// of the two restore windows — 7 days for a regular admin, 30 for
+	// developer/super_admin) are permanently removed. Runs on a simple
+	// ticker rather than new scheduler infra, matching this codebase's
+	// existing pattern of per-service background loops.
+	go func() {
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if n, err := database.Write().ExecContext(context.Background(),
+				`DELETE FROM expenses WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`); err != nil {
+				slog.Error("trash purge: expenses", "error", err)
+			} else if rows, _ := n.RowsAffected(); rows > 0 {
+				slog.Info("trash purge: expenses", "purged", rows)
+			}
+		}
+	}()
+
 	grpcSrv := financegrpc.NewFinanceGRPCServer(expenseSvc)
 	go func() {
 		slog.Info("gRPC listening", "port", cfg.GRPCPort)

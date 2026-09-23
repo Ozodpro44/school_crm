@@ -46,6 +46,8 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/students/:id", h.GetStudent)
 	r.PUT("/students/:id", h.UpdateStudent)
 	r.DELETE("/students/:id", h.DeleteStudent)
+	r.POST("/students/:id/restore", h.RestoreStudent)
+	r.GET("/trash/students", h.ListStudentTrash)
 
 	// Student notes & contact log (sub-resources under /students/:id)
 	r.GET("/students/:id/notes", h.ListNotes)
@@ -62,6 +64,8 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/classes/:id", h.GetClass)
 	r.PUT("/classes/:id", h.UpdateClass)
 	r.DELETE("/classes/:id", h.DeleteClass)
+	r.POST("/classes/:id/restore", h.RestoreClass)
+	r.GET("/trash/classes", h.ListClassTrash)
 
 	// Attendance — static sub-paths before :id wildcard
 	r.GET("/attendance/summary", h.GetAttendanceSummary)
@@ -80,6 +84,8 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/assignments", h.ListAssignments)
 	r.POST("/assignments", h.CreateAssignment)
 	r.DELETE("/assignments/:id", h.DeleteAssignment)
+	r.POST("/assignments/:id/restore", h.RestoreAssignment)
+	r.GET("/trash/assignments", h.ListAssignmentTrash)
 	r.GET("/assignments/:id/submissions", h.GetSubmissions)
 	r.PUT("/assignments/submissions/:subId", h.UpdateSubmission)
 	r.GET("/assignments/student/:studentId/progress", h.StudentProgress)
@@ -216,6 +222,14 @@ func (h *Handler) requireDeletePermission(c *gin.Context) bool {
 	return true
 }
 
+// isSuperRole reports whether role is a platform-level role that operates
+// across every branch/tenant, rather than being scoped to one — used to
+// pick the Trash view's window (30 days platform-wide) vs a regular
+// caller's (7 days, own branch only).
+func isSuperRole(role string) bool {
+	return role == "developer" || role == "super_admin"
+}
+
 // requireBranchAccess checks that the caller (identified by the
 // JWT-verified X-User-ID/X-User-Role headers) is authorized for branchID —
 // granted if it's their own branch, they're linked to it via
@@ -297,7 +311,7 @@ func (h *Handler) DeleteStudent(c *gin.Context) {
 	}
 	id := c.Param("id")
 	st, _ := h.students.GetByIDScoped(c.Request.Context(), id, branchID)
-	if err := h.students.Delete(c.Request.Context(), id, branchID); err != nil {
+	if err := h.students.Delete(c.Request.Context(), id, branchID, c.GetHeader("X-User-ID")); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "student not found"})
 			return
@@ -309,6 +323,57 @@ func (h *Handler) DeleteStudent(c *gin.Context) {
 		h.students.Audit(c.Request.Context(), st.BranchID, c.GetHeader("X-User-ID"), "delete", "student", id, "Student deleted: "+st.FullName)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "student deleted"})
+}
+
+// RestoreStudent undoes a soft-delete, same authorization as DeleteStudent.
+func (h *Handler) RestoreStudent(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.students.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "student not found in trash"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "student restored"})
+}
+
+// ListStudentTrash returns soft-deleted students within the caller's
+// window: 7 days scoped to their branch, 30 days platform-wide for
+// developer/super_admin.
+func (h *Handler) ListStudentTrash(c *gin.Context) {
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	branchID := requestBranchID(c)
+	if isSuperRole(role) {
+		windowDays = 30
+		branchID = ""
+	} else if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	} else if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	items, err := h.students.ListTrash(c.Request.Context(), branchID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedStudent{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 // ── Classes ───────────────────────────────────────────────────────────────────
@@ -410,7 +475,7 @@ func (h *Handler) DeleteClass(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.classes.Delete(c.Request.Context(), c.Param("id"), branchID); err != nil {
+	if err := h.classes.Delete(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-ID")); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
 			return
@@ -419,6 +484,57 @@ func (h *Handler) DeleteClass(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "class deleted"})
+}
+
+// RestoreClass undoes a soft-delete, same authorization as DeleteClass.
+func (h *Handler) RestoreClass(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.classes.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "class not found in trash"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "class restored"})
+}
+
+// ListClassTrash returns soft-deleted classes within the caller's window:
+// 7 days scoped to their branch, 30 days platform-wide for
+// developer/super_admin.
+func (h *Handler) ListClassTrash(c *gin.Context) {
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	branchID := requestBranchID(c)
+	if isSuperRole(role) {
+		windowDays = 30
+		branchID = ""
+	} else if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	} else if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	items, err := h.classes.ListTrash(c.Request.Context(), branchID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedClass{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 // ── Attendance ────────────────────────────────────────────────────────────────
@@ -693,11 +809,58 @@ func (h *Handler) DeleteAssignment(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.assignments.Delete(c.Request.Context(), c.Param("id"), branchID); err != nil {
+	if err := h.assignments.Delete(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-ID")); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// RestoreAssignment undoes a soft-delete, same authorization as DeleteAssignment.
+func (h *Handler) RestoreAssignment(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.assignments.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ListAssignmentTrash returns soft-deleted assignments within the caller's
+// window: 7 days scoped to their branch, 30 days platform-wide for
+// developer/super_admin.
+func (h *Handler) ListAssignmentTrash(c *gin.Context) {
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	branchID := requestBranchID(c)
+	if isSuperRole(role) {
+		windowDays = 30
+		branchID = ""
+	} else if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	} else if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	items, err := h.assignments.ListTrash(c.Request.Context(), branchID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedAssignment{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 func (h *Handler) GetSubmissions(c *gin.Context) {

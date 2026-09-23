@@ -59,6 +59,14 @@ func (h *PaymentHandler) requireDeletePermission(c *gin.Context) bool {
 	return true
 }
 
+// isSuperRole reports whether role is a platform-level role that operates
+// across every branch/tenant, rather than being scoped to one — used to
+// pick the Trash view's window (30 days platform-wide) vs a regular
+// caller's (7 days, own branch only).
+func isSuperRole(role string) bool {
+	return role == "developer" || role == "super_admin"
+}
+
 func (h *PaymentHandler) Register(r *gin.RouterGroup) {
 	r.GET("/payments", h.List)
 	r.POST("/payments", h.Create)
@@ -71,6 +79,8 @@ func (h *PaymentHandler) Register(r *gin.RouterGroup) {
 	r.GET("/payments/:id", h.GetByID)
 	r.PUT("/payments/:id", h.Update)
 	r.DELETE("/payments/:id", h.Delete)
+	r.POST("/payments/:id/restore", h.Restore)
+	r.GET("/trash/payments", h.ListTrash)
 
 	// Subscription endpoints (read-only; write path remains in monolith during P3)
 	r.GET("/subscriptions", h.ListSubscriptions)
@@ -232,7 +242,7 @@ func (h *PaymentHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
 		return
 	}
-	if err := h.svc.Delete(c.Request.Context(), id); err != nil {
+	if err := h.svc.Delete(c.Request.Context(), id, c.GetHeader("X-User-ID")); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
 			return
@@ -249,6 +259,90 @@ func (h *PaymentHandler) Delete(c *gin.Context) {
 			"Payment deleted: "+p.InvoiceNumber)
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "payment deleted"})
+}
+
+// Restore godoc
+// POST /api/v1/payments/:id/restore
+// Undoes a soft-delete, same authorization as Delete.
+func (h *PaymentHandler) Restore(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	id := c.Param("id")
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	if isSuperRole(role) {
+		windowDays = 30
+	}
+	trashed, err := h.svc.ListTrash(c.Request.Context(), "", windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var found *service.TrashedPayment
+	for i := range trashed {
+		if trashed[i].ID == id {
+			found = &trashed[i]
+			break
+		}
+	}
+	if found == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "payment not found in trash"})
+		return
+	}
+	if !isSuperRole(role) {
+		allowed, err := h.svc.HasBranchAccess(c.Request.Context(), c.GetHeader("X-User-ID"), role, found.BranchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found in trash"})
+			return
+		}
+	}
+	if err := h.svc.Restore(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "payment restored"})
+}
+
+// ListTrash godoc
+// GET /api/v1/trash/payments
+// Returns soft-deleted payments within the caller's window: 7 days scoped
+// to their branch, 30 days platform-wide for developer/super_admin.
+func (h *PaymentHandler) ListTrash(c *gin.Context) {
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	branchID := c.Query("branchId")
+	if isSuperRole(role) {
+		windowDays = 30
+		branchID = ""
+	} else {
+		if branchID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+			return
+		}
+		allowed, err := h.svc.HasBranchAccess(c.Request.Context(), c.GetHeader("X-User-ID"), role, branchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this branch"})
+			return
+		}
+	}
+	items, err := h.svc.ListTrash(c.Request.Context(), branchID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedPayment{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
 // BulkCreate godoc

@@ -118,7 +118,7 @@ func (s *ExpenseService) List(ctx context.Context, f ListFilter) (*ExpenseListRe
 	}
 	offset := (f.Page - 1) * f.Limit
 
-	where := "WHERE branch_id = $1"
+	where := "WHERE branch_id = $1 AND deleted_at IS NULL"
 	args := []interface{}{f.BranchID}
 	n := 2
 
@@ -186,7 +186,7 @@ func (s *ExpenseService) Summary(ctx context.Context, branchID, month, year stri
 	ctx, cancel := context.WithTimeout(ctx, db.ReportTimeout)
 	defer cancel()
 
-	where := "WHERE branch_id = $1"
+	where := "WHERE branch_id = $1 AND deleted_at IS NULL"
 	args := []interface{}{branchID}
 	n := 2
 	if month != "" {
@@ -304,7 +304,7 @@ func (s *ExpenseService) GetByID(ctx context.Context, id string) (*Expense, erro
 	err := s.db.Read().QueryRowContext(ctx,
 		`SELECT id, title, COALESCE(description,''), amount, category, payment_method,
 		        date, branch_id, notes, created_by, created_at
-		 FROM expenses WHERE id = $1`, id,
+		 FROM expenses WHERE id = $1 AND deleted_at IS NULL`, id,
 	).Scan(&e.ID, &e.Title, &e.Description, &e.Amount, &e.Category,
 		&e.PaymentMethod, &e.Date, &e.BranchID, &e.Notes, &e.CreatedBy, &e.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -399,14 +399,16 @@ func (s *ExpenseService) Update(ctx context.Context, id, branchID string, fields
 	return s.GetByID(ctx, id)
 }
 
-// Delete removes an expense, scoped to branchID directly in the DELETE
-// statement — see Update's comment on why the filter belongs in the SQL
-// rather than a separate pre-check.
-func (s *ExpenseService) Delete(ctx context.Context, id, branchID string) error {
+// Delete soft-deletes an expense, scoped to branchID directly in the
+// UPDATE statement — see Update's comment on why the filter belongs in
+// the SQL rather than a separate pre-check. Recoverable via Restore for
+// 7-30 days rather than gone immediately.
+func (s *ExpenseService) Delete(ctx context.Context, id, branchID, deletedBy string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 	res, err := s.db.Write().ExecContext(ctx,
-		"DELETE FROM expenses WHERE id = $1 AND branch_id = $2", id, branchID)
+		"UPDATE expenses SET deleted_at = now(), deleted_by = $3 WHERE id = $1 AND branch_id = $2 AND deleted_at IS NULL",
+		id, branchID, deletedBy)
 	if err != nil {
 		return err
 	}
@@ -414,6 +416,68 @@ func (s *ExpenseService) Delete(ctx context.Context, id, branchID string) error 
 		return ErrNotFound
 	}
 	return nil
+}
+
+// Restore un-deletes an expense soft-deleted within the last 30 days (the
+// longer of the two trash windows — callers enforce the shorter 7-day
+// window for non-super-role callers before reaching here).
+func (s *ExpenseService) Restore(ctx context.Context, id, branchID string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	res, err := s.db.Write().ExecContext(ctx,
+		"UPDATE expenses SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
+		id, branchID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// TrashedExpense is an Expense soft-deleted within the caller's restore window.
+type TrashedExpense struct {
+	Expense
+	DeletedAt time.Time `json:"deletedAt"`
+	DeletedBy *string   `json:"deletedBy,omitempty"`
+}
+
+// ListTrash returns expenses soft-deleted within the last windowDays,
+// scoped to branchID (regular caller) or platform-wide when "" (super role).
+func (s *ExpenseService) ListTrash(ctx context.Context, branchID string, windowDays int) ([]TrashedExpense, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	query := `
+		SELECT id, title, COALESCE(description,''), amount, category, payment_method,
+		       date, branch_id, notes, created_by, created_at, deleted_at, deleted_by
+		FROM expenses
+		WHERE deleted_at IS NOT NULL AND deleted_at > now() - make_interval(days => $1)`
+	args := []interface{}{windowDays}
+	if branchID != "" {
+		query += " AND branch_id = $2"
+		args = append(args, branchID)
+	}
+	query += " ORDER BY deleted_at DESC"
+
+	rows, err := s.db.Read().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedExpense
+	for rows.Next() {
+		var e TrashedExpense
+		if err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Amount, &e.Category,
+			&e.PaymentMethod, &e.Date, &e.BranchID, &e.Notes, &e.CreatedBy, &e.CreatedAt,
+			&e.DeletedAt, &e.DeletedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 // ── BudgetService ──────────────────────────────────────────────────────────────
@@ -494,7 +558,8 @@ func (s *BudgetService) GetByBranch(ctx context.Context, branchID, month string,
 				 WHERE e.branch_id = eb.branch_id
 				   AND e.category  = eb.category
 				   AND LPAD(EXTRACT(MONTH FROM e.date)::text, 2, '0') = eb.month
-				   AND EXTRACT(YEAR  FROM e.date)::int = eb.year),
+				   AND EXTRACT(YEAR  FROM e.date)::int = eb.year
+				   AND e.deleted_at IS NULL),
 				0
 			) AS actual
 		FROM expense_budgets eb
