@@ -13,6 +13,7 @@ import { settingsTranslations } from "./settings";
 import { helpTranslations } from "./help";
 import { authTranslations } from "./auth";
 import { miscTranslations } from "./misc";
+import { trashTranslations } from "./trash";
 
 // Combine all translations into one object
 export const translations: Translation = {
@@ -29,7 +30,8 @@ export const translations: Translation = {
   ...settingsTranslations,
   ...helpTranslations,
   ...authTranslations,
-  ...miscTranslations
+  ...miscTranslations,
+  ...trashTranslations
 } as Translation;
 
 /**

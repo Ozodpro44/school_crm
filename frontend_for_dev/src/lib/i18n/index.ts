@@ -13,6 +13,7 @@ import { logs } from "./logs";
 import { incidents } from "./incidents";
 import { notifications } from "./notifications";
 import { settings } from "./settings";
+import { trash } from "./trash";
 
 export type { Language } from "./types";
 export { LANGUAGES } from "./types";
@@ -32,6 +33,7 @@ const translations: Translation = {
   ...incidents,
   ...notifications,
   ...settings,
+  ...trash,
 };
 
 export function getTranslation(key: string, language: Language): string {

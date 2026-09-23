@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/school-crm/backend/internal/db"
@@ -419,7 +420,7 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 
 func (s *UserService) GetByID(ctx context.Context, id string) (*models.User, error) {
 	user := &models.User{}
-	query := `SELECT id, email, password_hash, role, full_name, created_at, updated_at FROM users WHERE id = $1`
+	query := `SELECT id, email, password_hash, role, full_name, created_at, updated_at FROM users WHERE id = $1 AND deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.CreatedAt, &user.UpdatedAt,
@@ -452,6 +453,7 @@ func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
 		       bm.branch_id
 		FROM users u
 		LEFT JOIN branch_managers bm ON bm.manager_id = u.id
+		WHERE u.deleted_at IS NULL
 		ORDER BY u.created_at
 	`
 
@@ -597,10 +599,60 @@ func (s *UserService) Update(ctx context.Context, id string, updates map[string]
 	return s.GetByID(ctx, id)
 }
 
+// Delete soft-deletes the user: recoverable via Restore for 30 days (this
+// path is developer-portal-only — see RegisterDevCRMRoutes — so the
+// platform-wide 30-day window always applies, not the 7-day one).
 func (s *UserService) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM users WHERE id = $1`
-	_, err := s.db.GetConn().ExecContext(ctx, query, id)
-	return err
+	query := `UPDATE users SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`
+	res, err := s.db.GetConn().ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("user not found")
+	}
+	return nil
+}
+
+// Restore un-deletes a user soft-deleted within the last 30 days.
+func (s *UserService) Restore(ctx context.Context, id string) error {
+	query := `UPDATE users SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`
+	res, err := s.db.GetConn().ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("user not found in trash")
+	}
+	return nil
+}
+
+// TrashedUser is a monolith User soft-deleted within the last 30 days.
+type TrashedUser struct {
+	models.User
+	DeletedAt time.Time `json:"deletedAt"`
+}
+
+// ListTrash returns users soft-deleted within the last 30 days, platform-wide.
+func (s *UserService) ListTrash(ctx context.Context) ([]TrashedUser, error) {
+	query := `SELECT id, email, role, full_name, created_at, updated_at, deleted_at
+	          FROM users WHERE deleted_at IS NOT NULL AND deleted_at > now() - interval '30 days'
+	          ORDER BY deleted_at DESC`
+	rows, err := s.db.GetConn().QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedUser
+	for rows.Next() {
+		var u TrashedUser
+		if err := rows.Scan(&u.ID, &u.Email, &u.Role, &u.FullName, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
 }
 
 // GetUserBranches returns all branches managed by a user
@@ -772,7 +824,7 @@ func (s *UserService) GetManagersByBranch(ctx context.Context, branchID string) 
 		SELECT DISTINCT u.id, u.email, u.role, u.full_name, u.created_at, u.updated_at
 		FROM users u
 		INNER JOIN branch_managers bm ON u.id = bm.manager_id
-		WHERE bm.branch_id = $1
+		WHERE bm.branch_id = $1 AND u.deleted_at IS NULL
 		ORDER BY u.full_name
 	`
 

@@ -89,7 +89,7 @@ func (s *BranchService) Create(ctx context.Context, req *CreateBranchRequest) (*
 
 func (s *BranchService) GetByID(ctx context.Context, id string) (*models.Branch, error) {
 	branch := &models.Branch{}
-	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE id = $1`
+	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE id = $1 AND deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&branch.ID, &branch.Name, &branch.Address, &branch.Phone, &branch.MonthlyPayment, &branch.Currency, &branch.AdminID, &branch.CurrentFinancialMonthID, &branch.CreatedAt, &branch.UpdatedAt,
@@ -112,7 +112,7 @@ func (s *BranchService) GetByID(ctx context.Context, id string) (*models.Branch,
 }
 
 func (s *BranchService) GetAll(ctx context.Context) ([]models.Branch, error) {
-	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches ORDER BY name`
+	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE deleted_at IS NULL ORDER BY name`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query)
 	if err != nil {
@@ -143,7 +143,7 @@ func (s *BranchService) GetAll(ctx context.Context) ([]models.Branch, error) {
 }
 
 func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]models.Branch, error) {
-	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE admin_id = $1 ORDER BY name`
+	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, current_financial_month_id, created_at, updated_at FROM branches WHERE admin_id = $1 AND deleted_at IS NULL ORDER BY name`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, adminID)
 	if err != nil {
@@ -212,10 +212,65 @@ func (s *BranchService) Update(ctx context.Context, id string, updates map[strin
 	return s.GetByID(ctx, id)
 }
 
+// Delete soft-deletes the branch: recoverable via Restore for 30 days
+// (this path is developer-portal-only — see RegisterDevCRMRoutes — so the
+// platform-wide 30-day window always applies, not the 7-day one). branches
+// cascade-deletes into nearly every other table (classes, students,
+// teachers, payments, salaries, expenses, attendance, ...), so a hard
+// DELETE here could wipe a school's whole history — this mirrors the same
+// fix already applied to user_service's own, separate copy of BranchService
+// for the regular (non-dev) delete path.
 func (s *BranchService) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM branches WHERE id = $1`
-	_, err := s.db.GetConn().ExecContext(ctx, query, id)
-	return err
+	query := `UPDATE branches SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`
+	res, err := s.db.GetConn().ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("branch not found")
+	}
+	return nil
+}
+
+// Restore un-deletes a branch soft-deleted within the last 30 days.
+func (s *BranchService) Restore(ctx context.Context, id string) error {
+	query := `UPDATE branches SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`
+	res, err := s.db.GetConn().ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("branch not found in trash")
+	}
+	return nil
+}
+
+// TrashedBranch is a monolith Branch soft-deleted within the last 30 days.
+type TrashedBranch struct {
+	models.Branch
+	DeletedAt time.Time `json:"deletedAt"`
+}
+
+// ListTrash returns branches soft-deleted within the last 30 days, platform-wide.
+func (s *BranchService) ListTrash(ctx context.Context) ([]TrashedBranch, error) {
+	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, created_at, updated_at, deleted_at
+	          FROM branches WHERE deleted_at IS NOT NULL AND deleted_at > now() - interval '30 days'
+	          ORDER BY deleted_at DESC`
+	rows, err := s.db.GetConn().QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedBranch
+	for rows.Next() {
+		var b TrashedBranch
+		if err := rows.Scan(&b.ID, &b.Name, &b.Address, &b.Phone, &b.MonthlyPayment, &b.Currency, &b.AdminID, &b.CreatedAt, &b.UpdatedAt, &b.DeletedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
 }
 
 // SwitchMonth advances the branch to the next month (Admin only)

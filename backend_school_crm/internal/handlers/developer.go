@@ -653,6 +653,7 @@ func RegisterDevCRMRoutes(router *gin.RouterGroup, userService *service.UserServ
 	users.GET("/:id", getUser(userService))
 	users.PUT("/:id", devUpdateUser(userService))
 	users.DELETE("/:id", devDeleteUser(userService))
+	users.POST("/:id/restore", devRestoreUser(userService))
 
 	// Branches (reuse existing handlers — ownership checks skipped for dev context)
 	branches := router.Group("/dev/crm/branches")
@@ -661,6 +662,56 @@ func RegisterDevCRMRoutes(router *gin.RouterGroup, userService *service.UserServ
 	branches.POST("", createBranch(branchService, nil)) // dev path — no subscription limit enforcement
 	branches.PUT("/:id", updateBranch(branchService))
 	branches.DELETE("/:id", deleteBranch(branchService))
+	branches.POST("/:id/restore", devRestoreBranch(branchService))
+
+	// Trash — platform-wide, 30-day window (this whole group is
+	// developer-only per DevAuthMiddleware, so there's no shorter/scoped
+	// variant to pick between the way the regular API does).
+	router.GET("/dev/crm/trash", devListTrash(userService, branchService))
+}
+
+func devRestoreUser(userService *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := userService.Restore(c.Request.Context(), c.Param("id")); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "user restored"})
+	}
+}
+
+func devRestoreBranch(branchService *service.BranchService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if err := branchService.Restore(c.Request.Context(), c.Param("id")); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "branch restored"})
+	}
+}
+
+// devListTrash returns both trashed users and trashed branches in one call
+// — the only two dev/crm resources with a delete action today.
+func devListTrash(userService *service.UserService, branchService *service.BranchService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		users, err := userService.ListTrash(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		branches, err := branchService.ListTrash(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if users == nil {
+			users = []service.TrashedUser{}
+		}
+		if branches == nil {
+			branches = []service.TrashedBranch{}
+		}
+		c.JSON(http.StatusOK, gin.H{"users": users, "branches": branches})
+	}
 }
 
 func devUpdateUser(userService *service.UserService) gin.HandlerFunc {

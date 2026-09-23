@@ -517,8 +517,17 @@ func consolidatedPayments(c *gin.Context, paymentSvcURL, studentSvcURL string) {
 // type loading; a failed one just comes back as an empty list with an
 // "errors" entry naming it, same tolerance principle as a dashboard widget.
 func consolidatedTrash(c *gin.Context, userSvcURL, studentSvcURL, teacherSvcURL, paymentSvcURL, financeSvcURL string) {
+	// Query param first, then X-Branch-ID header — same fallback every
+	// other branch-scoped endpoint in this file and in each downstream
+	// service's own requestBranchID uses, so a plain apiRequest() call
+	// from the frontend (which only ever sets the header) still resolves
+	// a branch here instead of silently going platform-wide-empty.
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
 	branchQS := ""
-	if branchID := c.Query("branchId"); branchID != "" {
+	if branchID != "" {
 		branchQS = "?branchId=" + branchID
 	}
 

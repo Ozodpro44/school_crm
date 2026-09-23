@@ -297,6 +297,7 @@ export interface CreateTeacherRequest {
 export interface Salary {
   id: string;
   teacherId: string;
+  teacherName?: string;
   amount: number;
   month: string;
   year: number;
@@ -1790,6 +1791,62 @@ export interface AuditLogResponse {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+// ============================================================================
+// TRASH / RESTORE
+// ============================================================================
+//
+// A deleted item of any of these 9 types is soft-deleted server-side, not
+// gone immediately — recoverable for 7 days (30 for developer/super_admin,
+// see api_gateway's consolidatedTrash and each service's own trash/restore
+// handlers). Each item comes back as its normal shape plus deletedAt/
+// deletedBy.
+
+type Trashed<T> = T & { deletedAt: string; deletedBy?: string };
+
+export interface TrashResponse {
+  branches: { items: Trashed<Branch>[] };
+  users: { items: Trashed<User>[] };
+  students: { items: Trashed<Student>[] };
+  classes: { items: Trashed<Class>[] };
+  assignments: { items: Trashed<AssignmentItem>[] };
+  teachers: { items: Trashed<Teacher>[] };
+  salaries: { items: Trashed<Salary>[] };
+  payments: { items: Trashed<Payment>[] };
+  expenses: { items: Trashed<Expense>[] };
+  errors?: string[];
+}
+
+export type TrashResourceKey = keyof Omit<TrashResponse, "errors">;
+
+/** GET /consolidated/trash — one call, fans out across all 5 services. */
+export async function getTrash(): Promise<TrashResponse> {
+  return apiRequest<TrashResponse>("/consolidated/trash");
+}
+
+// Path segment per resource for the .../:id/restore call — matches each
+// service's own route registration (Register() in each handler.go).
+const TRASH_RESTORE_PATH: Record<TrashResourceKey, string> = {
+  branches: "branches",
+  users: "users",
+  students: "students",
+  classes: "classes",
+  assignments: "assignments",
+  teachers: "teachers",
+  salaries: "salaries",
+  payments: "payments",
+  expenses: "expenses",
+};
+
+export async function restoreTrashedItem(
+  resource: TrashResourceKey,
+  id: string
+): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(
+    `/${TRASH_RESTORE_PATH[resource]}/${id}/restore`,
+    { method: "POST" }
+  );
 }
 
 export async function getAuditLogs(params: {

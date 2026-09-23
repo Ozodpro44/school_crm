@@ -12,6 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import Logs from "./pages/Logs";
 import Incidents from "./pages/Incidents";
 import Branches from "./pages/Branches";
+import Trash from "./pages/Trash";
 import Subscriptions from "./pages/Subscriptions";
 import SubscriptionPlans from "./pages/SubscriptionPlans";
 import Users from "./pages/Users";
@@ -38,6 +39,7 @@ const App = () => (
               <Route path="/logs" element={<ProtectedRoute><Logs /></ProtectedRoute>} />
               <Route path="/incidents" element={<ProtectedRoute><Incidents /></ProtectedRoute>} />
               <Route path="/branches" element={<ProtectedRoute><Branches /></ProtectedRoute>} />
+              <Route path="/trash" element={<ProtectedRoute><Trash /></ProtectedRoute>} />
               <Route path="/subscriptions" element={<ProtectedRoute><Subscriptions /></ProtectedRoute>} />
               <Route path="/subscription-plans" element={<ProtectedRoute><SubscriptionPlans /></ProtectedRoute>} />
               <Route path="/users" element={<ProtectedRoute><Users /></ProtectedRoute>} />

@@ -8,6 +8,7 @@ export const nav: Translation = {
   navPlans: { en: "Plans", ru: "Тарифы", uz: "Tariflar" },
   navPaymentTypes: { en: "Payment Types", ru: "Способы оплаты", uz: "To'lov turlari" },
   navUsers: { en: "Users", ru: "Пользователи", uz: "Foydalanuvchilar" },
+  navTrash: { en: "Trash", ru: "Корзина", uz: "O'chirilganlar" },
   navAnalytics: { en: "Analytics", ru: "Аналитика", uz: "Analitika" },
   navIncidents: { en: "Incidents", ru: "Инциденты", uz: "Insidentlar" },
   navNotifications: { en: "Notifications", ru: "Уведомления", uz: "Bildirishnomalar" },

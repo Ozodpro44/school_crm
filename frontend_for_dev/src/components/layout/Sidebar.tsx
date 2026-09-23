@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, FileText, Building2, CreditCard,
   Users, Activity, Bell, Settings, LogOut, ChevronLeft,
-  ChevronRight, Terminal, Wallet, BookOpen, AlertTriangle, Globe,
+  ChevronRight, Terminal, Wallet, BookOpen, AlertTriangle, Globe, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,6 +19,7 @@ const NAV = [
   { nameKey: "navPlans",         href: "/subscription-plans", icon: BookOpen        },
   { nameKey: "navPaymentTypes",  href: "/payment-types",      icon: Wallet          },
   { nameKey: "navUsers",         href: "/users",              icon: Users           },
+  { nameKey: "navTrash",         href: "/trash",              icon: Trash2          },
   { nameKey: "navAnalytics",     href: "/analytics",          icon: Activity        },
   { nameKey: "navIncidents",     href: "/incidents",          icon: AlertTriangle   },
   { nameKey: "navNotifications", href: "/notifications",      icon: Bell            },

@@ -395,6 +395,32 @@ export async function deleteBranch(id: string): Promise<void> {
   return request<void>(`/dev/crm/branches/${id}`, { method: "DELETE" });
 }
 
+// ── Trash ─────────────────────────────────────────────────────────────────────
+// Deleting a user or branch above is soft, not immediate — recoverable here
+// for 30 days (the platform-wide window; this whole app is developer-only,
+// so there's no shorter 7-day/own-branch variant to pick between).
+
+export type TrashedCRMUser = CRMUser & { deletedAt: string };
+export type TrashedCRMBranch = CRMBranch & { deletedAt: string };
+
+export interface TrashResponse {
+  users: TrashedCRMUser[];
+  branches: TrashedCRMBranch[];
+}
+
+export async function getTrash(): Promise<TrashResponse> {
+  const res = await request<{ users?: TrashedCRMUser[]; branches?: TrashedCRMBranch[] }>("/dev/crm/trash");
+  return { users: res.users ?? [], branches: res.branches ?? [] };
+}
+
+export async function restoreUser(id: string): Promise<void> {
+  return request<void>(`/dev/crm/users/${id}/restore`, { method: "POST" });
+}
+
+export async function restoreBranch(id: string): Promise<void> {
+  return request<void>(`/dev/crm/branches/${id}/restore`, { method: "POST" });
+}
+
 // ── Dev Settings ──────────────────────────────────────────────────────────────
 
 export async function getDevSettings(): Promise<Record<string, unknown>> {

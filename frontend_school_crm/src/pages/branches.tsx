@@ -13,7 +13,7 @@ import type { User } from "@/lib/api";
 import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { Plus, Building2, MapPin, Phone, Edit, Users, DollarSign } from "lucide-react";
+import { Plus, Building2, MapPin, Phone, Edit, Users, DollarSign, Trash2, Loader2 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { Badge } from "@/components/ui/badge";
@@ -165,6 +165,27 @@ export default function BranchesPage() {
     setEditingBranch(null);
   };
 
+  const [deletingBranchId, setDeletingBranchId] = useState<string | null>(null);
+  // DeleteBranch is soft now (recoverable via /trash for 7 days), so the
+  // branch's own owning admin can delete it — but not a branch_manager
+  // viewing someone else's branch (canDelete's server-side check is
+  // owner-only, narrower than what this page's list otherwise includes).
+  const handleDelete = async (branch: Branch) => {
+    if (!confirm(t("branchDeleteConfirmation"))) return;
+    setDeletingBranchId(branch.id);
+    try {
+      await api.deleteBranch(branch.id);
+      notify.success(t("success"), t("branchDeleted"));
+      await loadData();
+      await refreshBranches();
+    } catch (error) {
+      console.error("Error deleting branch:", error);
+      notify.error(t("error"), t("failedToDeleteBranch"));
+    } finally {
+      setDeletingBranchId(null);
+    }
+  };
+
   const handleCreateBranchAdmin = (branchId: string) => {
     setAdminForm({ branchId, email: "", password: "", fullName: "" });
     setIsCreateAdminOpen(true);
@@ -284,11 +305,6 @@ export default function BranchesPage() {
       headerClassName: "text-right",
       cellClassName: "text-right",
       render: (branch) => (
-        // Deleting a branch (tenant) is platform-only — the backend restricts
-        // DeleteBranch to developer/super_admin, roles that can't even reach
-        // this admin-only page, so a delete button here could never succeed.
-        // That deletion flow already exists properly in the developer portal
-        // (Branches.tsx there), which is where it belongs.
         <div className="flex items-center justify-end gap-2">
           <Button
             variant="ghost"
@@ -297,6 +313,25 @@ export default function BranchesPage() {
           >
             <Edit className="h-4 w-4" />
           </Button>
+          {/* Delete is soft (recoverable via /trash for 7 days) and
+              server-side restricted to the branch's own owning admin —
+              only show it here for branches this caller actually owns,
+              so a manager viewing a branch they don't own never sees a
+              button that would just 403. */}
+          {branch.adminId === currentUser?.id && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={deletingBranchId === branch.id}
+              onClick={() => handleDelete(branch)}
+            >
+              {deletingBranchId === branch.id ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 text-destructive" />
+              )}
+            </Button>
+          )}
         </div>
       ),
     },
