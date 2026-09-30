@@ -408,17 +408,26 @@ func (s *StudentService) Restore(ctx context.Context, id, branchID string) error
 	return nil
 }
 
-// SyncMonthlyPayment bulk-updates monthly_payment for every active student
-// in branchID currently billed at fromAmount, moving them to toAmount.
-// Scoped to fromAmount deliberately (not "all students in branch") so a
-// student on a custom/discounted rate that happens to differ from the
-// branch's old default is left untouched.
-func (s *StudentService) SyncMonthlyPayment(ctx context.Context, branchID string, fromAmount, toAmount float64) (int, error) {
+// SyncMonthlyPayment bulk-updates monthly_payment for students in branchID,
+// moving them to toAmount. When all is false (the default), only students
+// currently billed at fromAmount are touched — a student on a custom/
+// discounted rate that happens to differ from the branch's old default is
+// left untouched. When all is true, every active student in the branch is
+// moved to toAmount regardless of their current price.
+func (s *StudentService) SyncMonthlyPayment(ctx context.Context, branchID string, fromAmount, toAmount float64, all bool) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	res, err := s.db.Conn().ExecContext(ctx,
-		"UPDATE students SET monthly_payment = $1, updated_at = now() WHERE branch_id = $2 AND monthly_payment = $3 AND deleted_at IS NULL",
-		toAmount, branchID, fromAmount)
+	var res sql.Result
+	var err error
+	if all {
+		res, err = s.db.Conn().ExecContext(ctx,
+			"UPDATE students SET monthly_payment = $1, updated_at = now() WHERE branch_id = $2 AND deleted_at IS NULL",
+			toAmount, branchID)
+	} else {
+		res, err = s.db.Conn().ExecContext(ctx,
+			"UPDATE students SET monthly_payment = $1, updated_at = now() WHERE branch_id = $2 AND monthly_payment = $3 AND deleted_at IS NULL",
+			toAmount, branchID, fromAmount)
+	}
 	if err != nil {
 		return 0, err
 	}

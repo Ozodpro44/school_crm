@@ -1192,21 +1192,23 @@ export async function deleteBranch(id: string): Promise<{ success: boolean }> {
 }
 
 /**
- * Bulk-moves every student in a branch currently billed at fromAmount over
- * to toAmount — used after editing a branch's default monthly payment, for
- * students still on the old default. Students already on a custom/
- * discounted rate (anything other than fromAmount) are left untouched.
+ * Bulk-moves students in a branch over to toAmount — used after editing a
+ * branch's default monthly payment. By default (all=false) only students
+ * still billed at fromAmount move, leaving anyone on a custom/discounted
+ * rate untouched; with all=true, every active student in the branch moves
+ * to toAmount regardless of their current price.
  */
 export async function syncBranchStudentPayments(
   branchId: string,
   fromAmount: number,
-  toAmount: number
+  toAmount: number,
+  all: boolean = false
 ): Promise<{ updated: number }> {
   return apiRequest<{ updated: number }>(
     `/students/sync-monthly-payment?branchId=${branchId}`,
     {
       method: "POST",
-      body: JSON.stringify({ fromAmount, toAmount }),
+      body: JSON.stringify({ fromAmount, toAmount, all }),
     }
   );
 }

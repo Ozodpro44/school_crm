@@ -121,10 +121,40 @@ export const branchTranslations: Partial<Translation> = {
     "uz-latn": "Oylik to'lov 0 dan katta bo'lishi kerak",
     en: "Monthly payment must be greater than 0",
   },
-  syncStudentPaymentsConfirm: {
-    "uz-cyrl": "Аввалги нархда ({from}) турган ўқувчиларни янги нархга ({to}) ўтказайми? Индивидуал нархдаги ўқувчиларга тегилмайди.",
-    "uz-latn": "Avvalgi narxda ({from}) turgan o'quvchilarni yangi narxga ({to}) o'tkazaymi? Individual narxdagi o'quvchilarga tegilmaydi.",
-    en: "Move students still on the old price ({from}) to the new price ({to})? Students on a custom price are left untouched.",
+  syncPaymentsDialogTitle: {
+    "uz-cyrl": "Ўқувчилар нархини янгилаш",
+    "uz-latn": "O'quvchilar narxini yangilash",
+    en: "Update students' monthly payment",
+  },
+  syncPaymentsDialogDesc: {
+    "uz-cyrl": "Филиал нархи {from} дан {to} га ўзгартирилди. Мавжуд ўқувчиларнинг ойлик тўловини ҳам янгилайсизми?",
+    "uz-latn": "Filial narxi {from} dan {to} ga o'zgartirildi. Mavjud o'quvchilarning oylik to'lovini ham yangilaysizmi?",
+    en: "The branch price changed from {from} to {to}. Update existing students' monthly payment too?",
+  },
+  syncPaymentsAllLabel: {
+    "uz-cyrl": "Барча ўқувчиларга қўллаш",
+    "uz-latn": "Barcha o'quvchilarga qo'llash",
+    en: "Apply to all students",
+  },
+  syncPaymentsAllDescOn: {
+    "uz-cyrl": "Ёқилган: ҳамма ўқувчининг нархи янгиланади — индивидуал нархдагилар ҳам.",
+    "uz-latn": "Yoqilgan: hamma o'quvchining narxi yangilanadi — individual narxdagilar ham.",
+    en: "On: every student's price is updated — including custom-priced ones.",
+  },
+  syncPaymentsAllDescOff: {
+    "uz-cyrl": "Ўчиқ: фақат эски стандарт нархда турганлар янгиланади, индивидуал нархдагиларга тегилмайди.",
+    "uz-latn": "O'chiq: faqat eski standart narxda turganlar yangilanadi, individual narxdagilarga tegilmaydi.",
+    en: "Off: only students still on the old default price are updated; custom prices are left alone.",
+  },
+  syncPaymentsSkip: {
+    "uz-cyrl": "Ўтказиб юбориш",
+    "uz-latn": "O'tkazib yuborish",
+    en: "Skip",
+  },
+  syncPaymentsApply: {
+    "uz-cyrl": "Янгилаш",
+    "uz-latn": "Yangilash",
+    en: "Update",
   },
   studentPaymentsSynced: {
     "uz-cyrl": "{count} та ўқувчининг ойлик тўлови янгиланди",

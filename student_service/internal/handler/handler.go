@@ -350,10 +350,11 @@ func (h *Handler) RestoreStudent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "student restored"})
 }
 
-// SyncStudentMonthlyPayment bulk-moves every student in a branch currently
-// billed at fromAmount over to toAmount — used when a branch's default fee
-// changes and the caller wants existing students on the old default to
-// follow, without touching anyone on a custom/discounted rate.
+// SyncStudentMonthlyPayment bulk-moves students in a branch over to
+// toAmount — used when a branch's default fee changes. By default (All
+// false) only students still billed at fromAmount move, leaving anyone on
+// a custom/discounted rate untouched; with All true, every active student
+// in the branch moves to toAmount regardless of their current price.
 func (h *Handler) SyncStudentMonthlyPayment(c *gin.Context) {
 	if !h.requireDeletePermission(c) {
 		return
@@ -369,6 +370,7 @@ func (h *Handler) SyncStudentMonthlyPayment(c *gin.Context) {
 	var body struct {
 		FromAmount float64 `json:"fromAmount"`
 		ToAmount   float64 `json:"toAmount"`
+		All        bool    `json:"all"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -378,13 +380,17 @@ func (h *Handler) SyncStudentMonthlyPayment(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "toAmount must be positive"})
 		return
 	}
-	updated, err := h.students.SyncMonthlyPayment(c.Request.Context(), branchID, body.FromAmount, body.ToAmount)
+	updated, err := h.students.SyncMonthlyPayment(c.Request.Context(), branchID, body.FromAmount, body.ToAmount, body.All)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	scope := "still on the old price"
+	if body.All {
+		scope = "all students"
+	}
 	h.students.Audit(c.Request.Context(), branchID, c.GetHeader("X-User-ID"), "update", "student",
-		"", fmt.Sprintf("Bulk monthly payment sync: %d student(s) moved from %.0f to %.0f", updated, body.FromAmount, body.ToAmount))
+		"", fmt.Sprintf("Bulk monthly payment sync (%s): %d student(s) moved from %.0f to %.0f", scope, updated, body.FromAmount, body.ToAmount))
 	c.JSON(http.StatusOK, gin.H{"updated": updated})
 }
 
