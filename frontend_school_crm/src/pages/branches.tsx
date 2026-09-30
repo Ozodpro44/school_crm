@@ -108,6 +108,7 @@ export default function BranchesPage() {
 
     try {
       if (editingBranch) {
+        const previousPayment = editingBranch.monthlyPayment;
         await api.updateBranch(editingBranch.id, {
           name: formData.name,
           address: formData.address,
@@ -116,6 +117,25 @@ export default function BranchesPage() {
           adminId: formData.adminId || undefined,
         });
         notify.success(t("success"), t("branchUpdated"));
+
+        if (formData.monthlyPayment !== previousPayment) {
+          const confirmMsg = t("syncStudentPaymentsConfirm")
+            .replace("{from}", formatCurrency(previousPayment))
+            .replace("{to}", formatCurrency(formData.monthlyPayment));
+          if (confirm(confirmMsg)) {
+            try {
+              const { updated } = await api.syncBranchStudentPayments(
+                editingBranch.id,
+                previousPayment,
+                formData.monthlyPayment
+              );
+              notify.success(t("success"), t("studentPaymentsSynced").replace("{count}", String(updated)));
+            } catch (syncError) {
+              console.error("Error syncing student payments:", syncError);
+              notify.error(t("error"), t("failedToSyncStudentPayments"));
+            }
+          }
+        }
       } else {
         // Set current user as admin if no admin is specified
         const adminId = formData.adminId || currentUser?.id;
@@ -405,7 +425,7 @@ export default function BranchesPage() {
                    <AmountInput
                      id="monthlyPayment"
                      value={formData.monthlyPayment}
-                     onChange={(value) => setFormData({ ...formData, monthlyPayment: parseInt(value) || 100000 })}
+                     onChange={(value) => setFormData({ ...formData, monthlyPayment: parseInt(value) || 0 })}
                      placeholder="500 000"
                      required
                    />

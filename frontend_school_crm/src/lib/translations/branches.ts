@@ -121,6 +121,21 @@ export const branchTranslations: Partial<Translation> = {
     "uz-latn": "Oylik to'lov 0 dan katta bo'lishi kerak",
     en: "Monthly payment must be greater than 0",
   },
+  syncStudentPaymentsConfirm: {
+    "uz-cyrl": "Аввалги нархда ({from}) турган ўқувчиларни янги нархга ({to}) ўтказайми? Индивидуал нархдаги ўқувчиларга тегилмайди.",
+    "uz-latn": "Avvalgi narxda ({from}) turgan o'quvchilarni yangi narxga ({to}) o'tkazaymi? Individual narxdagi o'quvchilarga tegilmaydi.",
+    en: "Move students still on the old price ({from}) to the new price ({to})? Students on a custom price are left untouched.",
+  },
+  studentPaymentsSynced: {
+    "uz-cyrl": "{count} та ўқувчининг ойлик тўлови янгиланди",
+    "uz-latn": "{count} ta o'quvchining oylik to'lovi yangilandi",
+    en: "{count} student(s) moved to the new price",
+  },
+  failedToSyncStudentPayments: {
+    "uz-cyrl": "Ўқувчилар нархини янгилашда хатолик",
+    "uz-latn": "O'quvchilar narxini yangilashda xatolik",
+    en: "Failed to update students' payment",
+  },
 
   // Missing keys
   failedToCreateAdmin: { "uz-cyrl": "Администратор яратишда хатолик", "uz-latn": "Administrator yaratishda xatolik", en: "Failed to create admin" },

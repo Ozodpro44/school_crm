@@ -408,6 +408,24 @@ func (s *StudentService) Restore(ctx context.Context, id, branchID string) error
 	return nil
 }
 
+// SyncMonthlyPayment bulk-updates monthly_payment for every active student
+// in branchID currently billed at fromAmount, moving them to toAmount.
+// Scoped to fromAmount deliberately (not "all students in branch") so a
+// student on a custom/discounted rate that happens to differ from the
+// branch's old default is left untouched.
+func (s *StudentService) SyncMonthlyPayment(ctx context.Context, branchID string, fromAmount, toAmount float64) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	res, err := s.db.Conn().ExecContext(ctx,
+		"UPDATE students SET monthly_payment = $1, updated_at = now() WHERE branch_id = $2 AND monthly_payment = $3 AND deleted_at IS NULL",
+		toAmount, branchID, fromAmount)
+	if err != nil {
+		return 0, err
+	}
+	rows, _ := res.RowsAffected()
+	return int(rows), nil
+}
+
 // TrashedStudent is a Student soft-deleted within the caller's restore window.
 type TrashedStudent struct {
 	Student

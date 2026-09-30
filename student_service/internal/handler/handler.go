@@ -43,6 +43,7 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/students/search/with-payments", h.SearchWithPayments)
 	r.GET("/students", h.ListStudents)
 	r.POST("/students", h.CreateStudent)
+	r.POST("/students/sync-monthly-payment", h.SyncStudentMonthlyPayment)
 	r.GET("/students/:id", h.GetStudent)
 	r.PUT("/students/:id", h.UpdateStudent)
 	r.DELETE("/students/:id", h.DeleteStudent)
@@ -347,6 +348,44 @@ func (h *Handler) RestoreStudent(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "student restored"})
+}
+
+// SyncStudentMonthlyPayment bulk-moves every student in a branch currently
+// billed at fromAmount over to toAmount — used when a branch's default fee
+// changes and the caller wants existing students on the old default to
+// follow, without touching anyone on a custom/discounted rate.
+func (h *Handler) SyncStudentMonthlyPayment(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	var body struct {
+		FromAmount float64 `json:"fromAmount"`
+		ToAmount   float64 `json:"toAmount"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if body.ToAmount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "toAmount must be positive"})
+		return
+	}
+	updated, err := h.students.SyncMonthlyPayment(c.Request.Context(), branchID, body.FromAmount, body.ToAmount)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	h.students.Audit(c.Request.Context(), branchID, c.GetHeader("X-User-ID"), "update", "student",
+		"", fmt.Sprintf("Bulk monthly payment sync: %d student(s) moved from %.0f to %.0f", updated, body.FromAmount, body.ToAmount))
+	c.JSON(http.StatusOK, gin.H{"updated": updated})
 }
 
 // ListStudentTrash returns soft-deleted students within the caller's

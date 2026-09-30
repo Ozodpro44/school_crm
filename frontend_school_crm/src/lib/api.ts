@@ -1192,6 +1192,26 @@ export async function deleteBranch(id: string): Promise<{ success: boolean }> {
 }
 
 /**
+ * Bulk-moves every student in a branch currently billed at fromAmount over
+ * to toAmount — used after editing a branch's default monthly payment, for
+ * students still on the old default. Students already on a custom/
+ * discounted rate (anything other than fromAmount) are left untouched.
+ */
+export async function syncBranchStudentPayments(
+  branchId: string,
+  fromAmount: number,
+  toAmount: number
+): Promise<{ updated: number }> {
+  return apiRequest<{ updated: number }>(
+    `/students/sync-monthly-payment?branchId=${branchId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ fromAmount, toAmount }),
+    }
+  );
+}
+
+/**
  * Switch branch to next month (Admin only)
  * Advances the branch's current_month to the next calendar month
  */
