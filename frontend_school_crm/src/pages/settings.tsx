@@ -26,7 +26,9 @@ import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { useSetLanguage } from "@/hooks/use-language";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
-import { getSettings, updateSettings, UpdateSettingsRequest, switchBranchMonth, getBranch } from "@/lib/api";
+import { formatCurrency } from "@/lib/exportUtils";
+import { getSettings, updateSettings, UpdateSettingsRequest, switchBranchMonth, getBranch, syncBranchStudentPayments } from "@/lib/api";
+import { Switch } from "@/components/ui/switch";
 import { useBranch } from "@/context/BranchContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
@@ -50,6 +52,9 @@ export default function SettingsPage() {
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [showSwitchMonthDialog, setShowSwitchMonthDialog] = useState(false);
   const [isSwitchingMonth, setIsSwitchingMonth] = useState(false);
+  const [syncDialog, setSyncDialog] = useState<{ branchId: string; from: number; to: number } | null>(null);
+  const [syncApplyToAll, setSyncApplyToAll] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const language = useLanguage();
   const setLanguage = useSetLanguage();
   const t = (key: string) => getTranslation(key, language);
@@ -171,6 +176,8 @@ export default function SettingsPage() {
       return;
     }
 
+    const previousPayment = originalSettings?.monthlyPayment;
+
     try {
       setIsSaving(true);
 
@@ -188,10 +195,42 @@ export default function SettingsPage() {
       setSettings(updatedSettings);
 
       notify.success(t("success"), t("settingsSaved"));
+
+      if (
+        currentBranch?.id &&
+        previousPayment !== undefined &&
+        updatedSettings.monthlyPayment !== previousPayment
+      ) {
+        setSyncApplyToAll(false);
+        setSyncDialog({
+          branchId: currentBranch.id,
+          from: previousPayment,
+          to: updatedSettings.monthlyPayment,
+        });
+      }
     } catch (error) {
       notify.error(t("error"), error instanceof Error ? error.message : t("failedToSaveSettings"));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleApplySync = async () => {
+    if (!syncDialog) return;
+    setIsSyncing(true);
+    try {
+      const { updated } = await syncBranchStudentPayments(
+        syncDialog.branchId,
+        syncDialog.from,
+        syncDialog.to,
+        syncApplyToAll
+      );
+      notify.success(t("success"), t("studentPaymentsSynced").replace("{count}", String(updated)));
+      setSyncDialog(null);
+    } catch (error) {
+      notify.error(t("error"), t("failedToSyncStudentPayments"));
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -490,6 +529,52 @@ export default function SettingsPage() {
                 )}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sync students' monthly payment to the new branch default */}
+      <Dialog open={!!syncDialog} onOpenChange={(open) => !open && !isSyncing && setSyncDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("syncPaymentsDialogTitle")}</DialogTitle>
+            <DialogDescription>
+              {syncDialog &&
+                t("syncPaymentsDialogDesc")
+                  .replace("{from}", formatCurrency(syncDialog.from))
+                  .replace("{to}", formatCurrency(syncDialog.to))}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+            <div className="space-y-1">
+              <Label htmlFor="syncApplyToAll">{t("syncPaymentsAllLabel")}</Label>
+              <p className="text-sm text-muted-foreground">
+                {syncApplyToAll ? t("syncPaymentsAllDescOn") : t("syncPaymentsAllDescOff")}
+              </p>
+            </div>
+            <Switch
+              id="syncApplyToAll"
+              checked={syncApplyToAll}
+              onCheckedChange={setSyncApplyToAll}
+              disabled={isSyncing}
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setSyncDialog(null)} disabled={isSyncing}>
+              {t("syncPaymentsSkip")}
+            </Button>
+            <Button type="button" onClick={handleApplySync} disabled={isSyncing}>
+              {isSyncing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("updating")}
+                </>
+              ) : (
+                t("syncPaymentsApply")
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
