@@ -8,13 +8,15 @@ import { AmountInput } from "@/components/ui/amount-input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { BranchesOverviewPanel } from "@/components/panels/BranchesOverviewPanel";
 import * as api from "@/lib/api";
 import { Branch } from "@/types";
 import type { User } from "@/lib/api";
 import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { Plus, Building2, MapPin, Phone, Edit, Users, DollarSign, Trash2, Loader2 } from "lucide-react";
+import { Plus, Building2, MapPin, Phone, Edit, Users, DollarSign, Trash2, Loader2, List, BarChart2 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +60,14 @@ export default function BranchesPage() {
   const [syncDialog, setSyncDialog] = useState<{ branchId: string; from: number; to: number } | null>(null);
   const [syncApplyToAll, setSyncApplyToAll] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // Former standalone /branches-overview page is now the "overview" tab
+  // here — ?tab=overview keeps the old URL's bookmarks/links working via
+  // pages/branches-overview.tsx's redirect.
+  const [tab, setTab] = useState<"list" | "overview">("list");
+  useEffect(() => {
+    if (router.query.tab === "overview") setTab("overview");
+  }, [router.query.tab]);
 
   useEffect(() => {
     if (!hasCheckedAuth) {
@@ -385,12 +395,14 @@ export default function BranchesPage() {
            setIsDialogOpen(open);
            if (!open) resetForm();
          }}>
-           <DialogTrigger asChild>
-             <Button>
-               <Plus className="mr-2 h-4 w-4" />
-               {t("newBranch")}
-             </Button>
-           </DialogTrigger>
+           {tab === "list" && (
+             <DialogTrigger asChild>
+               <Button>
+                 <Plus className="mr-2 h-4 w-4" />
+                 {t("newBranch")}
+               </Button>
+             </DialogTrigger>
+           )}
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <form onSubmit={handleSubmit}>
               <DialogHeader>
@@ -555,20 +567,39 @@ export default function BranchesPage() {
           </Dialog>
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          <DataTable
-            columns={columns}
-            data={branches}
-            loading={loading}
-            skeletonRows={6}
-            emptyIcon={Building2}
-            emptyTitle={t("branchesNotFound")}
-            emptyDescription={t("createFirstBranch")}
-            emptyAction={{ label: t("newBranch"), onClick: () => setIsDialogOpen(true) }}
-          />
-        </CardContent>
-      </Card>
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "list" | "overview")}>
+        <TabsList>
+          <TabsTrigger value="list" className="gap-1.5">
+            <List className="h-3.5 w-3.5" />
+            {t("branchesListTab")}
+          </TabsTrigger>
+          <TabsTrigger value="overview" className="gap-1.5">
+            <BarChart2 className="h-3.5 w-3.5" />
+            {t("branchesOverviewTab")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="list">
+          <Card>
+            <CardContent className="p-0">
+              <DataTable
+                columns={columns}
+                data={branches}
+                loading={loading}
+                skeletonRows={6}
+                emptyIcon={Building2}
+                emptyTitle={t("branchesNotFound")}
+                emptyDescription={t("createFirstBranch")}
+                emptyAction={{ label: t("newBranch"), onClick: () => setIsDialogOpen(true) }}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="overview">
+          <BranchesOverviewPanel />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

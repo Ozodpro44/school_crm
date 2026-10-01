@@ -38,6 +38,7 @@ import {
   Edit2,
   Loader2,
   DollarSign,
+  Zap,
 } from "lucide-react";
 import { DataTable, Column } from "@/components/DataTable";
 import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
@@ -59,12 +60,22 @@ import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { toTitleCase } from "@/lib/utils";
 import { PageHeader } from "@/components/PageHeader";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { QuickPayPanel } from "@/components/panels/QuickPayPanel";
 
 export default function PaymentsPage() {
   const router = useRouter();
   const { currentBranch } = useBranch();
   const branchId = currentBranch?.id || null;
   const qc = useQueryClient();
+
+  // Former standalone /quick-pay page is now the "quick" tab here —
+  // ?tab=quick keeps the old URL's bookmarks/links working via
+  // pages/quick-pay.tsx's standalone render of the same panel.
+  const [tab, setTab] = useState<"list" | "quick">("list");
+  useEffect(() => {
+    if (router.query.tab === "quick") setTab("quick");
+  }, [router.query.tab]);
 
   // Derived payment list state (populated from query result via useEffect)
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -595,6 +606,8 @@ export default function PaymentsPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <PageHeader title={t("payments")} subtitle={t("trackStudentFees")} />
 
+        {tab === "list" && (
+        <>
         {/* Month Selector for Admin */}
         {isAdmin && branchData && selectedMonth && (
           <MonthYearSelector
@@ -657,8 +670,23 @@ export default function PaymentsPage() {
             t={t}
           />
         </div>
+        </>
+        )}
       </div>
 
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "list" | "quick")}>
+        <TabsList>
+          <TabsTrigger value="list" className="gap-1.5">
+            <DollarSign className="h-3.5 w-3.5" />
+            {t("paymentsListTab")}
+          </TabsTrigger>
+          <TabsTrigger value="quick" className="gap-1.5">
+            <Zap className="h-3.5 w-3.5" />
+            {t("quickPayment")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="list" className="space-y-6">
 
       {/* Six across left each tile ~105px at 1440px, so the longer labels
           wrapped to two lines while the others stayed on one — pushing those
@@ -946,6 +974,12 @@ export default function PaymentsPage() {
           </div>
         </DialogContent>
       </Dialog>
+        </TabsContent>
+
+        <TabsContent value="quick">
+          <QuickPayPanel showHeader={false} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

@@ -181,4 +181,9 @@ export const branchTranslations: Partial<Translation> = {
     en: "Add at least one branch before you can start using the system",
   },
   createBranchAndContinue: { "uz-cyrl": "Филиал очиш ва давом этиш", "uz-latn": "Filial ochish va davom etish", en: "Create branch and continue" },
+
+  // Tab labels on the merged Branches page (list + the former standalone
+  // /branches-overview page, now an "overview" tab here).
+  branchesListTab: { "uz-cyrl": "Рўйхат", "uz-latn": "Ro'yxat", en: "List" },
+  branchesOverviewTab: { "uz-cyrl": "Таҳлил", "uz-latn": "Tahlil", en: "Overview" },
 };

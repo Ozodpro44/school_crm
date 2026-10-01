@@ -45,11 +45,22 @@ import { useBranch } from "@/context/BranchContext";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { SchedulePanel } from "@/components/panels/SchedulePanel";
+import { Calendar } from "lucide-react";
 
 export default function ClassesPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const { currentBranch, isLoading: branchLoading } = useBranch();
+
+  // ?tab=schedule keeps old /schedule bookmarks (admin/manager only — the
+  // route itself still exists standalone for the teacher portal nav).
+  const [tab, setTab] = useState<"list" | "schedule">("list");
+  useEffect(() => {
+    if (router.query.tab === "schedule") setTab("schedule");
+  }, [router.query.tab]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
@@ -471,6 +482,7 @@ export default function ClassesPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <PageHeader title={t("classes")} subtitle={t("manageClasses")} />
 
+        {tab === "list" && (
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           <Dialog open={isBulkAddOpen} onOpenChange={setIsBulkAddOpen}>
             <DialogTrigger asChild>
@@ -702,8 +714,22 @@ export default function ClassesPage() {
             </DialogContent>
           </Dialog>
         </div>
+        )}
       </div>
 
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "list" | "schedule")}>
+        <TabsList>
+          <TabsTrigger value="list" className="gap-1.5">
+            <BookOpen className="h-3.5 w-3.5" />
+            {t("classesListTab")}
+          </TabsTrigger>
+          <TabsTrigger value="schedule" className="gap-1.5">
+            <Calendar className="h-3.5 w-3.5" />
+            {t("timetable")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="list">
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4">
@@ -1007,6 +1033,12 @@ export default function ClassesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </TabsContent>
+
+        <TabsContent value="schedule">
+          <SchedulePanel showHeader={false} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

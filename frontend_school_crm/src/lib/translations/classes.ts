@@ -124,4 +124,8 @@ export const classTranslations: Partial<Translation> = {
   noPermissionAssignStudents: { "uz-cyrl": "Ўқувчиларни синфга бириктириш ҳуқуқи йўқ", "uz-latn": "O'quvchilarni sinfga biriktirish huquqi yo'q", en: "No permission to assign students" },
   noPermissionDeleteClasses: { "uz-cyrl": "Синфларни ўчириш ҳуқуқи йўқ", "uz-latn": "Sinflarni o'chirish huquqi yo'q", en: "No permission to delete classes" },
   noPermissionRemoveStudents: { "uz-cyrl": "Ўқувчиларни синфдан чиқариш ҳуқуқи йўқ", "uz-latn": "O'quvchilarni sinfdan chiqarish huquqi yo'q", en: "No permission to remove students" },
+
+  // Tab label on the merged Classes page (list + the former standalone
+  // /schedule page, now a "timetable" tab here for admin/manager).
+  classesListTab: { "uz-cyrl": "Рўйхат", "uz-latn": "Ro'yxat", en: "List" },
 };
