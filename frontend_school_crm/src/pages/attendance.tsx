@@ -301,7 +301,8 @@ export default function AttendancePage() {
           </nav>
         </div>
 
-        {/* ── Controls: class + date ── */}
+        {/* ── Controls: class + date (class attendance only, not the Face ID tab) ── */}
+        {activeTab !== "faceid" && (
         <div className="flex flex-wrap gap-3 items-center">
           <div className="w-52">
             {loadingClasses ? (
@@ -346,6 +347,7 @@ export default function AttendancePage() {
             </button>
           </div>
         </div>
+        )}
 
         {/* ══════════ TAB: Mark ══════════ */}
         {activeTab === "mark" && (
