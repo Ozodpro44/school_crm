@@ -272,6 +272,14 @@ func main() {
 	}
 	messagingService := service.NewMessagingService(database, telegramBotToken)
 
+	// Hikvision face-recognition terminals (teacher attendance). Storage is
+	// optional — without a configured bucket, face photos only live on the
+	// device. The poller covers terminals that can't push events to us; it
+	// idles when no active devices exist.
+	hikvisionStorage := service.NewStorageServiceFromEnv()
+	hikvisionService := service.NewHikvisionService(database, hikvisionStorage)
+	go hikvisionService.RunEventPoller(context.Background(), 20*time.Second)
+
 	// Click.uz integration
 	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
 	clickServiceID := os.Getenv("CLICK_SERVICE_ID")
@@ -405,11 +413,23 @@ func main() {
 	// Mass messaging
 	handlers.RegisterMessagingRoutes(protected, messagingService, userService)
 
+	// Hikvision device/employee management + attendance reports (admin-only,
+	// applied inside RegisterHikvisionRoutes)
+	handlers.RegisterHikvisionRoutes(protected, hikvisionService, userService)
+
 	// ── Payment webhooks (no auth — called by external payment providers) ─────
 	webhookGroup := router.Group("/api/v1")
 	webhookGroup.Use(rateLimiter.ByIP(100, time.Minute))
 	handlers.RegisterClickUzWebhooks(webhookGroup, clickUzService)
 	handlers.RegisterTelegramPaymentWebhooks(webhookGroup, telegramPaymentService)
+
+	// Hikvision device webhooks — public, authenticated by the per-device
+	// token in the URL. Kept under /api (not /api/v1) because that's the path
+	// ConfigurePush writes into the terminal and already-enrolled devices use.
+	hikvisionWebhookGroup := router.Group("/api")
+	hikvisionWebhookGroup.Use(rateLimiter.ByIP(300, time.Minute))
+	handlers.RegisterHikvisionWebhookRoutes(hikvisionWebhookGroup, hikvisionService)
+	handlers.RegisterHikCentralWebhookRoutes(hikvisionWebhookGroup, hikvisionService)
 
 	// ── Legacy /api/* aliases ─────────────────────────────────────────────────
 	router.POST("/api/dev/auth/login", authRateLimit, handlers.DeveloperLogin(developerService, cfg.JWTSecret))

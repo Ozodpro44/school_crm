@@ -29,9 +29,11 @@ import {
   BarChart3,
   Bell,
   Lock,
+  Fingerprint,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
+import { HikvisionPanel } from "@/components/panels/HikvisionPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -119,7 +121,7 @@ export default function AttendancePage() {
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<"mark" | "summary" | "alerts">("mark");
+  const [activeTab, setActiveTab] = useState<"mark" | "summary" | "alerts" | "faceid">("mark");
 
   const currentUser = useMemo(() => getCurrentUser(), []);
   const canEdit = currentUser?.role === "admin" || currentUser?.role === "branch_admin";
@@ -252,6 +254,11 @@ export default function AttendancePage() {
     { id: "summary" as const, label: t("attendanceSummary"), icon: BarChart3 },
     { id: "alerts"  as const, label: t("absenceAlert"),      icon: Bell,
       badge: absenceAlerts.length > 0 ? absenceAlerts.length : undefined },
+    // Staff Face ID terminals (Hikvision). Admin-only: the backend enforces
+    // the same restriction on every /hikvision endpoint.
+    ...(currentUser?.role === "admin"
+      ? [{ id: "faceid" as const, label: t("faceIdTab"), icon: Fingerprint, badge: undefined }]
+      : []),
   ];
 
   return (
@@ -613,6 +620,9 @@ export default function AttendancePage() {
             )}
           </div>
         )}
+
+        {/* ══════════ TAB: Face ID (staff terminals) ══════════ */}
+        {activeTab === "faceid" && currentUser?.role === "admin" && <HikvisionPanel />}
       </div>
   );
 }
