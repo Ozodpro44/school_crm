@@ -86,7 +86,8 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { getCurrentUser, logout, hasPermission } from "@/lib/auth";
-import { getStoredBranchId } from "@/lib/storage";
+import { getStoredBranchId, getAuthToken } from "@/lib/storage";
+import { isTokenExpired } from "@/lib/jwt";
 import { User } from "@/types";
 import { getTranslation } from "@/lib/translations";
 import { useLanguage, useSetLanguage } from "@/hooks/use-language";
@@ -707,6 +708,21 @@ export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" ? localStorage.getItem("sidebarOpen") !== "false" : true
   );
+
+  // Log out when the JWT has expired (UI nicety; backend still enforces expiry)
+  useEffect(() => {
+    const checkExpiry = () => {
+      if (router.pathname === "/login") return;
+      if (isTokenExpired(getAuthToken())) {
+        clearBranches();
+        logout();
+        router.push("/login");
+      }
+    };
+    checkExpiry();
+    const timer = setInterval(checkExpiry, 30000);
+    return () => clearInterval(timer);
+  }, [router.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const currentUser = getCurrentUser();
