@@ -109,6 +109,10 @@ func updateStudent(studentService *service.StudentService, notifService *service
 
 		student, err := studentService.Update(c.Request.Context(), id, updates)
 		if err != nil {
+			if errors.Is(err, service.ErrInvalidUpdate) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

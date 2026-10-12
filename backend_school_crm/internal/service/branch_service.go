@@ -172,34 +172,20 @@ func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]mod
 	return branches, rows.Err()
 }
 
-func (s *BranchService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Branch, error) {
-	updates = utils.ConvertKeysToSnakeCase(updates)
-	
-	// Always update the timestamp fields
+func (s *BranchService) Update(ctx context.Context, id string, updates map[string]interface{}, isAdmin bool) (*models.Branch, error) {
 	now := time.Now().UTC()
-	updates["updated_at"] = now
-
-	query := `UPDATE branches SET `
-	args := []interface{}{}
-	argCount := 1
-
-	for key, value := range updates {
-		if argCount > 1 {
-			query += ", "
-		}
-		query += key + " = $" + strconv.Itoa(argCount)
-		args = append(args, value)
-		argCount++
-	}
-
-	query += " WHERE id = $" + strconv.Itoa(argCount)
-	args = append(args, id)
-
-	_, err := s.db.GetConn().ExecContext(ctx, query, args...)
+	setClause, args, err := buildUpdateSet(updates, branchUpdateRule, isAdmin, map[string]interface{}{"updated_at": now})
 	if err != nil {
 		return nil, err
 	}
+	query := `UPDATE branches SET ` + setClause + " WHERE id = $" + strconv.Itoa(len(args)+1)
+	args = append(args, id)
 
+	if _, err := s.db.GetConn().ExecContext(ctx, query, args...); err != nil {
+		return nil, err
+	}
+
+	updates = utils.ConvertKeysToSnakeCase(updates)
 	// If monthly_payment was updated, also update all students in this branch to match
 	if monthlyPayment, ok := updates["monthly_payment"]; ok {
 		studentQuery := `UPDATE students SET monthly_payment = $1, updated_at = $2 WHERE branch_id = $3`

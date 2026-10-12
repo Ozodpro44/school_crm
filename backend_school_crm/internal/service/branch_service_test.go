@@ -128,7 +128,7 @@ func TestBranchService_Update(t *testing.T) {
 	updated, err := svc.Update(ctx, branch.ID, map[string]interface{}{
 		"name":    "After Update",
 		"address": "New Address",
-	})
+	}, true)
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}

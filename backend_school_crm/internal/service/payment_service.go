@@ -368,20 +368,11 @@ func (s *PaymentService) Update(ctx context.Context, id string, updates map[stri
 		updates["payment_method"] = normalizeStudentPaymentMethod(paymentMethodValue)
 	}
 
-	query := `UPDATE payments SET `
-	args := []interface{}{}
-	argCount := 1
-
-	for key, value := range updates {
-		if argCount > 1 {
-			query += ", "
-		}
-		query += key + " = $" + fmt.Sprintf("%d", argCount)
-		args = append(args, value)
-		argCount++
+	setClause, args, err := buildUpdateSet(updates, paymentUpdateRule, isAdmin, nil)
+	if err != nil {
+		return nil, err
 	}
-
-	query += fmt.Sprintf(" WHERE id = $%d", argCount)
+	query := `UPDATE payments SET ` + setClause + fmt.Sprintf(" WHERE id = $%d", len(args)+1)
 	args = append(args, id)
 
 	_, err = s.db.GetConn().ExecContext(ctx, query, args...)

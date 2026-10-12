@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
-	"github.com/school-crm/backend/internal/utils"
 )
 
 type SalaryService struct {
@@ -126,25 +125,14 @@ func (s *SalaryService) Update(ctx context.Context, id string, updates map[strin
 		}
 	}
 
-	updates = utils.ConvertKeysToSnakeCase(updates)
-
-	query := `UPDATE salaries SET `
-	args := []interface{}{}
-	argCount := 1
-
-	for key, value := range updates {
-		if argCount > 1 {
-			query += ", "
-		}
-		query += key + " = $" + fmt.Sprintf("%d", argCount)
-		args = append(args, value)
-		argCount++
+	setClause, args, err := buildUpdateSet(updates, salaryUpdateRule, isAdmin, nil)
+	if err != nil {
+		return nil, err
 	}
-
-	query += fmt.Sprintf(" WHERE id = $%d", argCount)
+	query := `UPDATE salaries SET ` + setClause + fmt.Sprintf(" WHERE id = $%d", len(args)+1)
 	args = append(args, id)
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, args...)
+	_, err = s.db.GetConn().ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"log"
 	"net/http"
 	"regexp"
@@ -223,6 +224,10 @@ func updateUserPermissions(userService *service.UserService) gin.HandlerFunc {
 		permissionService := service.NewPermissionService(userService.GetDB())
 		permissions, err := permissionService.Update(c.Request.Context(), id, convertedUpdates)
 		if err != nil {
+			if errors.Is(err, service.ErrInvalidUpdate) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

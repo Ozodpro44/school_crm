@@ -12,7 +12,6 @@ import (
 	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
-	"github.com/school-crm/backend/internal/utils"
 )
 
 type StudentService struct {
@@ -174,24 +173,14 @@ func (s *StudentService) GetByBranchID(ctx context.Context, branchID string, pag
 }
 
 func (s *StudentService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Student, error) {
-	updates = utils.ConvertKeysToSnakeCase(updates)
-	query := `UPDATE students SET `
-	args := []interface{}{}
-	argCount := 1
-
-	for key, value := range updates {
-		if argCount > 1 {
-			query += ", "
-		}
-		query += key + " = $" + strconv.Itoa(argCount)
-		args = append(args, value)
-		argCount++
+	setClause, args, err := buildUpdateSet(updates, studentUpdateRule, false, nil)
+	if err != nil {
+		return nil, err
 	}
-
-	query += " WHERE id = $" + strconv.Itoa(argCount)
+	query := `UPDATE students SET ` + setClause + " WHERE id = $" + strconv.Itoa(len(args)+1)
 	args = append(args, id)
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, args...)
+	_, err = s.db.GetConn().ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
