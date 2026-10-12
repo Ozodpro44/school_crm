@@ -53,8 +53,16 @@ func SubscriptionGate(userSvc *service.UserService, subSvc *service.Subscription
 
 		active, err := subSvc.IsUserSubscriptionActive(c.Request.Context(), ownerID)
 		if err != nil {
-			// On DB error, fail open with a warning rather than blocking all users.
-			log.Printf("[SubscriptionGate] Error checking subscription for user %s: %v — allowing request", ownerID, err)
+			// On DB error: fail closed for writes (never let state-changing
+			// requests through unverified), fail open for reads so a transient
+			// outage does not lock everyone out of viewing data.
+			if gateFailsClosed(c.Request.Method) {
+				log.Printf("[SubscriptionGate] Error checking subscription for user %s: %v — rejecting %s request", ownerID, err, c.Request.Method)
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "subscription_check_unavailable"})
+				c.Abort()
+				return
+			}
+			log.Printf("[SubscriptionGate] Error checking subscription for user %s: %v — allowing %s request", ownerID, err, c.Request.Method)
 			c.Next()
 			return
 		}
@@ -70,6 +78,16 @@ func SubscriptionGate(userSvc *service.UserService, subSvc *service.Subscription
 
 		c.Next()
 	}
+}
+
+// gateFailsClosed reports whether a request with this method must be rejected
+// when the subscription check itself errors (every non-read method).
+func gateFailsClosed(method string) bool {
+	switch method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return false
+	}
+	return true
 }
 
 // resolveSchoolOwnerID returns the admin (school owner) user_id for the given
