@@ -1,11 +1,15 @@
 import { useState } from "react";
-import { useNavigate, Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
+import { Eye, EyeOff, Loader2, ShieldAlert, Terminal } from "lucide-react";
 import { toast } from "sonner";
-import { login } from "@/services/api-client";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Field } from "@/components/kit/Field";
+import { LanguageMenu, ThemeMenu } from "@/components/layout/Topbar";
 import { useAuth } from "@/contexts/AuthContext";
-import { Terminal, Eye, EyeOff, Loader2, ShieldAlert } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation } from "@/lib/i18n";
+import { login } from "@/services/api-client";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -21,90 +25,86 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) { toast.error(t("emailPasswordRequired")); return; }
+    if (!email.trim() || !password) {
+      toast.error(t("emailPasswordRequired"));
+      return;
+    }
     setLoading(true);
     try {
-      const res = await login(email, password);
+      const res = await login(email.trim(), password);
       authLogin(res.token, res.user);
       toast.success(`${t("welcomeBack")}${res.user.fullName ? `, ${res.user.fullName}` : ""}!`);
       navigate("/");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("authenticationFailed"));
+      toast.error(err instanceof Error && err.message ? err.message : t("authenticationFailed"));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="relative w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-foreground mb-4">
-            <Terminal className="w-5 h-5 text-background" />
-          </div>
-          <h1 className="text-xl font-semibold text-foreground tracking-tight">{t("developerPortal")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("internalTools")}</p>
-        </div>
-
-        <div className="bg-card border border-border rounded-xl p-6">
-          <div className="flex items-start gap-2.5 p-3 rounded-lg bg-status-warning/8 border border-status-warning/20 mb-5">
-            <ShieldAlert className="w-4 h-4 text-status-warning flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] text-status-warning/90 leading-relaxed">
-              {t("restrictedAccessNotice")}
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <div>
-              <label className="text-xs text-muted-foreground font-medium block mb-1.5">{t("email")}</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="dev@wonderkids.uz"
-                autoComplete="email"
-                className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground font-medium block mb-1.5">{t("password")}</label>
-              <div className="relative">
-                <input
-                  type={showPass ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  className="w-full bg-input border border-border rounded-md px-3 py-2 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPass((s) => !s)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading || !email || !password}
-              className="w-full mt-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-primary-foreground rounded-md py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> {t("authenticating")}</>
-              ) : (
-                t("signIn")
-              )}
-            </button>
-          </form>
-        </div>
-
-        <p className="text-center text-xs text-muted-foreground/50 mt-4">
-          dev portal v2 · {new Date().getFullYear()}
-        </p>
+    <div className="flex min-h-screen flex-col bg-background">
+      <div className="flex justify-end gap-1 p-4">
+        <ThemeMenu />
+        <LanguageMenu />
       </div>
+
+      <main className="flex flex-1 items-center justify-center px-4 pb-16">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 text-center">
+            <span className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-foreground text-background">
+              <Terminal className="h-5 w-5" />
+            </span>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">{t("developerPortal")}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{t("internalTools")}</p>
+          </div>
+
+          <div className="rounded-xl border bg-card p-6">
+            <div className="mb-5 flex items-start gap-2.5 rounded-lg border border-status-warning/30 bg-status-warning/10 p-3">
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-status-warning" />
+              <p className="text-xs leading-relaxed text-status-warning">{t("restrictedAccessNotice")}</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+              <Field label={t("email")} htmlFor="login-email">
+                <Input
+                  id="login-email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="dev@wonderkids.uz"
+                  autoComplete="email"
+                  autoFocus
+                />
+              </Field>
+              <Field label={t("password")} htmlFor="login-password">
+                <div className="relative">
+                  <Input
+                    id="login-password"
+                    type={showPass ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass((s) => !s)}
+                    aria-label={showPass ? "Hide password" : "Show password"}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </Field>
+              <Button type="submit" className="w-full gap-2" disabled={loading || !email || !password}>
+                {loading ? (<><Loader2 className="h-4 w-4 animate-spin" />{t("authenticating")}</>) : t("signIn")}
+              </Button>
+            </form>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

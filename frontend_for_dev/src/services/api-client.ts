@@ -119,12 +119,24 @@ export interface HealthStatus {
 
 export async function getHealth(): Promise<HealthStatus> {
   const rootUrl = BASE_URL.replace(/\/api\/?$/, "");
+  const controller = new AbortController();
+  // A hung health probe must read as "unreachable", not spin forever.
+  const tid = setTimeout(() => controller.abort(), 8_000);
   const start = Date.now();
-  const res = await fetch(`${rootUrl}/health`);
-  const responseTime = Date.now() - start;
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  return { ...data, responseTime };
+  try {
+    const res = await fetch(`${rootUrl}/health`, { signal: controller.signal });
+    const responseTime = Date.now() - start;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return { ...data, responseTime };
+  } catch (e) {
+    if (e instanceof TypeError || (e instanceof DOMException && e.name === "AbortError")) {
+      throw new Error("Network error: cannot reach server");
+    }
+    throw e;
+  } finally {
+    clearTimeout(tid);
+  }
 }
 
 // ── Logs ───────────────────────────────────────────────────────────────────────
@@ -362,7 +374,9 @@ export interface CRMBranch {
   address?: string;
   phone?: string;
   monthlyPayment?: number;
-  adminId?: string;
+  /** Branches are created in UZS today; always format with this instead of assuming USD. */
+  currency?: string;
+  adminId?: string | null;
   createdAt?: string;
 }
 

@@ -1,67 +1,127 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Developer console — design tokens.
+ *
+ * One neutral ramp, one accent (emerald, reserved for the primary action and
+ * focus), and four status hues that only ever appear on status-bearing
+ * elements. Both themes are first-class: :root is light, .dark overrides.
+ */
 @layer base {
   :root {
-    --background: 240 10% 4%;            /* #09090B */
-    --foreground: 240 5% 93%;
+    --background: 240 5% 97%;
+    --foreground: 240 10% 9%;
 
-    --card: 240 6% 7%;                   /* #111113 */
-    --card-foreground: 240 5% 93%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 9%;
 
-    --popover: 240 6% 9%;
-    --popover-foreground: 240 5% 93%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 9%;
 
-    /* Emerald stays as the portal's identity, but it is reserved for the primary
-       action and focus rings — navigation and status no longer lean on it. */
-    --primary: 152 60% 46%;
-    --primary-foreground: 240 10% 5%;
+    --primary: 162 72% 29%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 5% 12%;
-    --secondary-foreground: 240 5% 82%;
+    --secondary: 240 5% 94%;
+    --secondary-foreground: 240 8% 18%;
 
-    --muted: 240 5% 11%;
-    --muted-foreground: 240 5% 60%;      /* #8F8F98 — readable on card */
+    --muted: 240 5% 95%;
+    --muted-foreground: 240 4% 40%;
 
-    --accent: 240 5% 13%;
-    --accent-foreground: 240 5% 93%;
+    --accent: 240 5% 93%;
+    --accent-foreground: 240 10% 9%;
 
-    --destructive: 0 70% 52%;
+    --destructive: 0 72% 46%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 240 4% 15%;                /* #262628 */
-    --input: 240 4% 17%;
-    --ring: 152 60% 46%;
+    --border: 240 6% 89%;
+    --input: 240 6% 85%;
+    --ring: 162 72% 29%;
 
-    --radius: 0.5rem;
+    --radius: 0.625rem;
 
-    --status-healthy: 152 55% 45%;
-    --status-warning: 38 90% 55%;
-    --status-critical: 0 72% 58%;
-    --status-info: 212 85% 62%;
+    --status-healthy: 152 62% 30%;
+    --status-warning: 32 92% 38%;
+    --status-critical: 0 72% 46%;
+    --status-info: 214 82% 44%;
 
-    --chart-1: 152 55% 48%;
-    --chart-2: 212 85% 62%;
-    --chart-3: 38 90% 55%;
-    --chart-4: 270 60% 66%;
-    --chart-5: 0 72% 58%;
+    --chart-1: 162 72% 32%;
+    --chart-2: 214 82% 50%;
+    --chart-3: 32 92% 46%;
+    --chart-4: 268 60% 55%;
+    --chart-5: 0 72% 50%;
+    --chart-grid: 240 6% 90%;
 
-    --sidebar-background: 240 10% 4%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 240 4% 38%;
+    --sidebar-primary: 162 72% 29%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 94%;
+    --sidebar-accent-foreground: 240 10% 9%;
+    --sidebar-border: 240 6% 90%;
+    --sidebar-ring: 162 72% 29%;
+  }
+
+  .dark {
+    --background: 240 8% 5%;
+    --foreground: 240 5% 94%;
+
+    --card: 240 6% 8%;
+    --card-foreground: 240 5% 94%;
+
+    --popover: 240 6% 10%;
+    --popover-foreground: 240 5% 94%;
+
+    --primary: 160 64% 46%;
+    --primary-foreground: 240 10% 5%;
+
+    --secondary: 240 5% 13%;
+    --secondary-foreground: 240 5% 85%;
+
+    --muted: 240 5% 12%;
+    --muted-foreground: 240 5% 62%;
+
+    --accent: 240 5% 14%;
+    --accent-foreground: 240 5% 96%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 4% 16%;
+    --input: 240 4% 20%;
+    --ring: 160 64% 46%;
+
+    --status-healthy: 152 55% 48%;
+    --status-warning: 38 90% 56%;
+    --status-critical: 0 72% 62%;
+    --status-info: 212 85% 66%;
+
+    --chart-1: 160 64% 50%;
+    --chart-2: 212 85% 66%;
+    --chart-3: 38 90% 56%;
+    --chart-4: 270 60% 70%;
+    --chart-5: 0 72% 62%;
+    --chart-grid: 240 4% 16%;
+
+    --sidebar-background: 240 8% 4.5%;
     --sidebar-foreground: 240 5% 62%;
-    --sidebar-primary: 152 60% 46%;
+    --sidebar-primary: 160 64% 46%;
     --sidebar-primary-foreground: 240 10% 5%;
-    --sidebar-accent: 240 5% 11%;
-    --sidebar-accent-foreground: 240 5% 94%;
-    --sidebar-border: 240 4% 12%;
-    --sidebar-ring: 152 60% 46%;
+    --sidebar-accent: 240 5% 12%;
+    --sidebar-accent-foreground: 240 5% 96%;
+    --sidebar-border: 240 4% 13%;
+    --sidebar-ring: 160 64% 46%;
   }
 }
 
 @layer base {
   * { @apply border-border; }
+
+  html { color-scheme: light; }
+  html.dark { color-scheme: dark; }
 
   body {
     @apply bg-background text-foreground antialiased;
@@ -69,56 +129,27 @@
     font-feature-settings: "cv11", "ss03";
     letter-spacing: -0.006em;
   }
+
   h1, h2, h3 { text-wrap: balance; }
 
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
-  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.4); }
-}
+  ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.45); }
 
-@layer components {
-  .glass-card {
-    @apply bg-card border border-border;
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
-
-  .stat-card {
-    @apply bg-card border border-border rounded-lg p-5 flex flex-col gap-3 transition-colors hover:border-muted-foreground/30;
-  }
-
-  .nav-item {
-    @apply flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150
-           text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/60;
-  }
-
-  .nav-item-active {
-    @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
-  }
-
-  /* Status badges */
-  .badge-active    { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-status-healthy/10 text-status-healthy border border-status-healthy/20; }
-  .badge-trial     { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-status-info/10 text-status-info border border-status-info/20; }
-  .badge-expired   { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-status-critical/10 text-status-critical border border-status-critical/20; }
-  .badge-pending   { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-status-warning/10 text-status-warning border border-status-warning/20; }
-  .badge-cancelled { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border; }
-  .badge-paused    { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-400 border border-violet-500/20; }
-
-  /* Log line styles */
-  .log-debug { @apply border-l-2 border-border/60; }
-  .log-info  { @apply border-l-2 border-status-info/50; }
-  .log-warn  { @apply border-l-2 border-status-warning/60; }
-  .log-error { @apply border-l-2 border-status-critical/70; }
-
-  /* Status dots */
-  .pulse-dot       { @apply w-2 h-2 rounded-full; background: hsl(var(--status-healthy)); }
-  .pulse-dot-warn  { @apply w-2 h-2 rounded-full; background: hsl(var(--status-warning)); }
-  .pulse-dot-error { @apply w-2 h-2 rounded-full; background: hsl(var(--status-critical)); }
 }
 
 @layer utilities {
-  .text-balance { text-wrap: balance; }
-  .font-mono { font-family: 'JetBrains Mono', monospace; }
-  .animate-fade-in { animation: fade-in 0.25s ease-out both; }
+  .font-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .animate-fade-in { animation: fade-in 0.2s ease-out both; }
 
   .scrollbar-thin {
     scrollbar-width: thin;
@@ -126,12 +157,12 @@
   }
 }
 
-@keyframes pulse-glow {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes fade-in {
-  from { opacity: 0; transform: translateY(5px); }
-  to   { opacity: 1; transform: translateY(0); }
+@keyframes live-ping {
+  0%   { transform: scale(1);   opacity: 0.55; }
+  80%, 100% { transform: scale(2.4); opacity: 0; }
 }
