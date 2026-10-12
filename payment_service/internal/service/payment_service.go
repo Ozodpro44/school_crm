@@ -107,7 +107,6 @@ type BulkEntry struct {
 // ── Service ───────────────────────────────────────────────────────────────────
 
 var ErrNotFound = errors.New("payment not found")
-var ErrMonthLocked = errors.New("financial_month_locked: cannot modify records from a past or closed financial month")
 var ErrInvalidInput = errors.New("invalid input")
 var ErrAlreadyPaid = errors.New("student already has a paid payment")
 var ErrStudentNotInBranch = errors.New("student not found in this branch")

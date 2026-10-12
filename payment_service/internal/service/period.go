@@ -17,6 +17,10 @@ import (
 //   - a non-admin may only write the branch's current financial month.
 //   - an admin may touch past periods (but never future ones).
 
+// ErrMonthLocked is returned when the period is closed or in the past and the
+// caller is not an admin.
+var ErrMonthLocked = errors.New("financial_month_locked: cannot modify records from a past or closed financial month")
+
 // ErrInvalidPeriod is returned for an unparsable month or out-of-range year.
 var ErrInvalidPeriod = errors.New("invalid month/year")
 
