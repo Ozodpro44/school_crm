@@ -28,6 +28,57 @@ function getTurboRules() {
   };
 }
 
+const isProd = process.env.NODE_ENV === "production";
+
+const DEFAULT_API_URL = "http://localhost:8080/api/v1";
+
+function apiOrigin() {
+  try {
+    return new URL(process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL).origin;
+  } catch {
+    return new URL(DEFAULT_API_URL).origin;
+  }
+}
+
+// Single source of truth for security headers (do not duplicate in vercel.json
+// or middleware). 'unsafe-inline' scripts remain because Next.js emits inline
+// bootstrap scripts; 'unsafe-eval' is only needed by the dev server/HMR.
+function buildCsp() {
+  const connect = ["'self'", apiOrigin(), "https://*.sentry.io"];
+  if (!isProd) connect.push("http://localhost:*", "ws://localhost:*");
+  const script = ["'self'", "'unsafe-inline'"];
+  if (!isProd) script.push("'unsafe-eval'");
+  return [
+    "default-src 'self'",
+    `script-src ${script.join(" ")}`,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    `connect-src ${connect.join(" ")}`,
+    "img-src 'self' data: blob:",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "frame-src 'self' blob:",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
+
+const securityHeaders = [
+  { key: "Content-Security-Policy", value: buildCsp() },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  },
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains; preload",
+  },
+];
+
 const nextConfig = {
   reactStrictMode: true,
   turbopack: {
@@ -37,26 +88,17 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**",
+        hostname: new URL(apiOrigin()).hostname,
       },
     ],
   },
   allowedDevOrigins: ["*.daytona.work", "*.softgen.dev"],
   output: "standalone",
   async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.softgen.ai https://cdn.softgen.dev; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; connect-src 'self' https://incredible-love-production-0008.up.railway.app https://*.railway.app http://localhost:* https://*.sentry.io; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; worker-src blob:;",
-          },
-        ],
-      },
-    ];
+    return [{ source: "/(.*)", headers: securityHeaders }];
   },
 };
+
 
 // Wrap with Sentry only when DSN is set — no-op otherwise.
 const hasSentryDSN = !!(
