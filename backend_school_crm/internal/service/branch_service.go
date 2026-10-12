@@ -45,7 +45,7 @@ func (s *BranchService) Create(ctx context.Context, req *CreateBranchRequest) (*
 
 	now := time.Now().UTC()
 	branchID := uuid.New().String()
-	
+
 	branch := &models.Branch{
 		ID:             branchID,
 		Name:           req.Name,
@@ -61,28 +61,33 @@ func (s *BranchService) Create(ctx context.Context, req *CreateBranchRequest) (*
 	query := `INSERT INTO branches (id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at)
 	         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, branch.ID, branch.Name, branch.Address, branch.Phone, branch.MonthlyPayment, branch.Currency, branch.AdminID, branch.CreatedAt, branch.UpdatedAt)
+	// The branch and its initial financial month are created atomically: a
+	// branch without a current month breaks every month-gated write.
+	tx, err := s.db.BeginTx(ctx)
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback()
 
-	// Create initial financial month for the branch
-	financialMonthService := NewFinancialMonthService(s.db)
-	financialMonth, err := financialMonthService.Create(ctx, branchID, now.Year(), int(now.Month()))
-	if err != nil {
-		// Log error but don't fail the branch creation
-		fmt.Printf("Warning: failed to create initial financial month for branch %s: %v\n", branchID, err)
-	} else {
-		// Update branch with current_financial_month_id
-		_, err = s.db.GetConn().ExecContext(ctx, 
-			"UPDATE branches SET current_financial_month_id = $1 WHERE id = $2",
-			financialMonth.ID, branchID)
-		if err != nil {
-			fmt.Printf("Warning: failed to update branch current_financial_month_id: %v\n", err)
-		}
-		branch.CurrentFinancialMonthID = &financialMonth.ID
-		branch.CurrentFinancialMonth = financialMonth
+	if _, err := tx.ExecContext(ctx, query, branch.ID, branch.Name, branch.Address, branch.Phone, branch.MonthlyPayment, branch.Currency, branch.AdminID, branch.CreatedAt, branch.UpdatedAt); err != nil {
+		return nil, err
 	}
+
+	financialMonthService := NewFinancialMonthService(s.db)
+	financialMonth, err := financialMonthService.CreateWith(ctx, tx, branchID, now.Year(), int(now.Month()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create initial financial month: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE branches SET current_financial_month_id = $1 WHERE id = $2",
+		financialMonth.ID, branchID); err != nil {
+		return nil, fmt.Errorf("failed to set current financial month: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	branch.CurrentFinancialMonthID = &financialMonth.ID
+	branch.CurrentFinancialMonth = financialMonth
 
 	return branch, nil
 }
@@ -174,7 +179,7 @@ func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]mod
 
 func (s *BranchService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Branch, error) {
 	updates = utils.ConvertKeysToSnakeCase(updates)
-	
+
 	// Always update the timestamp fields
 	now := time.Now().UTC()
 	updates["updated_at"] = now
@@ -195,18 +200,38 @@ func (s *BranchService) Update(ctx context.Context, id string, updates map[strin
 	query += " WHERE id = $" + strconv.Itoa(argCount)
 	args = append(args, id)
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, args...)
+	// Branch update and the student fee cascade are one transaction.
+	tx, err := s.db.BeginTx(ctx)
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback()
 
-	// If monthly_payment was updated, also update all students in this branch to match
+	// Lock the row and capture the OLD default before it is overwritten.
+	var oldMonthly float64
+	if err := tx.QueryRowContext(ctx, `SELECT monthly_payment FROM branches WHERE id = $1 FOR UPDATE`, id).Scan(&oldMonthly); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("branch not found")
+		}
+		return nil, err
+	}
+
+	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+		return nil, err
+	}
+
+	// If the default monthly_payment changed, move only the students who are
+	// still on the OLD default; individually negotiated fees are left alone.
 	if monthlyPayment, ok := updates["monthly_payment"]; ok {
-		studentQuery := `UPDATE students SET monthly_payment = $1, updated_at = $2 WHERE branch_id = $3`
-		_, err := s.db.GetConn().ExecContext(ctx, studentQuery, monthlyPayment, now, id)
-		if err != nil {
+		studentQuery := `UPDATE students SET monthly_payment = $1, updated_at = $2
+		                 WHERE branch_id = $3 AND monthly_payment = $4`
+		if _, err := tx.ExecContext(ctx, studentQuery, monthlyPayment, now, id, oldMonthly); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
 	}
 
 	return s.GetByID(ctx, id)
