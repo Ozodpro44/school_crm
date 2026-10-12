@@ -80,3 +80,19 @@ export function formatDateTimeInTashkent(date: string | Date): string {
   const timeStr = formatTimeInTashkent(date);
   return `${dateStr}, ${timeStr}`;
 }
+
+/**
+ * Returns the browser-local calendar date as YYYY-MM-DD.
+ * Unlike `toISOString().slice(0, 10)` this does not shift to the UTC day.
+ */
+export function localDateString(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Parses a YYYY-MM-DD string as a local-midnight Date (not UTC). */
+export function parseLocalDate(s: string): Date {
+  return new Date(`${s}T00:00:00`);
+}

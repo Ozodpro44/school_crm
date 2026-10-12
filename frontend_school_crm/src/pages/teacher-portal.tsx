@@ -5,6 +5,7 @@ import { getTranslation } from "@/lib/translations";
 import { useNotify } from "@/hooks/use-notify";
 import { getCurrentUser } from "@/lib/auth";
 import { setStoredUser } from "@/lib/storage";
+import { localDateString } from "@/lib/timezone";
 import {
   apiRequest,
   changePassword,
@@ -87,9 +88,17 @@ export default function TeacherPortalPage() {
   const notify = useNotify();
 
   // Auto-select first class for attendance when data loads
-  if (data?.classes?.length && !attendanceClassId) {
-    setAttendanceClassId(data.classes[0]!.id);
-  }
+  useEffect(() => {
+    if (data?.classes?.length && !attendanceClassId) {
+      setAttendanceClassId(data.classes[0]!.id);
+    }
+  }, [data, attendanceClassId]);
+
+  // Marks belong to one class; never carry them over to another.
+  useEffect(() => {
+    setAttendanceMap({});
+    setAttendanceNote({});
+  }, [attendanceClassId]);
 
   const filteredStudents = (data?.students ?? []).filter((s) => {
     if (classFilter !== "all" && s.classId !== classFilter) return false;
@@ -111,11 +120,17 @@ export default function TeacherPortalPage() {
     const branchId = data?.teacher?.branchId;
     if (!branchId) return;
 
-    const today = new Date().toISOString().slice(0, 10);
+    // Untouched rows must not silently become "absent": require a choice.
+    if (studentsForAttendance.some((s) => !attendanceMap[s.id])) {
+      notify.error(t("error"), t("markAllStudents"));
+      return;
+    }
+
+    const today = localDateString();
     const records = studentsForAttendance.map((s) => ({
       studentId: s.id,
-      status: attendanceMap[s.id] || "absent",
-      note: attendanceNote[s.id] || undefined,
+      status: attendanceMap[s.id]!,
+      note: attendanceNote[s.id]?.trim() || undefined,
     }));
 
     attendanceMutation.mutate(
@@ -336,8 +351,8 @@ export default function TeacherPortalPage() {
           {data.classes.length === 0 ? (
             <EmptyState
               icon={BookOpen}
-              title="No classes assigned"
-              description="You haven't been assigned to any classes yet. Contact your branch admin."
+              title={t("noClassesAssigned")}
+              description={t("noClassesAssignedDesc")}
             />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -544,6 +559,13 @@ export default function TeacherPortalPage() {
                     <div className="font-medium text-slate-900 dark:text-slate-100">
                       {toTitleCase(s.fullName)}
                     </div>
+                    <Input
+                      value={attendanceNote[s.id] ?? ""}
+                      onChange={(e) => setAttendanceNote((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                      placeholder={t("attendanceNotePlaceholder")}
+                      maxLength={200}
+                      className="h-8 mx-3 flex-1 min-w-0 max-w-[200px]"
+                    />
                     <div className="flex gap-2">
                       <Button
                         size="sm"

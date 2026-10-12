@@ -1752,6 +1752,16 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Parollar mos kelmayapti",
     en: "Passwords do not match",
   },
+  markAllStudents: {
+    "uz-cyrl": "Сақлашдан олдин барча ўқувчиларни белгиланг",
+    "uz-latn": "Saqlashdan oldin barcha o'quvchilarni belgilang",
+    en: "Mark every student before saving",
+  },
+  attendanceNotePlaceholder: {
+    "uz-cyrl": "Изоҳ (ихтиёрий)",
+    "uz-latn": "Izoh (ixtiyoriy)",
+    en: "Note (optional)",
+  },
   newPasswordMin8: {
     "uz-cyrl": "Янги парол камида 8 та белгидан иборат бўлиши керак",
     "uz-latn": "Yangi parol kamida 8 ta belgidan iborat bo'lishi kerak",

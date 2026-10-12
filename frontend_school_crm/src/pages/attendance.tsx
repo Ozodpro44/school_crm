@@ -32,6 +32,7 @@ import {
   Fingerprint,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { localDateString, parseLocalDate } from "@/lib/timezone";
 import { EmptyState } from "@/components/EmptyState";
 import { HikvisionPanel } from "@/components/panels/HikvisionPanel";
 
@@ -98,7 +99,7 @@ async function fetchAbsenceAlerts(branchId: string): Promise<AbsenceAlert[]> {
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
 function toDateString(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return localDateString(d);
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -135,6 +136,15 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (!branchId) return;
+    // Branch switched: drop everything tied to the previous branch's class.
+    setSelectedClassId("");
+    setStudents([]);
+    setAttendance(new Map());
+    setSavedAttendance(new Map());
+    setHasSavedData(false);
+    setMonthSummary([]);
+    setAbsenceAlerts([]);
+    attendanceRequestIdRef.current++;
     setLoadingClasses(true);
     listClasses(branchId)
       .then(setClasses)
@@ -159,6 +169,9 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (!selectedClassId || !selectedDate) return;
+    // Clear the previous class/date's marks so stale state is never saved.
+    setAttendance(new Map());
+    setSavedAttendance(new Map());
     setLoadingAttendance(true);
     setHasSavedData(false);
     const myId = ++attendanceRequestIdRef.current;
@@ -183,7 +196,7 @@ export default function AttendancePage() {
 
   const loadSummary = useCallback(() => {
     if (!selectedClassId) return;
-    const d = new Date(selectedDate);
+    const d = parseLocalDate(selectedDate);
     fetchMonthSummary(selectedClassId, d.getFullYear(), d.getMonth() + 1)
       .then(setMonthSummary)
       .catch(() => setMonthSummary([]));
@@ -235,7 +248,7 @@ export default function AttendancePage() {
   };
 
   const shiftDate = (days: number) => {
-    const d = new Date(selectedDate);
+    const d = parseLocalDate(selectedDate);
     d.setDate(d.getDate() + days);
     setSelectedDate(toDateString(d));
   };
