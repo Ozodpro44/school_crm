@@ -19,7 +19,7 @@ func RegisterTeacherPortalRoutes(
 ) {
 	g := router.Group("/teacher-portal")
 	g.GET("/me", getTeacherPortal(portalSvc))
-	g.PUT("/me/link/:teacherId", middleware.PermissionChecker(userService, "canEditTeachers"), linkTeacherUser(portalSvc))
+	g.PUT("/me/link/:teacherId", middleware.PermissionChecker(userService, "canEditTeachers"), middleware.RequireResourceBranchAccessParam(userService, "teachers", "teacherId"), linkTeacherUser(portalSvc, userService))
 }
 
 func getTeacherPortal(svc *service.TeacherPortalService) gin.HandlerFunc {
@@ -39,7 +39,7 @@ func getTeacherPortal(svc *service.TeacherPortalService) gin.HandlerFunc {
 	}
 }
 
-func linkTeacherUser(svc *service.TeacherPortalService) gin.HandlerFunc {
+func linkTeacherUser(svc *service.TeacherPortalService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		teacherID := c.Param("teacherId")
 
@@ -48,6 +48,21 @@ func linkTeacherUser(svc *service.TeacherPortalService) gin.HandlerFunc {
 		}
 		if err := c.ShouldBindJSON(&body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// The user being linked must belong to the teacher's branch too —
+		// otherwise a teacher record could be handed to an outsider's account.
+		teacherBranch, _, err := userService.ResourceBranchID(c.Request.Context(), "teachers", teacherID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying branch access"})
+			return
+		}
+		if ok, err := userService.BelongsToBranch(c.Request.Context(), body.UserID, teacherBranch); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying branch access"})
+			return
+		} else if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "user does not belong to the teacher's branch"})
 			return
 		}
 

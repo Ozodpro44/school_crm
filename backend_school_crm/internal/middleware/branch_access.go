@@ -159,6 +159,12 @@ func RequireBranchIDQueryAccess(userSvc *service.UserService) gin.HandlerFunc {
 // Missing rows and rows of foreign branches both yield 404, so existence of
 // other tenants' ids is not revealed.
 func RequireResourceBranchAccess(userSvc *service.UserService, table string) gin.HandlerFunc {
+	return RequireResourceBranchAccessParam(userSvc, table, "id")
+}
+
+// RequireResourceBranchAccessParam is RequireResourceBranchAccess for routes
+// whose path parameter is not called "id" (e.g. /me/link/:teacherId).
+func RequireResourceBranchAccessParam(userSvc *service.UserService, table, param string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := GetUserID(c)
 		if err != nil {
@@ -167,9 +173,9 @@ func RequireResourceBranchAccess(userSvc *service.UserService, table string) gin
 			return
 		}
 
-		branchID, found, err := userSvc.ResourceBranchID(c.Request.Context(), table, c.Param("id"))
+		branchID, found, err := userSvc.ResourceBranchID(c.Request.Context(), table, c.Param(param))
 		if err != nil {
-			log.Printf("[RequireResourceBranchAccess] DB error table=%s id=%s: %v", table, c.Param("id"), err)
+			log.Printf("[RequireResourceBranchAccess] DB error table=%s id=%s: %v", table, c.Param(param), err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying branch access"})
 			c.Abort()
 			return
@@ -188,11 +194,38 @@ func RequireResourceBranchAccess(userSvc *service.UserService, table string) gin
 			return
 		}
 		if !ok {
-			log.Printf("[RequireResourceBranchAccess] BOLA attempt blocked: user=%s tried to access %s/%s of branch=%s", userID, table, c.Param("id"), branchID)
+			log.Printf("[RequireResourceBranchAccess] BOLA attempt blocked: user=%s tried to access %s/%s of branch=%s", userID, table, c.Param(param), branchID)
 			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 			c.Abort()
 			return
 		}
 		c.Next()
 	}
+}
+
+// EnsureBranchAccess is for handlers that receive a branchId in the request
+// body (where no middleware can see it). It returns true when the caller
+// belongs to branchID; otherwise it writes the error response and returns false.
+func EnsureBranchAccess(c *gin.Context, userSvc *service.UserService, branchID string) bool {
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return false
+	}
+	userID, err := GetUserID(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return false
+	}
+	ok, err := userSvc.BelongsToBranch(c.Request.Context(), userID, branchID)
+	if err != nil {
+		log.Printf("[EnsureBranchAccess] DB error for user=%s branch=%s: %v", userID, branchID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying branch access"})
+		return false
+	}
+	if !ok {
+		log.Printf("[EnsureBranchAccess] BOLA attempt blocked: user=%s tried to access branch=%s", userID, branchID)
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied: you do not belong to this branch"})
+		return false
+	}
+	return true
 }

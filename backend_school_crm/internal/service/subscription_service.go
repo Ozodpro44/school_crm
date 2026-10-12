@@ -146,6 +146,19 @@ func (s *SubscriptionService) UpdateSubscriptionStatus(ctx context.Context, subs
 }
 
 // CancelSubscription cancels a user's subscription
+// IsSubscriptionOwner reports whether the subscription exists and belongs to userID.
+func (s *SubscriptionService) IsSubscriptionOwner(ctx context.Context, subscriptionID, userID string) (bool, error) {
+	var owner string
+	err := s.database.GetConn().QueryRowContext(ctx, `SELECT user_id FROM subscriptions WHERE id = $1`, subscriptionID).Scan(&owner)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("check subscription owner: %w", err)
+	}
+	return owner == userID, nil
+}
+
 func (s *SubscriptionService) CancelSubscription(ctx context.Context, subscriptionID, userID string) error {
 	query := `
 		UPDATE subscriptions

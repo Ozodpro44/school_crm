@@ -798,6 +798,7 @@ var resourceTables = map[string]bool{
 	"expenses": true,
 	"payments": true,
 	"salaries": true,
+	"teachers": true,
 }
 
 // ResourceBranchID returns the branch_id that owns the row with the given id.

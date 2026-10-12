@@ -256,6 +256,14 @@ func CancelSubscription(subscriptionService *service.SubscriptionService, userSe
 			return
 		}
 
+		if ok, err := subscriptionService.IsSubscriptionOwner(c.Request.Context(), subscriptionID, userID.(string)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying subscription access"})
+			return
+		} else if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
+			return
+		}
+
 		if err := subscriptionService.CancelSubscription(c.Request.Context(), subscriptionID, userID.(string)); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -279,6 +287,16 @@ func GetSubscriptionUsage(subscriptionService *service.SubscriptionService) gin.
 		subscriptionID := c.Param("id")
 		if subscriptionID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "subscription_id is required"})
+			return
+		}
+
+		userID, _ := c.Get("user_id")
+		uid, _ := userID.(string)
+		if ok, err := subscriptionService.IsSubscriptionOwner(c.Request.Context(), subscriptionID, uid); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying subscription access"})
+			return
+		} else if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
 			return
 		}
 
@@ -310,6 +328,16 @@ func GetSubscriptionPayments(subscriptionService *service.SubscriptionService) g
 		subscriptionID := c.Param("id")
 		if subscriptionID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "subscription_id is required"})
+			return
+		}
+
+		userID, _ := c.Get("user_id")
+		uid, _ := userID.(string)
+		if ok, err := subscriptionService.IsSubscriptionOwner(c.Request.Context(), subscriptionID, uid); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying subscription access"})
+			return
+		} else if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
 			return
 		}
 

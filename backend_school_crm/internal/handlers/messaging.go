@@ -18,8 +18,8 @@ import (
 func RegisterMessagingRoutes(router *gin.RouterGroup, svc *service.MessagingService, userService *service.UserService) {
 	g := router.Group("/messages")
 	g.GET("", middleware.PermissionChecker(userService, "canViewStudents"), middleware.RequireBranchIDQueryAccess(userService), listMessages(svc))
-	g.POST("/send", middleware.PermissionChecker(userService, "canEditStudents"), sendMessage(svc))
-	g.PUT("/student/:id/telegram", middleware.PermissionChecker(userService, "canEditStudents"), setStudentTelegram(svc))
+	g.POST("/send", middleware.PermissionChecker(userService, "canEditStudents"), sendMessage(svc, userService))
+	g.PUT("/student/:id/telegram", middleware.PermissionChecker(userService, "canEditStudents"), middleware.RequireResourceBranchAccess(userService, "students"), setStudentTelegram(svc))
 }
 
 func listMessages(svc *service.MessagingService) gin.HandlerFunc {
@@ -47,7 +47,7 @@ func listMessages(svc *service.MessagingService) gin.HandlerFunc {
 	}
 }
 
-func sendMessage(svc *service.MessagingService) gin.HandlerFunc {
+func sendMessage(svc *service.MessagingService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, err := middleware.GetUserID(c)
 		if err != nil {
@@ -57,6 +57,10 @@ func sendMessage(svc *service.MessagingService) gin.HandlerFunc {
 		var req models.SendMessageRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		// branchId comes from the body, so no route middleware can vouch for it.
+		if !middleware.EnsureBranchAccess(c, userService, req.BranchID) {
 			return
 		}
 		result, err := svc.Send(c.Request.Context(), &req, userID)

@@ -1,19 +1,22 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/jobs"
+	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/service"
 )
 
 // RegisterJobRoutes mounts job submission and polling endpoints.
 // POST /api/jobs        — submit a background job
 // GET  /api/jobs/:id   — poll job status / fetch result
-func RegisterJobRoutes(router *gin.RouterGroup, queue *jobs.Queue) {
-	router.POST("/jobs", submitJob(queue))
-	router.GET("/jobs/:id", getJob(queue))
+func RegisterJobRoutes(router *gin.RouterGroup, queue *jobs.Queue, userService *service.UserService) {
+	router.POST("/jobs", submitJob(queue, userService))
+	router.GET("/jobs/:id", getJob(queue, userService))
 }
 
 // submitJobRequest is the unified request body for all job types.
@@ -31,15 +34,14 @@ type submitJobRequest struct {
 	Limit     int          `json:"limit"`
 }
 
-func submitJob(queue *jobs.Queue) gin.HandlerFunc {
+func submitJob(queue *jobs.Queue, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req submitJobRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if req.BranchID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		if !middleware.EnsureBranchAccess(c, userService, req.BranchID) {
 			return
 		}
 
@@ -138,11 +140,35 @@ func submitJob(queue *jobs.Queue) gin.HandlerFunc {
 	}
 }
 
-func getJob(queue *jobs.Queue) gin.HandlerFunc {
+func getJob(queue *jobs.Queue, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id := c.Param("id")
 		job, ok := queue.Get(id)
 		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
+			return
+		}
+
+		// Job results are branch financial data: only members of the branch
+		// named in the job payload may poll them.
+		var owner struct {
+			BranchID string `json:"branchId"`
+		}
+		_ = json.Unmarshal(job.Payload, &owner)
+		callerID, err := middleware.GetUserID(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		allowed := false
+		if owner.BranchID != "" {
+			allowed, err = userService.BelongsToBranch(c.Request.Context(), callerID, owner.BranchID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying branch access"})
+				return
+			}
+		}
+		if !allowed {
 			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
 			return
 		}

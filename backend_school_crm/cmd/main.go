@@ -410,7 +410,7 @@ func main() {
 	handlers.RegisterReportRoutes(protected, reportService, userService, branchService)
 
 	// Async report jobs
-	handlers.RegisterJobRoutes(protected, jobQueue)
+	handlers.RegisterJobRoutes(protected, jobQueue, userService)
 
 	// Teacher portal (read-only teacher self-service view)
 	handlers.RegisterTeacherPortalRoutes(protected, teacherPortalService, userService)
