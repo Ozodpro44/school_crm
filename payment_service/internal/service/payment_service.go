@@ -109,6 +109,7 @@ type BulkEntry struct {
 var ErrNotFound = errors.New("payment not found")
 var ErrInvalidInput = errors.New("invalid input")
 var ErrAlreadyPaid = errors.New("student already has a paid payment")
+var ErrExceedsBalance = errors.New("amount exceeds the remaining balance")
 var ErrStudentNotInBranch = errors.New("student not found in this branch")
 
 type PaymentService struct {
@@ -232,6 +233,9 @@ func (s *PaymentService) create(ctx context.Context, req *CreatePaymentRequest, 
 	if err := s.lockAndCheckNoPaid(ctx, tx, req.StudentID, month, req.Year, req.Status, ""); err != nil {
 		return nil, err
 	}
+	if err := s.checkWithinMonthlyFee(ctx, tx, req.StudentID, month, req.Year, req.Status, req.Amount, ""); err != nil {
+		return nil, err
+	}
 
 	// A payment created directly as "paid" (bulk quick-pay, or a manual
 	// create that skips the paidDate field) needs paid_date set here — no
@@ -304,6 +308,52 @@ func (s *PaymentService) lockAndCheckNoPaid(ctx context.Context, tx *sql.Tx, stu
 	}
 	if count > 0 {
 		return fmt.Errorf("%w for %s/%d", ErrAlreadyPaid, month, year)
+	}
+	return nil
+}
+
+// exceedsMonthlyFee reports whether recording `amount` on top of `otherPaid`
+// would push a student past their monthly fee, and the balance that is left.
+// A fee <= 0 means "no fee configured" and is never exceeded.
+func exceedsMonthlyFee(fee, otherPaid, amount float64) (exceeds bool, remaining float64) {
+	if fee <= 0 {
+		return false, 0
+	}
+	remaining = fee - otherPaid
+	if remaining < 0 {
+		remaining = 0
+	}
+	return otherPaid+amount > fee, remaining
+}
+
+// checkWithinMonthlyFee enforces that live paid+partial payments for a
+// student/month never add up to more than students.monthly_payment. Only
+// paid/partial payments count (unpaid rows are expectations, not money).
+// It must run inside the tx that already holds the per-student advisory lock
+// (lockAndCheckNoPaid), so concurrent writers cannot both slip under the
+// limit. excludeID is the payment being updated ("" for create).
+func (s *PaymentService) checkWithinMonthlyFee(ctx context.Context, tx *sql.Tx, studentID, month string, year int, status string, amount float64, excludeID string) error {
+	if status != "paid" && status != "partial" {
+		return nil
+	}
+	var fee float64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COALESCE(monthly_payment, 0) FROM students WHERE id=$1`, studentID,
+	).Scan(&fee); err != nil {
+		return fmt.Errorf("get student monthly payment: %w", err)
+	}
+	var otherPaid float64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(amount), 0) FROM payments
+		 WHERE student_id=$1 AND month=$2 AND year=$3
+		   AND status IN ('paid','partial') AND deleted_at IS NULL
+		   AND ($4 = '' OR id::text <> $4)`,
+		studentID, month, year, excludeID,
+	).Scan(&otherPaid); err != nil {
+		return fmt.Errorf("sum existing payments: %w", err)
+	}
+	if exceeds, remaining := exceedsMonthlyFee(fee, otherPaid, amount); exceeds {
+		return fmt.Errorf("%w for %s/%d (remaining: %.2f)", ErrExceedsBalance, month, year, remaining)
 	}
 	return nil
 }
@@ -471,6 +521,17 @@ func (s *PaymentService) Update(ctx context.Context, id string, req *UpdatePayme
 	}
 	if err := s.lockAndCheckNoPaid(ctx, tx, existing.StudentID, existing.Month, existing.Year, checkStatus, id); err != nil {
 		return nil, err
+	}
+	// Re-check the fee ceiling with the amount/status this update will leave
+	// the row with (only when either changes).
+	if req.Amount != nil || req.Status != nil {
+		newAmount := existing.Amount
+		if req.Amount != nil {
+			newAmount = *req.Amount
+		}
+		if err := s.checkWithinMonthlyFee(ctx, tx, existing.StudentID, existing.Month, existing.Year, resulting, newAmount, id); err != nil {
+			return nil, err
+		}
 	}
 
 	query := fmt.Sprintf("UPDATE payments SET %s WHERE id = $%d AND deleted_at IS NULL",
