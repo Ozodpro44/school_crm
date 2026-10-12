@@ -45,6 +45,9 @@ export default function Trash() {
   const [search, setSearch] = useState("");
   const [resource, setResource] = useState<"all" | "users" | "branches">("all");
   const [restoringId, setRestoringId] = useState<string | null>(null);
+  // The whole trash arrives in one request, so it is paged client-side.
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,6 +77,18 @@ export default function Trash() {
     }
     return out;
   }, [rows, resource, search]);
+
+  // Filters/page size change the result set: back to the first page.
+  useEffect(() => { setPage(1); }, [resource, search, limit]);
+
+  // Restoring the last row of the last page must not leave an empty page.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / limit));
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+
+  const pageRows = useMemo(
+    () => filtered.slice((page - 1) * limit, page * limit),
+    [filtered, page, limit],
+  );
 
   const handleRestore = async (row: Row) => {
     setRestoringId(row.item.id);
@@ -157,7 +172,7 @@ export default function Trash() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {filtered.map((row) => {
+                {pageRows.map((row) => {
                   const left = daysLeft(row.item.deletedAt);
                   const isRestoring = restoringId === row.item.id;
                   return (
@@ -196,6 +211,33 @@ export default function Trash() {
                 })}
               </tbody>
             </table>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-border text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <span>{t("trashRowsPerPage")}</span>
+              <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
+                <SelectTrigger className="h-8 w-20 text-sm bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[10, 20, 50, 100].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span>
+                {(page - 1) * limit + 1}–{Math.min(page * limit, filtered.length)} / {filtered.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                {t("trashPrev")}
+              </Button>
+              <span>{page} / {totalPages}</span>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                {t("trashNext")}
+              </Button>
+            </div>
           </div>
         </div>
       )}

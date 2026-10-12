@@ -16,4 +16,7 @@ export const trash: Translation = {
   searchTrashPlaceholder: { en: "Search trash...", ru: "Поиск в корзине...", uz: "O'chirilganlardan qidirish..." },
   trashResUser: { en: "Manager", ru: "Менеджер", uz: "Menejer" },
   trashResBranch: { en: "Branch", ru: "Филиал", uz: "Filial" },
+  trashRowsPerPage: { en: "Rows per page", ru: "Строк на странице", uz: "Sahifadagi qatorlar" },
+  trashPrev: { en: "Previous", ru: "Назад", uz: "Oldingi" },
+  trashNext: { en: "Next", ru: "Вперёд", uz: "Keyingi" },
 };

@@ -126,6 +126,10 @@ export function TrashPanel() {
 
   const [resource, setResource] = useState<"all" | TrashResourceKey>("all");
   const [search, setSearch] = useState("");
+  // All trashed rows arrive in one request (consolidated endpoint), so the
+  // list is paged client-side to keep the table short.
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -153,6 +157,22 @@ export function TrashPanel() {
     }
     return out;
   }, [rows, resource, search]);
+
+  // Filters change the result set: go back to the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [resource, search, limit]);
+
+  // Restoring the last row of the last page must not leave an empty page.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / limit));
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const pageRows = useMemo(
+    () => filtered.slice((page - 1) * limit, page * limit),
+    [filtered, page, limit],
+  );
 
   const handleRestore = async (row: TrashRow) => {
     setRestoringId(row.id);
@@ -272,9 +292,13 @@ export function TrashPanel() {
         <CardContent className="p-0">
           <DataTable
             columns={columns}
-            data={filtered}
+            data={pageRows}
             loading={loading}
-            skeletonRows={8}
+            skeletonRows={Math.min(limit, 8)}
+            pagination={{ page, limit, total: filtered.length }}
+            onPageChange={setPage}
+            onLimitChange={setLimit}
+            limitOptions={[10, 20, 50, 100]}
             emptyIcon={Trash2}
             emptyTitle={t("trashEmpty")}
             emptyDescription={t("trashEmptyDesc")}
