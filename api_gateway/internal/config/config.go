@@ -69,6 +69,13 @@ func (c *Config) Validate() []string {
 	var errs []string
 	if c.JWTSecret == "" {
 		errs = append(errs, "JWT_SECRET is required")
+	} else if strings.EqualFold(c.Environment, "production") {
+		if c.JWTSecret == "change_me_in_production_min_32_chars!!" {
+			errs = append(errs, "JWT_SECRET is the placeholder value; set a unique secret in production")
+		}
+		if len(c.JWTSecret) < 32 {
+			errs = append(errs, "JWT_SECRET must be at least 32 characters in production")
+		}
 	}
 	if c.RedisURL == "" {
 		errs = append(errs, "REDIS_URL is required")

@@ -6,12 +6,12 @@ services:
     container_name: school_crm_db
     environment:
       POSTGRES_USER: school_user
-      POSTGRES_PASSWORD: school_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: school_crm
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U school_user"]
       interval: 10s
@@ -19,7 +19,7 @@ services:
       retries: 5
 
   pgbouncer:
-    image: bitnami/pgbouncer:latest
+    image: bitnami/pgbouncer:1.23.1
     container_name: school_crm_pgbouncer
     depends_on:
       postgres:
@@ -29,7 +29,7 @@ services:
       POSTGRESQL_PORT: 5432
       POSTGRESQL_DATABASE: school_crm
       POSTGRESQL_USERNAME: school_user
-      POSTGRESQL_PASSWORD: school_password
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       PGBOUNCER_PORT: 6432
       PGBOUNCER_POOL_MODE: transaction
       PGBOUNCER_MAX_CLIENT_CONN: "200"
@@ -38,7 +38,7 @@ services:
       PGBOUNCER_RESERVE_POOL_SIZE: "5"
       PGBOUNCER_AUTH_TYPE: md5
     ports:
-      - "6432:6432"
+      - "127.0.0.1:6432:6432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U school_user"]
       interval: 10s
@@ -52,7 +52,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -66,16 +66,19 @@ services:
       dockerfile: Dockerfile
     container_name: school_crm_backend
     depends_on:
-      pgbouncer:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://school_user:school_password@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
+      # Direct Postgres: the monolith runs migrations at startup, which must not go through
+      # the transaction-mode pgbouncer (see DEPLOY.md).
+      DATABASE_URL: postgres://school_user:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/school_crm?sslmode=disable
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: change_me_in_production_min_32_chars!!
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (min 32 chars)}
+      LOGS_TOKEN: ${LOGS_TOKEN:-}
       PORT: "8082"
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     expose:
       - "8082"
     restart: unless-stopped
@@ -92,12 +95,12 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://school_user:school_password@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
+      DATABASE_URL: postgres://school_user:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: change_me_in_production_min_32_chars!!
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (min 32 chars)}
       PORT: "8081"
       GRPC_PORT: "50051"
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     expose:
       - "8081"
       - "50051"
@@ -115,12 +118,12 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://school_user:school_password@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
+      DATABASE_URL: postgres://school_user:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: change_me_in_production_min_32_chars!!
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (min 32 chars)}
       PORT: "8084"
       GRPC_PORT: "50054"
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     expose:
       - "8084"
       - "50054"
@@ -138,11 +141,11 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://school_user:school_password@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
+      DATABASE_URL: postgres://school_user:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
       REDIS_URL: redis://redis:6379
       PORT: "8085"
       GRPC_PORT: "50055"
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     expose:
       - "8085"
       - "50055"
@@ -160,12 +163,12 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://school_user:school_password@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
+      DATABASE_URL: postgres://school_user:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: change_me_in_production_min_32_chars!!
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (min 32 chars)}
       PORT: "8083"
       GRPC_PORT: "50053"
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     expose:
       - "8083"
       - "50053"
@@ -183,11 +186,11 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://school_user:school_password@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
+      DATABASE_URL: postgres://school_user:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
       REDIS_URL: redis://redis:6379
       PORT: "8086"
       GRPC_PORT: "50056"
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     expose:
       - "8086"
       - "50056"
@@ -203,11 +206,11 @@ services:
       pgbouncer:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://school_user:school_password@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
-      # DATABASE_READ_URL: postgres://school_user:school_password@postgres_replica:5432/school_crm
+      DATABASE_URL: postgres://school_user:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
+      # DATABASE_READ_URL: postgres://school_user:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres_replica:5432/school_crm
       PORT: "8087"
       GRPC_PORT: "50057"
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     expose:
       - "8087"
       - "50057"
@@ -225,10 +228,10 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://school_user:school_password@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
+      DATABASE_URL: postgres://school_user:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@pgbouncer:6432/school_crm?sslmode=disable&disable_prepared_statements=1
       REDIS_URL: redis://redis:6379
       PORT: "8088"
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     expose:
       - "8088"
     restart: unless-stopped
@@ -249,10 +252,10 @@ services:
       - finance_service
       - notification_service
     environment:
-      JWT_SECRET: change_me_in_production_min_32_chars!!
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (min 32 chars)}
       REDIS_URL: redis://redis:6379
       PORT: "8080"
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       MONOLITH_URL: http://backend:8082
       AUTH_SERVICE_URL: http://auth_service:8081
       PAYMENT_SERVICE_URL: http://payment_service:8083

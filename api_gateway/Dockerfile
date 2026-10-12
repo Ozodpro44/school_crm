@@ -7,7 +7,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o api_gateway ./cmd/main.go
 
 FROM alpine:3.19
 RUN apk --no-cache add ca-certificates tzdata
+RUN addgroup -S app && adduser -S -G app -u 10001 app
 WORKDIR /app
-COPY --from=builder /app/api_gateway .
+COPY --from=builder --chown=app:app /app/api_gateway .
 EXPOSE 8080
+USER app
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${PORT:-8080}/health" >/dev/null || exit 1
+
 CMD ["./api_gateway"]

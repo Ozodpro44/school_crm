@@ -1,27 +1,22 @@
+import { csvField } from "./htmlEscape";
 
-export function exportTableToCSV(data: unknown[], filename: string) {
+export function exportTableToCSV(data: Record<string, unknown>[], filename: string) {
   if (data.length === 0) return;
 
   const first = data[0] as Record<string, unknown>;
   const headers = Object.keys(first);
   const csvContent = [
-    headers.join(","),
-    ...data.map((row) =>
-      headers.map((header) => {
-        const value = (row as Record<string, unknown>)[header];
-        if (typeof value === "string" && value.includes(",")) {
-          return `"${value}"`;
-        }
-        return value;
-      }).join(",")
-    ),
-  ].join("\n");
+    headers.map(csvField).join(","),
+    ...data.map((row) => headers.map((header) => csvField((row as Record<string, unknown>)[header])).join(",")),
+  ].join("\r\n");
 
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
+  link.href = url;
   link.download = filename;
   link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function formatCurrency(amount: number, currency?: string): string {

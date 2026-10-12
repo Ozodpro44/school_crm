@@ -27,6 +27,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -84,6 +85,15 @@ func main() {
 		startupErrors = append(startupErrors, "JWT_SECRET is required")
 	} else if len(cfg.JWTSecret) < 32 {
 		startupErrors = append(startupErrors, fmt.Sprintf("JWT_SECRET is too short (%d chars); minimum 32 required", len(cfg.JWTSecret)))
+	} else if cfg.JWTSecret == config.PlaceholderJWTSecret {
+		if strings.EqualFold(cfg.Environment, "production") {
+			startupErrors = append(startupErrors, "JWT_SECRET is the placeholder value; set a unique secret")
+		} else {
+			startupWarnings = append(startupWarnings, "JWT_SECRET is the placeholder value (rejected in production)")
+		}
+	}
+	if cfg.LogsToken == "" {
+		startupWarnings = append(startupWarnings, "LOGS_TOKEN not set — log ingestion endpoint will reject requests")
 	}
 	if cfg.RedisURL == "" {
 		startupErrors = append(startupErrors, "REDIS_URL is required")

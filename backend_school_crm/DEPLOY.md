@@ -181,3 +181,35 @@ Every quarter:
 3. Spot-check row counts for `students`, `payments`, `branches`.
 4. Destroy the test container: `docker rm -f crm-test-pg`.
 5. Log the test result and date in your team notes.
+
+
+---
+
+## Required secrets and startup validation
+
+- `JWT_SECRET` is required, minimum 32 characters. The monolith refuses to start
+  if it is shorter, and with `ENVIRONMENT=production` it also refuses the
+  documented placeholder `change_me_in_production_min_32_chars!!`.
+- `LOGS_TOKEN` is optional; a warning is logged when it is unset.
+- `docker-compose.yml` requires `POSTGRES_PASSWORD` and `JWT_SECRET` (no
+  defaults) and binds Postgres/pgbouncer/Redis to `127.0.0.1` only.
+
+## Migrations and connection poolers
+
+golang-migrate takes session-level advisory locks and runs multi-statement
+migrations, which break behind a transaction-mode pooler (pgbouncer in
+`pool_mode=transaction`). Point `DATABASE_URL` of the process that runs
+migrations (the monolith) directly at Postgres. Services that do not migrate may
+use the pooled URL.
+
+## Dirty migration state
+
+If startup fails with `database is dirty at migration version N`, the server
+does not auto-reset. An operator must inspect what migration N applied, repair
+the schema by hand, run `migrate -path migrations -database "$DIRECT_DATABASE_URL" force <version>`
+with the version that reflects reality, then restart.
+
+## Containers
+
+Images run as a non-root user (uid 10001) and, where an HTTP `/health` exists,
+declare a `HEALTHCHECK`.

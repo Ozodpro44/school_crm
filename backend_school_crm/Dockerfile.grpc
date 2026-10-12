@@ -16,10 +16,13 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -
 
 FROM alpine:3.19
 
+RUN addgroup -S app && adduser -S -G app -u 10001 app
 WORKDIR /app
 
-COPY --from=builder /app/grpc-server .
+COPY --from=builder --chown=app:app /app/grpc-server .
 
 EXPOSE 9090
+
+USER app
 
 CMD ["./grpc-server"]

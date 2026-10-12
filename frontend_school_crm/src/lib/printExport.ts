@@ -6,6 +6,8 @@
  * The browser's native print-to-PDF handles all fonts and Cyrillic perfectly.
  */
 
+import { escapeHtml as esc, csvField } from "./htmlEscape";
+
 export interface PrintColumn {
   header: string;
   key: string;
@@ -22,14 +24,6 @@ export interface PrintOptions {
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-function esc(str: unknown): string {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 function buildHtml(opts: PrintOptions, forPrint: boolean): string {
   const { title, subtitle, columns, data } = opts;
@@ -156,11 +150,8 @@ export function printReport(opts: PrintOptions): void {
 export function downloadCSV(opts: PrintOptions): void {
   const { title, columns, data, filename } = opts;
 
-  const quote = (v: unknown): string => {
-    const s = String(v ?? "");
-    // Always quote to be safe with Cyrillic in some Excel builds
-    return `"${s.replace(/"/g, '""')}"`;
-  };
+  // Always quote; csvField also neutralises spreadsheet formula injection (= + - @ tab CR).
+  const quote = csvField;
 
   const header = columns.map((c) => quote(c.header)).join(",");
   const rows = data.map((row) =>

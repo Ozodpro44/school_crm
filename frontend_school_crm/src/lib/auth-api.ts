@@ -6,6 +6,7 @@
 import { User, UserRole, Permission } from "@/types";
 import * as api from "./api";
 import { clearAuthState, getStoredUser, setStoredUser } from "./storage";
+import { publicRequest } from "./apiBase";
 
 const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   admin: {
@@ -359,130 +360,38 @@ export function isAuthenticated(): boolean {
  * Request password reset - sends OTP to email
  */
 export async function forgotPassword(email: string): Promise<{ message: string; email: string }> {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/forgot-password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email }),
-    });
-
-    const responseText = await response.text();
-    
-    if (!response.ok) {
-      let errorMessage = `Error: ${response.status} ${response.statusText}`;
-      try {
-        const error = JSON.parse(responseText);
-        errorMessage = error.error || error.message || errorMessage;
-      } catch {
-        errorMessage = responseText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    return JSON.parse(responseText);
-  } catch (error) {
-    console.error('Forgot password failed:', error);
-    throw error;
-  }
+  return publicRequest("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
 }
 
 /**
  * Verify OTP and get reset token
  */
 export async function verifyOTP(email: string, otp: string): Promise<{ message: string; resetToken: string; email: string }> {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/verify-otp`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, otp }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = 'Failed to verify OTP';
-      try {
-        const error = JSON.parse(errorText);
-        errorMessage = error.error || error.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const responseText = await response.text();
-    return JSON.parse(responseText);
-  } catch (error) {
-    console.error('OTP verification failed:', error);
-    throw error;
-  }
+  return publicRequest("/auth/verify-otp", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
+  });
 }
 
 /**
  * Resend OTP to email
  */
 export async function resendOTP(email: string): Promise<{ message: string }> {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/resend-otp`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = 'Failed to resend OTP';
-      try {
-        const error = JSON.parse(errorText);
-        errorMessage = error.error || error.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const responseText = await response.text();
-    return JSON.parse(responseText);
-  } catch (error) {
-    console.error('Resend OTP failed:', error);
-    throw error;
-  }
+  return publicRequest("/auth/resend-otp", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
 }
 
 /**
  * Reset password with reset token
  */
 export async function resetPassword(email: string, resetToken: string, newPassword: string): Promise<{ message: string }> {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/reset-password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, resetToken, newPassword }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = 'Failed to reset password';
-      try {
-        const error = JSON.parse(errorText);
-        errorMessage = error.error || error.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const responseText = await response.text();
-    return JSON.parse(responseText);
-  } catch (error) {
-    console.error('Password reset failed:', error);
-    throw error;
-  }
+  return publicRequest("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ email, resetToken, newPassword }),
+  });
 }
