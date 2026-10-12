@@ -7,6 +7,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { setStoredUser } from "@/lib/storage";
 import {
   apiRequest,
+  changePassword,
   TeacherPortalStudent,
 } from "@/lib/api";
 import { useTeacherPortalQuery, useAttendanceMutation } from "@/hooks/queries";
@@ -181,16 +182,13 @@ export default function TeacherPortalPage() {
       notify.error(t("error"), t("passwordMismatch"));
       return;
     }
-    if (passwordForm.newPassword.length < 6) {
-      notify.error(t("error"), t("passwordTooShort"));
+    if (passwordForm.newPassword.length < 8) {
+      notify.error(t("error"), t("newPasswordMin8"));
       return;
     }
     setIsSavingProfile(true);
     try {
-      await apiRequest(`/users/${currentUser.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ current_password: passwordForm.currentPassword, password: passwordForm.newPassword }),
-      });
+      await changePassword(currentUser.id, passwordForm.newPassword, passwordForm.currentPassword);
       setIsChangePasswordOpen(false);
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
       notify.success(t("passwordUpdated"));

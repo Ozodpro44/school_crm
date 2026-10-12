@@ -712,6 +712,24 @@ export async function updateUser(
 }
 
 /**
+ * Change a user's password (PUT /users/:id/password).
+ * Self-service must send currentPassword; admin resets of another user omit it.
+ */
+export async function changePassword(
+  id: string,
+  newPassword: string,
+  currentPassword?: string
+): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/users/${id}/password`, {
+    method: "PUT",
+    body: JSON.stringify({
+      password: newPassword,
+      ...(currentPassword !== undefined ? { current_password: currentPassword } : {}),
+    }),
+  });
+}
+
+/**
  * Delete user
  */
 export async function deleteUser(id: string): Promise<{ success: boolean }> {

@@ -1752,6 +1752,16 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Parollar mos kelmayapti",
     en: "Passwords do not match",
   },
+  newPasswordMin8: {
+    "uz-cyrl": "Янги парол камида 8 та белгидан иборат бўлиши керак",
+    "uz-latn": "Yangi parol kamida 8 ta belgidan iborat bo'lishi kerak",
+    en: "New password must be at least 8 characters",
+  },
+  emailChangeUnsupported: {
+    "uz-cyrl": "Электрон почтани ўзгартириб бўлмайди",
+    "uz-latn": "Elektron pochtani o'zgartirib bo'lmaydi",
+    en: "Email cannot be changed",
+  },
   passwordTooShort: {
     "uz-cyrl": "Парол камида 6 та белгидан иборат бўлиши керак",
     "uz-latn": "Parol kamida 6 ta belgidan iborat bo'lishi kerak",
