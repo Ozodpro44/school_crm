@@ -206,10 +206,10 @@ func (s *SubscriptionService) GetSubscriptionUsage(ctx context.Context, subscrip
 		limit    *int
 		countSQL string
 	}{
-		{"branches", plan.MaxBranches, `SELECT COUNT(*) FROM branches WHERE admin_id = $1 AND is_active = true`},
-		{"students", plan.MaxStudents, `SELECT COUNT(*) FROM students WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND status != 'left'`},
-		{"classes", plan.MaxClasses, `SELECT COUNT(*) FROM classes WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND is_active = true`},
-		{"teachers", plan.MaxTeachers, `SELECT COUNT(*) FROM teachers WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND is_active = true`},
+		{"branches", plan.MaxBranches, `SELECT COUNT(*) FROM branches WHERE admin_id = $1 AND is_active = true AND deleted_at IS NULL`},
+		{"students", plan.MaxStudents, `SELECT COUNT(*) FROM students WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1 AND deleted_at IS NULL) AND status != 'left' AND deleted_at IS NULL`},
+		{"classes", plan.MaxClasses, `SELECT COUNT(*) FROM classes WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1 AND deleted_at IS NULL) AND is_active = true AND deleted_at IS NULL`},
+		{"teachers", plan.MaxTeachers, `SELECT COUNT(*) FROM teachers WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1 AND deleted_at IS NULL) AND is_active = true AND deleted_at IS NULL`},
 	}
 
 	now := time.Now().UTC()
@@ -655,25 +655,25 @@ func (s *SubscriptionService) DeactivateExcessResources(ctx context.Context, own
 		{
 			metric:   "branches",
 			limit:    newPlan.MaxBranches,
-			idsSQL:   `SELECT id FROM branches WHERE admin_id = $1 AND is_active = true ORDER BY created_at DESC`,
+			idsSQL:   `SELECT id FROM branches WHERE admin_id = $1 AND is_active = true AND deleted_at IS NULL ORDER BY created_at DESC`,
 			deactSQL: `UPDATE branches SET is_active = false, updated_at = NOW() WHERE id = ANY($1)`,
 		},
 		{
 			metric:   "classes",
 			limit:    newPlan.MaxClasses,
-			idsSQL:   `SELECT id FROM classes WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND is_active = true ORDER BY created_at DESC`,
+			idsSQL:   `SELECT id FROM classes WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1 AND deleted_at IS NULL) AND is_active = true AND deleted_at IS NULL ORDER BY created_at DESC`,
 			deactSQL: `UPDATE classes SET is_active = false, updated_at = NOW() WHERE id = ANY($1)`,
 		},
 		{
 			metric:   "teachers",
 			limit:    newPlan.MaxTeachers,
-			idsSQL:   `SELECT id FROM teachers WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND is_active = true ORDER BY created_at DESC`,
+			idsSQL:   `SELECT id FROM teachers WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1 AND deleted_at IS NULL) AND is_active = true AND deleted_at IS NULL ORDER BY created_at DESC`,
 			deactSQL: `UPDATE teachers SET is_active = false, updated_at = NOW() WHERE id = ANY($1)`,
 		},
 		{
 			metric:   "students",
 			limit:    newPlan.MaxStudents,
-			idsSQL:   `SELECT id FROM students WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1) AND status = 'active' ORDER BY created_at DESC`,
+			idsSQL:   `SELECT id FROM students WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1 AND deleted_at IS NULL) AND status = 'active' AND deleted_at IS NULL ORDER BY created_at DESC`,
 			deactSQL: `UPDATE students SET status = 'suspended', updated_at = NOW() WHERE id = ANY($1)`,
 		},
 	}
@@ -915,13 +915,13 @@ func (s *SubscriptionService) CheckResourceLimit(ctx context.Context, ownerUserI
 	case "students":
 		err = s.database.GetConn().QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM students
-			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
+			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1 AND deleted_at IS NULL)
 			  AND status != 'left' AND deleted_at IS NULL
 		`, ownerUserID).Scan(&currentCount)
 	case "classes":
 		err = s.database.GetConn().QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM classes
-			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
+			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1 AND deleted_at IS NULL)
 			  AND is_active = true AND deleted_at IS NULL
 		`, ownerUserID).Scan(&currentCount)
 	case "branches":
@@ -931,7 +931,7 @@ func (s *SubscriptionService) CheckResourceLimit(ctx context.Context, ownerUserI
 	case "teachers":
 		err = s.database.GetConn().QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM teachers
-			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
+			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1 AND deleted_at IS NULL)
 			  AND is_active = true AND deleted_at IS NULL
 		`, ownerUserID).Scan(&currentCount)
 	}
