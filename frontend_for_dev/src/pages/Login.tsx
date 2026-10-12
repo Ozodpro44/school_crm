@@ -36,19 +36,17 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4 font-mono">
-      <div className="fixed inset-0 bg-[linear-gradient(rgba(16,185,129,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.02)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
-
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="relative w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary/10 border border-primary/25 mb-4">
-            <Terminal className="w-7 h-7 text-primary" />
+          <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-foreground mb-4">
+            <Terminal className="w-5 h-5 text-background" />
           </div>
-          <h1 className="text-xl font-bold text-foreground tracking-tight">{t("developerPortal")}</h1>
-          <p className="text-xs text-muted-foreground mt-1">{t("internalTools")}</p>
+          <h1 className="text-xl font-semibold text-foreground tracking-tight">{t("developerPortal")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("internalTools")}</p>
         </div>
 
-        <div className="bg-card border border-border rounded-2xl p-6 shadow-2xl">
+        <div className="bg-card border border-border rounded-xl p-6">
           <div className="flex items-start gap-2.5 p-3 rounded-lg bg-status-warning/8 border border-status-warning/20 mb-5">
             <ShieldAlert className="w-4 h-4 text-status-warning flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-status-warning/90 leading-relaxed">
@@ -58,18 +56,18 @@ export default function Login() {
 
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
-              <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1.5">{t("email")}</label>
+              <label className="text-xs text-muted-foreground font-medium block mb-1.5">{t("email")}</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="dev@wonderkids.uz"
                 autoComplete="email"
-                className="w-full bg-input border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
+                className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
               />
             </div>
             <div>
-              <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1.5">{t("password")}</label>
+              <label className="text-xs text-muted-foreground font-medium block mb-1.5">{t("password")}</label>
               <div className="relative">
                 <input
                   type={showPass ? "text" : "password"}
@@ -77,7 +75,7 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   autoComplete="current-password"
-                  className="w-full bg-input border border-border rounded-lg px-3 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
                 />
                 <button
                   type="button"
@@ -92,7 +90,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading || !email || !password}
-              className="w-full mt-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-primary-foreground rounded-lg py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+              className="w-full mt-1 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-primary-foreground rounded-md py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
             >
               {loading ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> {t("authenticating")}</>
@@ -103,7 +101,7 @@ export default function Login() {
           </form>
         </div>
 
-        <p className="text-center text-[10px] text-muted-foreground/40 mt-4 font-mono">
+        <p className="text-center text-xs text-muted-foreground/50 mt-4">
           dev portal v2 · {new Date().getFullYear()}
         </p>
       </div>

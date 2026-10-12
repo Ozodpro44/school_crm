@@ -6,56 +6,57 @@
 
 @layer base {
   :root {
-    --background: 220 20% 5%;
-    --foreground: 210 18% 90%;
+    --background: 240 10% 4%;            /* #09090B */
+    --foreground: 240 5% 93%;
 
-    --card: 220 20% 7%;
-    --card-foreground: 210 18% 90%;
+    --card: 240 6% 7%;                   /* #111113 */
+    --card-foreground: 240 5% 93%;
 
-    --popover: 220 20% 8%;
-    --popover-foreground: 210 18% 90%;
+    --popover: 240 6% 9%;
+    --popover-foreground: 240 5% 93%;
 
-    /* Emerald green primary */
-    --primary: 152 76% 48%;
-    --primary-foreground: 220 20% 5%;
+    /* Emerald stays as the portal's identity, but it is reserved for the primary
+       action and focus rings — navigation and status no longer lean on it. */
+    --primary: 152 60% 46%;
+    --primary-foreground: 240 10% 5%;
 
-    --secondary: 220 20% 12%;
-    --secondary-foreground: 210 18% 80%;
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 240 5% 82%;
 
-    --muted: 220 20% 10%;
-    --muted-foreground: 215 14% 46%;
+    --muted: 240 5% 11%;
+    --muted-foreground: 240 5% 60%;      /* #8F8F98 — readable on card */
 
-    --accent: 220 20% 12%;
-    --accent-foreground: 210 18% 90%;
+    --accent: 240 5% 13%;
+    --accent-foreground: 240 5% 93%;
 
-    --destructive: 0 68% 50%;
-    --destructive-foreground: 210 18% 90%;
+    --destructive: 0 70% 52%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 18% 14%;
-    --input: 220 18% 12%;
-    --ring: 152 76% 48%;
+    --border: 240 4% 15%;                /* #262628 */
+    --input: 240 4% 17%;
+    --ring: 152 60% 46%;
 
     --radius: 0.5rem;
 
-    --status-healthy: 152 76% 42%;
-    --status-warning: 38 90% 50%;
-    --status-critical: 0 68% 50%;
-    --status-info: 212 90% 58%;
+    --status-healthy: 152 55% 45%;
+    --status-warning: 38 90% 55%;
+    --status-critical: 0 72% 58%;
+    --status-info: 212 85% 62%;
 
-    --chart-1: 152 76% 48%;
-    --chart-2: 212 90% 58%;
-    --chart-3: 38 90% 50%;
-    --chart-4: 280 65% 58%;
-    --chart-5: 0 68% 50%;
+    --chart-1: 152 55% 48%;
+    --chart-2: 212 85% 62%;
+    --chart-3: 38 90% 55%;
+    --chart-4: 270 60% 66%;
+    --chart-5: 0 72% 58%;
 
-    --sidebar-background: 220 20% 4%;
-    --sidebar-foreground: 215 14% 50%;
-    --sidebar-primary: 152 76% 48%;
-    --sidebar-primary-foreground: 220 20% 5%;
-    --sidebar-accent: 220 20% 10%;
-    --sidebar-accent-foreground: 210 18% 88%;
-    --sidebar-border: 220 18% 11%;
-    --sidebar-ring: 152 76% 48%;
+    --sidebar-background: 240 10% 4%;
+    --sidebar-foreground: 240 5% 62%;
+    --sidebar-primary: 152 60% 46%;
+    --sidebar-primary-foreground: 240 10% 5%;
+    --sidebar-accent: 240 5% 11%;
+    --sidebar-accent-foreground: 240 5% 94%;
+    --sidebar-border: 240 4% 12%;
+    --sidebar-ring: 152 60% 46%;
   }
 }
 
@@ -65,7 +66,10 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: "cv11", "ss03";
+    letter-spacing: -0.006em;
   }
+  h1, h2, h3 { text-wrap: balance; }
 
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -75,29 +79,29 @@
 
 @layer components {
   .glass-card {
-    @apply bg-card/80 backdrop-blur-sm border border-border shadow-xl;
+    @apply bg-card border border-border;
   }
 
   .stat-card {
-    @apply bg-card border border-border rounded-xl p-5 flex flex-col gap-3 transition-colors hover:border-border/80;
+    @apply bg-card border border-border rounded-lg p-5 flex flex-col gap-3 transition-colors hover:border-muted-foreground/30;
   }
 
   .nav-item {
-    @apply flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors duration-150
-           text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent;
+    @apply flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors duration-150
+           text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent/60;
   }
 
   .nav-item-active {
-    @apply bg-primary/10 text-primary font-medium border border-primary/20;
+    @apply bg-sidebar-accent text-sidebar-accent-foreground font-medium;
   }
 
   /* Status badges */
-  .badge-active    { @apply inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-status-healthy/10 text-status-healthy border border-status-healthy/20; }
-  .badge-trial     { @apply inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-status-info/10 text-status-info border border-status-info/20; }
-  .badge-expired   { @apply inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-status-critical/10 text-status-critical border border-status-critical/20; }
-  .badge-pending   { @apply inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-status-warning/10 text-status-warning border border-status-warning/20; }
-  .badge-cancelled { @apply inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border; }
-  .badge-paused    { @apply inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/20; }
+  .badge-active    { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-status-healthy/10 text-status-healthy border border-status-healthy/20; }
+  .badge-trial     { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-status-info/10 text-status-info border border-status-info/20; }
+  .badge-expired   { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-status-critical/10 text-status-critical border border-status-critical/20; }
+  .badge-pending   { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-status-warning/10 text-status-warning border border-status-warning/20; }
+  .badge-cancelled { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-muted text-muted-foreground border border-border; }
+  .badge-paused    { @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-400 border border-violet-500/20; }
 
   /* Log line styles */
   .log-debug { @apply border-l-2 border-border/60; }
@@ -106,9 +110,9 @@
   .log-error { @apply border-l-2 border-status-critical/70; }
 
   /* Status dots */
-  .pulse-dot       { @apply w-2 h-2 rounded-full; background: hsl(var(--status-healthy)); box-shadow: 0 0 6px hsl(var(--status-healthy) / 0.7); animation: pulse-glow 2s ease-in-out infinite; }
-  .pulse-dot-warn  { @apply w-2 h-2 rounded-full; background: hsl(var(--status-warning)); box-shadow: 0 0 6px hsl(var(--status-warning) / 0.7); animation: pulse-glow 2s ease-in-out infinite; }
-  .pulse-dot-error { @apply w-2 h-2 rounded-full; background: hsl(var(--status-critical)); box-shadow: 0 0 6px hsl(var(--status-critical) / 0.7); animation: pulse-glow 2s ease-in-out infinite; }
+  .pulse-dot       { @apply w-2 h-2 rounded-full; background: hsl(var(--status-healthy)); }
+  .pulse-dot-warn  { @apply w-2 h-2 rounded-full; background: hsl(var(--status-warning)); }
+  .pulse-dot-error { @apply w-2 h-2 rounded-full; background: hsl(var(--status-critical)); }
 }
 
 @layer utilities {

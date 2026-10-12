@@ -142,7 +142,7 @@ export default function Users() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("usersTitle")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t("usersTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("crmUsersAcrossBranches")}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-2" onClick={load} disabled={loading}>
@@ -241,7 +241,7 @@ export default function Users() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
                       <td className="px-4 py-3">
-                        <span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full", cls)}>
+                        <span className={cn("text-[11px] font-medium px-2 py-0.5 rounded-full", cls)}>
                           {label}
                         </span>
                       </td>

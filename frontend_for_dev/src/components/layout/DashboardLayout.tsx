@@ -43,7 +43,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             <span className="text-status-warning/60 text-xs">— {t("disableInSettings")}</span>
           </div>
         )}
-        <div className="p-6 animate-fade-in">
+        <div className="mx-auto w-full max-w-[1400px] px-6 py-7 lg:px-8 animate-fade-in">
           {children}
         </div>
       </main>

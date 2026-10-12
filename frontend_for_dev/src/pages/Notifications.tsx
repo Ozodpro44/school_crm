@@ -128,7 +128,7 @@ export default function Notifications() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("notificationsTitle")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t("notificationsTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("configureAlertPreferences")}</p>
         </div>
         <Button
@@ -173,7 +173,7 @@ export default function Notifications() {
                 recent.map((n) => (
                   <div key={n.id} className="flex items-start gap-3 p-3">
                     <span className={cn(
-                      "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5",
+                      "text-[11px] font-medium px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5",
                       n.level.toLowerCase() === "error" || n.level.toLowerCase() === "critical"
                         ? "bg-status-critical/15 text-status-critical"
                         : "bg-status-warning/15 text-status-warning"
@@ -222,7 +222,7 @@ export default function Notifications() {
 
           {/* Current State Summary */}
           <div className="glass-card rounded-lg p-4">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t("currentConfiguration")}</h3>
+            <h3 className="text-xs font-medium text-muted-foreground mb-3">{t("currentConfiguration")}</h3>
             <div className="grid grid-cols-2 gap-3">
               {TOGGLES.map(({ key, labelKey }) => (
                 <div key={key} className="flex items-center gap-2 text-sm">

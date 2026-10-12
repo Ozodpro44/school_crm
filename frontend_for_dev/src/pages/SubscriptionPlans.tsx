@@ -450,7 +450,7 @@ export default function SubscriptionPlans() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("subscriptionPlansTitle")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t("subscriptionPlansTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {tf(t("planCountSummary"), {
               count: plans.length,
@@ -519,14 +519,14 @@ export default function SubscriptionPlans() {
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     {plan.isFeatured && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
                         <Star className="w-2.5 h-2.5 fill-current" />
                         {t("featuredBadge")}
                       </span>
                     )}
                     <span
                       className={cn(
-                        "inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full",
+                        "inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full",
                         active
                           ? "bg-status-healthy/10 text-status-healthy border border-status-healthy/20"
                           : "bg-muted text-muted-foreground border border-border"
@@ -541,7 +541,7 @@ export default function SubscriptionPlans() {
                 {/* Price */}
                 <div className="flex items-baseline gap-1">
                   <DollarSign className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-2xl font-bold text-foreground font-mono">
+                  <span className="text-2xl font-semibold tracking-tight text-foreground font-mono">
                     {plan.price.toLocaleString()}
                   </span>
                   <span className="text-sm text-muted-foreground">/{plan.billingPeriod}</span>

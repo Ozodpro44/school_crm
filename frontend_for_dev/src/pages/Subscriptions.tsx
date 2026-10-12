@@ -288,7 +288,7 @@ export default function Subscriptions() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("subscriptionsTitle")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t("subscriptionsTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("manageTenantSubscriptions")}</p>
         </div>
         <div className="flex items-center gap-2">

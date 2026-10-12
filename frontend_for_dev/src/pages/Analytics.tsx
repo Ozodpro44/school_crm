@@ -119,7 +119,7 @@ export default function Analytics() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("analyticsTitle")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t("analyticsTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("apiPerformanceAndLogAnalytics")}</p>
         </div>
         <Button
@@ -143,7 +143,7 @@ export default function Analytics() {
               <ArrowUpRight className="w-3 h-3" /> {t("live")}
             </span>
           </div>
-          <p className="text-2xl font-bold text-foreground font-mono">{loading ? "—" : totalLogs.toLocaleString()}</p>
+          <p className="text-2xl font-semibold tracking-tight text-foreground font-mono">{loading ? "—" : totalLogs.toLocaleString()}</p>
           <p className="text-xs text-muted-foreground">{t("logEntries")}</p>
         </div>
         <div className="stat-card">
@@ -182,7 +182,7 @@ export default function Analytics() {
           <div className="flex items-center justify-between">
             <Zap className="w-5 h-5 text-status-healthy" />
             <span className={cn(
-              "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full",
+              "text-[11px] font-medium px-2 py-0.5 rounded-full",
               healthOk
                 ? "bg-status-healthy/15 text-status-healthy"
                 : "bg-status-critical/15 text-status-critical"
@@ -190,7 +190,7 @@ export default function Analytics() {
               {loading ? "…" : health?.status || "—"}
             </span>
           </div>
-          <p className="text-2xl font-bold text-foreground font-mono">
+          <p className="text-2xl font-semibold tracking-tight text-foreground font-mono">
             {loading
               ? "—"
               : health?.uptime_seconds != null

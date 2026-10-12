@@ -109,7 +109,7 @@ export default function Incidents() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("incidentsTitle")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t("incidentsTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {t("errorLogsGroupedByModule")}
           </p>
@@ -185,7 +185,7 @@ export default function Incidents() {
                       <div className="flex items-center gap-2 flex-wrap mb-1.5">
                         <code className="text-sm font-mono font-semibold text-primary">{incident.module}</code>
                         <span className={cn(
-                          "inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border",
+                          "inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full border",
                           cls
                         )}>
                           {dotCls && <span className={dotCls} />}

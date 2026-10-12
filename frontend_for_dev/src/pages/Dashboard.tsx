@@ -137,10 +137,10 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("platformOverview")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t("platformOverview")}</h1>
           <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
             <Calendar className="w-4 h-4" />
-            <span className="font-mono">
+            <span className="tabular-nums">
               {time.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
               {" — "}
               {time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
@@ -174,15 +174,13 @@ export default function Dashboard() {
       <div className="space-y-6 animate-fade-in">
         {/* Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {statCards.map(({ label, value, icon: Icon, color, bg }) => (
+          {statCards.map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="stat-card">
-              <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", bg)}>
-                <Icon className={cn("w-4 h-4", color)} />
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[13px] text-muted-foreground">{label}</p>
+                <Icon className={cn("w-4 h-4 shrink-0 opacity-80", color)} />
               </div>
-              <div>
-                <p className="text-xl font-bold text-foreground font-mono">{loading ? "—" : String(value)}</p>
-                <p className="text-xs text-muted-foreground">{label}</p>
-              </div>
+              <p className="text-2xl font-semibold tracking-tight text-foreground tabular-nums">{loading ? "—" : String(value)}</p>
             </div>
           ))}
         </div>
@@ -297,8 +295,8 @@ export default function Dashboard() {
                 onClick={() => navigate(href)}
                 className="flex flex-col items-start gap-3 p-4 rounded-lg border border-border bg-card hover:border-primary/40 hover:bg-accent/30 transition-colors text-left"
               >
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Icon className="w-4 h-4 text-primary" />
+                <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center">
+                  <Icon className="w-4 h-4 text-muted-foreground" />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-foreground">{t(labelKey)}</p>

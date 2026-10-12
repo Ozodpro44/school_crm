@@ -363,7 +363,7 @@ export default function Settings() {
     <DashboardLayout>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("settingsTitle")}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t("settingsTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">{t("developerPortalConfig")}</p>
         </div>
         <Button variant="outline" size="sm" className="gap-2" onClick={loadSettings}>
