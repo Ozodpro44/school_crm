@@ -309,10 +309,10 @@ export default function PaymentsPage() {
       // Check if payment still exists in state
       const paymentExists = payments.some((p) => p.id === id);
       if (!paymentExists) {
-        notify.warning(t("info"), "Payment was already removed");
+        notify.warning(t("info"), t("paymentAlreadyRemoved"));
         qc.invalidateQueries({ queryKey: ["payments"] });
       } else {
-        notify.error(t("error"), "Failed to delete payment");
+        notify.error(t("error"), t("failedToDeletePayment"));
       }
     } finally {
       setProcessingPaymentId(null);

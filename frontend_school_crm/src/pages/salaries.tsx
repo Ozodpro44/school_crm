@@ -298,7 +298,7 @@ export default function SalariesPage() {
     try {
       await updateSalary(id, { status: "paid", paidDate: new Date().toISOString() });
       await loadData();
-      notify.success(t("success"), "Salary marked as paid");
+      notify.success(t("success"), t("salaryMarkedPaid"));
     } catch (error) {
       notify.error(t("error"), error instanceof Error ? error.message : undefined);
     }

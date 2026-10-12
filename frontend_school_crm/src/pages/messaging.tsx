@@ -103,7 +103,7 @@ export default function MessagingPage() {
       });
 
       setHistory([result, ...history]);
-      notify.success(t("messageSent"), `${result.recipientsCount} recipients, ${result.deliveredCount} delivered`);
+      notify.success(t("messageSent"), t("messageSentSummary").replace("{sent}", String(result.recipientsCount)).replace("{delivered}", String(result.deliveredCount)));
       setMessage("");
       setSelectedTemplate("");
       setActiveTab("history");

@@ -326,7 +326,10 @@ export default function StudentsPage() {
             importedCount++;
           } catch (err) {
             warnings.push(
-              `Row ${i + 1}: Failed to import "${fullName}" - ${(err as any)?.message || "Unknown error"}`
+              t("csvRowImportFailed")
+                .replace("{row}", String(i + 1))
+                .replace("{name}", fullName)
+                .replace("{error}", (err as any)?.message || t("unknownError"))
             );
           }
         }

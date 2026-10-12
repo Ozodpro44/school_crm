@@ -953,7 +953,7 @@ export default function ReportsPage() {
                 <div className="flex gap-2">
                   <Select value={paymentMonth} onValueChange={setPaymentMonth}>
                     <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Month" />
+                      <SelectValue placeholder={t("month")} />
                     </SelectTrigger>
                     <SelectContent>
                       {Array.from({ length: 12 }, (_, i) => {

@@ -198,7 +198,7 @@ export default function TeachersPage() {
   const handleBulkDelete = async () => {
     if (!canDeleteTeachers) { notify.error(t("permissionDenied")); return; }
     const ids = getSelectedIds();
-    if (!ids.length || !confirm(`Delete ${ids.length} teachers?`)) return;
+    if (!ids.length || !confirm(t("confirmDeleteTeachers").replace("{n}", String(ids.length)))) return;
     // allSettled, not all: a single rejection in Promise.all jumped straight
     // to catch with one generic toast and skipped clearSelection() — rows
     // that HAD deleted successfully stayed marked "selected" in the UI.
@@ -207,11 +207,11 @@ export default function TeachersPage() {
     const succeededCount = ids.length - failedCount;
     clearSelection();
     if (failedCount === 0) {
-      notify.success(t("deleted"), `${ids.length} teachers deleted`);
+      notify.success(t("deleted"), t("teachersDeletedCount").replace("{n}", String(ids.length)));
     } else if (succeededCount === 0) {
       notify.error(t("error"), t("failedToDeleteTeachers"));
     } else {
-      notify.error(t("error"), `${succeededCount}/${ids.length} deleted — ${failedCount} failed`);
+      notify.error(t("error"), t("teachersPartiallyDeleted").replace("{ok}", String(succeededCount)).replace("{total}", String(ids.length)).replace("{failed}", String(failedCount)));
     }
   };
 

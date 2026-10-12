@@ -1767,6 +1767,81 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Shu sahifada qidirish",
     en: "Search this page",
   },
+  noPermissionUpdateStudents: {
+    "uz-cyrl": "Талабаларни янгилашга рухсатингиз йўқ.",
+    "uz-latn": "O'quvchilarni yangilashga ruxsatingiz yo'q.",
+    en: "You don't have permission to update students.",
+  },
+  noPermissionEditStudents: {
+    "uz-cyrl": "Талабаларни таҳрирлашга рухсатингиз йўқ.",
+    "uz-latn": "O'quvchilarni tahrirlashga ruxsatingiz yo'q.",
+    en: "You don't have permission to edit students.",
+  },
+  selectStudentsAndTargetClass: {
+    "uz-cyrl": "Талабалар ва мақсадли синфни танланг",
+    "uz-latn": "O'quvchilar va maqsadli sinfni tanlang",
+    en: "Please select students and a target class",
+  },
+  selectStudentsToDelete: {
+    "uz-cyrl": "Ўчириш учун талабаларни танланг",
+    "uz-latn": "O'chirish uchun o'quvchilarni tanlang",
+    en: "Please select students to delete",
+  },
+  classNameRequired: {
+    "uz-cyrl": "Синф номи керак",
+    "uz-latn": "Sinf nomi kerak",
+    en: "Class name is required",
+  },
+  classUpdatedSuccessfully: {
+    "uz-cyrl": "Синф муваффақиятли янгиланди",
+    "uz-latn": "Sinf muvaffaqiyatli yangilandi",
+    en: "Class updated successfully",
+  },
+  paymentAlreadyRemoved: {
+    "uz-cyrl": "Тўлов аллақачон ўчирилган",
+    "uz-latn": "To'lov allaqachon o'chirilgan",
+    en: "Payment was already removed",
+  },
+  failedToDeletePayment: {
+    "uz-cyrl": "Тўловни ўчириб бўлмади",
+    "uz-latn": "To'lovni o'chirib bo'lmadi",
+    en: "Failed to delete payment",
+  },
+  salaryMarkedPaid: {
+    "uz-cyrl": "Маош тўланган деб белгиланди",
+    "uz-latn": "Oylik to'langan deb belgilandi",
+    en: "Salary marked as paid",
+  },
+  messageSentSummary: {
+    "uz-cyrl": "{sent} та қабул қилувчи, {delivered} таси етказилди",
+    "uz-latn": "{sent} ta qabul qiluvchi, {delivered} tasi yetkazildi",
+    en: "{sent} recipients, {delivered} delivered",
+  },
+  confirmDeleteTeachers: {
+    "uz-cyrl": "{n} та ўқитувчини ўчирасизми?",
+    "uz-latn": "{n} ta o'qituvchini o'chirasizmi?",
+    en: "Delete {n} teachers?",
+  },
+  teachersDeletedCount: {
+    "uz-cyrl": "{n} та ўқитувчи ўчирилди",
+    "uz-latn": "{n} ta o'qituvchi o'chirildi",
+    en: "{n} teachers deleted",
+  },
+  teachersPartiallyDeleted: {
+    "uz-cyrl": "{ok}/{total} ўчирилди — {failed} таси хато",
+    "uz-latn": "{ok}/{total} o'chirildi — {failed} tasi xato",
+    en: "{ok}/{total} deleted — {failed} failed",
+  },
+  csvRowImportFailed: {
+    "uz-cyrl": "{row}-қатор: \"{name}\" ни импорт қилиб бўлмади - {error}",
+    "uz-latn": "{row}-qator: \"{name}\" ni import qilib bo'lmadi - {error}",
+    en: "Row {row}: Failed to import \"{name}\" - {error}",
+  },
+  unknownError: {
+    "uz-cyrl": "Номаълум хато",
+    "uz-latn": "Noma'lum xato",
+    en: "Unknown error",
+  },
   newPasswordMin8: {
     "uz-cyrl": "Янги парол камида 8 та белгидан иборат бўлиши керак",
     "uz-latn": "Yangi parol kamida 8 ta belgidan iborat bo'lishi kerak",
