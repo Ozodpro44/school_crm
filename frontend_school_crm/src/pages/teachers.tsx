@@ -310,10 +310,11 @@ export default function TeachersPage() {
           >
             <Edit2 className="w-4 h-4" />
           </Button>
+          {canDeleteTeachers && (
           <Button
             size="icon" variant="ghost"
             onClick={(e) => { e.stopPropagation(); handleDelete(teacher.id); }}
-            disabled={!canDeleteTeachers || (deleteMutation.isPending && deletingTeacherId === teacher.id)}
+            disabled={(deleteMutation.isPending && deletingTeacherId === teacher.id)}
           >
             {deleteMutation.isPending && deletingTeacherId === teacher.id ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -321,6 +322,7 @@ export default function TeachersPage() {
               <Trash2 className="w-4 h-4 text-red-500" />
             )}
           </Button>
+          )}
         </div>
       ),
     },
@@ -452,12 +454,14 @@ export default function TeachersPage() {
                     <Button size="icon" variant="ghost" onClick={() => handleEdit(teacher)} disabled={!canEditTeachers}>
                       <Edit2 className="w-4 h-4" />
                     </Button>
+                    {canDeleteTeachers && (
                     <Button size="icon" variant="ghost" onClick={() => handleDelete(teacher.id)}
-                      disabled={!canDeleteTeachers || (deleteMutation.isPending && deletingTeacherId === teacher.id)}>
+                      disabled={(deleteMutation.isPending && deletingTeacherId === teacher.id)}>
                       {deleteMutation.isPending && deletingTeacherId === teacher.id
                         ? <Loader2 className="w-4 h-4 animate-spin" />
                         : <Trash2 className="w-4 h-4 text-red-500" />}
                     </Button>
+                    )}
                   </div>
                 </div>
                 <div className="mt-3 flex items-center justify-between">

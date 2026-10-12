@@ -172,18 +172,24 @@ func checkField(p *service.Permission, action string) bool {
 		return p.CanCreateClasses
 	case "canEditClasses":
 		return p.CanEditClasses
+	case "canDeleteClasses":
+		return p.CanDeleteClasses
 	case "canViewPayments":
 		return p.CanViewPayments
 	case "canCreatePayments":
 		return p.CanCreatePayments
 	case "canEditPayments":
 		return p.CanEditPayments
+	case "canDeletePayments":
+		return p.CanDeletePayments
 	case "canViewSalaries":
 		return p.CanViewSalaries
 	case "canCreateSalaries":
 		return p.CanCreateSalaries
 	case "canEditSalaries":
 		return p.CanEditSalaries
+	case "canDeleteSalaries":
+		return p.CanDeleteSalaries
 	case "canViewExpenses":
 		return p.CanViewExpenses
 	case "canCreateExpenses":

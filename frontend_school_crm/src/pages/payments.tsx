@@ -601,13 +601,15 @@ export default function PaymentsPage() {
           >
             <Edit2 className="w-4 h-4" />
           </Button>
+          {canDeletePayments && (
           <Button
             size="sm" variant="destructive"
             onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-            disabled={!canDeletePayments || processingPaymentId === p.id}
+            disabled={processingPaymentId === p.id}
           >
             <Trash2 className="w-4 h-4" />
           </Button>
+          )}
         </div>
       ),
     },
@@ -915,9 +917,11 @@ export default function PaymentsPage() {
                     <Button size="icon" variant="ghost" className="h-7 w-7"
                       onClick={() => handleEdit(p)} disabled={!canEditPayments || processingPaymentId === p.id}>
                       <Edit2 className="w-3.5 h-3.5" /></Button>
+                    {canDeletePayments && (
                     <Button size="icon" variant="ghost" className="h-7 w-7"
-                      onClick={() => handleDelete(p.id)} disabled={!canDeletePayments || processingPaymentId === p.id}>
+                      onClick={() => handleDelete(p.id)} disabled={processingPaymentId === p.id}>
                       <Trash2 className="w-3.5 h-3.5 text-red-500" /></Button>
+                    )}
                   </div>
                 </div>
                 {p.createdByName && (

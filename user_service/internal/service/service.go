@@ -73,12 +73,15 @@ type Permission struct {
 	CanViewClasses         bool   `json:"canViewClasses"`
 	CanCreateClasses       bool   `json:"canCreateClasses"`
 	CanEditClasses         bool   `json:"canEditClasses"`
+	CanDeleteClasses       bool   `json:"canDeleteClasses"`
 	CanViewPayments        bool   `json:"canViewPayments"`
 	CanCreatePayments      bool   `json:"canCreatePayments"`
 	CanEditPayments        bool   `json:"canEditPayments"`
+	CanDeletePayments      bool   `json:"canDeletePayments"`
 	CanViewSalaries        bool   `json:"canViewSalaries"`
 	CanCreateSalaries      bool   `json:"canCreateSalaries"`
 	CanEditSalaries        bool   `json:"canEditSalaries"`
+	CanDeleteSalaries      bool   `json:"canDeleteSalaries"`
 	CanViewExpenses        bool   `json:"canViewExpenses"`
 	CanCreateExpenses      bool   `json:"canCreateExpenses"`
 	CanEditExpenses        bool   `json:"canEditExpenses"`
@@ -227,12 +230,21 @@ func (s *UserService) Update(ctx context.Context, id string, fields map[string]i
 	parts := []string{}
 	args := []interface{}{}
 	n := 1
-	for k, v := range fields {
+	// The frontend sends camelCase keys (canDeleteStudents) while columns are
+	// snake_case; before this, every key from the Managers page failed the
+	// allowlist and the edit was silently dropped. Accept both spellings and
+	// require real booleans.
+	for rawKey, v := range fields {
+		k := permissionColumn(rawKey)
 		if !allowed[k] {
 			continue
 		}
+		b, ok := v.(bool)
+		if !ok {
+			return nil, fmt.Errorf("permission %q must be a boolean", rawKey)
+		}
 		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
-		args = append(args, v)
+		args = append(args, b)
 		n++
 	}
 	if len(parts) == 0 {
@@ -976,9 +988,9 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		SELECT id, user_id,
 		       can_view_students, can_create_students, can_edit_students, can_delete_students,
 		       can_view_teachers, can_create_teachers, can_edit_teachers, can_delete_teachers,
-		       can_view_classes, can_create_classes, can_edit_classes,
-		       can_view_payments, can_create_payments, can_edit_payments,
-		       can_view_salaries, can_create_salaries, can_edit_salaries,
+		       can_view_classes, can_create_classes, can_edit_classes, can_delete_classes,
+		       can_view_payments, can_create_payments, can_edit_payments, can_delete_payments,
+		       can_view_salaries, can_create_salaries, can_edit_salaries, can_delete_salaries,
 		       can_view_expenses, can_create_expenses, can_edit_expenses, can_delete_expenses,
 		       can_view_reports, can_view_settings, can_edit_settings,
 		       COALESCE(can_view_subscriptions, true), COALESCE(can_manage_subscriptions, false)
@@ -987,9 +999,9 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		&p.ID, &p.UserID,
 		&p.CanViewStudents, &p.CanCreateStudents, &p.CanEditStudents, &p.CanDeleteStudents,
 		&p.CanViewTeachers, &p.CanCreateTeachers, &p.CanEditTeachers, &p.CanDeleteTeachers,
-		&p.CanViewClasses, &p.CanCreateClasses, &p.CanEditClasses,
-		&p.CanViewPayments, &p.CanCreatePayments, &p.CanEditPayments,
-		&p.CanViewSalaries, &p.CanCreateSalaries, &p.CanEditSalaries,
+		&p.CanViewClasses, &p.CanCreateClasses, &p.CanEditClasses, &p.CanDeleteClasses,
+		&p.CanViewPayments, &p.CanCreatePayments, &p.CanEditPayments, &p.CanDeletePayments,
+		&p.CanViewSalaries, &p.CanCreateSalaries, &p.CanEditSalaries, &p.CanDeleteSalaries,
 		&p.CanViewExpenses, &p.CanCreateExpenses, &p.CanEditExpenses, &p.CanDeleteExpenses,
 		&p.CanViewReports, &p.CanViewSettings, &p.CanEditSettings,
 		&p.CanViewSubscriptions, &p.CanManageSubscriptions,
@@ -1001,6 +1013,23 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		return nil, err
 	}
 	return &p, nil
+}
+
+// permissionColumn maps "canDeleteStudents" or "can_delete_students" to the
+// snake_case column name.
+func permissionColumn(key string) string {
+	var b strings.Builder
+	for i, r := range key {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('_')
+			}
+			b.WriteRune(r + ('a' - 'A'))
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func (s *PermissionService) Upsert(ctx context.Context, userID string, fields map[string]interface{}) (*Permission, error) {
@@ -1028,9 +1057,9 @@ func (s *PermissionService) Upsert(ctx context.Context, userID string, fields ma
 	allowed := map[string]bool{
 		"can_view_students": true, "can_create_students": true, "can_edit_students": true, "can_delete_students": true,
 		"can_view_teachers": true, "can_create_teachers": true, "can_edit_teachers": true, "can_delete_teachers": true,
-		"can_view_classes": true, "can_create_classes": true, "can_edit_classes": true,
-		"can_view_payments": true, "can_create_payments": true, "can_edit_payments": true,
-		"can_view_salaries": true, "can_create_salaries": true, "can_edit_salaries": true,
+		"can_view_classes": true, "can_create_classes": true, "can_edit_classes": true, "can_delete_classes": true,
+		"can_view_payments": true, "can_create_payments": true, "can_edit_payments": true, "can_delete_payments": true,
+		"can_view_salaries": true, "can_create_salaries": true, "can_edit_salaries": true, "can_delete_salaries": true,
 		"can_view_expenses": true, "can_create_expenses": true, "can_edit_expenses": true, "can_delete_expenses": true,
 		"can_view_reports": true, "can_view_settings": true, "can_edit_settings": true,
 		"can_view_subscriptions": true, "can_manage_subscriptions": true,

@@ -553,15 +553,16 @@ export default function SalariesPage() {
           >
             <Edit2 className="w-4 h-4" />
           </Button>
+          {canDeleteSalaries && (
           <Button
             size="sm"
             variant="destructive"
             onClick={() => handleDelete(salary.id)}
-            disabled={!canDeleteSalaries}
             title={canDeleteSalaries ? "" : "No permission"}
           >
             <Trash2 className="w-4 h-4 text-red-200" />
           </Button>
+          )}
         </div>
       ),
     },
@@ -870,9 +871,11 @@ export default function SalariesPage() {
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(salary)} disabled={!canEditSalaries}>
                       <Edit2 className="w-3.5 h-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(salary.id)} disabled={!canDeleteSalaries}>
+                    {canDeleteSalaries && (
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(salary.id)}>
                       <Trash2 className="w-3.5 h-3.5 text-red-500" />
                     </Button>
+                    )}
                   </div>
                 </div>
                 {salary.createdBy && (

@@ -862,15 +862,16 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               <UserX className="w-4 h-4" />
             </Button>
           )}
+          {canDeleteStudents && (
           <Button
             size="icon"
             variant="ghost"
             aria-label={t("delete")}
             onClick={(e) => { e.stopPropagation(); canDeleteStudents && handleDelete(student.id); }}
-            disabled={!canDeleteStudents}
           >
             <Trash2 className="w-4 h-4 text-red-500" />
           </Button>
+          )}
         </div>
       ),
     },
@@ -1412,15 +1413,16 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                         {t("left")}
                       </Button>
                     )}
+                    {canDeleteStudents && (
                     <Button
                       size="sm"
                       variant="destructive"
                       aria-label={t("delete")}
                       onClick={() => canDeleteStudents && handleDelete(student.id)}
-                      disabled={!canDeleteStudents}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
+                    )}
                   </div>
                 </div>
               );

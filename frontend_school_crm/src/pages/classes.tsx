@@ -854,16 +854,17 @@ export default function ClassesPage() {
                         >
                           <Edit2 className="w-3 h-3 sm:w-4 sm:h-4" />
                         </Button>
+                        {canDeleteClasses && (
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => handleDelete(classData.id)}
-                          disabled={!canDeleteClasses}
                           title={canDeleteClasses ? t("delete") : t("noPermission")}
                           className="h-8 w-8 sm:h-10 sm:w-10"
                         >
                           <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
                         </Button>
+                        )}
                       </div>
                     </div>
                   </CardHeader>

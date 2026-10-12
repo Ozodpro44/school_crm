@@ -75,12 +75,20 @@ func canDelete(role string) bool {
 	}
 }
 
-func (h *Handler) requireDeletePermission(c *gin.Context) bool {
-	if !canDelete(c.GetHeader("X-User-Role")) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
-		return false
+func (h *Handler) requireDeletePermission(c *gin.Context, flag string) bool {
+	if canDelete(c.GetHeader("X-User-Role")) {
+		return true
 	}
-	return true
+	// Otherwise honour the per-user permission flag an admin granted on the
+	// Managers page (permissions.<flag>). flag == "" means role-only.
+	if flag != "" {
+		ok, err := h.teachers.HasDeleteFlag(c.Request.Context(), c.GetHeader("X-User-ID"), flag)
+		if err == nil && ok {
+			return true
+		}
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
+	return false
 }
 
 // isSuperRole reports whether role is a platform-level role that operates
@@ -244,7 +252,7 @@ func (h *Handler) UpdateTeacher(c *gin.Context) {
 }
 
 func (h *Handler) DeleteTeacher(c *gin.Context) {
-	if !h.requireDeletePermission(c) {
+	if !h.requireDeletePermission(c, "can_delete_teachers") {
 		return
 	}
 	branchID := requestBranchID(c)
@@ -273,7 +281,7 @@ func (h *Handler) DeleteTeacher(c *gin.Context) {
 
 // RestoreTeacher undoes a soft-delete, same authorization as DeleteTeacher.
 func (h *Handler) RestoreTeacher(c *gin.Context) {
-	if !h.requireDeletePermission(c) {
+	if !h.requireDeletePermission(c, "can_delete_teachers") {
 		return
 	}
 	branchID := requestBranchID(c)
@@ -410,7 +418,7 @@ func (h *Handler) UpdateSalary(c *gin.Context) {
 }
 
 func (h *Handler) DeleteSalary(c *gin.Context) {
-	if !h.requireDeletePermission(c) {
+	if !h.requireDeletePermission(c, "can_delete_salaries") {
 		return
 	}
 	branchID := requestBranchID(c)
@@ -438,7 +446,7 @@ func (h *Handler) DeleteSalary(c *gin.Context) {
 
 // RestoreSalary undoes a soft-delete, same authorization as DeleteSalary.
 func (h *Handler) RestoreSalary(c *gin.Context) {
-	if !h.requireDeletePermission(c) {
+	if !h.requireDeletePermission(c, "can_delete_salaries") {
 		return
 	}
 	branchID := requestBranchID(c)

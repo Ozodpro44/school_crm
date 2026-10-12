@@ -21,7 +21,7 @@ import { FormDialog } from "@/components/FormDialog";
 import { Field } from "@/components/Field";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentUser } from "@/lib/auth";
-import { listUsers, deleteUser as deleteUserAPI, listBranches, updateUserPermissions, apiRequest, changePassword } from "@/lib/api";
+import { listUsers, deleteUser as deleteUserAPI, listBranches, updateUserPermissions, getUserPermissions, apiRequest, changePassword } from "@/lib/api";
 import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { User, Permission, Branch } from "@/types";
@@ -229,7 +229,15 @@ export default function ManagersPage() {
     }
   };
 
-  const handleEdit = (manager: User) => {
+  const handleEdit = async (manager: User) => {
+    // Load the saved flags: the list response may not carry them, and saving a
+    // form that started from defaults would overwrite what was granted.
+    const saved = await getUserPermissions(manager.id);
+    const savedFlags = saved
+      ? (Object.fromEntries(
+          Object.entries(saved).filter(([, v]) => typeof v === "boolean"),
+        ) as Partial<Permission>)
+      : null;
     setEditingManager(manager);
     setFormData({
       fullName: manager.fullName,
@@ -238,7 +246,9 @@ export default function ManagersPage() {
       branchId: currentBranch?.id || "",
       role: (manager.role as "manager" | "branch_admin") || "manager",
     });
-    const perms = manager.permissions || getDefaultPermissions();
+    const perms: Permission = savedFlags
+      ? { ...getDefaultPermissions(), ...savedFlags }
+      : manager.permissions || getDefaultPermissions();
     setPermissions(perms);
     setOriginalPermissions(perms);
     setIsDialogOpen(true);
