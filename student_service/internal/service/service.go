@@ -125,7 +125,7 @@ type ListFilter struct {
 	NoClass  bool // when true: WHERE class_id IS NULL
 	Page     string
 	Limit    string
-	Cursor   string // keyset cursor on full_name
+	Cursor   string // opaque keyset cursor on (full_name, id); see encodeCursor
 }
 
 // CountActive returns the number of active students in a branch. Backs the
@@ -173,16 +173,13 @@ func (s *StudentService) List(ctx context.Context, f ListFilter) (*StudentListRe
 		n++
 	}
 	if f.Search != "" {
-		where += fmt.Sprintf(" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)", n, n)
-		args = append(args, "%"+f.Search+"%")
-		n++
-	}
-	if useCursor {
-		where += fmt.Sprintf(" AND s.full_name > $%d", n)
-		args = append(args, f.Cursor)
+		where += fmt.Sprintf(` AND (LOWER(s.full_name) LIKE LOWER($%d) ESCAPE '\' OR s.phone LIKE $%d ESCAPE '\')`, n, n)
+		args = append(args, likeContains(f.Search))
 		n++
 	}
 
+	// total counts the whole filtered set: the keyset predicate is applied
+	// only to the page query, so total does not shrink as the cursor advances.
 	var total int
 	if err := s.db.Conn().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM students s "+where, args...).Scan(&total); err != nil {
@@ -190,6 +187,15 @@ func (s *StudentService) List(ctx context.Context, f ListFilter) (*StudentListRe
 	}
 
 	dataArgs := append([]interface{}{}, args...)
+	if useCursor {
+		cName, cID, ok := decodeCursor(f.Cursor)
+		if !ok {
+			return nil, fmt.Errorf("%w: invalid cursor", ErrInvalidInput)
+		}
+		where += fmt.Sprintf(" AND (s.full_name, s.id) > ($%d, $%d::uuid)", n, n+1)
+		dataArgs = append(dataArgs, cName, cID)
+		n += 2
+	}
 	var paging string
 	if useCursor {
 		paging = fmt.Sprintf(" LIMIT $%d", n)
@@ -207,7 +213,7 @@ func (s *StudentService) List(ctx context.Context, f ListFilter) (*StudentListRe
 		       s.enrollment_date, s.created_at, s.updated_at
 		FROM students s
 		LEFT JOIN classes c ON c.id = s.class_id
-		`+where+` ORDER BY s.full_name`+paging, dataArgs...)
+		`+where+` ORDER BY s.full_name, s.id`+paging, dataArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +242,8 @@ func (s *StudentService) List(ctx context.Context, f ListFilter) (*StudentListRe
 
 	var nextCursor string
 	if len(students) == limit {
-		nextCursor = students[len(students)-1].FullName
+		last := students[len(students)-1]
+		nextCursor = encodeCursor(last.FullName, last.ID)
 	}
 
 	return &StudentListResponse{
@@ -301,7 +308,26 @@ func (s *StudentService) Create(ctx context.Context, st *Student) (*Student, err
 	st.CreatedAt = time.Now().UTC()
 	st.UpdatedAt = st.CreatedAt
 
-	_, err := s.db.Conn().ExecContext(ctx, `
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+
+	if st.ClassID != nil && *st.ClassID != "" {
+		if err := requireInBranch(ctx, tx, "classes", "class", *st.ClassID, st.BranchID); err != nil {
+			return nil, err
+		}
+	} else {
+		st.ClassID = nil
+	}
+	if st.Status != "left" {
+		if err := checkPlanLimit(ctx, tx, st.BranchID, "students"); err != nil {
+			return nil, err
+		}
+	}
+
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO students
 		  (id, full_name, phone, parent_phone, class_id, monthly_payment,
 		   status, branch_id, enrollment_date, created_at, updated_at)
@@ -311,6 +337,9 @@ func (s *StudentService) Create(ctx context.Context, st *Student) (*Student, err
 	)
 	if err != nil {
 		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return st, nil
 }
@@ -356,6 +385,26 @@ func (s *StudentService) Update(ctx context.Context, id, branchID string, fields
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
+	// A classId in the payload must be a live class of THIS branch; ""/null
+	// clears the class.
+	if raw, present := fields["classId"]; present {
+		cid, isStr := raw.(string)
+		if raw != nil && !isStr {
+			return nil, fmt.Errorf("%w: classId must be a string or null", ErrInvalidInput)
+		}
+		if cid != "" {
+			if err := requireInBranch(ctx, s.db.Conn(), "classes", "class", cid, branchID); err != nil {
+				return nil, err
+			}
+		} else {
+			for i, part := range parts {
+				if strings.HasPrefix(part, "class_id = ") {
+					args[i] = nil // "" must become NULL, not an invalid uuid
+				}
+			}
+		}
+	}
+
 	res, err := s.db.Conn().ExecContext(ctx,
 		"UPDATE students SET "+strings.Join(parts, ", ")+
 			" WHERE id = $"+strconv.Itoa(n)+" AND branch_id = $"+strconv.Itoa(n+1), args...)
@@ -390,22 +439,42 @@ func (s *StudentService) Delete(ctx context.Context, id, branchID, deletedBy str
 	return nil
 }
 
-// Restore un-deletes a student soft-deleted within the last 30 days (the
-// longer of the two trash windows — callers enforce the shorter 7-day
-// window for non-super-role callers before reaching here).
-func (s *StudentService) Restore(ctx context.Context, id, branchID string) error {
+// Restore un-deletes a student soft-deleted within the last windowDays (7 for
+// regular callers, 30 for developer/super_admin — the same windows the Trash
+// list shows). Re-checks the plan's student limit: a restored student counts
+// again. A restored student whose class was deleted meanwhile is left
+// unassigned.
+func (s *StudentService) Restore(ctx context.Context, id, branchID string, windowDays int) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	res, err := s.db.Conn().ExecContext(ctx,
-		"UPDATE students SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
-		id, branchID)
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+	var status string
+	err = tx.QueryRowContext(ctx,
+		`SELECT status FROM students WHERE id::text = $1 AND branch_id::text = $2 AND deleted_at IS NOT NULL
+		 AND deleted_at > now() - make_interval(days => $3) FOR UPDATE`,
+		id, branchID, windowDays).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
 	if err != nil {
 		return err
 	}
-	if rows, _ := res.RowsAffected(); rows == 0 {
-		return ErrNotFound
+	if status != "left" {
+		if err := checkPlanLimit(ctx, tx, branchID, "students"); err != nil {
+			return err
+		}
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE students SET deleted_at = NULL, deleted_by = NULL,
+		   class_id = CASE WHEN class_id IN (SELECT id FROM classes WHERE deleted_at IS NULL) THEN class_id ELSE NULL END
+		 WHERE id::text = $1`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // SyncMonthlyPayment bulk-updates monthly_payment for students in branchID,
@@ -582,12 +651,23 @@ func (s *ClassService) Create(ctx context.Context, name, branchID string, teache
 
 	var count int
 	if err := tx.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM classes WHERE name=$1 AND branch_id=$2`, name, branchID,
+		`SELECT COUNT(*) FROM classes WHERE name=$1 AND branch_id=$2 AND deleted_at IS NULL`, name, branchID,
 	).Scan(&count); err != nil {
 		return nil, fmt.Errorf("check existing class: %w", err)
 	}
 	if count > 0 {
-		return nil, fmt.Errorf("a class named %q already exists in this branch", name)
+		return nil, fmt.Errorf("%w: a class named %q already exists in this branch", ErrInvalidInput, name)
+	}
+	if teacherID != nil && *teacherID == "" {
+		teacherID = nil
+	}
+	if teacherID != nil {
+		if err := requireInBranch(ctx, tx, "teachers", "teacher", *teacherID, branchID); err != nil {
+			return nil, err
+		}
+	}
+	if err := checkPlanLimit(ctx, tx, branchID, "classes"); err != nil {
+		return nil, err
 	}
 
 	c := &Class{
@@ -642,6 +722,24 @@ func (s *ClassService) Update(ctx context.Context, id, branchID string, fields m
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
+	if raw, present := fields["teacherId"]; present {
+		tid, isStr := raw.(string)
+		if raw != nil && !isStr {
+			return nil, fmt.Errorf("%w: teacherId must be a string or null", ErrInvalidInput)
+		}
+		if tid != "" {
+			if err := requireInBranch(ctx, s.db.Conn(), "teachers", "teacher", tid, branchID); err != nil {
+				return nil, err
+			}
+		} else {
+			for i, part := range parts {
+				if strings.HasPrefix(part, "teacher_id = ") {
+					args[i] = nil
+				}
+			}
+		}
+	}
+
 	res, err := s.db.Conn().ExecContext(ctx,
 		"UPDATE classes SET "+strings.Join(parts, ", ")+
 			" WHERE id = $"+strconv.Itoa(n)+" AND branch_id = $"+strconv.Itoa(n+1), args...)
@@ -660,10 +758,19 @@ func (s *ClassService) Update(ctx context.Context, id, branchID string, fields m
 // delete (safe), but attendance/class_schedule/assignments tied to the
 // class CASCADE (not safe) — soft-deleting keeps that history recoverable
 // via Restore for 7-30 days.
+//
+// Students of the class are detached (class_id set NULL) in the same
+// transaction so they show up as "unassigned" instead of pointing at a
+// hidden class. Restoring the class does NOT re-attach them.
 func (s *ClassService) Delete(ctx context.Context, id, branchID, deletedBy string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	res, err := s.db.Conn().ExecContext(ctx,
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+	res, err := tx.ExecContext(ctx,
 		"UPDATE classes SET deleted_at = now(), deleted_by = $3 WHERE id = $1 AND branch_id = $2 AND deleted_at IS NULL",
 		id, branchID, deletedBy)
 	if err != nil {
@@ -672,25 +779,58 @@ func (s *ClassService) Delete(ctx context.Context, id, branchID, deletedBy strin
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE students SET class_id = NULL, updated_at = now() WHERE class_id = $1 AND branch_id = $2", id, branchID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
-// Restore un-deletes a class soft-deleted within the last 30 days (the
-// longer of the two trash windows — callers enforce the shorter 7-day
-// window for non-super-role callers before reaching here).
-func (s *ClassService) Restore(ctx context.Context, id, branchID string) error {
+// Restore un-deletes a class soft-deleted within the last windowDays (7 for
+// regular callers, 30 for developer/super_admin). It re-checks the plan's
+// class limit and refuses (400) if a live class now uses the same name.
+func (s *ClassService) Restore(ctx context.Context, id, branchID string, windowDays int) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	res, err := s.db.Conn().ExecContext(ctx,
-		"UPDATE classes SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
-		id, branchID)
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+	var name string
+	err = tx.QueryRowContext(ctx,
+		`SELECT name FROM classes WHERE id::text = $1 AND branch_id::text = $2 AND deleted_at IS NOT NULL
+		 AND deleted_at > now() - make_interval(days => $3) FOR UPDATE`,
+		id, branchID, windowDays).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
 	if err != nil {
 		return err
 	}
-	if rows, _ := res.RowsAffected(); rows == 0 {
-		return ErrNotFound
+	// Same lock key as Create so a concurrent create of the same name waits.
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`,
+		fmt.Sprintf("class-dedupe:%s:%s", branchID, name)); err != nil {
+		return fmt.Errorf("acquire dedupe lock: %w", err)
 	}
-	return nil
+	var dup int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM classes WHERE name=$1 AND branch_id=$2 AND deleted_at IS NULL`, name, branchID).Scan(&dup); err != nil {
+		return err
+	}
+	if dup > 0 {
+		return fmt.Errorf("%w: a class named %q already exists in this branch", ErrInvalidInput, name)
+	}
+	if err := checkPlanLimit(ctx, tx, branchID, "classes"); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE classes SET deleted_at = NULL, deleted_by = NULL,
+		   teacher_id = CASE WHEN teacher_id IN (SELECT id FROM teachers WHERE deleted_at IS NULL) THEN teacher_id ELSE NULL END
+		 WHERE id::text = $1`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // TrashedClass is a Class soft-deleted within the caller's restore window.
@@ -823,13 +963,8 @@ func (s *StudentService) ConsolidatedData(ctx context.Context, f ConsolidatedFil
 	n := 2
 
 	if f.Search != "" {
-		where += fmt.Sprintf(" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)", n, n)
-		args = append(args, "%"+f.Search+"%")
-		n++
-	}
-	if useCursor {
-		where += fmt.Sprintf(" AND s.full_name > $%d", n)
-		args = append(args, f.Cursor)
+		where += fmt.Sprintf(` AND (LOWER(s.full_name) LIKE LOWER($%d) ESCAPE '\' OR s.phone LIKE $%d ESCAPE '\')`, n, n)
+		args = append(args, likeContains(f.Search))
 		n++
 	}
 	if f.Status != "" {
@@ -859,6 +994,7 @@ func (s *StudentService) ConsolidatedData(ctx context.Context, f ConsolidatedFil
 		       END AS status
 		FROM payments
 		WHERE student_id = s.id
+		  AND deleted_at IS NULL
 		  AND month = $` + strconv.Itoa(n) + `
 		  AND year = $` + strconv.Itoa(n+1) + `
 		  AND status IN ('paid', 'partial')
@@ -877,11 +1013,20 @@ func (s *StudentService) ConsolidatedData(ctx context.Context, f ConsolidatedFil
 	var pagingClause string
 	dataArgs := append([]interface{}{}, args...)
 	dataArgs = append(dataArgs, month, year)
+	next := n + 2 // first free placeholder after month/year
 	if useCursor {
-		pagingClause = ` LIMIT $` + strconv.Itoa(n+2)
+		cName, cID, ok := decodeCursor(f.Cursor)
+		if !ok {
+			return nil, fmt.Errorf("%w: invalid cursor", ErrInvalidInput)
+		}
+		// keyset predicate only on the page query; total (above) is unaffected
+		where += fmt.Sprintf(" AND (s.full_name, s.id) > ($%d, $%d::uuid)", next, next+1)
+		dataArgs = append(dataArgs, cName, cID)
+		next += 2
+		pagingClause = ` LIMIT $` + strconv.Itoa(next)
 		dataArgs = append(dataArgs, limit)
 	} else {
-		pagingClause = ` LIMIT $` + strconv.Itoa(n+2) + ` OFFSET $` + strconv.Itoa(n+3)
+		pagingClause = ` LIMIT $` + strconv.Itoa(next) + ` OFFSET $` + strconv.Itoa(next+1)
 		dataArgs = append(dataArgs, limit, offset)
 	}
 
@@ -896,7 +1041,7 @@ func (s *StudentService) ConsolidatedData(ctx context.Context, f ConsolidatedFil
 		LEFT JOIN classes c ON c.id = s.class_id
 		`+lateralJoin+`
 		`+where+`
-		ORDER BY s.full_name ASC`+pagingClause, dataArgs...)
+		ORDER BY s.full_name ASC, s.id ASC`+pagingClause, dataArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -947,7 +1092,8 @@ func (s *StudentService) ConsolidatedData(ctx context.Context, f ConsolidatedFil
 
 	var nextCursor string
 	if len(items) == limit {
-		nextCursor = items[len(items)-1].FullName
+		last := items[len(items)-1]
+		nextCursor = encodeCursor(last.FullName, last.ID)
 	}
 
 	return &ConsolidatedResponse{
@@ -982,8 +1128,8 @@ func (s *StudentService) SearchWithPayments(ctx context.Context, branchID, searc
 	n := 2
 	where := "WHERE s.branch_id = $1 AND s.status = 'active' AND s.deleted_at IS NULL"
 	if search != "" {
-		where += fmt.Sprintf(" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)", n, n)
-		args = append(args, "%"+search+"%")
+		where += fmt.Sprintf(` AND (LOWER(s.full_name) LIKE LOWER($%d) ESCAPE '\' OR s.phone LIKE $%d ESCAPE '\')`, n, n)
+		args = append(args, likeContains(search))
 		n++
 	}
 	args = append(args, month, year)
@@ -995,7 +1141,7 @@ func (s *StudentService) SearchWithPayments(ctx context.Context, branchID, searc
 		       COALESCE(SUM(pay.amount) FILTER (WHERE pay.month=$%d AND pay.year=$%d AND pay.status IN ('paid','partial')), 0)
 		FROM students s
 		LEFT JOIN classes c ON c.id = s.class_id
-		LEFT JOIN payments pay ON pay.student_id = s.id
+		LEFT JOIN payments pay ON pay.student_id = s.id AND pay.deleted_at IS NULL
 		%s
 		GROUP BY s.id, s.full_name, s.phone, s.class_id, c.name, s.monthly_payment, s.branch_id
 		ORDER BY s.full_name LIMIT 100`, monthN, yearN, where)
@@ -1077,12 +1223,49 @@ type BulkAttendanceRequest struct {
 	Records  []BulkAttendanceRecord `json:"records"  binding:"required,min=1"`
 }
 
+// Save upserts a class's attendance for one date. Everything the caller
+// supplies is validated before any write (bad input -> ErrInvalidInput, i.e.
+// HTTP 400, not 500): date is YYYY-MM-DD, status is present|absent|late, the
+// class is a live class of req.BranchID, and every student is a live student
+// of that branch AND currently enrolled in that class. That also makes the
+// ON CONFLICT (class_id, student_id, date) target safe: both ids are proven
+// to belong to the request branch, so a conflict can only hit this branch's
+// own row.
 func (s *AttendanceService) Save(ctx context.Context, req *BulkAttendanceRequest, createdBy string) ([]Attendance, error) {
+	date, err := parseDateYMD(req.Date)
+	if err != nil {
+		return nil, err
+	}
+	req.Date = date
+	for _, rec := range req.Records {
+		if err := validateAttendanceStatus(rec.Status); err != nil {
+			return nil, err
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
 	tx, err := s.db.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("attendance save: begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	if err := requireInBranch(ctx, tx, "classes", "class", req.ClassID, req.BranchID); err != nil {
+		return nil, err
+	}
+	for _, rec := range req.Records {
+		var enrolled bool
+		if err := tx.QueryRowContext(ctx, `
+			SELECT EXISTS (SELECT 1 FROM students
+			  WHERE id::text = $1 AND class_id::text = $2 AND branch_id::text = $3 AND deleted_at IS NULL)`,
+			rec.StudentID, req.ClassID, req.BranchID).Scan(&enrolled); err != nil {
+			return nil, fmt.Errorf("attendance save: check student: %w", err)
+		}
+		if !enrolled {
+			return nil, fmt.Errorf("%w: student %s is not enrolled in this class", ErrInvalidInput, rec.StudentID)
+		}
+	}
 
 	now := time.Now().UTC()
 	var result []Attendance
@@ -1112,16 +1295,26 @@ func (s *AttendanceService) Save(ctx context.Context, req *BulkAttendanceRequest
 	return result, nil
 }
 
-func (s *AttendanceService) GetByClassDate(ctx context.Context, classID, date string) ([]Attendance, error) {
+// GetByClassDate returns a class's attendance for a date, scoped to branchID:
+// the class must be a live class of that branch (ErrInvalidInput otherwise)
+// and only that branch's rows are returned.
+func (s *AttendanceService) GetByClassDate(ctx context.Context, classID, branchID, date string) ([]Attendance, error) {
+	date, err := parseDateYMD(date)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
+	if err := requireInBranch(ctx, s.db.Conn(), "classes", "class", classID, branchID); err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Conn().QueryContext(ctx, `
 		SELECT a.id, a.branch_id, a.class_id, a.student_id, a.date::text,
 		       a.status, COALESCE(a.note,''), a.created_by, a.created_at
 		FROM attendance a
-		WHERE a.class_id=$1 AND a.date=$2
-		ORDER BY a.student_id`, classID, date)
+		WHERE a.class_id::text=$1 AND a.branch_id::text=$2 AND a.date=$3::date
+		ORDER BY a.student_id`, classID, branchID, date)
 	if err != nil {
 		return nil, err
 	}
@@ -1321,7 +1514,7 @@ const scheduleSelectSQL = `
 	       cs.start_time, cs.end_time, cs.room, cs.subject, cs.created_at, cs.updated_at,
 	       COALESCE(t.full_name, '') AS teacher_name
 	FROM class_schedule cs
-	LEFT JOIN teachers t ON t.id = cs.teacher_id`
+	LEFT JOIN teachers t ON t.id = cs.teacher_id AND t.deleted_at IS NULL`
 
 func scanScheduleSlots(rows *sql.Rows) ([]ScheduleSlot, error) {
 	var slots []ScheduleSlot
@@ -1340,11 +1533,16 @@ func scanScheduleSlots(rows *sql.Rows) ([]ScheduleSlot, error) {
 	return slots, rows.Err()
 }
 
-func (s *ScheduleService) GetByClass(ctx context.Context, classID string) ([]ScheduleSlot, error) {
+// GetByClass lists a class's schedule scoped to branchID (cs.branch_id filter
+// plus a live-class membership check, so a foreign classId is a 400).
+func (s *ScheduleService) GetByClass(ctx context.Context, classID, branchID string) ([]ScheduleSlot, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+	if err := requireInBranch(ctx, s.db.Conn(), "classes", "class", classID, branchID); err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Conn().QueryContext(ctx,
-		scheduleSelectSQL+` WHERE cs.class_id=$1 ORDER BY cs.day_of_week, cs.start_time`, classID)
+		scheduleSelectSQL+` WHERE cs.class_id::text=$1 AND cs.branch_id::text=$2 ORDER BY cs.day_of_week, cs.start_time`, classID, branchID)
 	if err != nil {
 		return nil, err
 	}
@@ -1377,6 +1575,18 @@ func (s *ScheduleService) Upsert(ctx context.Context, req *UpsertScheduleRequest
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback() // no-op after Commit
+
+	if req.TeacherID != nil && *req.TeacherID == "" {
+		req.TeacherID = nil
+	}
+	if err := requireInBranch(ctx, tx, "classes", "class", req.ClassID, req.BranchID); err != nil {
+		return nil, err
+	}
+	if req.TeacherID != nil {
+		if err := requireInBranch(ctx, tx, "teachers", "teacher", *req.TeacherID, req.BranchID); err != nil {
+			return nil, err
+		}
+	}
 
 	// Serialize conflict-checking + write per (branch, day) so two concurrent
 	// upserts can't both pass the overlap check and then both insert.
@@ -1579,6 +1789,21 @@ func (s *AssignmentService) Create(ctx context.Context, req *CreateAssignmentReq
 	}
 	defer tx.Rollback() // no-op after Commit
 
+	if req.TeacherID != nil && *req.TeacherID == "" {
+		req.TeacherID = nil
+	}
+	if err := requireInBranch(ctx, tx, "classes", "class", req.ClassID, req.BranchID); err != nil {
+		return nil, err
+	}
+	if req.TeacherID != nil {
+		if err := requireInBranch(ctx, tx, "teachers", "teacher", *req.TeacherID, req.BranchID); err != nil {
+			return nil, err
+		}
+	}
+	if _, err := parseDateYMD(req.DueDate); err != nil {
+		return nil, fmt.Errorf("%w: dueDate must be YYYY-MM-DD", ErrInvalidInput)
+	}
+
 	id := uuid.New().String()
 	now := time.Now()
 	var a Assignment
@@ -1626,12 +1851,13 @@ func (s *AssignmentService) Delete(ctx context.Context, id, branchID, deletedBy 
 // Restore un-deletes an assignment soft-deleted within the last 30 days
 // (the longer of the two trash windows — callers enforce the shorter
 // 7-day window for non-super-role callers before reaching here).
-func (s *AssignmentService) Restore(ctx context.Context, id, branchID string) error {
+func (s *AssignmentService) Restore(ctx context.Context, id, branchID string, windowDays int) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 	res, err := s.db.Conn().ExecContext(ctx,
-		`UPDATE assignments SET deleted_at = NULL, deleted_by = NULL WHERE id=$1 AND branch_id=$2 AND deleted_at IS NOT NULL`,
-		id, branchID)
+		`UPDATE assignments SET deleted_at = NULL, deleted_by = NULL WHERE id=$1 AND branch_id=$2 AND deleted_at IS NOT NULL
+		 AND deleted_at > now() - make_interval(days => $3)`,
+		id, branchID, windowDays)
 	if err != nil {
 		return err
 	}
@@ -1696,14 +1922,21 @@ func (s *AssignmentService) ListTrash(ctx context.Context, branchID string, wind
 func (s *AssignmentService) GetSubmissions(ctx context.Context, assignmentID, branchID string) ([]AssignmentSubmission, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+	ok, err := inBranch(ctx, s.db.Conn(), "assignments", assignmentID, branchID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrNotFound
+	}
 	rows, err := s.db.Conn().QueryContext(ctx, `
 		SELECT sub.id, sub.assignment_id, sub.student_id, s.full_name,
 		       sub.status, sub.grade, sub.feedback, sub.submitted_at, sub.graded_at, sub.graded_by,
 		       sub.created_at, sub.updated_at
 		FROM assignment_submissions sub
-		JOIN students s ON s.id = sub.student_id
 		JOIN assignments a ON a.id = sub.assignment_id
-		WHERE sub.assignment_id=$1 AND a.branch_id=$2 ORDER BY s.full_name
+		JOIN students s ON s.id = sub.student_id AND s.branch_id = a.branch_id AND s.deleted_at IS NULL
+		WHERE sub.assignment_id::text=$1 AND a.branch_id::text=$2 AND a.deleted_at IS NULL ORDER BY s.full_name
 	`, assignmentID, branchID)
 	if err != nil {
 		return nil, err
@@ -1865,6 +2098,9 @@ func (s *StudentNotesService) ListNotes(ctx context.Context, branchID, studentID
 func (s *StudentNotesService) AddNote(ctx context.Context, branchID, studentID, content, createdByID, createdByName string) (*StudentNote, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+	if err := requireInBranch(ctx, s.db.Conn(), "students", "student", studentID, branchID); err != nil {
+		return nil, err
+	}
 	var note StudentNote
 	err := s.db.Conn().QueryRowContext(ctx, `
 		INSERT INTO student_notes (branch_id, student_id, content, created_by, created_by_name)
@@ -1924,6 +2160,9 @@ func (s *StudentNotesService) ListContactLog(ctx context.Context, branchID, stud
 func (s *StudentNotesService) AddContactLog(ctx context.Context, branchID, studentID string, req *CreateContactLogRequest, createdByID, createdByName string) (*ContactLogEntry, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+	if err := requireInBranch(ctx, s.db.Conn(), "students", "student", studentID, branchID); err != nil {
+		return nil, err
+	}
 	contactType := req.ContactType
 	if contactType == "" {
 		contactType = "call"

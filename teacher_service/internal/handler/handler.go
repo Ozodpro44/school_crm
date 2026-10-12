@@ -87,6 +87,16 @@ func (h *Handler) requireDeletePermission(c *gin.Context) bool {
 // across every branch/tenant, rather than being scoped to one — used to
 // pick the Trash view's window (30 days platform-wide) vs a regular
 // caller's (7 days, own branch only).
+// restoreWindowDays is the window the Trash list shows: 7 days for a regular
+// caller, 30 for developer/super_admin. Restore enforces it so a row that
+// has dropped out of the list cannot still be restored by id.
+func restoreWindowDays(c *gin.Context) int {
+	if isSuperRole(c.GetHeader("X-User-Role")) {
+		return 30
+	}
+	return 7
+}
+
 func isSuperRole(role string) bool {
 	return role == "developer" || role == "super_admin"
 }
@@ -274,9 +284,16 @@ func (h *Handler) RestoreTeacher(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.teachers.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
+	if err := h.teachers.Restore(c.Request.Context(), c.Param("id"), branchID, restoreWindowDays(c)); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "teacher not found in trash"})
+			return
+		}
+		if errors.Is(err, service.ErrTeacherLimitReached) {
+			c.JSON(http.StatusPaymentRequired, gin.H{
+				"error":  "subscription_limit_reached",
+				"detail": err.Error(),
+			})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -432,7 +449,7 @@ func (h *Handler) RestoreSalary(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.salaries.Restore(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-Role")); err != nil {
+	if err := h.salaries.Restore(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-Role"), restoreWindowDays(c)); err != nil {
 		if errors.Is(err, service.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "salary not found in trash"})
 			return

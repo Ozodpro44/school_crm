@@ -119,7 +119,7 @@ func (h *Handler) ListStudents(c *gin.Context) {
 		Cursor:   c.Query("cursor"),
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	c.JSON(http.StatusOK, resp)
@@ -164,7 +164,7 @@ func (h *Handler) CreateStudent(c *gin.Context) {
 		EnrollmentDate: enrollmentDate,
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusBadRequest)
 		return
 	}
 	h.students.Audit(c.Request.Context(), body.BranchID, c.GetHeader("X-User-ID"), "create", "student", st.ID, "Student created: "+st.FullName)
@@ -250,6 +250,34 @@ func (h *Handler) requireBranchAccess(c *gin.Context, branchID string) bool {
 	return true
 }
 
+// restoreWindowDays is the same window the Trash list shows: 7 days for a
+// regular caller, 30 for developer/super_admin. Restore enforces it so a row
+// that has dropped out of the list can no longer be restored by id.
+func restoreWindowDays(c *gin.Context) int {
+	if isSuperRole(c.GetHeader("X-User-Role")) {
+		return 30
+	}
+	return 7
+}
+
+// respondServiceError maps domain errors to HTTP statuses. A plan-limit
+// failure uses the monolith's shape: 402 {error:"subscription_limit_reached",
+// detail:...}. Anything unrecognised gets fallback.
+func respondServiceError(c *gin.Context, err error, fallback int) {
+	switch {
+	case errors.Is(err, service.ErrLimitReached):
+		c.JSON(http.StatusPaymentRequired, gin.H{"error": "subscription_limit_reached", "detail": err.Error()})
+	case errors.Is(err, service.ErrNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, service.ErrScheduleConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, service.ErrInvalidInput):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	default:
+		c.JSON(fallback, gin.H{"error": err.Error()})
+	}
+}
+
 func (h *Handler) GetStudent(c *gin.Context) {
 	branchID := requestBranchID(c)
 	if branchID == "" {
@@ -291,7 +319,7 @@ func (h *Handler) UpdateStudent(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "student not found"})
 			return
 		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusBadRequest)
 		return
 	}
 	h.students.Audit(c.Request.Context(), st.BranchID, c.GetHeader("X-User-ID"), "update", "student", st.ID, "Student updated: "+st.FullName)
@@ -339,12 +367,12 @@ func (h *Handler) RestoreStudent(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.students.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
+	if err := h.students.Restore(c.Request.Context(), c.Param("id"), branchID, restoreWindowDays(c)); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "student not found in trash"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "student restored"})
@@ -455,7 +483,7 @@ func (h *Handler) CreateClass(c *gin.Context) {
 	}
 	cl, err := h.classes.Create(c.Request.Context(), body.Name, body.BranchID, body.TeacherID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusBadRequest)
 		return
 	}
 	c.JSON(http.StatusCreated, cl)
@@ -502,7 +530,7 @@ func (h *Handler) UpdateClass(c *gin.Context) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
 			return
 		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusBadRequest)
 		return
 	}
 	c.JSON(http.StatusOK, cl)
@@ -544,12 +572,12 @@ func (h *Handler) RestoreClass(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.classes.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
+	if err := h.classes.Restore(c.Request.Context(), c.Param("id"), branchID, restoreWindowDays(c)); err != nil {
 		if err == service.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "class not found in trash"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "class restored"})
@@ -593,9 +621,17 @@ func (h *Handler) GetAttendance(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "classId and date are required"})
 		return
 	}
-	records, err := h.attendance.GetByClassDate(c.Request.Context(), classID, date)
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	records, err := h.attendance.GetByClassDate(c.Request.Context(), classID, branchID, date)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	if records == nil {
@@ -618,7 +654,7 @@ func (h *Handler) SaveAttendance(c *gin.Context) {
 	createdBy := c.GetHeader("X-User-ID")
 	records, err := h.attendance.Save(c.Request.Context(), &req, createdBy)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"saved": len(records)})
@@ -735,20 +771,20 @@ func (h *Handler) ListSchedule(c *gin.Context) {
 	if branchID == "" {
 		branchID = c.GetHeader("X-Branch-ID")
 	}
-	if classID != "" {
-		slots, err := h.schedule.GetByClass(c.Request.Context(), classID)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, slots)
-		return
-	}
 	if branchID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId or classId required"})
 		return
 	}
 	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if classID != "" {
+		slots, err := h.schedule.GetByClass(c.Request.Context(), classID, branchID)
+		if err != nil {
+			respondServiceError(c, err, http.StatusInternalServerError)
+			return
+		}
+		c.JSON(http.StatusOK, slots)
 		return
 	}
 	slots, err := h.schedule.GetByBranch(c.Request.Context(), branchID)
@@ -770,15 +806,7 @@ func (h *Handler) UpsertSchedule(c *gin.Context) {
 	}
 	slot, err := h.schedule.Upsert(c.Request.Context(), &req)
 	if err != nil {
-		if errors.Is(err, service.ErrScheduleConflict) {
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-			return
-		}
-		if errors.Is(err, service.ErrInvalidInput) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	c.JSON(http.StatusOK, slot)
@@ -836,7 +864,7 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 	}
 	a, err := h.assignments.Create(c.Request.Context(), &req, c.GetHeader("X-User-ID"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	c.JSON(http.StatusCreated, a)
@@ -874,7 +902,7 @@ func (h *Handler) RestoreAssignment(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.assignments.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
+	if err := h.assignments.Restore(c.Request.Context(), c.Param("id"), branchID, restoreWindowDays(c)); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
@@ -919,7 +947,7 @@ func (h *Handler) GetSubmissions(c *gin.Context) {
 	}
 	subs, err := h.assignments.GetSubmissions(c.Request.Context(), c.Param("id"), branchID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	c.JSON(http.StatusOK, subs)
@@ -1002,7 +1030,7 @@ func (h *Handler) ConsolidatedData(c *gin.Context) {
 		Year:          c.Query("year"),
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -1073,7 +1101,7 @@ func (h *Handler) AddNote(c *gin.Context) {
 	note, err := h.notes.AddNote(c.Request.Context(), branchID, c.Param("id"),
 		req.Content, c.GetHeader("X-User-ID"), "")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	c.JSON(http.StatusCreated, note)
@@ -1129,7 +1157,7 @@ func (h *Handler) AddContactLog(c *gin.Context) {
 	entry, err := h.notes.AddContactLog(c.Request.Context(), branchID, c.Param("id"),
 		&req, c.GetHeader("X-User-ID"), "")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondServiceError(c, err, http.StatusInternalServerError)
 		return
 	}
 	c.JSON(http.StatusCreated, entry)

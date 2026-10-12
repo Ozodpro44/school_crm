@@ -46,8 +46,8 @@ func (s *TeacherPortalService) GetPortalData(ctx context.Context, userID string)
 		SELECT c.id, c.name, c.branch_id,
 		       COUNT(s.id) FILTER (WHERE s.status = 'active') AS student_count
 		FROM classes c
-		LEFT JOIN students s ON s.class_id = c.id
-		WHERE c.teacher_id = $1
+		LEFT JOIN students s ON s.class_id = c.id AND s.deleted_at IS NULL
+		WHERE c.teacher_id = $1 AND c.deleted_at IS NULL
 		GROUP BY c.id, c.name, c.branch_id
 		ORDER BY c.name
 	`, teacher.ID)
@@ -74,7 +74,7 @@ func (s *TeacherPortalService) GetPortalData(ctx context.Context, userID string)
 	// ── Students I teach (with current-month payment status) ─────────────────
 	if len(classIDs) > 0 {
 		now := time.Now()
-		monthName := now.Format("January")
+		monthName := monthKey(now)
 		year := now.Year()
 
 		// Build IN clause manually (Go's database/sql doesn't support array expansion)
@@ -97,8 +97,11 @@ func (s *TeacherPortalService) GetPortalData(ctx context.Context, userID string)
 			LEFT JOIN payments p ON p.student_id = s.id
 				AND p.month = $1
 				AND p.year  = $2
+				AND p.deleted_at IS NULL
+				AND p.status IN ('paid', 'partial')
 			WHERE s.class_id IN (%s)
 			  AND s.status = 'active'
+			  AND s.deleted_at IS NULL
 			GROUP BY s.id, s.full_name, s.phone, s.class_id, s.monthly_payment
 			ORDER BY s.full_name
 		`, inClause)
@@ -136,7 +139,7 @@ func (s *TeacherPortalService) GetPortalData(ctx context.Context, userID string)
 
 	// ── My salary (current month) ─────────────────────────────────────────────
 	now := time.Now()
-	monthName := now.Format("January")
+	monthName := monthKey(now)
 	year := now.Year()
 
 	var sal models.TeacherPortalSalary
@@ -147,7 +150,7 @@ func (s *TeacherPortalService) GetPortalData(ctx context.Context, userID string)
 	err = s.db.GetConn().QueryRowContext(ctx, `
 		SELECT id, amount, month, year, status
 		FROM salaries
-		WHERE teacher_id = $1 AND month = $2 AND year = $3
+		WHERE teacher_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL
 		LIMIT 1
 	`, teacher.ID, monthName, year).Scan(
 		&sal.ID, &sal.Amount, &sal.Month, &sal.Year, &sal.Status,

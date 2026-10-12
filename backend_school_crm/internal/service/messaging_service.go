@@ -4,16 +4,54 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
 )
+
+// maxRecipientsPerRequest caps one mass-send so a single request cannot tie
+// up the server (and the Telegram rate limit) indefinitely.
+const maxRecipientsPerRequest = 500
+
+// sendConcurrency bounds parallel Telegram calls within one request.
+const sendConcurrency = 5
+
+// telegramClient has a per-message timeout; http.Post used the default
+// client, which never times out.
+var telegramClient = &http.Client{Timeout: 10 * time.Second}
+
+// ErrTooManyRecipients is returned when a request resolves to more than
+// maxRecipientsPerRequest recipients; narrow the filters and retry.
+var ErrTooManyRecipients = errors.New("too many recipients: narrow the filters (max 500 per request)")
+
+// renderMessage substitutes {name} with the HTML-escaped student name:
+// messages are sent with parse_mode HTML, so a name like "A<b" or "R&D"
+// would otherwise break formatting or make Telegram reject the message.
+// The template itself is admin-authored and may contain Telegram HTML.
+func renderMessage(template, studentName string) string {
+	return strings.ReplaceAll(template, "{name}", html.EscapeString(studentName))
+}
+
+// redactTelegramErr strips the request URL (which embeds the bot token) from
+// transport errors before they are logged or returned.
+func redactTelegramErr(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return fmt.Errorf("telegram request %s failed: %w", ue.Op, ue.Err)
+	}
+	return err
+}
 
 type MessagingService struct {
 	db       *db.Database
@@ -87,19 +125,31 @@ func (s *MessagingService) Send(ctx context.Context, req *models.SendMessageRequ
 		return nil, err
 	}
 
-	// ── Send messages ─────────────────────────────────────────────────────────
-	delivered := 0
+	if len(recipients) > maxRecipientsPerRequest {
+		return nil, ErrTooManyRecipients
+	}
+
+	// ── Send messages (bounded concurrency) ───────────────────────────────────
+	var delivered int64
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, sendConcurrency)
 	for _, r := range recipients {
 		if r.TelegramChatID == "" {
 			continue
 		}
-		msg := strings.ReplaceAll(req.Message, "{name}", r.StudentName)
-		if err := s.sendTelegram(r.TelegramChatID, msg); err != nil {
-			log.Printf("[Messaging] failed to send to %s: %v", r.TelegramChatID, err)
-		} else {
-			delivered++
-		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(chatID, name string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if err := s.sendTelegram(ctx, chatID, renderMessage(req.Message, name)); err != nil {
+				log.Printf("[Messaging] failed to send to %s: %v", chatID, err)
+			} else {
+				atomic.AddInt64(&delivered, 1)
+			}
+		}(r.TelegramChatID, r.StudentName)
 	}
+	wg.Wait()
 
 	// ── Log the send ──────────────────────────────────────────────────────────
 	filtersJSON, _ := json.Marshal(req.Filters)
@@ -110,7 +160,7 @@ func (s *MessagingService) Send(ctx context.Context, req *models.SendMessageRequ
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
 		RETURNING id, branch_id, sent_by, message, template_key, recipients_count, delivered_count, filters::text, created_at
 	`, logID, req.BranchID, sentByID, req.Message, req.TemplateKey,
-		len(recipients), delivered, string(filtersJSON), time.Now(),
+		len(recipients), int(delivered), string(filtersJSON), time.Now(),
 	).Scan(&ml.ID, &ml.BranchID, &ml.SentBy, &ml.Message,
 		&ml.TemplateKey, &ml.RecipientsCount, &ml.DeliveredCount, &ml.Filters, &ml.CreatedAt)
 	if err != nil {
@@ -129,7 +179,7 @@ func (s *MessagingService) UpdateStudentTelegramID(ctx context.Context, studentI
 // buildRecipientsQuery constructs the SELECT to fetch recipients based on filters.
 func (s *MessagingService) buildRecipientsQuery(req *models.SendMessageRequest) (string, []interface{}) {
 	args := []interface{}{req.BranchID}
-	conds := []string{"s.branch_id = $1", "s.status = 'active'"}
+	conds := []string{"s.branch_id = $1", "s.status = 'active'", "s.deleted_at IS NULL"}
 
 	if len(req.Filters.StudentIDs) > 0 {
 		args = append(args, req.Filters.StudentIDs)
@@ -148,13 +198,15 @@ func (s *MessagingService) buildRecipientsQuery(req *models.SendMessageRequest) 
 					fmt.Sprintf(`NOT EXISTS (
 						SELECT 1 FROM payments p
 						WHERE p.student_id = s.id AND p.month = '%s' AND p.year = %d
-					)`, now.Format("01"), now.Year()))
+						  AND p.deleted_at IS NULL AND p.status IN ('paid','partial')
+					)`, monthKey(now), now.Year()))
 			case "paid":
 				conds = append(conds,
 					fmt.Sprintf(`EXISTS (
 						SELECT 1 FROM payments p
-						WHERE p.student_id = s.id AND p.month = '%s' AND p.year = %d AND p.status = 'paid'
-					)`, now.Format("01"), now.Year()))
+						WHERE p.student_id = s.id AND p.month = '%s' AND p.year = %d
+						  AND p.deleted_at IS NULL AND p.status IN ('paid','partial')
+					)`, monthKey(now), now.Year()))
 			}
 		}
 		if req.Filters.EnrolledAfter != "" {
@@ -177,18 +229,23 @@ func (s *MessagingService) buildRecipientsQuery(req *models.SendMessageRequest) 
 	return query, args
 }
 
-func (s *MessagingService) sendTelegram(chatID, text string) error {
+func (s *MessagingService) sendTelegram(ctx context.Context, chatID, text string) error {
 	if s.botToken == "" {
 		// Simulate success when no bot token configured
-		log.Printf("[Messaging] (no bot token) would send to %s: %s", chatID, text)
+		log.Printf("[Messaging] (no bot token) would send to %s", chatID)
 		return nil
 	}
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.botToken)
 	payload := map[string]string{"chat_id": chatID, "text": text, "parse_mode": "HTML"}
 	body, _ := json.Marshal(payload)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return redactTelegramErr(err)
+	}
+	hreq.Header.Set("Content-Type", "application/json")
+	resp, err := telegramClient.Do(hreq)
+	if err != nil {
+		return redactTelegramErr(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

@@ -916,23 +916,23 @@ func (s *SubscriptionService) CheckResourceLimit(ctx context.Context, ownerUserI
 		err = s.database.GetConn().QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM students
 			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
-			  AND status != 'left'
+			  AND status != 'left' AND deleted_at IS NULL
 		`, ownerUserID).Scan(&currentCount)
 	case "classes":
 		err = s.database.GetConn().QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM classes
 			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
-			  AND is_active = true
+			  AND is_active = true AND deleted_at IS NULL
 		`, ownerUserID).Scan(&currentCount)
 	case "branches":
 		err = s.database.GetConn().QueryRowContext(ctx, `
-			SELECT COUNT(*) FROM branches WHERE admin_id = $1 AND is_active = true
+			SELECT COUNT(*) FROM branches WHERE admin_id = $1 AND is_active = true AND deleted_at IS NULL
 		`, ownerUserID).Scan(&currentCount)
 	case "teachers":
 		err = s.database.GetConn().QueryRowContext(ctx, `
 			SELECT COUNT(*) FROM teachers
 			WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
-			  AND is_active = true
+			  AND is_active = true AND deleted_at IS NULL
 		`, ownerUserID).Scan(&currentCount)
 	}
 	if err != nil {

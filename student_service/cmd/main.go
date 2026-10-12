@@ -55,18 +55,20 @@ func main() {
 	// developer/super_admin) are permanently removed. Runs on a simple
 	// ticker rather than new scheduler infra, matching this codebase's
 	// existing pattern of per-service background loops.
+	//
+	// FINANCIAL HISTORY IS NEVER PURGED: payments.student_id is ON DELETE
+	// CASCADE, so hard-deleting a student would silently erase every payment
+	// they ever made. A trashed student that still has any payments row
+	// (soft-deleted payments included) is therefore skipped and stays
+	// soft-deleted indefinitely (hidden from every normal query). Operators
+	// wanting such rows gone must first remove the payments deliberately.
+	// See purgeStatements.
 	go func() {
 		ticker := time.NewTicker(6 * time.Hour)
 		defer ticker.Stop()
 		for range ticker.C {
-			for _, q := range []struct{ table, label string }{
-				{"students", "students"},
-				{"classes", "classes"},
-				{"assignments", "assignments"},
-			} {
-				if n, err := database.Conn().ExecContext(context.Background(),
-					`DELETE FROM `+q.table+` WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`,
-				); err != nil {
+			for _, q := range purgeStatements {
+				if n, err := database.Conn().ExecContext(context.Background(), q.sql); err != nil {
 					slog.Error("trash purge", "table", q.label, "error", err)
 				} else if rows, _ := n.RowsAffected(); rows > 0 {
 					slog.Info("trash purge", "table", q.label, "purged", rows)
@@ -151,4 +153,14 @@ func corsMiddleware(allowedOrigins []string) gin.HandlerFunc {
 		}
 		c.Next()
 	}
+}
+
+// purgeStatements are the trash-purge DELETEs. Students that still have
+// payments are excluded (payments cascade on student delete).
+var purgeStatements = []struct{ label, sql string }{
+	{"students", `DELETE FROM students s
+		WHERE s.deleted_at IS NOT NULL AND s.deleted_at < now() - interval '30 days'
+		  AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.student_id = s.id)`},
+	{"classes", `DELETE FROM classes WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`},
+	{"assignments", `DELETE FROM assignments WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`},
 }

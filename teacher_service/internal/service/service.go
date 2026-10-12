@@ -191,6 +191,12 @@ type CreateTeacherRequest struct {
 	JoinedDate    *time.Time `json:"joinedDate"`
 }
 
+// limitExceeded reports whether one more resource would break the plan: a
+// NULL max means unlimited, otherwise current must be < max.
+func limitExceeded(current int, max sql.NullInt64) bool {
+	return max.Valid && int64(current) >= max.Int64
+}
+
 // checkTeacherLimit ports backend_school_crm's SubscriptionService.
 // CheckResourceLimit ("teachers" case) — teacher_service owns teacher
 // creation independently and has no dependency on the monolith's
@@ -198,29 +204,38 @@ type CreateTeacherRequest struct {
 // subscriptions/subscription_plans/branches/teachers tables. A NULL
 // max_teachers (or no subscription row at all) means unlimited: the
 // separate SubscriptionGate is what blocks a lapsed/missing subscription.
-func (s *TeacherService) checkTeacherLimit(ctx context.Context, branchID string) error {
-	var ownerUserID string
-	if err := s.db.Conn().QueryRowContext(ctx,
-		`SELECT admin_id FROM branches WHERE id = $1`, branchID,
+//
+// It MUST run inside the transaction that inserts/restores the teacher: it
+// takes a transaction-scoped advisory lock keyed by the branch owner, so two
+// concurrent creates/restores serialize and cannot both observe count=max-1.
+// Only live rows count (deleted_at IS NULL).
+func (s *TeacherService) checkTeacherLimit(ctx context.Context, tx *sql.Tx, branchID string) error {
+	var ownerUserID sql.NullString
+	if err := tx.QueryRowContext(ctx,
+		`SELECT admin_id::text FROM branches WHERE id = $1`, branchID,
 	).Scan(&ownerUserID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
 		return fmt.Errorf("check teacher limit: resolve branch owner: %w", err)
 	}
-	if ownerUserID == "" {
+	if !ownerUserID.Valid || ownerUserID.String == "" {
 		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1)::bigint)`,
+		"plan-limit:"+ownerUserID.String); err != nil {
+		return fmt.Errorf("check teacher limit: lock: %w", err)
 	}
 
 	var maxTeachers sql.NullInt64
-	err := s.db.Conn().QueryRowContext(ctx, `
+	err := tx.QueryRowContext(ctx, `
 		SELECT sp.max_teachers
 		FROM subscriptions sub
 		JOIN subscription_plans sp ON sub.plan_id = sp.id
 		WHERE sub.user_id = $1
 		  AND sub.status IN ('active','trial','paused','pending_payment','past_due')
 		ORDER BY sub.created_at DESC
-		LIMIT 1`, ownerUserID,
+		LIMIT 1`, ownerUserID.String,
 	).Scan(&maxTeachers)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -233,24 +248,20 @@ func (s *TeacherService) checkTeacherLimit(ctx context.Context, branchID string)
 	}
 
 	var count int
-	if err := s.db.Conn().QueryRowContext(ctx,
+	if err := tx.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM teachers
 		 WHERE branch_id IN (SELECT id FROM branches WHERE admin_id = $1)
-		   AND is_active = true AND deleted_at IS NULL`, ownerUserID,
+		   AND is_active = true AND deleted_at IS NULL`, ownerUserID.String,
 	).Scan(&count); err != nil {
 		return fmt.Errorf("check teacher limit: count teachers: %w", err)
 	}
-	if int64(count) >= maxTeachers.Int64 {
+	if limitExceeded(count, maxTeachers) {
 		return fmt.Errorf("%w: plan allows %d, you already have %d", ErrTeacherLimitReached, maxTeachers.Int64, count)
 	}
 	return nil
 }
 
 func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) (*Teacher, error) {
-	if err := s.checkTeacherLimit(ctx, req.BranchID); err != nil {
-		return nil, err
-	}
-
 	now := time.Now().UTC()
 	t := &Teacher{
 		ID:            uuid.New().String(),
@@ -271,6 +282,10 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	if err := s.checkTeacherLimit(ctx, tx, req.BranchID); err != nil {
+		return nil, err
+	}
 
 	// Optionally create a user account for the teacher
 	if req.Password != "" {
@@ -452,6 +467,13 @@ func (s *TeacherService) Delete(ctx context.Context, id, branchID, deletedBy str
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return ErrNotFound
 	}
+	// A deleted teacher must not stay assigned to classes (their name would
+	// keep showing on class lists and the teacher portal). Restoring the
+	// teacher does not re-assign them.
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE classes SET teacher_id = NULL, updated_at = now() WHERE teacher_id = $1", id); err != nil {
+		return err
+	}
 	// Soft-delete the linked login too (not hard-delete): a teacher
 	// restored within the window needs to be able to log in again
 	// immediately, which a permanently-removed users row would prevent.
@@ -465,11 +487,11 @@ func (s *TeacherService) Delete(ctx context.Context, id, branchID, deletedBy str
 	return tx.Commit()
 }
 
-// Restore un-deletes a teacher soft-deleted within the last 30 days (the
-// longer of the two trash windows — callers enforce the shorter 7-day
-// window for non-super-role callers before reaching here), reinstating
-// their login at the same time if they had one.
-func (s *TeacherService) Restore(ctx context.Context, id, branchID string) error {
+// Restore un-deletes a teacher soft-deleted within the last windowDays (7 for
+// regular callers, 30 for developer/super_admin — the windows the Trash list
+// shows), reinstating their login at the same time if they had one. The
+// plan's teacher limit is re-checked: a restored teacher counts again.
+func (s *TeacherService) Restore(ctx context.Context, id, branchID string, windowDays int) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
@@ -481,12 +503,16 @@ func (s *TeacherService) Restore(ctx context.Context, id, branchID string) error
 
 	var userID sql.NullString
 	err = tx.QueryRowContext(ctx,
-		"SELECT user_id FROM teachers WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
-		id, branchID).Scan(&userID)
+		`SELECT user_id FROM teachers WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL
+		 AND deleted_at > now() - make_interval(days => $3) FOR UPDATE`,
+		id, branchID, windowDays).Scan(&userID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	if err != nil {
+		return err
+	}
+	if err := s.checkTeacherLimit(ctx, tx, branchID); err != nil {
 		return err
 	}
 
@@ -929,9 +955,9 @@ func (s *SalaryService) Delete(ctx context.Context, id, branchID, deletedBy, rol
 
 // Restore un-deletes a salary soft-deleted within the last 30 days (the
 // longer of the two trash windows — callers enforce the shorter 7-day
-// window for non-super-role callers before reaching here). Fails with
+// window for non-super-role callers; windowDays enforces it). Fails with
 // ErrDuplicate if a live salary now exists for the same teacher/month/year.
-func (s *SalaryService) Restore(ctx context.Context, id, branchID, role string) error {
+func (s *SalaryService) Restore(ctx context.Context, id, branchID, role string, windowDays int) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
@@ -944,8 +970,8 @@ func (s *SalaryService) Restore(ctx context.Context, id, branchID, role string) 
 	var teacherID, month string
 	var year int
 	err = tx.QueryRowContext(ctx,
-		"SELECT teacher_id, month, year FROM salaries WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
-		id, branchID,
+		"SELECT teacher_id, month, year FROM salaries WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL\n\t\t AND deleted_at > now() - make_interval(days => $3)",
+		id, branchID, windowDays,
 	).Scan(&teacherID, &month, &year)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
