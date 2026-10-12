@@ -36,7 +36,7 @@ type TeacherGRPCServer struct {
 }
 
 func NewTeacherGRPCServer(svc *service.TeacherService) *TeacherGRPCServer {
-	s := &TeacherGRPCServer{svc: svc, grpc: grpc.NewServer()}
+	s := &TeacherGRPCServer{svc: svc, grpc: grpc.NewServer(grpc.UnaryInterceptor(internalAuthInterceptor()))}
 	return s
 }
 

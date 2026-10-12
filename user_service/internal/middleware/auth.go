@@ -24,6 +24,7 @@ type CustomClaims struct {
 	UserID   string `json:"user_id"`
 	Role     string `json:"role"`
 	BranchID string `json:"branch_id,omitempty"`
+	Type     string `json:"type,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -48,8 +49,10 @@ func JWTAuth(jwtSecret string) gin.HandlerFunc {
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}
 			return []byte(jwtSecret), nil
-		})
-		if err != nil || !tok.Valid {
+		}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
+		// Developer tokens (type=developer / no user_id) are not user
+		// identities and must never pass the normal user path.
+		if err != nil || !tok.Valid || claims.UserID == "" || claims.Type == "developer" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			c.Abort()
 			return

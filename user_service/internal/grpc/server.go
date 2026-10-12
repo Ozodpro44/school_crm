@@ -38,7 +38,7 @@ func NewUserGRPCServer(
 		users:       users,
 		branches:    branches,
 		permissions: permissions,
-		grpc:        grpc.NewServer(),
+		grpc:        grpc.NewServer(grpc.UnaryInterceptor(internalAuthInterceptor())),
 	}
 	userv1.RegisterUserServiceServer(s.grpc, s)
 	return s
