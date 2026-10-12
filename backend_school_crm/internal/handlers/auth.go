@@ -333,7 +333,7 @@ func ResetPassword(userService *service.UserService) gin.HandlerFunc {
 		var req struct {
 			Email       string `json:"email" binding:"required,email"`
 			ResetToken  string `json:"resetToken" binding:"required"`
-			NewPassword string `json:"newPassword" binding:"required,min=6"`
+			NewPassword string `json:"newPassword" binding:"required,min=8"`
 		}
 
 		log.Printf("[ResetPassword] Password reset request from %s", c.ClientIP())

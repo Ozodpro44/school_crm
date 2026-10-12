@@ -16,6 +16,7 @@ import (
 type CustomClaims struct {
 	UserID    string `json:"user_id"`
 	Role      string `json:"role"`
+	Type      string `json:"type,omitempty"`
 	SessionID string `json:"sid,omitempty"`
 	jwt.RegisteredClaims
 }
@@ -25,6 +26,35 @@ type CustomClaims struct {
 // share the same Redis instance, and auth_service is what writes this key
 // when a user signs a specific device/session out.
 func sessionRevokedKey(sessionID string) string { return "auth:session:revoked:" + sessionID }
+
+// blacklistKey must match auth_service's blacklistKey (written on Logout).
+func blacklistKey(token string) string { return "auth:blacklist:" + token }
+
+// hmacMethods pins accepted signing algorithms so a token signed with
+// "none" or an asymmetric alg can never validate against the HMAC secret.
+var hmacMethods = []string{"HS256", "HS384", "HS512"}
+
+// validUserClaims rejects developer tokens (type=developer) and tokens
+// without a user_id on the normal user path.
+func validUserClaims(claims *CustomClaims) bool {
+	return claims.Type != "developer" && claims.UserID != ""
+}
+
+// tokenBlacklisted reports whether the raw token was blacklisted by Logout.
+// A Redis error fails open (logged), matching the session-revocation check.
+func tokenBlacklisted(ctx context.Context, rdb *redis.Client, token string) bool {
+	if rdb == nil {
+		return false
+	}
+	rctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	n, err := rdb.Exists(rctx, blacklistKey(token)).Result()
+	if err != nil {
+		log.Printf("[AuthMiddleware] blacklist check failed, failing open: %v", err)
+		return false
+	}
+	return n > 0
+}
 
 // AuthMiddleware validates the regular-user Bearer token. rdb is optional —
 // pass nil to skip the session-revocation check entirely (e.g. in tests, or
@@ -53,10 +83,16 @@ func AuthMiddleware(jwtSecret string, rdb *redis.Client) gin.HandlerFunc {
 
 		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
-		})
+		}, jwt.WithValidMethods(hmacMethods))
 
-		if err != nil || !token.Valid {
+		if err != nil || !token.Valid || !validUserClaims(claims) {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.Abort()
+			return
+		}
+
+		if tokenBlacklisted(c.Request.Context(), rdb, tokenString) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "token has been revoked"})
 			c.Abort()
 			return
 		}
@@ -109,9 +145,13 @@ func ParseAccessToken(ctx context.Context, jwtSecret, tokenString string, rdb *r
 	claims := &CustomClaims{}
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		return []byte(jwtSecret), nil
-	}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
-	if err != nil || !token.Valid || claims.UserID == "" {
+	}, jwt.WithValidMethods(hmacMethods))
+	if err != nil || !token.Valid || !validUserClaims(claims) {
 		return nil, errors.New("invalid token")
+	}
+
+	if tokenBlacklisted(ctx, rdb, tokenString) {
+		return nil, errors.New("token has been revoked")
 	}
 
 	if rdb != nil && claims.SessionID != "" {

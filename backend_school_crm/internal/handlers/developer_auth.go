@@ -196,9 +196,9 @@ func DeveloperMiddleware(jwtSecret string) gin.HandlerFunc {
 }
 
 // RegisterDeveloperAuthRoutes registers developer authentication routes
-func RegisterDeveloperAuthRoutes(router gin.IRouter, developerService *service.DeveloperService, jwtSecret string) {
+func RegisterDeveloperAuthRoutes(router gin.IRouter, developerService *service.DeveloperService, jwtSecret string, mw ...gin.HandlerFunc) {
 	log.Println("[ROUTES] Registering developer auth routes")
-	router.POST("/api/v1/dev/auth/login", DeveloperLogin(developerService, jwtSecret))
+	router.POST("/api/v1/dev/auth/login", append(mw, DeveloperLogin(developerService, jwtSecret))...)
 }
 
 // ListDeveloperSessions returns the caller's own active sessions (devices).

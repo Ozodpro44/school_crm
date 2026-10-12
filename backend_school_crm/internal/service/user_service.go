@@ -64,7 +64,7 @@ type LoginRequest struct {
 
 type RegisterRequest struct {
 	Email      string `json:"email"      binding:"required,email"`
-	Password   string `json:"password"   binding:"required,min=6"`
+	Password   string `json:"password"   binding:"required,min=8"`
 	FullName   string `json:"fullName"   binding:"required"`
 	Role       string `json:"role"       binding:"required"`
 	SchoolName string `json:"schoolName"`
@@ -74,7 +74,7 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*model
 	log.Printf("[UserService.Login] Authenticating user: %s", email)
 
 	user := &models.User{}
-	query := `SELECT id, email, password_hash, role, full_name, branch_id, created_at, updated_at FROM users WHERE email = $1`
+	query := `SELECT id, email, password_hash, role, full_name, branch_id, created_at, updated_at FROM users WHERE email = $1 AND deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.BranchID, &user.CreatedAt, &user.UpdatedAt,
@@ -508,14 +508,29 @@ func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
 	return users, nil
 }
 
+// Update applies profile/password changes. A password change ("password" key)
+// REQUIRES a correct "current_password"; use UpdateByAdmin for an admin or
+// developer resetting someone else's password.
 func (s *UserService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.User, error) {
-	// Validate and sanitize input fields
+	return s.update(ctx, id, updates, true)
+}
+
+// UpdateByAdmin is Update without the current-password requirement, for an
+// admin acting on another user or the developer portal. Callers must have
+// already authorised the actor.
+func (s *UserService) UpdateByAdmin(ctx context.Context, id string, updates map[string]interface{}) (*models.User, error) {
+	return s.update(ctx, id, updates, false)
+}
+
+func (s *UserService) update(ctx context.Context, id string, updates map[string]interface{}, requireCurrent bool) (*models.User, error) {
+	// Only these columns can be written. password_hash is deliberately NOT
+	// client-settable: it is derived below from "password" after the
+	// current-password check (a raw "password_hash" key is dropped).
 	allowedFields := map[string]bool{
-		"full_name":        true,
-		"email":            true,
-		"password_hash":    true,
-		"current_password": true,
+		"full_name": true,
+		"email":     true,
 	}
+	delete(updates, "password_hash")
 
 	query := `UPDATE users SET `
 	args := []interface{}{}
@@ -534,8 +549,14 @@ func (s *UserService) Update(ctx context.Context, id string, updates map[string]
 	if newPwd, exists := updates["password"]; exists {
 		delete(updates, "password") // callers use "password"; internally we store as "password_hash"
 		if pwdStr, ok := newPwd.(string); ok {
-			// If current_password is provided, verify it
-			if currentPassword != "" {
+			if len(pwdStr) < 8 {
+				return nil, errors.New("password must be at least 8 characters")
+			}
+			if requireCurrent && currentPassword == "" {
+				return nil, errors.New("current_password is required to change password")
+			}
+			// Verify the current password when required (or when supplied)
+			if requireCurrent || currentPassword != "" {
 				// Note: user.Password is cleared in GetByID, need to fetch separately
 				userRow := &models.User{}
 				userQuery := `SELECT password_hash FROM users WHERE id = $1`
@@ -561,7 +582,7 @@ func (s *UserService) Update(ctx context.Context, id string, updates map[string]
 	}
 
 	for key, value := range updates {
-		if !allowedFields[key] {
+		if !allowedFields[key] && key != "password_hash" {
 			continue
 		}
 		if hasUpdates {
@@ -611,7 +632,30 @@ func (s *UserService) Delete(ctx context.Context, id string) error {
 	if n, _ := res.RowsAffected(); n == 0 {
 		return errors.New("user not found")
 	}
+	s.revokeAllSessions(ctx, id)
 	return nil
+}
+
+// revokeAllSessions marks every live session of the user revoked in Postgres
+// and flags it in Redis (same key auth_service/AuthMiddleware use), so a
+// soft-deleted user's outstanding tokens stop working. Best-effort.
+func (s *UserService) revokeAllSessions(ctx context.Context, userID string) {
+	rows, err := s.db.GetConn().QueryContext(ctx,
+		`UPDATE user_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL RETURNING id`, userID)
+	if err != nil {
+		log.Printf("[UserService] revoke sessions for %s failed: %v", userID, err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sid string
+		if rows.Scan(&sid) != nil || s.redisClient == nil {
+			continue
+		}
+		if rerr := s.redisClient.GetClient().Set(ctx, "auth:session:revoked:"+sid, "1", 25*time.Hour).Err(); rerr != nil {
+			log.Printf("[UserService] redis revoke flag for session %s failed: %v", sid, rerr)
+		}
+	}
 }
 
 // Restore un-deletes a user soft-deleted within the last 30 days.

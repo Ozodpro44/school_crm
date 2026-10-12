@@ -723,7 +723,7 @@ func devUpdateUser(userService *service.UserService) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		user, err := userService.Update(c.Request.Context(), id, updates)
+		user, err := userService.UpdateByAdmin(c.Request.Context(), id, updates)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

@@ -144,7 +144,7 @@ func TestRegisterHandler_NonAdminForbidden(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{
 		"email":    "teacher@test.example",
-		"password": "pass123",
+		"password": "pass12345",
 		"fullName": "Test Teacher",
 		"role":     "teacher",
 	})
@@ -206,7 +206,7 @@ func TestRegisterHandler_DuplicateEmail(t *testing.T) {
 
 	payload := map[string]string{
 		"email":    "dup-handler@test.example",
-		"password": "pass123",
+		"password": "pass12345",
 		"fullName": "Dup Handler",
 		"role":     "admin",
 	}
