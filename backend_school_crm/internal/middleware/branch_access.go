@@ -150,3 +150,49 @@ func RequireBranchIDQueryAccess(userSvc *service.UserService) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// RequireResourceBranchAccess protects routes of the form /<resource>/:id.
+// Those handlers look the row up by id alone, so without this check any
+// authenticated user could read, edit or delete another branch's student,
+// class, payment, expense or salary just by knowing its UUID. It resolves the
+// row's branch_id from the given table and requires the caller to belong to it.
+// Missing rows and rows of foreign branches both yield 404, so existence of
+// other tenants' ids is not revealed.
+func RequireResourceBranchAccess(userSvc *service.UserService, table string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, err := GetUserID(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			c.Abort()
+			return
+		}
+
+		branchID, found, err := userSvc.ResourceBranchID(c.Request.Context(), table, c.Param("id"))
+		if err != nil {
+			log.Printf("[RequireResourceBranchAccess] DB error table=%s id=%s: %v", table, c.Param("id"), err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying branch access"})
+			c.Abort()
+			return
+		}
+		if !found {
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			c.Abort()
+			return
+		}
+
+		ok, err := userSvc.BelongsToBranch(c.Request.Context(), userID, branchID)
+		if err != nil {
+			log.Printf("[RequireResourceBranchAccess] DB error for user=%s branch=%s: %v", userID, branchID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying branch access"})
+			c.Abort()
+			return
+		}
+		if !ok {
+			log.Printf("[RequireResourceBranchAccess] BOLA attempt blocked: user=%s tried to access %s/%s of branch=%s", userID, table, c.Param("id"), branchID)
+			c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}

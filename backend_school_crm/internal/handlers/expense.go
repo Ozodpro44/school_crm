@@ -16,10 +16,10 @@ func RegisterExpenseRoutes(router *gin.RouterGroup, expenseService *service.Expe
 	expenses := router.Group("/expenses")
 	expenses.POST("", middleware.PermissionChecker(userService, "canCreateExpenses"), createExpense(expenseService))
 	expenses.GET("/consolidated/data", middleware.PermissionChecker(userService, "canViewExpenses"), getExpensesConsolidatedData(expenseService, branchService, userService))
-	expenses.GET("/:id", middleware.PermissionChecker(userService, "canViewExpenses"), getExpense(expenseService))
+	expenses.GET("/:id", middleware.PermissionChecker(userService, "canViewExpenses"), middleware.RequireResourceBranchAccess(userService, "expenses"), getExpense(expenseService))
 	expenses.GET("", middleware.PermissionChecker(userService, "canViewExpenses"), listExpenses(expenseService, branchService, userService))
-	expenses.PUT("/:id", middleware.PermissionChecker(userService, "canEditExpenses"), updateExpense(expenseService, userService))
-	expenses.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteExpenses"), deleteExpense(expenseService, branchService, userService))
+	expenses.PUT("/:id", middleware.PermissionChecker(userService, "canEditExpenses"), middleware.RequireResourceBranchAccess(userService, "expenses"), updateExpense(expenseService, userService))
+	expenses.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteExpenses"), middleware.RequireResourceBranchAccess(userService, "expenses"), deleteExpense(expenseService, branchService, userService))
 }
 
 func createExpense(expenseService *service.ExpenseService) gin.HandlerFunc {

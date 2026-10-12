@@ -14,10 +14,10 @@ func RegisterClassRoutes(router *gin.RouterGroup, classService *service.ClassSer
 	classes := router.Group("/classes")
 	// Authenticated users can view and edit
 	classes.POST("", middleware.PermissionChecker(userService, "canCreateClasses"), createClass(classService, subService))
-	classes.GET("/:id", middleware.PermissionChecker(userService, "canViewClasses"), getClass(classService))
+	classes.GET("/:id", middleware.PermissionChecker(userService, "canViewClasses"), middleware.RequireResourceBranchAccess(userService, "classes"), getClass(classService))
 	classes.GET("", middleware.PermissionChecker(userService, "canViewClasses"), listClasses(classService))
-	classes.PUT("/:id", middleware.PermissionChecker(userService, "canEditClasses"), updateClass(classService))
-	classes.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteClasses"), deleteClass(classService))
+	classes.PUT("/:id", middleware.PermissionChecker(userService, "canEditClasses"), middleware.RequireResourceBranchAccess(userService, "classes"), updateClass(classService))
+	classes.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteClasses"), middleware.RequireResourceBranchAccess(userService, "classes"), deleteClass(classService))
 }
 
 func createClass(classService *service.ClassService, subService *service.SubscriptionService) gin.HandlerFunc {

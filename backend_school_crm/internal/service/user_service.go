@@ -790,6 +790,33 @@ func (s *UserService) BelongsToBranch(ctx context.Context, userID, branchID stri
 	return count > 0, nil
 }
 
+// resourceTables is the allowlist of tables ResourceBranchID may query. The
+// table name is interpolated into SQL, so it must never come from user input.
+var resourceTables = map[string]bool{
+	"students": true,
+	"classes":  true,
+	"expenses": true,
+	"payments": true,
+	"salaries": true,
+}
+
+// ResourceBranchID returns the branch_id that owns the row with the given id.
+// found is false when the row does not exist (or has no branch).
+func (s *UserService) ResourceBranchID(ctx context.Context, table, id string) (branchID string, found bool, err error) {
+	if !resourceTables[table] {
+		return "", false, fmt.Errorf("ResourceBranchID: table %q not allowed", table)
+	}
+	var bid sql.NullString
+	err = s.db.GetConn().QueryRowContext(ctx, "SELECT branch_id FROM "+table+" WHERE id = $1", id).Scan(&bid)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("ResourceBranchID: %w", err)
+	}
+	return bid.String, bid.Valid && bid.String != "", nil
+}
+
 func (s *UserService) GetBranchManagers(ctx context.Context, branchID string) ([]models.User, error) {
 	managers := []models.User{}
 	query := `

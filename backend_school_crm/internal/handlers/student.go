@@ -14,10 +14,10 @@ import (
 func RegisterStudentRoutes(router *gin.RouterGroup, studentService *service.StudentService, userService *service.UserService, financeService *service.FinanceService, notifService *service.NotificationService) {
 	students := router.Group("/students")
 	students.POST("", middleware.PermissionChecker(userService, "canCreateStudents"), createStudent(studentService))
-	students.GET("/:id", middleware.PermissionChecker(userService, "canViewStudents"), getStudent(studentService))
+	students.GET("/:id", middleware.PermissionChecker(userService, "canViewStudents"), middleware.RequireResourceBranchAccess(userService, "students"), getStudent(studentService))
 	students.GET("", middleware.PermissionChecker(userService, "canViewStudents"), listStudents(studentService))
-	students.PUT("/:id", middleware.PermissionChecker(userService, "canEditStudents"), updateStudent(studentService, notifService))
-	students.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteStudents"), deleteStudent(studentService))
+	students.PUT("/:id", middleware.PermissionChecker(userService, "canEditStudents"), middleware.RequireResourceBranchAccess(userService, "students"), updateStudent(studentService, notifService))
+	students.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteStudents"), middleware.RequireResourceBranchAccess(userService, "students"), deleteStudent(studentService))
 	students.GET("/consolidated/data", middleware.PermissionChecker(userService, "canViewStudents"), getStudentsConsolidatedData(studentService))
 	students.GET("/search/with-payments", middleware.PermissionChecker(userService, "canViewStudents"), searchStudentsWithPayments(financeService))
 }

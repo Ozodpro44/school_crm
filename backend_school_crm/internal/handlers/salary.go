@@ -15,10 +15,10 @@ import (
 func RegisterSalaryRoutes(router *gin.RouterGroup, salaryService *service.SalaryService, branchService *service.BranchService, userService *service.UserService) {
 	salaries := router.Group("/salaries")
 	salaries.POST("", middleware.PermissionChecker(userService, "canCreateSalaries"), createSalary(salaryService))
-	salaries.GET("/:id", middleware.PermissionChecker(userService, "canViewSalaries"), getSalary(salaryService))
+	salaries.GET("/:id", middleware.PermissionChecker(userService, "canViewSalaries"), middleware.RequireResourceBranchAccess(userService, "salaries"), getSalary(salaryService))
 	salaries.GET("", middleware.PermissionChecker(userService, "canViewSalaries"), listSalaries(salaryService, branchService, userService))
-	salaries.PUT("/:id", middleware.PermissionChecker(userService, "canEditSalaries"), updateSalary(salaryService, userService))
-	salaries.DELETE("/:id", middleware.PermissionChecker(userService, "canEditSalaries"), deleteSalary(salaryService, branchService, userService))
+	salaries.PUT("/:id", middleware.PermissionChecker(userService, "canEditSalaries"), middleware.RequireResourceBranchAccess(userService, "salaries"), updateSalary(salaryService, userService))
+	salaries.DELETE("/:id", middleware.PermissionChecker(userService, "canEditSalaries"), middleware.RequireResourceBranchAccess(userService, "salaries"), deleteSalary(salaryService, branchService, userService))
 }
 
 func createSalary(salaryService *service.SalaryService) gin.HandlerFunc {

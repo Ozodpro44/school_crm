@@ -304,7 +304,12 @@ func main() {
 		router.Use(middleware.SentryMiddleware())
 	}
 	router.Use(middleware.StructuredLogger(logger))
-	router.Use(middleware.CORSMiddleware())
+	corsOrigins := middleware.ParseCORSOrigins(os.Getenv("CORS_ORIGINS"))
+	if len(corsOrigins) == 0 {
+		corsOrigins = []string{"http://localhost:3000", "http://localhost:3001"}
+		log.Printf("WARNING: CORS_ORIGINS not set; allowing only %v", corsOrigins)
+	}
+	router.Use(middleware.CORSMiddleware(corsOrigins))
 	router.Use(middleware.ErrorHandling())
 	router.Use(handlers.SafeRequestLogger(database, settingsStore))
 	router.Use(middleware.AuditMiddleware(database))
