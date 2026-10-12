@@ -292,3 +292,42 @@ export interface SubscriptionPayment {
 export interface SubscriptionResponse extends Subscription {
   plan?: SubscriptionPlan;
 }
+
+// ─── Hikvision Face ID attendance (staff) ───────────────────────────────────
+export type HikvisionEventType = "check_in" | "check_out";
+
+export interface HikvisionDevice {
+  id: string;
+  branchId: string;
+  name: string;
+  host: string;
+  username: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HikvisionEmployee {
+  id: string;
+  deviceId: string;
+  employeeNo: string;
+  fullName: string;
+  teacherId?: string | null;
+  photoUrl?: string; // temporary signed link to the photo in storage, when one has been uploaded
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HikvisionAttendanceRecord {
+  id: string;
+  deviceId: string;
+  employeeId?: string | null;
+  employeeNo: string;
+  employeeName: string;
+  eventTime: string;
+  eventType: HikvisionEventType;
+  minorEvent?: number | null;
+  source: string;
+  createdAt: string;
+}
