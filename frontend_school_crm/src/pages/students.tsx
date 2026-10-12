@@ -62,6 +62,7 @@ import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/compo
 import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
 import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
+import { parseDelimited, looksLikeHeader } from "@/lib/importCsv";
 
 export default function StudentsPage() {
   const router = useRouter();
@@ -240,7 +241,12 @@ export default function StudentsPage() {
 
   const processCSVData = async (csvText: string) => {
     try {
-      const lines = csvText.trim().split("\n");
+      // Delimiter (, ; or tab), quotes, BOM and CRLF are handled by the parser:
+      // Excel on uz/ru locales saves CSV with ";" which the old split(",") missed.
+      const { rows: parsedRows } = parseDelimited(csvText);
+      const dataRows = parsedRows[0] && looksLikeHeader(parsedRows[0].cells)
+        ? parsedRows.slice(1)
+        : parsedRows;
       const defaultPayment = settings?.monthlyPayment || 0;
       const knownClasses = [...classes];
 
@@ -248,13 +254,15 @@ export default function StudentsPage() {
       let createdClassCount = 0;
       const warnings: string[] = [];
 
-      for (let i = 1; i < lines.length; i++) {
-        const line = (lines[i] ?? "").trim();
-        if (!line) continue;
+      for (let i = 0; i < dataRows.length; i++) {
+        const row = dataRows[i];
+        if (!row) continue;
+        const parts = row.cells;
+        const rowNo = row.line;
 
-        const parts = line.split(",").map((p) => p.trim());
-
-        if (parts.length >= 3) {
+        if (parts.length < 3) {
+          warnings.push(t("importRowSkipped").replace("{row}", String(rowNo)));
+        } else {
           const [
             fullName,
             classNameOrPhone,
@@ -314,7 +322,7 @@ export default function StudentsPage() {
                 createdClassCount++;
               } catch (classError) {
                 warnings.push(
-                  `Row ${i + 1
+                  `Row ${rowNo
                   }: Could not create class "${className}" (student added without class) - ${classError instanceof Error ? classError.message : "Unknown error"
                   }`
                 );
@@ -339,7 +347,7 @@ export default function StudentsPage() {
           } catch (err) {
             warnings.push(
               t("csvRowImportFailed")
-                .replace("{row}", String(i + 1))
+                .replace("{row}", String(rowNo))
                 .replace("{name}", fullName)
                 .replace("{error}", (err as any)?.message || t("unknownError"))
             );
@@ -349,6 +357,10 @@ export default function StudentsPage() {
 
       if (importedCount > 0) {
         notify.success(t("importComplete"), `${t("successfullyImported")} ${importedCount} ${t("students")}`);
+      } else if (warnings.length === 0) {
+        // Nothing imported and nothing to explain it: the file had no usable rows.
+        notify.error(t("importError"), t("importNoValidRows"));
+        return;
       }
 
       if (warnings.length > 0) {
@@ -376,12 +388,26 @@ export default function StudentsPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // .xlsx/.xls are zip/binary files; reading them as text produces garbage.
+    if (/\.(xlsx|xlsm|xls)$/i.test(file.name)) {
+      notify.error(t("importError"), t("importUseCsvNotExcel"));
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     setIsImporting(true);
     const reader = new FileReader();
 
     reader.onload = (e) => {
       try {
         const csvText = e.target?.result as string;
+        if (csvText.includes("\uFFFD")) {
+          // Not valid UTF-8: Excel's plain "CSV" is Windows-1251 on Russian/Uzbek systems.
+          const retry = new FileReader();
+          retry.onload = (ev) => processCSVData(ev.target?.result as string);
+          retry.readAsText(file, "windows-1251");
+          return;
+        }
         processCSVData(csvText);
       } catch (error) {
         notify.error(t("importError"), t("failedToReadFile"));
