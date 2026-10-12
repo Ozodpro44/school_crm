@@ -7,7 +7,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o notification_service .
 
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates tzdata
+RUN addgroup -S app && adduser -S -G app -u 10001 app
 WORKDIR /app
-COPY --from=builder /app/notification_service .
+COPY --from=builder --chown=app:app /app/notification_service .
 EXPOSE 8088
+USER app
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${PORT:-8088}/health" >/dev/null || exit 1
+
 CMD ["./notification_service"]
