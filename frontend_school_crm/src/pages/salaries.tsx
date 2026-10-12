@@ -36,6 +36,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { DataTable, Column } from "@/components/DataTable";
 import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
 import { useBranch } from "@/context/BranchContext";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function SalariesPage() {
   const router = useRouter();
@@ -116,6 +117,20 @@ export default function SalariesPage() {
       setCurrentPage(Math.max(1, page));
     }
   }, [router.isReady, router.query.page]);
+
+  // Restore the last search/status filters once, on first client render.
+  const filtersRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!router.isReady || filtersRestoredRef.current) return;
+    filtersRestoredRef.current = true;
+    const saved = loadPageFilters("salaries", { search: "", status: "all" });
+    setSearchTerm(String(saved.search));
+    setFilterStatus(String(saved.status));
+  }, [router.isReady]);
+  useEffect(() => {
+    if (!filtersRestoredRef.current) return;
+    savePageFilters("salaries", { search: searchTerm, status: filterStatus });
+  }, [searchTerm, filterStatus]);
 
   useEffect(() => {
     // See the equivalent guard in assignments.tsx: without the branchLoading

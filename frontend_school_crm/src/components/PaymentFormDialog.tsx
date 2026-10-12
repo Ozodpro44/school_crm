@@ -118,7 +118,20 @@ export function PaymentFormDialog({
     }
     setStudentSearchTerm("");
     setShowStudentDropdown(false);
-    setSelectedStudentInfo(null);
+    // When editing, preload the student's info so the payment summary and
+    // balance hints work without the user having to re-select the student.
+    const editStudentInfo = editPayment ? studentInfoMap.get(editPayment.studentId) : undefined;
+    setSelectedStudentInfo(
+      editPayment && editStudentInfo
+        ? {
+            id: editPayment.studentId,
+            ...editStudentInfo,
+            paidAmount: 0,
+            status: "none",
+            branchId: branchId ?? "",
+          }
+        : null,
+    );
     setPaymentSummary(null);
     setFormSubmitted(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps

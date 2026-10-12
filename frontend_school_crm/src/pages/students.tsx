@@ -61,6 +61,7 @@ import { DataTable, Column } from "@/components/DataTable";
 import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
 import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function StudentsPage() {
   const router = useRouter();
@@ -189,14 +190,25 @@ export default function StudentsPage() {
     const { page: qPage, limit: qLimit, search: qSearch, status: qStatus, classId: qClassId, paymentStatus: qPaymentStatus } = router.query;
     if (qPage) setPage(parseInt(qPage as string) || 1);
     if (qLimit) setLimit(parseInt(qLimit as string) || 10);
-    const initSearch = (qSearch as string) || "";
+    // URL params win; otherwise fall back to the last filters used on this page.
+    // classId is deliberately not persisted: class ids belong to one branch.
+    const saved = loadPageFilters("students", { search: "", status: "all", paymentStatus: "all", limit: 10 });
+    const initSearch = (qSearch as string) ?? String(saved.search);
     setSearchTerm(initSearch);
     setSearchInput(initSearch);
-    setFilterStatus((qStatus as string) || "all");
+    setFilterStatus((qStatus as string) ?? String(saved.status));
     setFilterClass((qClassId as string) || "all");
-    setFilterPaymentStatus((qPaymentStatus as string) || "all");
+    setFilterPaymentStatus((qPaymentStatus as string) ?? String(saved.paymentStatus));
+    if (!qLimit) setLimit(Number(saved.limit) || 10);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
+
+  // Declared after the restore effect above so it never overwrites saved filters with defaults.
+  useEffect(() => {
+    // Skip until the saved filters have been restored, or defaults would overwrite them.
+    if (!router.isReady) return;
+    savePageFilters("students", { search: searchTerm, status: filterStatus, paymentStatus: filterPaymentStatus, limit });
+  }, [router.isReady, searchTerm, filterStatus, filterPaymentStatus, limit]);
 
   // Branch switched: a class filter from the old branch matches nothing here.
   const prevBranchIdRef = useRef<string | null>(null);

@@ -62,6 +62,7 @@ import { toTitleCase } from "@/lib/utils";
 import { PageHeader } from "@/components/PageHeader";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { QuickPayPanel } from "@/components/panels/QuickPayPanel";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function PaymentsPage() {
   const router = useRouter();
@@ -195,15 +196,26 @@ export default function PaymentsPage() {
     if (!router.isReady) return;
     const { page, limit, search, status, month, year, paymentMethod, classId } = router.query;
     if (page) setCurrentPage(parseInt(page as string) || 1);
-    if (limit) setItemsPerPage(parseInt(limit as string) || 10);
-    if (search) { setSearchTerm(search as string); setSearchInput(search as string); }
-    if (status) setFilterStatus(status as string);
-    if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
+    // URL params win; otherwise fall back to the last filters used on this page.
+    // classId is deliberately not persisted: class ids belong to one branch.
+    const saved = loadPageFilters("payments", { search: "", status: "all", paymentMethod: "all", limit: 10 });
+    setItemsPerPage(limit ? (parseInt(limit as string) || 10) : Number(saved.limit) || 10);
+    const initSearch = (search as string) ?? String(saved.search);
+    setSearchTerm(initSearch);
+    setSearchInput(initSearch);
+    setFilterStatus((status as string) ?? String(saved.status));
+    setFilterPaymentMethod((paymentMethod as string) ?? String(saved.paymentMethod));
     if (classId) setFilterClassId(classId as string);
     if (month) setSelectedMonth(month as string);
     if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
+
+  // Declared after the restore effect above so it never overwrites saved filters with defaults.
+  useEffect(() => {
+    if (!router.isReady) return;
+    savePageFilters("payments", { search: searchTerm, status: filterStatus, paymentMethod: filterPaymentMethod, limit: itemsPerPage });
+  }, [router.isReady, searchTerm, filterStatus, filterPaymentMethod, itemsPerPage]);
 
   // Sync URL params when filters/page change
   useEffect(() => {

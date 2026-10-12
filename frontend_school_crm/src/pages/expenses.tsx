@@ -66,6 +66,7 @@ import { DataTable, Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
 import { useBranch } from "@/context/BranchContext";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function ExpensesPage() {
   const router = useRouter();
@@ -185,6 +186,12 @@ export default function ExpensesPage() {
     }
   }, [router]);
 
+  useEffect(() => {
+    // Only persist once the first load has restored (or defaulted) the filters.
+    if (!initialLoadDoneRef.current) return;
+    savePageFilters("expenses", { search: searchTerm, category: filterCategory, paymentMethod: filterPaymentMethod, limit: itemsPerPage });
+  }, [searchTerm, filterCategory, filterPaymentMethod, itemsPerPage]);
+
   // Initialize state from URL params
   useEffect(() => {
     if (!router.isReady) return;
@@ -217,19 +224,19 @@ export default function ExpensesPage() {
     const { page, limit, search, category, paymentMethod, month, year } = router.query;
     const urlMonth = typeof month === "string" && /^(0[1-9]|1[0-2])$/.test(month) ? month : undefined;
     const urlYear = typeof year === "string" ? parseInt(year, 10) || undefined : undefined;
-    const urlSearch = typeof search === "string" ? search : "";
-    const urlCategory = typeof category === "string" ? category : "all";
-    const urlPaymentMethod = typeof paymentMethod === "string" ? paymentMethod : "all";
+    // URL params win; otherwise fall back to the last filters used on this page.
+    const saved = loadPageFilters("expenses", { search: "", category: "all", paymentMethod: "all", limit: 10 });
+    const urlSearch = typeof search === "string" ? search : String(saved.search);
+    const urlCategory = typeof category === "string" ? category : String(saved.category);
+    const urlPaymentMethod = typeof paymentMethod === "string" ? paymentMethod : String(saved.paymentMethod);
     const urlPage = typeof page === "string" ? parseInt(page, 10) || 1 : 1;
-    const urlLimit = typeof limit === "string" ? parseInt(limit, 10) || 10 : 10;
+    const urlLimit = typeof limit === "string" ? parseInt(limit, 10) || 10 : Number(saved.limit) || 10;
     if (page) setCurrentPage(parseInt(page as string) || 1);
-    if (limit) setItemsPerPage(parseInt(limit as string) || 10);
-    if (search) {
-      setSearchTerm(search as string);
-      setSearchInput(search as string);
-    }
-    if (category) setFilterCategory(category as string);
-    if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
+    setItemsPerPage(urlLimit);
+    setSearchTerm(urlSearch);
+    setSearchInput(urlSearch);
+    setFilterCategory(urlCategory);
+    setFilterPaymentMethod(urlPaymentMethod);
     if (urlMonth) setSelectedMonth(urlMonth);
     if (urlYear) setSelectedYear(urlYear);
 

@@ -35,6 +35,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { DataTable, Column } from "@/components/DataTable";
 import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { FilterBar, FilterSearch } from "@/components/FilterBar";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function TeachersPage() {
   const router = useRouter();
@@ -59,6 +60,13 @@ export default function TeachersPage() {
   const deleteMutation = useDeleteTeacherMutation();
 
   const [searchTerm, setSearchTerm] = useState("");
+  useEffect(() => {
+    // Restore the last search for this page (client only, avoids SSR mismatch).
+    setSearchTerm(String(loadPageFilters("teachers", { search: "" }).search));
+  }, []);
+  useEffect(() => {
+    savePageFilters("teachers", { search: searchTerm });
+  }, [searchTerm]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Teacher | null>(null);
   const [deletingTeacherId, setDeletingTeacherId] = useState<string | null>(null);

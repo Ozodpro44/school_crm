@@ -41,6 +41,7 @@ import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { createClass, updateClass, deleteClass, listClasses, listTeachers, listStudents, updateStudent } from "@/lib/api";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 import { useBranch } from "@/context/BranchContext";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
 import { PageHeader } from "@/components/PageHeader";
@@ -67,6 +68,13 @@ export default function ClassesPage() {
   const [studentsLoaded, setStudentsLoaded] = useState(false);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  useEffect(() => {
+    // Restore the last search for this page (client only, avoids SSR mismatch).
+    setSearchTerm(String(loadPageFilters("classes", { search: "" }).search));
+  }, []);
+  useEffect(() => {
+    savePageFilters("classes", { search: searchTerm });
+  }, [searchTerm]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<Class | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
