@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,7 +85,10 @@ export default function AuditLogPage() {
   const [page, setPage] = useState(1);
   const LIMIT = 25;
 
+  const requestIdRef = useRef(0);
+
   const load = useCallback(async () => {
+    const myId = ++requestIdRef.current;
     setLoading(true);
     try {
       const res = await getAuditLogs({
@@ -95,20 +98,22 @@ export default function AuditLogPage() {
         page,
         limit: LIMIT,
       });
+      if (myId !== requestIdRef.current) return;
       setEntries(res.data);
       setTotal(res.total);
       setTotalPages(res.totalPages);
     } catch {
+      if (myId !== requestIdRef.current) return;
       setEntries([]);
     } finally {
-      setLoading(false);
+      if (myId === requestIdRef.current) setLoading(false);
     }
   }, [resource, from, to, page]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Reset page when filters change
-  useEffect(() => { setPage(1); }, [resource, from, to]);
+  // Filter changes reset the page in the same batch as the filter itself, so
+  // only one request fires (an effect-based reset caused a second fetch).
 
   const filtered = search.trim()
     ? entries.filter((e) =>
@@ -218,9 +223,9 @@ export default function AuditLogPage() {
             <FilterSearch
               value={search}
               onChange={setSearch}
-              placeholder={t("search")}
+              placeholder={t("auditSearchPage")}
             />
-            <Select value={resource} onValueChange={setResource}>
+            <Select value={resource} onValueChange={(v) => { setResource(v); setPage(1); }}>
               <SelectTrigger className={filterSelectClass("w-44")}>
                 <SelectValue placeholder={t("resource")} />
               </SelectTrigger>
@@ -236,7 +241,7 @@ export default function AuditLogPage() {
               <input
                 type="date"
                 value={from}
-                onChange={(e) => setFrom(e.target.value)}
+                onChange={(e) => { setFrom(e.target.value); setPage(1); }}
                 className="h-9 w-36 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500"
               />
             </div>
@@ -245,7 +250,7 @@ export default function AuditLogPage() {
               <input
                 type="date"
                 value={to}
-                onChange={(e) => setTo(e.target.value)}
+                onChange={(e) => { setTo(e.target.value); setPage(1); }}
                 className="h-9 w-36 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500"
               />
             </div>

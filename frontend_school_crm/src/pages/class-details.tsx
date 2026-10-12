@@ -250,7 +250,7 @@ export default function ClassDetailsPage() {
 
   const handleRemoveStudent = (studentId: string) => {
     if (!canEditStudents) {
-      notify.error(t("error"), "You don't have permission to update students.");
+      notify.error(t("error"), t("noPermissionUpdateStudents"));
       return;
     }
 
@@ -280,12 +280,12 @@ export default function ClassDetailsPage() {
   const handleSwitchStudents = () => {
     const ids = getSelectedIds();
     if (ids.length === 0 || !targetClassId || !classData) {
-      notify.error(t("error"), "Please select students and a target class");
+      notify.error(t("error"), t("selectStudentsAndTargetClass"));
       return;
     }
 
     if (!canEditStudents) {
-      notify.error(t("error"), "You don't have permission to update students.");
+      notify.error(t("error"), t("noPermissionUpdateStudents"));
       return;
     }
 
@@ -326,12 +326,12 @@ export default function ClassDetailsPage() {
   const handleDeleteMultipleStudents = () => {
     const ids = getSelectedIds();
     if (ids.length === 0) {
-      notify.error(t("error"), "Please select students to delete");
+      notify.error(t("error"), t("selectStudentsToDelete"));
       return;
     }
 
     if (!canEditStudents) {
-      notify.error(t("error"), "You don't have permission to update students.");
+      notify.error(t("error"), t("noPermissionUpdateStudents"));
       return;
     }
 
@@ -415,7 +415,7 @@ export default function ClassDetailsPage() {
 
   const handleEdit = () => {
     if (!canEditClasses) {
-      notify.error(t("error"), "You don't have permission to edit classes.");
+      notify.error(t("error"), t("noPermissionEditClasses"));
       return;
     }
     if (classData) {
@@ -429,7 +429,7 @@ export default function ClassDetailsPage() {
 
   const handleSaveEdit = async () => {
     if (!classData || !editFormData.name.trim()) {
-      notify.error(t("error"), "Class name is required");
+      notify.error(t("error"), t("classNameRequired"));
       return;
     }
 
@@ -441,16 +441,16 @@ export default function ClassDetailsPage() {
 
       await loadData();
       setIsEditModalOpen(false);
-      notify.success(t("success"), "Class updated successfully");
+      notify.success(t("success"), t("classUpdatedSuccessfully"));
     } catch (error) {
       console.error("Failed to update class:", error);
-      notify.error(t("error"), "Failed to update class");
+      notify.error(t("error"), t("failedToUpdateClass"));
     }
   };
 
   const handleDelete = () => {
     if (!canDeleteClasses) {
-      notify.error(t("error"), "You don't have permission to delete classes.");
+      notify.error(t("error"), t("noPermissionDeleteClasses"));
       return;
     }
 
@@ -465,7 +465,7 @@ export default function ClassDetailsPage() {
           router.push("/classes");
         } catch (error) {
           console.error("Failed to delete class:", error);
-          notify.error(t("error"), "Failed to delete class");
+          notify.error(t("error"), t("failedToDeleteClass"));
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         }
       },

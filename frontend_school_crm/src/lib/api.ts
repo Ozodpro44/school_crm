@@ -712,6 +712,24 @@ export async function updateUser(
 }
 
 /**
+ * Change a user's password (PUT /users/:id/password).
+ * Self-service must send currentPassword; admin resets of another user omit it.
+ */
+export async function changePassword(
+  id: string,
+  newPassword: string,
+  currentPassword?: string
+): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/users/${id}/password`, {
+    method: "PUT",
+    body: JSON.stringify({
+      password: newPassword,
+      ...(currentPassword !== undefined ? { current_password: currentPassword } : {}),
+    }),
+  });
+}
+
+/**
  * Delete user
  */
 export async function deleteUser(id: string): Promise<{ success: boolean }> {
@@ -942,18 +960,6 @@ export async function listPayments(
 }
 
 /**
- * Get payment status for a student in current month
- */
-export async function getPaymentStatus(
-  studentId: string,
-  branchId: string
-): Promise<{ status: string; amount: number }> {
-  return apiRequest<{ status: string; amount: number }>(
-    `/payments/status/${studentId}?branchId=${branchId}`
-  );
-}
-
-/**
  * Search students with payment status and apply filters
  */
 export interface StudentPaymentInfo {
@@ -1022,26 +1028,6 @@ export async function deletePayment(id: string): Promise<{ success: boolean }> {
   return apiRequest<{ success: boolean }>(`/payments/${id}`, {
     method: "DELETE",
   });
-}
-
-/**
- * Get payment summary for a branch
- */
-export async function getPaymentSummary(
-  branchId: string
-): Promise<PaymentSummary> {
-  return apiRequest<PaymentSummary>(`/payments/branch/${branchId}/summary`);
-}
-
-/**
- * Get payment indicators by period
- */
-export async function getPaymentIndicators(
-  branchId: string,
-  month: string,
-  year: number
-): Promise<PaymentSummary> {
-  return apiRequest<PaymentSummary>(`/payments/payments/${branchId}/indicators?month=${month}&year=${year}`);
 }
 
 /**
@@ -1309,13 +1295,6 @@ export async function createSalary(
 }
 
 /**
- * Get salary by ID
- */
-export async function getSalary(id: string): Promise<Salary> {
-  return apiRequest<Salary>(`/salaries/${id}`);
-}
-
-/**
  * List salaries by branch with optional month/year filter (Admin only for historical data)
  */
 export async function listSalaries(
@@ -1472,13 +1451,6 @@ export async function createIncome(request: CreateIncomeRequest): Promise<Income
     method: "POST",
     body: JSON.stringify(request),
   });
-}
-
-/**
- * Get income by ID
- */
-export async function getIncome(id: string): Promise<Income> {
-  return apiRequest<Income>(`/incomes/${id}`);
 }
 
 /**

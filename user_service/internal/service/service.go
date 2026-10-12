@@ -251,6 +251,77 @@ func (s *UserService) Update(ctx context.Context, id string, fields map[string]i
 	return s.GetByID(ctx, id)
 }
 
+// MinPasswordLength is the minimum accepted length for a new password.
+const MinPasswordLength = 8
+
+var (
+	ErrPasswordTooShort    = errors.New("password must be at least 8 characters")
+	ErrPasswordTooLong     = errors.New("password must be at most 72 bytes")
+	ErrInvalidCurrentPass  = errors.New("current password is incorrect")
+	ErrCurrentPassRequired = errors.New("current_password is required")
+)
+
+// ValidateNewPassword enforces the password policy (min length, counted in
+// runes so multi-byte characters are not over-counted).
+func ValidateNewPassword(pw string) error {
+	if len([]rune(pw)) < MinPasswordLength {
+		return ErrPasswordTooShort
+	}
+	if len(pw) > 72 { // bcrypt rejects/truncates beyond 72 bytes
+		return ErrPasswordTooLong
+	}
+	return nil
+}
+
+// VerifyPassword compares a plaintext password against a bcrypt hash.
+func VerifyPassword(hash, plain string) bool {
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(plain)) == nil
+}
+
+// ChangePassword sets a new password for user id. When requireCurrent is true
+// (self-service) the supplied currentPassword must match the stored hash.
+func (s *UserService) ChangePassword(ctx context.Context, id, currentPassword, newPassword string, requireCurrent bool) error {
+	if err := ValidateNewPassword(newPassword); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	if requireCurrent {
+		if currentPassword == "" {
+			return ErrCurrentPassRequired
+		}
+		var hash string
+		err := s.db.Conn().QueryRowContext(ctx,
+			`SELECT COALESCE(password_hash, '') FROM users WHERE id = $1 AND deleted_at IS NULL`, id,
+		).Scan(&hash)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if !VerifyPassword(hash, currentPassword) {
+			return ErrInvalidCurrentPass
+		}
+	}
+
+	newHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	res, err := s.db.Conn().ExecContext(ctx,
+		`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL`,
+		string(newHash), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // validRoles are the roles reassignable via UpdateRoleBranch. "developer" and
 // "super_admin" are platform-level roles granted out-of-band, not through
 // this endpoint.

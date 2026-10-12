@@ -36,6 +36,7 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.GET("/users/:id", h.GetUser)
 	r.PUT("/users/:id", h.UpdateUser)
 	r.DELETE("/users/:id", h.DeleteUser)
+	r.PUT("/users/:id/password", h.ChangePassword)
 	r.POST("/users/:id/restore", h.RestoreUser)
 	r.GET("/trash/users", h.ListUserTrash)
 
@@ -356,6 +357,66 @@ func stringFieldPtr(v interface{}, present bool) (*string, error) {
 		return nil, fmt.Errorf("expected string")
 	}
 	return &s, nil
+}
+
+// canResetOthersPassword reports whether a caller with this role may set
+// another user's password (still subject to canAccessUser).
+func canResetOthersPassword(role string) bool {
+	return role == "admin" || role == "branch_admin" || isSuperRole(role)
+}
+
+// passwordChangeStatus maps a service error to an HTTP status and message.
+func passwordChangeStatus(err error) (int, string) {
+	switch {
+	case errors.Is(err, service.ErrPasswordTooShort),
+		errors.Is(err, service.ErrPasswordTooLong),
+		errors.Is(err, service.ErrCurrentPassRequired):
+		return http.StatusBadRequest, err.Error()
+	case errors.Is(err, service.ErrInvalidCurrentPass):
+		return http.StatusForbidden, err.Error()
+	case errors.Is(err, service.ErrNotFound):
+		return http.StatusNotFound, "user not found"
+	default:
+		return http.StatusInternalServerError, "failed to change password"
+	}
+}
+
+// ChangePassword handles PUT /users/:id/password. Self-service requires the
+// current password; admin-level callers may reset another accessible user's
+// password without it. Existing sessions are not revoked here (session state
+// is owned by auth_service).
+func (h *Handler) ChangePassword(c *gin.Context) {
+	ctx := c.Request.Context()
+	target, err := h.users.GetByID(ctx, c.Param("id"))
+	if err != nil {
+		code, msg := passwordChangeStatus(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+	callerID, callerRole := c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role")
+	self := callerID != "" && callerID == target.ID
+	if !self {
+		if !canResetOthersPassword(callerRole) || !h.canAccessUser(ctx, callerID, callerRole, target) ||
+			(isSuperRole(target.Role) && !isSuperRole(callerRole)) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		Password        string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if err := h.users.ChangePassword(ctx, target.ID, req.CurrentPassword, req.Password, self); err != nil {
+		code, msg := passwordChangeStatus(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "password updated"})
 }
 
 func (h *Handler) DeleteUser(c *gin.Context) {

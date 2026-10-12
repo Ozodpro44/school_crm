@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { getCurrentUser, logout } from "@/lib/auth";
 import { setStoredUser } from "@/lib/storage";
-import { apiRequest, getAuthToken, listSessions, revokeSession, UserSession } from "@/lib/api";
+import { apiRequest, changePassword, getAuthToken, listSessions, revokeSession, UserSession } from "@/lib/api";
 import { User as UserType } from "@/types";
 import { getTranslation } from "@/lib/translations";
 import { useLanguage } from "@/hooks/use-language";
@@ -194,10 +194,6 @@ export default function ProfilePage() {
     const errors: Record<string, string> = {};
     if (!editFormData.fullName.trim())
       errors.fullName = t("fullNameRequired");
-    if (!editFormData.email.trim())
-      errors.email = t("emailRequired");
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editFormData.email))
-      errors.email = t("invalidEmail");
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -208,8 +204,8 @@ export default function ProfilePage() {
       errors.currentPassword = t("currentPasswordRequired");
     if (!passwordFormData.newPassword.trim())
       errors.newPassword = t("newPasswordRequired");
-    else if (passwordFormData.newPassword.length < 6)
-      errors.newPassword = t("passwordTooShort");
+    else if (passwordFormData.newPassword.length < 8)
+      errors.newPassword = t("newPasswordMin8");
     if (!passwordFormData.confirmPassword.trim())
       errors.confirmPassword = t("confirmPasswordRequired");
     else if (passwordFormData.newPassword !== passwordFormData.confirmPassword)
@@ -232,7 +228,6 @@ export default function ProfilePage() {
         method: "PUT",
         body: JSON.stringify({
           full_name: editFormData.fullName,
-          email: editFormData.email,
           ...(user.role === "admin" ? { organization_name: editFormData.organizationName } : {}),
         }),
       });
@@ -251,18 +246,14 @@ export default function ProfilePage() {
     if (!validatePasswordForm() || !user) return;
     setIsSaving(true);
     try {
-      await apiRequest(`/users/${user.id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          current_password: passwordFormData.currentPassword,
-          password: passwordFormData.newPassword,
-        }),
-      });
+      await changePassword(user.id, passwordFormData.newPassword, passwordFormData.currentPassword);
       setIsPasswordModalOpen(false);
       setPasswordFormData({ currentPassword: "", newPassword: "", confirmPassword: "" });
       notify.success(t("passwordUpdated"), t("passwordUpdatedDescription"));
     } catch (error) {
-      setFormErrors({ submit: (error as Error).message || t("updateError") });
+      const msg = (error as Error).message || t("updateError");
+      setFormErrors({ submit: msg });
+      notify.error(t("error"), msg);
     } finally {
       setIsSaving(false);
     }
@@ -529,14 +520,8 @@ export default function ProfilePage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">{t("emailAddress")}</Label>
-              <Input
-                id="email"
-                type="email"
-                value={editFormData.email}
-                onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
-                className={formErrors.email ? "border-red-500 focus-visible:ring-red-500" : ""}
-              />
-              {formErrors.email && <p className="text-xs text-red-500">{formErrors.email}</p>}
+              <Input id="email" type="email" value={editFormData.email} disabled readOnly />
+              <p className="text-xs text-slate-500 dark:text-slate-400">{t("emailChangeUnsupported")}</p>
             </div>
             {user?.role === "admin" && (
               <div className="space-y-2">

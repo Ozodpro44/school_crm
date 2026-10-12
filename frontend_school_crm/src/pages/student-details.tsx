@@ -359,7 +359,7 @@ export default function StudentDetailsPage() {
 
   const handleMarkLeft = () => {
     if (!canEditStudents) {
-      notify.error(t("permissionDenied"), "You don't have permission to edit students.");
+      notify.error(t("permissionDenied"), t("noPermissionEditStudents"));
       return;
     }
     setMarkLeftConfirmOpen(true);
@@ -374,7 +374,7 @@ export default function StudentDetailsPage() {
       setStudent({ ...student, status: "left", leftDate });
       notify.success(t("updated"), t("statusUpdated"));
     } catch {
-      notify.error(t("error"), "Failed to update student status");
+      notify.error(t("error"), t("failedToUpdateStudentStatus"));
     } finally {
       setIsMarkLeftLoading(false);
       setMarkLeftConfirmOpen(false);

@@ -130,7 +130,10 @@ export default function ReportsPage() {
   // all, leaving the previous branch's data on screen.
   useEffect(() => {
     if (!currentBranch?.id) return;
-    generateReport();
+    // Debounce one tick so a filter change and its follow-up setPage(1)
+    // (previous effect) coalesce into a single request instead of two.
+    const timer = setTimeout(() => { generateReport(); }, 0);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit, page, currentBranch?.id]);
 
@@ -950,7 +953,7 @@ export default function ReportsPage() {
                 <div className="flex gap-2">
                   <Select value={paymentMonth} onValueChange={setPaymentMonth}>
                     <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Month" />
+                      <SelectValue placeholder={t("month")} />
                     </SelectTrigger>
                     <SelectContent>
                       {Array.from({ length: 12 }, (_, i) => {

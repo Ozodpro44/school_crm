@@ -21,7 +21,7 @@ import { FormDialog } from "@/components/FormDialog";
 import { Field } from "@/components/Field";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentUser } from "@/lib/auth";
-import { listUsers, deleteUser as deleteUserAPI, listBranches, updateUserPermissions, apiRequest } from "@/lib/api";
+import { listUsers, deleteUser as deleteUserAPI, listBranches, updateUserPermissions, apiRequest, changePassword } from "@/lib/api";
 import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { User, Permission, Branch } from "@/types";
@@ -297,8 +297,8 @@ export default function ManagersPage() {
       return;
     }
 
-    if (passwordData.newPassword.length < 6) {
-      notify.error(t("error"), t("passwordMinLengthError"));
+    if (passwordData.newPassword.length < 8) {
+      notify.error(t("error"), t("newPasswordMin8"));
       return;
     }
 
@@ -306,16 +306,13 @@ export default function ManagersPage() {
 
     setIsSubmitting(true);
     try {
-      await apiRequest(`/users/${editingManager.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ password: passwordData.newPassword }),
-      });
+      await changePassword(editingManager.id, passwordData.newPassword);
       notify.success(t("success"), t("passwordUpdatedSuccess"));
       setIsPasswordDialogOpen(false);
       setPasswordData({ newPassword: "", confirmPassword: "" });
       setEditingManager(null);
-    } catch {
-      notify.error(t("error"), t("passwordUpdateError"));
+    } catch (error) {
+      notify.error(t("error"), (error as Error).message || t("passwordUpdateError"));
     } finally {
       setIsSubmitting(false);
     }
