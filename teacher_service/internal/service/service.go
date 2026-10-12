@@ -8,7 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strconv"
+	"sort"
 	"strings"
 	"time"
 
@@ -573,24 +573,34 @@ type CreateSalaryRequest struct {
 	BranchID      string     `json:"branchId"      binding:"required"`
 }
 
-func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, createdBy string) (*Salary, error) {
+func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, createdBy, role string) (*Salary, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	if n, err := strconv.Atoi(req.Month); err != nil || n < 1 || n > 12 || len(req.Month) != 2 {
-		return nil, fmt.Errorf("%w: month must be a zero-padded 01-12 string, got %q", ErrInvalidInput, req.Month)
+	month, err := NormalizeMonth(req.Month)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
-	currentYear := time.Now().Year()
-	if req.Year < 2000 || req.Year > currentYear+1 {
-		return nil, fmt.Errorf("%w: year %d is out of range", ErrInvalidInput, req.Year)
+	if err := ValidateYear(req.Year, time.Now()); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidInput, err)
 	}
+	if !validSalaryStatus(req.Status) {
+		return nil, fmt.Errorf("%w: status must be paid, partial or unpaid", ErrInvalidInput)
+	}
+	req.Month = month
+
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
 
 	// A salary must belong to the same branch as the teacher it's paid to —
 	// otherwise a caller with access to branch B could record a salary for a
 	// branch-A teacher tagged branch_id=B, corrupting both branches' totals
 	// and hiding the record from the teacher's real branch history.
 	var teacherBranch string
-	if err := s.db.Conn().QueryRowContext(ctx,
+	if err := tx.QueryRowContext(ctx,
 		"SELECT branch_id FROM teachers WHERE id = $1 AND is_active = true AND deleted_at IS NULL", req.TeacherID,
 	).Scan(&teacherBranch); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -602,22 +612,32 @@ func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, cr
 		return nil, fmt.Errorf("%w: teacher does not belong to branchId", ErrInvalidInput)
 	}
 
+	if err := checkPeriod(ctx, tx, req.BranchID, month, req.Year, IsAdminRole(role)); err != nil {
+		return nil, err
+	}
+
+	paidDate := req.PaidDate
+	if req.Status == "paid" && paidDate == nil {
+		now := time.Now().UTC()
+		paidDate = &now
+	}
+
 	sal := &Salary{
 		ID:            uuid.New().String(),
 		TeacherID:     req.TeacherID,
 		Amount:        req.Amount,
-		Month:         req.Month,
+		Month:         month,
 		Year:          req.Year,
 		PaymentMethod: req.PaymentMethod,
 		Status:        req.Status,
 		Notes:         req.Notes,
-		PaidDate:      req.PaidDate,
+		PaidDate:      paidDate,
 		BranchID:      req.BranchID,
 		CreatedBy:     &createdBy,
 		CreatedAt:     time.Now().UTC(),
 	}
 
-	_, err := s.db.Conn().ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO salaries (id, teacher_id, amount, month, year, payment_method, status, notes, paid_date, branch_id, created_by, created_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 		sal.ID, sal.TeacherID, sal.Amount, sal.Month, sal.Year, sal.PaymentMethod,
@@ -630,7 +650,48 @@ func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, cr
 		}
 		return nil, err
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
 	return sal, nil
+}
+
+func validSalaryStatus(status string) bool {
+	return status == "paid" || status == "partial" || status == "unpaid"
+}
+
+// dbQuerier is the subset of *sql.DB / *sql.Tx used by checkPeriod.
+type dbQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// checkPeriod resolves the branch's current financial month (latest OPEN
+// row, else the calendar month) and the target month's open/closed state,
+// then applies CheckPeriodWritable.
+func checkPeriod(ctx context.Context, q dbQuerier, branchID, month string, year int, isAdmin bool) error {
+	curMonth := fmt.Sprintf("%02d", int(time.Now().Month()))
+	curYear := time.Now().Year()
+	var m, y int
+	err := q.QueryRowContext(ctx,
+		`SELECT month, year FROM financial_months
+		 WHERE branch_id = $1 AND status = 'OPEN'
+		 ORDER BY year DESC, month DESC LIMIT 1`, branchID,
+	).Scan(&m, &y)
+	if err == nil {
+		curMonth, curYear = fmt.Sprintf("%02d", m), y
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	var status string
+	err = q.QueryRowContext(ctx,
+		`SELECT status FROM financial_months WHERE branch_id=$1 AND month=$2 AND year=$3`,
+		branchID, month, year,
+	).Scan(&status)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return CheckPeriodWritable(month, year, curMonth, curYear, status == "CLOSED", isAdmin)
 }
 
 // GetByTeacher returns a teacher's salary history, scoped to branchID so a
@@ -688,55 +749,150 @@ func (s *SalaryService) GetByBranch(ctx context.Context, branchID, month string,
 	return scanSalaries(rows)
 }
 
+// salaryFieldAliases maps the camelCase keys the frontend sends to the
+// snake_case columns; snake_case keys pass through unchanged.
+var salaryFieldAliases = map[string]string{
+	"paymentMethod": "payment_method",
+	"paidDate":      "paid_date",
+}
+
+// normalizeSalaryFields renames aliased keys to their column names. If both
+// spellings are present the snake_case one wins.
+func normalizeSalaryFields(in map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(in))
+	for k, v := range in {
+		if col, ok := salaryFieldAliases[k]; ok {
+			if _, dup := in[col]; dup {
+				continue
+			}
+			k = col
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// parseFlexTime accepts RFC3339 or a plain YYYY-MM-DD date.
+func parseFlexTime(v interface{}) (*time.Time, error) {
+	if v == nil {
+		return nil, nil
+	}
+	str, ok := v.(string)
+	if !ok {
+		return nil, fmt.Errorf("%w: paid_date must be a date string", ErrInvalidInput)
+	}
+	if str == "" {
+		return nil, nil
+	}
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
+		if t, err := time.Parse(layout, str); err == nil {
+			return &t, nil
+		}
+	}
+	return nil, fmt.Errorf("%w: paid_date %q is not a valid date", ErrInvalidInput, str)
+}
+
 // Update applies a partial update, scoped to branchID directly in the SQL —
-// see TeacherService.Update's comment for why.
-func (s *SalaryService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Salary, error) {
+// see TeacherService.Update's comment for why. Accepts camelCase
+// (paymentMethod, paidDate) and snake_case keys.
+func (s *SalaryService) Update(ctx context.Context, id, branchID string, rawFields map[string]interface{}, role string) (*Salary, error) {
 	existing, err := s.GetByIDScoped(ctx, id, branchID)
 	if err != nil {
 		return nil, err
 	}
-	// A "paid" salary is a reconciled financial record — allow annotating it
-	// (notes) or moving it off "paid" (e.g. to "unpaid") to correct a
-	// mistake, but not silently changing the amount or paid_date while it
-	// stays marked paid, which would edit a reconciled figure in place.
-	if existing.Status == "paid" {
-		newStatus, changingStatus := fields["status"]
-		stayingPaid := !changingStatus || newStatus == "paid"
-		if stayingPaid {
-			if _, ok := fields["amount"]; ok {
-				return nil, fmt.Errorf("%w: cannot change the amount of a salary already marked paid", ErrAlreadyPaid)
-			}
-			if _, ok := fields["paid_date"]; ok {
-				return nil, fmt.Errorf("%w: cannot change the paid_date of a salary already marked paid", ErrAlreadyPaid)
-			}
-		}
-	}
+	fields := normalizeSalaryFields(rawFields)
 
 	allowed := map[string]bool{
 		"amount": true, "payment_method": true, "status": true, "notes": true, "paid_date": true,
 	}
+
+	// Validate on the normalised keys.
+	if v, ok := fields["amount"]; ok {
+		f, isNum := v.(float64)
+		if !isNum || f <= 0 {
+			return nil, fmt.Errorf("%w: amount must be a positive number", ErrInvalidInput)
+		}
+	}
+	newStatus := existing.Status
+	if v, ok := fields["status"]; ok {
+		str, isStr := v.(string)
+		if !isStr || !validSalaryStatus(str) {
+			return nil, fmt.Errorf("%w: status must be paid, partial or unpaid", ErrInvalidInput)
+		}
+		newStatus = str
+	}
+	if v, ok := fields["payment_method"]; ok {
+		if str, isStr := v.(string); !isStr || str == "" {
+			return nil, fmt.Errorf("%w: payment_method must be a non-empty string", ErrInvalidInput)
+		}
+	}
+	var paidDate *time.Time
+	paidDateGiven := false
+	if v, ok := fields["paid_date"]; ok {
+		paidDateGiven = true
+		if paidDate, err = parseFlexTime(v); err != nil {
+			return nil, err
+		}
+	}
+
+	// A "paid" salary is a reconciled financial record — allow annotating it
+	// (notes) or moving it off "paid" (e.g. to "unpaid") to correct a
+	// mistake, but not silently changing the amount or paid_date while it
+	// stays marked paid, which would edit a reconciled figure in place.
+	if existing.Status == "paid" && newStatus == "paid" {
+		if _, ok := fields["amount"]; ok {
+			return nil, fmt.Errorf("%w: cannot change the amount of a salary already marked paid", ErrAlreadyPaid)
+		}
+		if paidDateGiven {
+			return nil, fmt.Errorf("%w: cannot change the paid_date of a salary already marked paid", ErrAlreadyPaid)
+		}
+	}
+
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		if allowed[k] && k != "paid_date" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
 	parts := []string{}
 	args := []interface{}{}
 	n := 1
-	for k, v := range fields {
-		if !allowed[k] {
-			continue
-		}
+	for _, k := range keys {
 		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
-		args = append(args, v)
+		args = append(args, fields[k])
+		n++
+	}
+	// paid_date: explicit value wins; otherwise becoming paid stamps now.
+	switch {
+	case paidDateGiven:
+		parts = append(parts, fmt.Sprintf("paid_date = $%d", n))
+		if paidDate == nil {
+			args = append(args, nil)
+		} else {
+			args = append(args, *paidDate)
+		}
+		n++
+	case newStatus == "paid" && existing.Status != "paid":
+		parts = append(parts, fmt.Sprintf("paid_date = $%d", n))
+		args = append(args, time.Now().UTC())
 		n++
 	}
 	if len(parts) == 0 {
-		return s.GetByIDScoped(ctx, id, branchID)
+		return existing, nil
 	}
 	args = append(args, id, branchID)
 
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
+	if err := checkPeriod(ctx, s.db.Conn(), existing.BranchID, existing.Month, existing.Year, IsAdminRole(role)); err != nil {
+		return nil, err
+	}
+
 	res, err := s.db.Conn().ExecContext(ctx,
 		"UPDATE salaries SET "+strings.Join(parts, ", ")+
-			" WHERE id = $"+fmt.Sprintf("%d", n)+" AND branch_id = $"+fmt.Sprintf("%d", n+1), args...)
+			" WHERE id = $"+fmt.Sprintf("%d", n)+" AND branch_id = $"+fmt.Sprintf("%d", n+1)+" AND deleted_at IS NULL", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -746,11 +902,19 @@ func (s *SalaryService) Update(ctx context.Context, id, branchID string, fields 
 	return s.getByID(ctx, id)
 }
 
-// Delete removes a salary record, scoped to branchID directly in the DELETE
-// statement — see TeacherService.Delete's comment for why.
-func (s *SalaryService) Delete(ctx context.Context, id, branchID, deletedBy string) error {
+// Delete soft-deletes a salary record, scoped to branchID directly in the
+// UPDATE statement — see TeacherService.Delete's comment for why. The
+// salary's financial period must be writable for the caller's role.
+func (s *SalaryService) Delete(ctx context.Context, id, branchID, deletedBy, role string) error {
+	existing, err := s.GetByIDScoped(ctx, id, branchID)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+	if err := checkPeriod(ctx, s.db.Conn(), existing.BranchID, existing.Month, existing.Year, IsAdminRole(role)); err != nil {
+		return err
+	}
 	res, err := s.db.Conn().ExecContext(ctx,
 		"UPDATE salaries SET deleted_at = now(), deleted_by = $3 WHERE id = $1 AND branch_id = $2 AND deleted_at IS NULL",
 		id, branchID, deletedBy)
@@ -765,20 +929,55 @@ func (s *SalaryService) Delete(ctx context.Context, id, branchID, deletedBy stri
 
 // Restore un-deletes a salary soft-deleted within the last 30 days (the
 // longer of the two trash windows — callers enforce the shorter 7-day
-// window for non-super-role callers before reaching here).
-func (s *SalaryService) Restore(ctx context.Context, id, branchID string) error {
+// window for non-super-role callers before reaching here). Fails with
+// ErrDuplicate if a live salary now exists for the same teacher/month/year.
+func (s *SalaryService) Restore(ctx context.Context, id, branchID, role string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
-	res, err := s.db.Conn().ExecContext(ctx,
-		"UPDATE salaries SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
-		id, branchID)
+
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	var teacherID, month string
+	var year int
+	err = tx.QueryRowContext(ctx,
+		"SELECT teacher_id, month, year FROM salaries WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
+		id, branchID,
+	).Scan(&teacherID, &month, &year)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
 	if err != nil {
 		return err
 	}
-	if rows, _ := res.RowsAffected(); rows == 0 {
-		return ErrNotFound
+	if err := checkPeriod(ctx, tx, branchID, month, year, IsAdminRole(role)); err != nil {
+		return err
 	}
-	return nil
+
+	var live int
+	if err := tx.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM salaries WHERE teacher_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL AND id <> $4",
+		teacherID, month, year, id,
+	).Scan(&live); err != nil {
+		return err
+	}
+	if live > 0 {
+		return fmt.Errorf("%w: cannot restore - a salary for this teacher/month/year already exists", ErrDuplicate)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		"UPDATE salaries SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
+		id, branchID); err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && pqErr.Code == "23505" {
+			return fmt.Errorf("%w: cannot restore - a salary for this teacher/month/year already exists", ErrDuplicate)
+		}
+		return err
+	}
+	return tx.Commit()
 }
 
 // TrashedSalary is a Salary soft-deleted within the caller's restore window.

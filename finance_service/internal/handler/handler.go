@@ -197,6 +197,15 @@ func (h *Handler) ListExpenses(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// expenseErrStatus maps a locked/future financial period to 409 and every
+// other service error to 400.
+func expenseErrStatus(err error) int {
+	if errors.Is(err, service.ErrMonthLocked) || errors.Is(err, service.ErrFuturePeriod) {
+		return http.StatusConflict
+	}
+	return http.StatusBadRequest
+}
+
 func (h *Handler) CreateExpense(c *gin.Context) {
 	var body struct {
 		Title         string    `json:"title"         binding:"required"`
@@ -226,9 +235,9 @@ func (h *Handler) CreateExpense(c *gin.Context) {
 		BranchID:      body.BranchID,
 		Notes:         body.Notes,
 		CreatedBy:     &createdBy,
-	})
+	}, c.GetHeader("X-User-Role"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(expenseErrStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusCreated, e)
@@ -272,13 +281,13 @@ func (h *Handler) UpdateExpense(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	e, err := h.expenses.Update(c.Request.Context(), c.Param("id"), branchID, body)
+	e, err := h.expenses.Update(c.Request.Context(), c.Param("id"), branchID, body, c.GetHeader("X-User-Role"))
 	if err != nil {
-		if err == service.ErrNotFound {
+		if errors.Is(err, service.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "expense not found"})
 			return
 		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(expenseErrStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, e)
@@ -296,9 +305,13 @@ func (h *Handler) DeleteExpense(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.expenses.Delete(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-ID")); err != nil {
-		if err == service.ErrNotFound {
+	if err := h.expenses.Delete(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role")); err != nil {
+		if errors.Is(err, service.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "expense not found"})
+			return
+		}
+		if st := expenseErrStatus(err); st != http.StatusBadRequest {
+			c.JSON(st, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -320,9 +333,13 @@ func (h *Handler) RestoreExpense(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.expenses.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
-		if err == service.ErrNotFound {
+	if err := h.expenses.Restore(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-Role")); err != nil {
+		if errors.Is(err, service.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "expense not found in trash"})
+			return
+		}
+		if st := expenseErrStatus(err); st != http.StatusBadRequest {
+			c.JSON(st, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

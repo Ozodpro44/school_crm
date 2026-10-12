@@ -96,7 +96,7 @@ func (s *ExpenseService) Create(ctx context.Context, req *CreateExpenseRequest, 
 func (s *ExpenseService) GetByID(ctx context.Context, id string) (*models.Expense, error) {
 	expense := &models.Expense{}
 	query := `SELECT id, title, description, amount, category, payment_method, date, branch_id, created_by, notes, created_at
-	         FROM expenses WHERE id = $1`
+	         FROM expenses WHERE id = $1 AND deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&expense.ID, &expense.Title, &expense.Description, &expense.Amount, &expense.Category,
@@ -111,7 +111,7 @@ func (s *ExpenseService) GetByID(ctx context.Context, id string) (*models.Expens
 
 func (s *ExpenseService) GetByBranchID(ctx context.Context, branchID string) ([]models.Expense, error) {
 	query := `SELECT id, title, description, amount, category, payment_method, date, branch_id, created_by, notes, created_at
-	         FROM expenses WHERE branch_id = $1 ORDER BY date DESC`
+	         FROM expenses WHERE branch_id = $1 AND deleted_at IS NULL ORDER BY date DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
 	if err != nil {
@@ -191,7 +191,7 @@ func (s *ExpenseService) Update(ctx context.Context, id string, req *UpdateExpen
 }
 
 func (s *ExpenseService) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM expenses WHERE id = $1`
+	query := `DELETE FROM expenses WHERE id = $1 AND deleted_at IS NULL`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
 	return err
 }
@@ -202,6 +202,7 @@ func (s *ExpenseService) GetByBranchIDAndPeriod(ctx context.Context, branchID st
 	         WHERE branch_id = $1 
 	         AND EXTRACT(MONTH FROM date) = $2 
 	         AND EXTRACT(YEAR FROM date) = $3 
+	         AND deleted_at IS NULL
 	         ORDER BY date DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
@@ -243,7 +244,7 @@ func (s *ExpenseService) GetByBranchIDWithFilters(ctx context.Context, in Expens
 	year := in.Year
 
 	// Build the WHERE clause dynamically
-	whereClause := "WHERE branch_id = $1"
+	whereClause := "WHERE branch_id = $1 AND deleted_at IS NULL"
 	args := []interface{}{branchID}
 	argCount := 1
 
@@ -342,7 +343,7 @@ func (s *ExpenseService) GetExpenseSummaryForPeriod(ctx context.Context, branchI
 
 	// Get total amount
 	totalQuery := `SELECT COALESCE(SUM(amount), 0) FROM expenses 
-		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3`
+		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3 AND deleted_at IS NULL`
 	err := s.db.GetConn().QueryRowContext(ctx, totalQuery, branchID, monthInt, year).Scan(&summary.TotalAmount)
 	if err != nil {
 		return summary, err
@@ -350,7 +351,7 @@ func (s *ExpenseService) GetExpenseSummaryForPeriod(ctx context.Context, branchI
 
 	// Get by category
 	categoryQuery := `SELECT category, COALESCE(SUM(amount), 0) as total FROM expenses 
-		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3
+		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3 AND deleted_at IS NULL
 		GROUP BY category`
 	rows, err := s.db.GetConn().QueryContext(ctx, categoryQuery, branchID, monthInt, year)
 	if err != nil {
@@ -369,7 +370,7 @@ func (s *ExpenseService) GetExpenseSummaryForPeriod(ctx context.Context, branchI
 
 	// Get by payment method
 	methodQuery := `SELECT payment_method, COALESCE(SUM(amount), 0) as total FROM expenses 
-		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3
+		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3 AND deleted_at IS NULL
 		GROUP BY payment_method`
 	methodRows, err := s.db.GetConn().QueryContext(ctx, methodQuery, branchID, monthInt, year)
 	if err != nil {

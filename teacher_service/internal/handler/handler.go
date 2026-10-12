@@ -314,6 +314,19 @@ func (h *Handler) ListTeacherTrash(c *gin.Context) {
 
 // ── Salaries ──────────────────────────────────────────────────────────────────
 
+// salaryErrStatus maps salary-domain errors to HTTP statuses: a locked or
+// future period, a duplicate and an already-paid edit are conflicts (409);
+// everything else is a bad request.
+func salaryErrStatus(err error) int {
+	switch {
+	case errors.Is(err, service.ErrMonthLocked), errors.Is(err, service.ErrFuturePeriod),
+		errors.Is(err, service.ErrDuplicate), errors.Is(err, service.ErrAlreadyPaid):
+		return http.StatusConflict
+	default:
+		return http.StatusBadRequest
+	}
+}
+
 func (h *Handler) ListSalaries(c *gin.Context) {
 	branchID := requestBranchID(c)
 	if branchID == "" {
@@ -344,9 +357,9 @@ func (h *Handler) CreateSalary(c *gin.Context) {
 	if !h.requireBranchAccess(c, req.BranchID) {
 		return
 	}
-	sal, err := h.salaries.Create(c.Request.Context(), &req, c.GetHeader("X-User-ID"))
+	sal, err := h.salaries.Create(c.Request.Context(), &req, c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(salaryErrStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 	h.teachers.Audit(c.Request.Context(), req.BranchID, c.GetHeader("X-User-ID"), "create", "salary", sal.ID, "Salary created for teacher "+sal.TeacherID)
@@ -367,13 +380,13 @@ func (h *Handler) UpdateSalary(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	sal, err := h.salaries.Update(c.Request.Context(), c.Param("id"), branchID, body)
+	sal, err := h.salaries.Update(c.Request.Context(), c.Param("id"), branchID, body, c.GetHeader("X-User-Role"))
 	if err != nil {
-		if err == service.ErrNotFound {
+		if errors.Is(err, service.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "salary not found"})
 			return
 		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(salaryErrStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, sal)
@@ -391,9 +404,13 @@ func (h *Handler) DeleteSalary(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.salaries.Delete(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-ID")); err != nil {
-		if err == service.ErrNotFound {
+	if err := h.salaries.Delete(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role")); err != nil {
+		if errors.Is(err, service.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "salary not found"})
+			return
+		}
+		if st := salaryErrStatus(err); st != http.StatusBadRequest {
+			c.JSON(st, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -415,9 +432,13 @@ func (h *Handler) RestoreSalary(c *gin.Context) {
 	if !h.requireBranchAccess(c, branchID) {
 		return
 	}
-	if err := h.salaries.Restore(c.Request.Context(), c.Param("id"), branchID); err != nil {
-		if err == service.ErrNotFound {
+	if err := h.salaries.Restore(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-Role")); err != nil {
+		if errors.Is(err, service.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "salary not found in trash"})
+			return
+		}
+		if st := salaryErrStatus(err); st != http.StatusBadRequest {
+			c.JSON(st, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

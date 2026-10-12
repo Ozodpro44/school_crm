@@ -78,7 +78,8 @@ func (s *BudgetService) GetByBranch(ctx context.Context, branchID, month string,
 				 WHERE e.branch_id = eb.branch_id
 				   AND e.category  = eb.category
 				   AND LPAD(EXTRACT(MONTH FROM e.date)::text, 2, '0') = eb.month
-				   AND EXTRACT(YEAR  FROM e.date)::int = eb.year),
+				   AND EXTRACT(YEAR  FROM e.date)::int = eb.year
+				   AND e.deleted_at IS NULL),
 				0
 			) AS actual
 		FROM expense_budgets eb
