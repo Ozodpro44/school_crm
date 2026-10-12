@@ -101,3 +101,28 @@ func GetUserID(c *gin.Context) (string, error) {
 
 	return id, nil
 }
+
+// ParseAccessToken validates a regular-user JWT (HMAC-signed only) and its
+// session-revocation status, for non-HTTP callers such as the gRPC server.
+// rdb is optional and, like AuthMiddleware, a Redis outage fails open.
+func ParseAccessToken(ctx context.Context, jwtSecret, tokenString string, rdb *redis.Client) (*CustomClaims, error) {
+	claims := &CustomClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(jwtSecret), nil
+	}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
+	if err != nil || !token.Valid || claims.UserID == "" {
+		return nil, errors.New("invalid token")
+	}
+
+	if rdb != nil && claims.SessionID != "" {
+		rctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		revoked, rerr := rdb.Exists(rctx, sessionRevokedKey(claims.SessionID)).Result()
+		cancel()
+		if rerr != nil {
+			log.Printf("[ParseAccessToken] session revocation check failed, failing open: %v", rerr)
+		} else if revoked > 0 {
+			return nil, errors.New("token has been revoked")
+		}
+	}
+	return claims, nil
+}

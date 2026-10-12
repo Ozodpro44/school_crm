@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 	"github.com/school-crm/backend/internal/config"
 	"github.com/school-crm/backend/internal/db"
 	grpcserver "github.com/school-crm/backend/internal/grpc/server"
@@ -82,16 +83,27 @@ func main() {
 	classService := service.NewClassService(database)
 
 	// Build gRPC server
-	grpcSrv := grpc.NewServer()
+	userService := service.NewUserService(database)
+	var rdb *redis.Client
+	if redisClient != nil {
+		rdb = redisClient.GetClient()
+	}
+	grpcSrv := grpc.NewServer(grpc.UnaryInterceptor(
+		grpcserver.UnaryAuthInterceptor(grpcserver.NewAuthConfig(cfg.JWTSecret, rdb, userService)),
+	))
 
 	pb.RegisterHealthServiceServer(grpcSrv, grpcserver.NewHealthServer(database, redisClient, startTime, cfg.Environment))
 	pb.RegisterStudentServiceServer(grpcSrv, grpcserver.NewStudentServer(studentService))
 	pb.RegisterPaymentServiceServer(grpcSrv, grpcserver.NewPaymentServer(paymentService, branchService))
-	pb.RegisterBranchServiceServer(grpcSrv, grpcserver.NewBranchServer(branchService))
+	pb.RegisterBranchServiceServer(grpcSrv, grpcserver.NewBranchServer(branchService).WithUserService(userService))
 	pb.RegisterClassServiceServer(grpcSrv, grpcserver.NewClassServer(classService))
 
 	// Enable server reflection (allows grpcurl and other tooling to discover services)
-	reflection.Register(grpcSrv)
+	// Reflection is a recon aid and bypasses the unary auth interceptor, so
+	// it is only enabled outside production.
+	if cfg.Environment != "production" {
+		reflection.Register(grpcSrv)
+	}
 
 	addr := fmt.Sprintf(":%s", cfg.Port)
 	lis, err := net.Listen("tcp", addr)

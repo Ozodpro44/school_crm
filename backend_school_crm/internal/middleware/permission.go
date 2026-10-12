@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 
@@ -336,4 +338,24 @@ func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 		// Default to minimal permissions
 		return &models.Permission{}
 	}
+}
+
+// UserHasPermission reports whether userID holds the named permission flag
+// (e.g. "canViewStudents") using the same rules as PermissionChecker: admin
+// and branch_admin have everything, others need the flag (falling back to
+// role defaults when they have no permissions row). Unlike PermissionChecker
+// it has no HTTP side effects, so non-HTTP callers (gRPC) can share it.
+func UserHasPermission(ctx context.Context, userService *service.UserService, userID, permission string) (bool, error) {
+	user, err := userService.GetByID(ctx, userID)
+	if err != nil || user == nil {
+		return false, errors.New("user not found")
+	}
+	if user.Role == models.RoleAdmin || user.Role == models.RoleBranchAdmin {
+		return true, nil
+	}
+	perms := user.Permissions
+	if perms == nil {
+		perms = getDefaultPermissionsByRole(user.Role)
+	}
+	return checkPermission(perms, permission), nil
 }

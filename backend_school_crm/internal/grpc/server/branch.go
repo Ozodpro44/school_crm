@@ -14,7 +14,8 @@ import (
 // BranchServer implements pb.BranchServiceServer.
 type BranchServer struct {
 	pb.UnimplementedBranchServiceServer
-	svc *service.BranchService
+	svc   *service.BranchService
+	users *service.UserService // optional: lets non-owner roles list their branches
 }
 
 // NewBranchServer creates a BranchServer.
@@ -22,8 +23,27 @@ func NewBranchServer(svc *service.BranchService) *BranchServer {
 	return &BranchServer{svc: svc}
 }
 
+// WithUserService enables listing the branches a non-admin user belongs to.
+func (s *BranchServer) WithUserService(u *service.UserService) *BranchServer {
+	s.users = u
+	return s
+}
+
 func (s *BranchServer) ListBranches(ctx context.Context, req *pb.ListBranchesRequest) (*pb.ListBranchesResponse, error) {
-	branches, err := s.svc.GetAll(ctx)
+	caller, ok := CallerFromContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "authentication required")
+	}
+	// Never GetAll: that would list every tenant's branches.
+	var (
+		branches []models.Branch
+		err      error
+	)
+	if (caller.Role == "admin" || caller.Role == "branch_admin") || s.users == nil {
+		branches, err = s.svc.GetByAdminID(ctx, caller.UserID)
+	} else {
+		branches, err = s.users.GetUserBranches(ctx, caller.UserID)
+	}
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "list branches: %v", err)
 	}
@@ -57,9 +77,13 @@ func (s *BranchServer) CreateBranch(ctx context.Context, req *pb.CreateBranchReq
 		Phone:          req.Phone,
 		MonthlyPayment: req.MonthlyPayment,
 	}
-	if req.AdminId != "" {
-		svcReq.AdminID = &req.AdminId
+	// The owner is always the authenticated caller; a client-supplied
+	// admin_id would let anyone create branches owned by someone else.
+	caller, ok := CallerFromContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "authentication required")
 	}
+	svcReq.AdminID = &caller.UserID
 
 	b, err := s.svc.Create(ctx, svcReq)
 	if err != nil {
@@ -71,6 +95,15 @@ func (s *BranchServer) CreateBranch(ctx context.Context, req *pb.CreateBranchReq
 func (s *BranchServer) DeleteBranch(ctx context.Context, req *pb.DeleteBranchRequest) (*pb.DeleteBranchResponse, error) {
 	if req.Id == "" {
 		return nil, status.Error(codes.InvalidArgument, "id is required")
+	}
+	caller, ok := CallerFromContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "authentication required")
+	}
+	b, err := s.svc.GetByID(ctx, req.Id)
+	if err != nil || b.AdminID == nil || *b.AdminID != caller.UserID {
+		// Only the owning admin may delete; same answer as "missing".
+		return nil, status.Error(codes.NotFound, "branch not found")
 	}
 	if err := s.svc.Delete(ctx, req.Id); err != nil {
 		return nil, status.Errorf(codes.Internal, "delete branch: %v", err)
