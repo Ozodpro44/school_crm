@@ -268,7 +268,10 @@ func main() {
 	// Mass messaging (Telegram-backed)
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if telegramBotToken == "" {
-		log.Println("Warning: TELEGRAM_BOT_TOKEN not set. Telegram payment webhooks will not work.")
+		log.Println("Warning: TELEGRAM_BOT_TOKEN not set. Telegram messaging will not work.")
+	}
+	if os.Getenv("TELEGRAM_WEBHOOK_SECRET") == "" {
+		log.Println("Warning: TELEGRAM_WEBHOOK_SECRET not set. Telegram payment webhook disabled.")
 	}
 	messagingService := service.NewMessagingService(database, telegramBotToken)
 
@@ -291,7 +294,7 @@ func main() {
 	clickUzService.SetCache(cacheClient)
 
 	// Telegram payment service
-	telegramPaymentService := service.NewTelegramPaymentService(database, telegramBotToken)
+	telegramPaymentService := service.NewTelegramPaymentService(database, os.Getenv("TELEGRAM_WEBHOOK_SECRET"))
 	telegramPaymentService.SetCache(cacheClient)
 
 	// ── Router ────────────────────────────────────────────────────────────────
@@ -386,7 +389,6 @@ func main() {
 	handlers.RegisterAdminPlansRoutes(devProtected, subscriptionService)
 	handlers.RegisterSubscriptionPlanDevRoutes(devProtected, subscriptionService)
 	handlers.RegisterPaymentTypeDevRoutes(devProtected, paymentTypeService)
-	handlers.RegisterClickUzDevRoutes(devProtected, clickUzService)
 	handlers.RegisterDevUtilityRoutes(devProtected, database)
 	handlers.RegisterDeveloperSessionRoutes(devProtected, developerService)
 

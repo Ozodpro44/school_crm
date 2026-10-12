@@ -188,7 +188,8 @@ func (s *MessagingService) sendTelegram(chatID, text string) error {
 	body, _ := json.Marshal(payload)
 	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
-		return err
+		// *url.Error embeds the request URL, which contains the bot token.
+		return fmt.Errorf("telegram request failed: %s", strings.ReplaceAll(err.Error(), s.botToken, "[redacted]"))
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
