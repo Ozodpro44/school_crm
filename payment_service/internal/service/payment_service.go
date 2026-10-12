@@ -594,10 +594,11 @@ func (s *PaymentService) Restore(ctx context.Context, id, role string) error {
 
 	var branchID, studentID, month, status string
 	var year int
+	var amount float64
 	err = tx.QueryRowContext(ctx,
-		`SELECT branch_id, student_id, month, year, status FROM payments WHERE id = $1 AND deleted_at IS NOT NULL`,
+		`SELECT branch_id, student_id, month, year, status, amount FROM payments WHERE id = $1 AND deleted_at IS NOT NULL`,
 		id,
-	).Scan(&branchID, &studentID, &month, &year, &status)
+	).Scan(&branchID, &studentID, &month, &year, &status, &amount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -608,6 +609,11 @@ func (s *PaymentService) Restore(ctx context.Context, id, role string) error {
 		return err
 	}
 	if err := s.lockAndCheckNoPaid(ctx, tx, studentID, month, year, status, id); err != nil {
+		return err
+	}
+	// The payment was out of the books while trashed; other payments may have
+	// been recorded since, so bringing it back must not exceed the monthly fee.
+	if err := s.checkWithinMonthlyFee(ctx, tx, studentID, month, year, status, amount, id); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx,

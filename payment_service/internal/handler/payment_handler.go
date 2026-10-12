@@ -69,11 +69,11 @@ func isSuperRole(role string) bool {
 }
 
 // statusForServiceErr maps domain errors to HTTP statuses: locked / future
-// period and double-paid are conflicts (409), everything else a bad request.
+// period, double-paid and over-balance are conflicts (409), everything else a bad request.
 func statusForServiceErr(err error) int {
 	switch {
 	case errors.Is(err, service.ErrMonthLocked), errors.Is(err, service.ErrFuturePeriod),
-		errors.Is(err, service.ErrAlreadyPaid):
+		errors.Is(err, service.ErrAlreadyPaid), errors.Is(err, service.ErrExceedsBalance):
 		return http.StatusConflict
 	default:
 		return http.StatusBadRequest
