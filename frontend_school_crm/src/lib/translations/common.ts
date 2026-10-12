@@ -1762,6 +1762,11 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Izoh (ixtiyoriy)",
     en: "Note (optional)",
   },
+  auditSearchPage: {
+    "uz-cyrl": "Ушбу саҳифада қидириш",
+    "uz-latn": "Shu sahifada qidirish",
+    en: "Search this page",
+  },
   newPasswordMin8: {
     "uz-cyrl": "Янги парол камида 8 та белгидан иборат бўлиши керак",
     "uz-latn": "Yangi parol kamida 8 ta belgidan iborat bo'lishi kerak",

@@ -198,6 +198,20 @@ export default function StudentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
+  // Branch switched: a class filter from the old branch matches nothing here.
+  const prevBranchIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevBranchIdRef.current && branchId && prevBranchIdRef.current !== branchId) {
+      setFilterClass("all");
+      setFilterStatus("all");
+      setFilterPaymentStatus("all");
+      setSearchInput("");
+      setSearchTerm("");
+      setPage(1);
+    }
+    if (branchId) prevBranchIdRef.current = branchId;
+  }, [branchId]);
+
   // Sync URL params when filters/page change (shallow push, no data refetch needed)
   useEffect(() => {
     if (!router.isReady) return;
@@ -678,6 +692,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleSearch = () => {
     setSearchTerm(searchInput);
+    setPage(1);
   };
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -689,6 +704,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
   const handleClearSearch = () => {
     setSearchInput("");
     setSearchTerm("");
+    setPage(1);
   };
 
   const getStatusColor = (status: StudentStatus) => {
@@ -1194,11 +1210,11 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       <FilterBar>
         <FilterSearch
           value={searchInput}
-          onChange={(v) => { setSearchInput(v); if (v === "") setSearchTerm(""); }}
+          onChange={(v) => { setSearchInput(v); if (v === "") { setSearchTerm(""); setPage(1); } }}
           onSearch={handleSearch}
           placeholder={t("searchStudents")}
         />
-        <Select value={filterClass} onValueChange={setFilterClass}>
+        <Select value={filterClass} onValueChange={(v) => { setFilterClass(v); setPage(1); }}>
           <SelectTrigger className={filterSelectClass("w-40")}>
             <SelectValue placeholder={t("allClasses")} />
           </SelectTrigger>
@@ -1209,7 +1225,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
             ))}
           </SelectContent>
         </Select>
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
+        <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setPage(1); }}>
           <SelectTrigger className={filterSelectClass("w-36")}>
             <SelectValue placeholder={t("allStatus")} />
           </SelectTrigger>
@@ -1220,7 +1236,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
             <SelectItem value="left">{t("left")}</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={filterPaymentStatus} onValueChange={setFilterPaymentStatus}>
+        <Select value={filterPaymentStatus} onValueChange={(v) => { setFilterPaymentStatus(v); setPage(1); }}>
           <SelectTrigger className={filterSelectClass("w-40")}>
             <SelectValue placeholder={t("paymentStatus")} />
           </SelectTrigger>

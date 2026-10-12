@@ -940,7 +940,7 @@ export function HikvisionPanel() {
                       onChange={(e) => setFilterTo(e.target.value)}
                     />
                   </div>
-                  <Button onClick={loadRecords} disabled={recordsLoading}>
+                  <Button onClick={() => loadRecords()} disabled={recordsLoading}>
                     {recordsLoading ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
