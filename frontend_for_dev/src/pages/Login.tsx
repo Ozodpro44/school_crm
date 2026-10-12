@@ -1,24 +1,19 @@
 import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { toast } from "sonner";
-import { login, register } from "@/services/api-client";
+import { login } from "@/services/api-client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Terminal, Eye, EyeOff, Loader2, ShieldAlert } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation } from "@/lib/i18n";
-
-type Mode = "login" | "register";
 
 export default function Login() {
   const navigate = useNavigate();
   const { login: authLogin, isAuthenticated } = useAuth();
   const { language } = useLanguage();
   const t = (key: string) => getTranslation(key, language);
-  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -27,12 +22,9 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) { toast.error(t("emailPasswordRequired")); return; }
-    if (mode === "register" && !fullName.trim()) { toast.error(t("fullNameRequired")); return; }
     setLoading(true);
     try {
-      const res = mode === "login"
-        ? await login(email, password)
-        : await register(email, password, fullName);
+      const res = await login(email, password);
       authLogin(res.token, res.user);
       toast.success(`${t("welcomeBack")}${res.user.fullName ? `, ${res.user.fullName}` : ""}!`);
       navigate("/");
@@ -64,35 +56,7 @@ export default function Login() {
             </p>
           </div>
 
-          {/* Mode tabs */}
-          <div className="flex gap-1 bg-muted rounded-lg p-1 mb-5">
-            {(["login", "register"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={cn(
-                  "flex-1 py-1.5 text-xs rounded-md transition-colors capitalize font-medium",
-                  mode === m ? "bg-accent text-primary" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {m === "login" ? t("loginTab") : t("registerTab")}
-              </button>
-            ))}
-          </div>
-
           <form onSubmit={handleSubmit} className="space-y-3">
-            {mode === "register" && (
-              <div>
-                <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1.5">{t("fullName")}</label>
-                <input
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Jane Doe"
-                  className="w-full bg-input border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
-                />
-              </div>
-            )}
             <div>
               <label className="text-[10px] text-muted-foreground uppercase tracking-wider block mb-1.5">{t("email")}</label>
               <input
@@ -112,7 +76,7 @@ export default function Login() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  autoComplete="current-password"
                   className="w-full bg-input border border-border rounded-lg px-3 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20 transition-colors"
                 />
                 <button
@@ -133,7 +97,7 @@ export default function Login() {
               {loading ? (
                 <><Loader2 className="w-4 h-4 animate-spin" /> {t("authenticating")}</>
               ) : (
-                mode === "login" ? t("signIn") : t("createAccount")
+                t("signIn")
               )}
             </button>
           </form>

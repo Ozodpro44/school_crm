@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -82,6 +83,20 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
+	// Trust X-Forwarded-For only from TRUSTED_PROXIES (default none).
+	var trusted []string
+	for _, p := range strings.Split(os.Getenv("TRUSTED_PROXIES"), ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			trusted = append(trusted, p)
+		}
+	}
+	if trusted == nil {
+		trusted = []string{}
+	}
+	if err := r.SetTrustedProxies(trusted); err != nil {
+		slog.Error("invalid TRUSTED_PROXIES", "error", err)
+		os.Exit(1)
+	}
 	r.Use(gin.Recovery())
 	r.Use(logger.RequestLogger())
 	r.Use(corsMiddleware(cfg.CORSOrigins))

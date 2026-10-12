@@ -28,7 +28,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
       const body = await res.json().catch(() => ({})) as { error?: string };
       const err = new Error(body.error ?? `HTTP ${res.status}`);
       (err as Error & { status: number }).status = res.status;
-      // A 401 from the login/register endpoints means "wrong credentials",
+      // A 401 from the login endpoint means "wrong credentials",
       // not "session expired" — it must not trigger the global logout +
       // hard redirect, which would wipe the login page's own error state
       // before the "Invalid email or password" toast can even render.
@@ -58,14 +58,6 @@ export async function login(email: string, password: string): Promise<{ token: s
   const res = await request<AuthUser & { token: string }>("/dev/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
-  });
-  return { token: res.token, user: { id: res.id, email: res.email, fullName: res.fullName, role: res.role } };
-}
-
-export async function register(email: string, password: string, fullName: string): Promise<{ token: string; user: AuthUser }> {
-  const res = await request<AuthUser & { token: string }>("/dev/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password, fullName }),
   });
   return { token: res.token, user: { id: res.id, email: res.email, fullName: res.fullName, role: res.role } };
 }

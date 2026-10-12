@@ -33,6 +33,9 @@ type DeveloperLoginResponse struct {
 // DeveloperRegisterRequest DTO for developer registration
 type DeveloperRegisterRequest struct {
 	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	Password string `json:"password" binding:"required,min=8"`
 	FullName string `json:"fullName" binding:"required,min=2"`
+	// Role is "developer" (default) or "admin". Only an admin developer can
+	// call the (authenticated) registration endpoint at all.
+	Role string `json:"role"`
 }

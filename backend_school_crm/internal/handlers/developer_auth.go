@@ -91,71 +91,45 @@ func DeveloperLogin(developerService *service.DeveloperService, jwtSecret string
 	}
 }
 
-// DeveloperRegister handles developer registration
-// @Summary Developer Registration
-// @Description Register a new developer account
+// DeveloperRegister creates a new developer account. It is NOT public: it must
+// be mounted behind DevAuthMiddleware + RequireDeveloperRole("admin"). It
+// returns the created account but never mints a token — the new developer
+// signs in through /dev/auth/login.
+// @Summary Create Developer (admin only)
 // @Tags developer-auth
 // @Accept json
 // @Produce json
-// @Param request body models.DeveloperRegisterRequest true "Developer registration details"
-// @Success 201 {object} models.DeveloperLoginResponse
+// @Param request body models.DeveloperRegisterRequest true "Developer details"
+// @Success 201 {object} map[string]interface{}
 // @Failure 400 {object} map[string]interface{}
-// @Failure 500 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
 // @Router /dev/auth/register [post]
-func DeveloperRegister(developerService *service.DeveloperService, jwtSecret string) gin.HandlerFunc {
+func DeveloperRegister(developerService *service.DeveloperService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req models.DeveloperRegisterRequest
-
 		if err := c.ShouldBindJSON(&req); err != nil {
-			log.Printf("[DEV-REGISTER] Validation error: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
 			return
 		}
+		if req.Role != "" && req.Role != "developer" && req.Role != "admin" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "role must be 'developer' or 'admin'"})
+			return
+		}
 
-		log.Printf("[DEV-REGISTER] Registration attempt for email: %s", req.Email)
-
-		// Create developer
-		dev, err := developerService.CreateDeveloper(c.Request.Context(), req.Email, req.Password, req.FullName)
+		dev, err := developerService.CreateDeveloper(c.Request.Context(), req.Email, req.Password, req.FullName, req.Role)
 		if err != nil {
 			log.Printf("[DEV-REGISTER] Registration failed: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register developer"})
 			return
 		}
 
-		sessionID, err := developerService.CreateSession(c.Request.Context(), dev.ID, c.ClientIP(), c.Request.UserAgent())
-		if err != nil {
-			log.Printf("[DEV-REGISTER] Session creation failed: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
-			return
-		}
-
-		// Generate JWT token
-		now := time.Now()
-		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-			"developer_id": dev.ID,
-			"email":        dev.Email,
-			"role":         dev.Role,
-			"type":         "developer",
-			"sid":          sessionID,
-			"iat":          now.Unix(),
-			"exp":          now.Add(devSessionTTL).Unix(),
-		})
-
-		tokenString, err := token.SignedString([]byte(jwtSecret))
-		if err != nil {
-			log.Printf("[DEV-REGISTER] Token generation failed: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
-			return
-		}
-
-		log.Printf("[DEV-REGISTER] Successful registration for: %s", dev.Email)
-
-		c.JSON(http.StatusCreated, models.DeveloperLoginResponse{
-			ID:       dev.ID,
-			Email:    dev.Email,
-			FullName: dev.FullName,
-			Role:     dev.Role,
-			Token:    tokenString,
+		creator, _ := c.Get("developer_id")
+		log.Printf("[DEV-REGISTER] developer %s created by %v (role=%s)", dev.Email, creator, dev.Role)
+		c.JSON(http.StatusCreated, gin.H{
+			"id":       dev.ID,
+			"email":    dev.Email,
+			"fullName": dev.FullName,
+			"role":     dev.Role,
 		})
 	}
 }
@@ -183,7 +157,7 @@ func DeveloperMiddleware(jwtSecret string) gin.HandlerFunc {
 		// Parse token
 		token, err := jwt.ParseWithClaims(tokenString, &jwt.MapClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
 
 		if err != nil || !token.Valid {
 			log.Printf("[DEV-AUTH] Invalid token: %v", err)
@@ -222,10 +196,9 @@ func DeveloperMiddleware(jwtSecret string) gin.HandlerFunc {
 }
 
 // RegisterDeveloperAuthRoutes registers developer authentication routes
-func RegisterDeveloperAuthRoutes(router gin.IRouter, developerService *service.DeveloperService, jwtSecret string) {
+func RegisterDeveloperAuthRoutes(router gin.IRouter, developerService *service.DeveloperService, jwtSecret string, mw ...gin.HandlerFunc) {
 	log.Println("[ROUTES] Registering developer auth routes")
-	router.POST("/api/v1/dev/auth/login", DeveloperLogin(developerService, jwtSecret))
-	router.POST("/api/v1/dev/auth/register", DeveloperRegister(developerService, jwtSecret))
+	router.POST("/api/v1/dev/auth/login", append(mw, DeveloperLogin(developerService, jwtSecret))...)
 }
 
 // ListDeveloperSessions returns the caller's own active sessions (devices).

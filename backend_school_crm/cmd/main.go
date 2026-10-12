@@ -287,6 +287,14 @@ func main() {
 	if clickMerchantID == "" || clickServiceID == "" || clickSecretKey == "" {
 		log.Println("Warning: CLICK_MERCHANT_ID/CLICK_SERVICE_ID/CLICK_SECRET_KEY not set. Click.uz disabled.")
 	}
+	// Env-guarded bootstrap: create the first admin developer only if none exist.
+	if be, bp := os.Getenv("DEV_BOOTSTRAP_EMAIL"), os.Getenv("DEV_BOOTSTRAP_PASSWORD"); be != "" && bp != "" {
+		if created, berr := developerService.BootstrapAdmin(context.Background(), be, bp); berr != nil {
+			log.Printf("WARNING: developer bootstrap failed: %v", berr)
+		} else if created {
+			log.Printf("Bootstrapped first admin developer %s (remove DEV_BOOTSTRAP_* env vars now)", be)
+		}
+	}
 	clickUzService := service.NewClickUzService(database, clickMerchantID, clickServiceID, clickSecretKey)
 	clickUzService.SetCache(cacheClient)
 
@@ -305,6 +313,12 @@ func main() {
 	jobQueue := jobs.New(database, reportService, logger)
 
 	router := gin.New()
+	// Only trust X-Forwarded-For from explicitly configured proxies
+	// (TRUSTED_PROXIES, comma-separated CIDRs/IPs); default none so
+	// c.ClientIP() is the socket peer and can't be spoofed to dodge rate limits.
+	if err := router.SetTrustedProxies(middleware.ParseTrustedProxies(os.Getenv("TRUSTED_PROXIES"))); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
 	router.Use(gin.Recovery())
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(middleware.RequestID())
@@ -348,7 +362,7 @@ func main() {
 	// ── Public routes ─────────────────────────────────────────────────────────
 	// Auth — these are also served by auth_service via the gateway; kept here
 	// so the monolith can still validate tokens and serve as fallback.
-	router.POST("/api/v1/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret, settingsStore))
+	router.POST("/api/v1/auth/login", authRateLimit, rateLimiter.ByAccount(5, time.Minute), handlers.Login(userService, cfg.JWTSecret, settingsStore))
 	router.POST("/api/v1/auth/register", authRateLimit, handlers.Register(userService, subscriptionService, cfg.JWTSecret, settingsStore))
 	router.POST("/api/v1/auth/verify-registration-otp", authRateLimit, handlers.VerifyRegistrationOTP(userService, subscriptionService, cfg.JWTSecret, settingsStore))
 	router.POST("/api/v1/auth/forgot-password", authRateLimit, handlers.ForgotPassword(userService))
@@ -367,7 +381,7 @@ func main() {
 	handlers.RegisterPaymentTypePublicRoutes(publicApi, paymentTypeService)
 
 	// Developer auth & public dev panel
-	handlers.RegisterDeveloperAuthRoutes(router, developerService, cfg.JWTSecret)
+	handlers.RegisterDeveloperAuthRoutes(router, developerService, cfg.JWTSecret, authRateLimit, rateLimiter.ByAccount(5, time.Minute))
 	publicDev := router.Group("/api/v1")
 	handlers.RegisterDeveloperRoutes(publicDev, database, subscriptionService)
 
@@ -389,6 +403,8 @@ func main() {
 	handlers.RegisterClickUzDevRoutes(devProtected, clickUzService)
 	handlers.RegisterDevUtilityRoutes(devProtected, database)
 	handlers.RegisterDeveloperSessionRoutes(devProtected, developerService)
+	// Creating developer accounts requires an existing admin developer token.
+	devProtected.POST("/dev/auth/register", middleware.RequireDeveloperRole("admin"), handlers.DeveloperRegister(developerService))
 
 	// ── Auth-only (login required, subscription not required) ─────────────────
 	authOnly := router.Group("/api/v1")
@@ -437,10 +453,9 @@ func main() {
 	handlers.RegisterHikCentralWebhookRoutes(hikvisionWebhookGroup, hikvisionService)
 
 	// ── Legacy /api/* aliases ─────────────────────────────────────────────────
-	router.POST("/api/dev/auth/login", authRateLimit, handlers.DeveloperLogin(developerService, cfg.JWTSecret))
-	router.POST("/api/dev/auth/register", authRateLimit, handlers.DeveloperRegister(developerService, cfg.JWTSecret))
+	router.POST("/api/dev/auth/login", authRateLimit, rateLimiter.ByAccount(5, time.Minute), handlers.DeveloperLogin(developerService, cfg.JWTSecret))
 
-	router.POST("/api/auth/login", authRateLimit, handlers.Login(userService, cfg.JWTSecret, settingsStore))
+	router.POST("/api/auth/login", authRateLimit, rateLimiter.ByAccount(5, time.Minute), handlers.Login(userService, cfg.JWTSecret, settingsStore))
 	router.POST("/api/auth/register", authRateLimit, handlers.Register(userService, subscriptionService, cfg.JWTSecret, settingsStore))
 	router.POST("/api/auth/verify-registration-otp", authRateLimit, handlers.VerifyRegistrationOTP(userService, subscriptionService, cfg.JWTSecret, settingsStore))
 	router.POST("/api/auth/forgot-password", authRateLimit, handlers.ForgotPassword(userService))
@@ -463,6 +478,7 @@ func main() {
 	handlers.RegisterPaymentTypeDevRoutes(legacyDevProtected, paymentTypeService)
 	handlers.RegisterDevUtilityRoutes(legacyDevProtected, database)
 	handlers.RegisterDeveloperSessionRoutes(legacyDevProtected, developerService)
+	legacyDevProtected.POST("/dev/auth/register", middleware.RequireDeveloperRole("admin"), handlers.DeveloperRegister(developerService))
 
 	legacyAuthOnly := router.Group("/api")
 	legacyAuthOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret, redisClient.GetClient()))

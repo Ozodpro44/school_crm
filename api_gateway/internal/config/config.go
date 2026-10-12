@@ -16,6 +16,11 @@ type Config struct {
 	// default only covers local dev (frontend_school_crm:3000,
 	// frontend_for_dev:3001).
 	CORSOrigins []string
+	// TrustedProxies is the list of proxy IPs/CIDRs (TRUSTED_PROXIES,
+	// comma-separated) whose X-Forwarded-For is honoured by c.ClientIP().
+	// Default: none, so the socket peer is the client and rate limits cannot
+	// be bypassed by spoofing the header.
+	TrustedProxies []string
 
 	// Upstream service addresses
 	MonolithURL            string // e.g. http://backend:8082
@@ -43,6 +48,7 @@ func Load() *Config {
 		TeacherServiceURL:      getEnv("TEACHER_SERVICE_URL", "http://teacher_service:8086"),
 		FinanceServiceURL:      getEnv("FINANCE_SERVICE_URL", "http://finance_service:8087"),
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://notification_service:8088"),
+		TrustedProxies:         parseCSV(os.Getenv("TRUSTED_PROXIES")),
 		CORSOrigins:            parseCSV(getEnv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001")),
 	}
 }

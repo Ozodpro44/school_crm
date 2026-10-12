@@ -40,7 +40,7 @@ func NewAuthGRPCServer(authSvc *service.AuthService, jwtSecret string) *AuthGRPC
 	s := &AuthGRPCServer{
 		authSvc:   authSvc,
 		jwtSecret: jwtSecret,
-		grpc:      grpc.NewServer(),
+		grpc:      grpc.NewServer(grpc.UnaryInterceptor(internalAuthInterceptor())),
 	}
 	authv1.RegisterAuthServiceServer(s.grpc, s)
 	return s

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"io"
 	"log"
 	"mime"
@@ -14,6 +15,17 @@ import (
 	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/service"
 )
+
+// maxWebhookBodyBytes caps unauthenticated-path request bodies (the device
+// token is checked first, but a leaked/enrolled device could still stream
+// arbitrarily large multipart bodies into memory).
+const maxWebhookBodyBytes = 16 << 20
+
+// webhookTokenMatches compares per-device webhook tokens in constant time and
+// never accepts an empty stored token.
+func webhookTokenMatches(stored, provided string) bool {
+	return stored != "" && subtle.ConstantTimeCompare([]byte(stored), []byte(provided)) == 1
+}
 
 // hikvisionHandler carries the services the management endpoints need. Every
 // endpoint resolves whatever device/employee it was pointed at back to its
@@ -349,11 +361,12 @@ func hikvisionWebhook(s *service.HikvisionService) gin.HandlerFunc {
 		token := c.Param("token")
 
 		device, err := s.GetDevice(c.Request.Context(), deviceID)
-		if err != nil || device.WebhookToken != token {
+		if err != nil || !webhookTokenMatches(device.WebhookToken, token) {
 			c.Status(http.StatusOK)
 			return
 		}
 
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxWebhookBodyBytes)
 		contentType := c.GetHeader("Content-Type")
 		mediaType, params, parseErr := mime.ParseMediaType(contentType)
 
@@ -400,11 +413,12 @@ func hikCentralWebhook(s *service.HikvisionService) gin.HandlerFunc {
 		token := c.Param("token")
 
 		device, err := s.GetDevice(c.Request.Context(), deviceID)
-		if err != nil || device.WebhookToken != token {
+		if err != nil || !webhookTokenMatches(device.WebhookToken, token) {
 			c.Status(http.StatusOK)
 			return
 		}
 
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxWebhookBodyBytes)
 		body, _ := io.ReadAll(c.Request.Body)
 		log.Printf("hikcentral webhook: device=%s content-type=%s body=%s",
 			deviceID, c.GetHeader("Content-Type"), string(body))

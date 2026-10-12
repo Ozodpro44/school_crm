@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/db"
+	"github.com/school-crm/backend/internal/middleware"
 	"github.com/school-crm/backend/internal/platformsettings"
 	"github.com/school-crm/backend/internal/service"
 )
@@ -638,8 +639,8 @@ func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database, sub
 func RegisterDevUtilityRoutes(router *gin.RouterGroup, database *db.Database) {
 	router.GET("/dev/schema", GetDatabaseSchema(database))
 	router.GET("/dev/migrations", GetDatabaseMigrations(database))
-	router.POST("/dev/generate-test-data", GenerateTestData(database))
-	router.POST("/dev/seed-subscription-plans", SeedSubscriptionPlans(database))
+	router.POST("/dev/generate-test-data", middleware.RequireDeveloperRole("admin"), GenerateTestData(database))
+	router.POST("/dev/seed-subscription-plans", middleware.RequireDeveloperRole("admin"), SeedSubscriptionPlans(database))
 }
 
 // ==================== DEV SETTINGS ====================
@@ -652,8 +653,8 @@ func RegisterDevCRMRoutes(router *gin.RouterGroup, userService *service.UserServ
 	users.GET("", listUsers(userService))
 	users.GET("/:id", getUser(userService))
 	users.PUT("/:id", devUpdateUser(userService))
-	users.DELETE("/:id", devDeleteUser(userService))
-	users.POST("/:id/restore", devRestoreUser(userService))
+	users.DELETE("/:id", middleware.RequireDeveloperRole("admin"), devDeleteUser(userService))
+	users.POST("/:id/restore", middleware.RequireDeveloperRole("admin"), devRestoreUser(userService))
 
 	// Branches (reuse existing handlers — ownership checks skipped for dev context)
 	branches := router.Group("/dev/crm/branches")
@@ -661,8 +662,8 @@ func RegisterDevCRMRoutes(router *gin.RouterGroup, userService *service.UserServ
 	branches.GET("/:id", getBranch(branchService))
 	branches.POST("", createBranch(branchService, nil)) // dev path — no subscription limit enforcement
 	branches.PUT("/:id", updateBranch(branchService))
-	branches.DELETE("/:id", deleteBranch(branchService))
-	branches.POST("/:id/restore", devRestoreBranch(branchService))
+	branches.DELETE("/:id", middleware.RequireDeveloperRole("admin"), deleteBranch(branchService))
+	branches.POST("/:id/restore", middleware.RequireDeveloperRole("admin"), devRestoreBranch(branchService))
 
 	// Trash — platform-wide, 30-day window (this whole group is
 	// developer-only per DevAuthMiddleware, so there's no shorter/scoped
@@ -722,7 +723,7 @@ func devUpdateUser(userService *service.UserService) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		user, err := userService.Update(c.Request.Context(), id, updates)
+		user, err := userService.UpdateByAdmin(c.Request.Context(), id, updates)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -746,7 +747,7 @@ func devDeleteUser(userService *service.UserService) gin.HandlerFunc {
 // Must be called with a router group that uses DevAuthMiddleware.
 func RegisterDevSettingsRoutes(router *gin.RouterGroup, database *db.Database, settingsStore *platformsettings.Store) {
 	router.GET("/dev/settings", GetDevSettings(settingsStore))
-	router.PUT("/dev/settings", UpdateDevSettings(settingsStore))
+	router.PUT("/dev/settings", middleware.RequireDeveloperRole("admin"), UpdateDevSettings(settingsStore))
 	// Notification-specific sub-routes (convenience wrappers around the
 	// per-developer settings JSONB column — a different blob than
 	// GetDevSettings/UpdateDevSettings above, which moved to a global

@@ -64,7 +64,7 @@ type PaymentGRPCServer struct {
 func NewPaymentGRPCServer(svc *service.PaymentService) *PaymentGRPCServer {
 	s := &PaymentGRPCServer{
 		svc:  svc,
-		grpc: grpc.NewServer(),
+		grpc: grpc.NewServer(grpc.UnaryInterceptor(internalAuthInterceptor())),
 	}
 	// When buf-generated stubs are available:
 	// paymentv1.RegisterPaymentServiceServer(s.grpc, s)

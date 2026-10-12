@@ -24,6 +24,7 @@
 package router
 
 import (
+	"fmt"
 	"context"
 	"encoding/json"
 	"io"
@@ -93,6 +94,9 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	}
 
 	r := gin.New()
+	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		return nil, fmt.Errorf("invalid TRUSTED_PROXIES: %w", err)
+	}
 	r.Use(gin.Recovery())
 	r.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
 	r.Use(middleware.RequestID())
@@ -369,8 +373,9 @@ func New(cfg *config.Config) (*gin.Engine, error) {
 	}
 
 	// ── Developer auth (public) ───────────────────────────────────────────────
-	r.POST("/api/v1/dev/auth/login", gin.WrapH(proxy.Handler(monolithProxy)))
-	r.POST("/api/v1/dev/auth/register", gin.WrapH(proxy.Handler(monolithProxy)))
+	// Developer registration is NOT public: it is reached only through the
+	// catch-all below and the monolith requires an admin developer token.
+	r.POST("/api/v1/dev/auth/login", middleware.RateLimiter(10, time.Minute), gin.WrapH(proxy.Handler(monolithProxy)))
 
 	// ── Catch-all: forward everything else to monolith ────────────────────────
 	// This covers all protected /api/v1/* routes still owned by the monolith.

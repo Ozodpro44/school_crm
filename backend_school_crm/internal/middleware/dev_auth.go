@@ -38,7 +38,7 @@ func DevAuthMiddleware(jwtSecret string, developerService *service.DeveloperServ
 
 		token, err := jwt.Parse(parts[1], func(t *jwt.Token) (interface{}, error) {
 			return []byte(jwtSecret), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256", "HS384", "HS512"}))
 		if err != nil || !token.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			c.Abort()

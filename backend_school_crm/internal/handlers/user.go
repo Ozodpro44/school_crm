@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/service"
 )
 
@@ -145,8 +146,9 @@ func updateUser(userService *service.UserService) gin.HandlerFunc {
 			return
 		}
 
-		// Non-admin users must provide current_password when changing their password
-		if c.GetString("role") != "admin" {
+		// Everyone changing their OWN password must provide current_password
+		// (an admin resetting another user's password is exempt).
+		if c.GetString("role") != "admin" || userID == id {
 			if _, hasNewPwd := updates["password"]; hasNewPwd {
 				cp, hasCurrent := updates["current_password"]
 				if !hasCurrent || cp == "" {
@@ -158,7 +160,12 @@ func updateUser(userService *service.UserService) gin.HandlerFunc {
 
 		log.Printf("[updateUser] Updating user %s with data: %+v", id, updates)
 
-		user, err := userService.Update(c.Request.Context(), id, updates)
+		var user *models.User
+		if c.GetString("role") == "admin" && userID != id {
+			user, err = userService.UpdateByAdmin(c.Request.Context(), id, updates)
+		} else {
+			user, err = userService.Update(c.Request.Context(), id, updates)
+		}
 		if err != nil {
 			log.Printf("[updateUser] Error updating user: %v", err)
 			if err.Error() == "current password is incorrect" {

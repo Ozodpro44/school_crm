@@ -175,8 +175,15 @@ func (s *DeveloperService) AuthenticateDeveloper(ctx context.Context, email, pas
 	return dev, nil
 }
 
-// CreateDeveloper creates a new developer account
-func (s *DeveloperService) CreateDeveloper(ctx context.Context, email, password, fullName string) (*models.Developer, error) {
+// CreateDeveloper creates a new developer account with the given role
+// ("developer" or "admin"; empty defaults to "developer").
+func (s *DeveloperService) CreateDeveloper(ctx context.Context, email, password, fullName, role string) (*models.Developer, error) {
+	if role == "" {
+		role = "developer"
+	}
+	if role != "developer" && role != "admin" {
+		return nil, fmt.Errorf("invalid developer role %q", role)
+	}
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -191,7 +198,7 @@ func (s *DeveloperService) CreateDeveloper(ctx context.Context, email, password,
 
 	var dev models.Developer
 	err = s.database.GetConn().QueryRowContext(ctx, query,
-		email, string(hashedPassword), fullName, "developer",
+		email, string(hashedPassword), fullName, role,
 	).Scan(
 		&dev.ID, &dev.Email, &dev.Password, &dev.FullName, &dev.Role, &dev.IsActive, &dev.LastLogin, &dev.CreatedAt, &dev.UpdatedAt,
 	)
@@ -262,4 +269,34 @@ func (s *DeveloperService) UpdateDeveloperPassword(ctx context.Context, develope
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 	return nil
+}
+
+// CountDevelopers returns the number of developer accounts.
+func (s *DeveloperService) CountDevelopers(ctx context.Context) (int, error) {
+	var n int
+	err := s.database.GetConn().QueryRowContext(ctx, `SELECT COUNT(*) FROM developers`).Scan(&n)
+	return n, err
+}
+
+// BootstrapAdmin creates the first developer (role "admin") when, and only
+// when, no developer exists yet. It is a no-op if email or password is empty.
+// Returns true if an account was created.
+func (s *DeveloperService) BootstrapAdmin(ctx context.Context, email, password string) (bool, error) {
+	if email == "" || password == "" {
+		return false, nil
+	}
+	if len(password) < 8 {
+		return false, fmt.Errorf("DEV_BOOTSTRAP_PASSWORD must be at least 8 characters")
+	}
+	n, err := s.CountDevelopers(ctx)
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return false, nil
+	}
+	if _, err := s.CreateDeveloper(ctx, email, password, "Developer Admin", "admin"); err != nil {
+		return false, err
+	}
+	return true, nil
 }

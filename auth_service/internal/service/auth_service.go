@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/golang-jwt/jwt/v5"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -41,7 +42,7 @@ type LoginRequest struct {
 
 type RegisterRequest struct {
 	Email      string `json:"email"      binding:"required,email"`
-	Password   string `json:"password"   binding:"required,min=6"`
+	Password   string `json:"password"   binding:"required,min=8"`
 	FullName   string `json:"fullName"   binding:"required"`
 	Role       string `json:"role"       binding:"required"`
 	SchoolName string `json:"schoolName"`
@@ -180,6 +181,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (*User,
 // independent and shouldn't share a TTL/attempt budget.
 
 func loginOTPKey(email string) string { return "auth:login-otp:" + email }
+func loginOTPAttemptsKey(email string) string { return "auth:login-otp-attempts:" + email }
 
 // MFARequired reports whether a successful password check must be followed
 // by an OTP step before a token is issued.
@@ -223,11 +225,22 @@ func (s *AuthService) SendLoginOTPEmail(email, otp string) error {
 // the caller can create a session and issue the real token — mirrors Login's
 // user-fetch but skips the password check (already done in the first step).
 func (s *AuthService) VerifyLoginOTP(ctx context.Context, email, otp string) (*User, error) {
+	attemptsKey := loginOTPAttemptsKey(email)
+	attempts, _ := s.redis.Incr(ctx, attemptsKey).Result()
+	if attempts == 1 {
+		_ = s.redis.Expire(ctx, attemptsKey, otpLockoutWindow).Err()
+	}
+	if attempts > maxOTPAttempts {
+		_ = s.redis.Del(ctx, loginOTPKey(email)).Err()
+		return nil, errors.New("too many attempts — sign in again to get a new code")
+	}
+
 	stored, err := s.redis.Get(ctx, loginOTPKey(email)).Result()
 	if err != nil || subtle.ConstantTimeCompare([]byte(stored), []byte(otp)) != 1 {
 		return nil, errors.New("invalid or expired code")
 	}
 	_ = s.redis.Del(ctx, loginOTPKey(email)).Err()
+	_ = s.redis.Del(ctx, attemptsKey).Err()
 
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
@@ -235,7 +248,7 @@ func (s *AuthService) VerifyLoginOTP(ctx context.Context, email, otp string) (*U
 	var user User
 	var branchID, orgName sql.NullString
 	err = s.db.Conn().QueryRowContext(ctx,
-		`SELECT id, email, role, full_name, branch_id, organization_name, created_at FROM users WHERE email = $1`, email,
+		`SELECT id, email, role, full_name, branch_id, organization_name, created_at FROM users WHERE email = $1 AND deleted_at IS NULL AND email_verified = true`, email,
 	).Scan(&user.ID, &user.Email, &user.Role, &user.FullName, &branchID, &orgName, &user.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -671,11 +684,42 @@ func (s *AuthService) ResetPassword(ctx context.Context, email, resetToken, newP
 		`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE email = $2`,
 		string(hash), email,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	s.revokeAllSessionsByEmail(ctx, email)
+	return nil
+}
+
+// revokeAllSessionsByEmail revokes every live session of the user (DB row +
+// Redis flag) so a password reset signs out all existing devices. Best-effort.
+func (s *AuthService) revokeAllSessionsByEmail(ctx context.Context, email string) {
+	rows, err := s.db.Conn().QueryContext(ctx,
+		`UPDATE user_sessions SET revoked_at = NOW()
+		 WHERE revoked_at IS NULL AND user_id IN (SELECT id FROM users WHERE email = $1) RETURNING id`, email)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sid string
+		if rows.Scan(&sid) == nil {
+			_ = s.redis.Set(ctx, sessionRevokedKey(sid), "1", sessionRevokedTTL).Err()
+		}
+	}
 }
 
 // BlacklistToken marks an access token as revoked in Redis (for logout).
 func (s *AuthService) BlacklistToken(ctx context.Context, token string, ttl time.Duration) error {
+	// TTL must outlive the token: use its own exp (unverified parse is fine,
+	// we only extend the TTL) when that is longer than the caller's default.
+	if parsed, _, err := jwt.NewParser().ParseUnverified(token, jwt.MapClaims{}); err == nil {
+		if exp, err := parsed.Claims.GetExpirationTime(); err == nil && exp != nil {
+			if d := time.Until(exp.Time) + time.Minute; d > ttl {
+				ttl = d
+			}
+		}
+	}
 	return s.redis.Set(ctx, blacklistKey(token), "1", ttl).Err()
 }
 

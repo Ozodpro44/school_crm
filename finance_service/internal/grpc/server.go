@@ -30,7 +30,7 @@ type FinanceGRPCServer struct {
 }
 
 func NewFinanceGRPCServer(expenses *service.ExpenseService) *FinanceGRPCServer {
-	s := &FinanceGRPCServer{expenses: expenses, grpc: grpc.NewServer()}
+	s := &FinanceGRPCServer{expenses: expenses, grpc: grpc.NewServer(grpc.UnaryInterceptor(internalAuthInterceptor()))}
 	financev1.RegisterFinanceServiceServer(s.grpc, s)
 	return s
 }

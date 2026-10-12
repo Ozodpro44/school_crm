@@ -9,5 +9,6 @@ type CustomClaims struct {
 	Role      string `json:"role"`
 	BranchID  string `json:"branch_id,omitempty"`
 	SessionID string `json:"sid,omitempty"`
+	Type      string `json:"type,omitempty"`
 	jwt.RegisteredClaims
 }

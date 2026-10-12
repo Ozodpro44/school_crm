@@ -41,7 +41,7 @@ func NewStudentGRPCServer(students *service.StudentService, classes *service.Cla
 	s := &StudentGRPCServer{
 		students: students,
 		classes:  classes,
-		grpc:     grpc.NewServer(),
+		grpc:     grpc.NewServer(grpc.UnaryInterceptor(internalAuthInterceptor())),
 	}
 	studentv1.RegisterStudentServiceServer(s.grpc, s)
 	return s
