@@ -177,28 +177,15 @@ func (s *BranchService) GetByAdminID(ctx context.Context, adminID string) ([]mod
 	return branches, rows.Err()
 }
 
-func (s *BranchService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Branch, error) {
-	updates = utils.ConvertKeysToSnakeCase(updates)
-
-	// Always update the timestamp fields
+func (s *BranchService) Update(ctx context.Context, id string, updates map[string]interface{}, isAdmin bool) (*models.Branch, error) {
 	now := time.Now().UTC()
-	updates["updated_at"] = now
-
-	query := `UPDATE branches SET `
-	args := []interface{}{}
-	argCount := 1
-
-	for key, value := range updates {
-		if argCount > 1 {
-			query += ", "
-		}
-		query += key + " = $" + strconv.Itoa(argCount)
-		args = append(args, value)
-		argCount++
+	setClause, args, err := buildUpdateSet(updates, branchUpdateRule, isAdmin, map[string]interface{}{"updated_at": now})
+	if err != nil {
+		return nil, err
 	}
-
-	query += " WHERE id = $" + strconv.Itoa(argCount)
+	query := `UPDATE branches SET ` + setClause + " WHERE id = $" + strconv.Itoa(len(args)+1)
 	args = append(args, id)
+	updates = utils.ConvertKeysToSnakeCase(updates)
 
 	// Branch update and the student fee cascade are one transaction.
 	tx, err := s.db.BeginTx(ctx)

@@ -163,6 +163,10 @@ func updatePayment(paymentService *service.PaymentService, userService *service.
 
 		payment, err := paymentService.Update(c.Request.Context(), id, updates, isAdmin)
 		if err != nil {
+			if errors.Is(err, service.ErrInvalidUpdate) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			if errors.Is(err, service.ErrFinancialMonthLocked) {
 				c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 				return

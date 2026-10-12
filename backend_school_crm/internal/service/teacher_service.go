@@ -13,7 +13,6 @@ import (
 	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
-	"github.com/school-crm/backend/internal/utils"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -262,24 +261,13 @@ func (s *TeacherService) Update(ctx context.Context, id string, updates map[stri
 		delete(updates, "subjects")
 	}
 
-	updates = utils.ConvertKeysToSnakeCase(updates)
-
 	if len(updates) > 0 {
-		updates["updated_at"] = time.Now().UTC()
-		query := `UPDATE teachers SET `
-		args := []interface{}{}
-		argCount := 1
-
-		for key, value := range updates {
-			if argCount > 1 {
-				query += ", "
-			}
-			query += key + " = $" + strconv.Itoa(argCount)
-			args = append(args, value)
-			argCount++
+		setClause, args, err := buildUpdateSet(updates, teacherUpdateRule, false,
+			map[string]interface{}{"updated_at": time.Now().UTC()})
+		if err != nil {
+			return nil, err
 		}
-
-		query += " WHERE id = $" + strconv.Itoa(argCount)
+		query := `UPDATE teachers SET ` + setClause + " WHERE id = $" + strconv.Itoa(len(args)+1)
 		args = append(args, id)
 
 		if _, err := s.db.GetConn().ExecContext(ctx, query, args...); err != nil {

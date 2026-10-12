@@ -129,8 +129,15 @@ func updateBranch(branchService *service.BranchService) gin.HandlerFunc {
 			return
 		}
 
-		branch, err := branchService.Update(c.Request.Context(), id, updates)
+		// Developer routes (no school user in context) and platform admins may change admin-only fields.
+		_, isSchoolUser := c.Get("user_id")
+		isAdmin := !isSchoolUser || c.GetString("role") == string(models.RoleAdmin)
+		branch, err := branchService.Update(c.Request.Context(), id, updates, isAdmin)
 		if err != nil {
+			if errors.Is(err, service.ErrInvalidUpdate) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

@@ -13,7 +13,6 @@ import (
 	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
-	"github.com/school-crm/backend/internal/utils"
 )
 
 type ClassService struct {
@@ -180,21 +179,11 @@ func (s *ClassService) Update(ctx context.Context, id string, updates map[string
 		}
 	}
 
-	updates = utils.ConvertKeysToSnakeCase(updates)
-	query := `UPDATE classes SET `
-	args := []interface{}{}
-	argCount := 1
-
-	for key, value := range updates {
-		if argCount > 1 {
-			query += ", "
-		}
-		query += key + " = $" + strconv.Itoa(argCount)
-		args = append(args, value)
-		argCount++
+	setClause, args, err := buildUpdateSet(updates, classUpdateRule, false, nil)
+	if err != nil {
+		return nil, err
 	}
-
-	query += " WHERE id = $" + strconv.Itoa(argCount)
+	query := `UPDATE classes SET ` + setClause + " WHERE id = $" + strconv.Itoa(len(args)+1)
 	args = append(args, id)
 
 	_, err = s.db.GetConn().ExecContext(ctx, query, args...)
