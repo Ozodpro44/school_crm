@@ -26,7 +26,7 @@ export function useNotify() {
       toast({ title, description, variant: "destructive" });
     },
     warning(title: string, description?: string) {
-      toast({ title, description, variant: "default" });
+      toast({ title, description, variant: "warning" });
     },
     info(title: string, description?: string) {
       toast({ title, description, variant: "default" });
