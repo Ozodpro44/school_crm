@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -218,8 +219,7 @@ func (s *StudentService) Delete(ctx context.Context, id string) error {
 func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, in StudentFilterInput) (*models.StudentListResponse, error) {
 	// Cache read-through
 	if s.cache != nil {
-		cacheKey := fmt.Sprintf("crm:students:%s:%s:%s:%s:%s:%s:%s:%s:%s",
-			in.BranchID, in.Page, in.Limit, in.Search, in.Status, in.ClassID, in.PaymentStatus, in.Month, in.Year)
+		cacheKey := studentListCacheKey(in)
 		var cached models.StudentListResponse
 		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
 			return &cached, nil
@@ -274,23 +274,16 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 	// -------------------------
 	// dynamic filters
 	// -------------------------
-	where := `WHERE s.branch_id = $1`
+	where := `WHERE s.branch_id = $1 AND s.deleted_at IS NULL`
 	args := []interface{}{branchID}
 	argID := 2
 
 	if search != "" {
 		where += fmt.Sprintf(
-			" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)",
+			` AND (LOWER(s.full_name) LIKE LOWER($%d) ESCAPE '\' OR s.phone LIKE $%d ESCAPE '\')`,
 			argID, argID,
 		)
-		args = append(args, "%"+search+"%")
-		argID++
-	}
-
-	// Cursor: return only students whose full_name > cursor (keyset)
-	if useCursor {
-		where += fmt.Sprintf(" AND s.full_name > $%d", argID)
-		args = append(args, in.Cursor)
+		args = append(args, "%"+escapeLike(search)+"%")
 		argID++
 	}
 
@@ -329,6 +322,7 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 				END AS status
 			FROM payments
 			WHERE student_id = s.id
+			AND deleted_at IS NULL
 			AND month = $` + strconv.Itoa(argID) + `
 			AND year = $` + strconv.Itoa(argID+1) + `
 			AND status IN ('paid', 'partial')
@@ -338,6 +332,17 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 	argsCount := make([]interface{}, len(args))
 	copy(argsCount, args)
 	argsCount = append(argsCount, currentMonth, currentYear)
+
+	// Keyset predicate (full_name, id) applies to the page query only, so
+	// total does not shrink as the cursor advances.
+	var cursorName, cursorID string
+	if useCursor {
+		var ok bool
+		cursorName, cursorID, ok = decodeStudentCursor(in.Cursor)
+		if !ok {
+			return nil, fmt.Errorf("invalid cursor")
+		}
+	}
 
 	var total int
 	if err := s.db.GetConn().QueryRowContext(ctx, countQuery, argsCount...).Scan(&total); err != nil {
@@ -376,12 +381,13 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 				END AS status
 			FROM payments
 			WHERE student_id = s.id
+			AND deleted_at IS NULL
 			AND month = $` + strconv.Itoa(argID) + `
 			AND year = $` + strconv.Itoa(argID+1) + `
 			AND status IN ('paid', 'partial')
 		) p ON true
 		` + where + `
-		ORDER BY s.full_name ASC
+		ORDER BY s.full_name ASC, s.id ASC
 		LIMIT $` + strconv.Itoa(argID+2) + func() string {
 		if useCursor {
 			return ""
@@ -390,7 +396,9 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 	}()
 
 	if useCursor {
-		args = append(args, currentMonth, currentYear, intLimit)
+		query = strings.Replace(query, "ORDER BY s.full_name ASC, s.id ASC",
+			fmt.Sprintf("AND (s.full_name, s.id) > ($%d, $%d::uuid) ORDER BY s.full_name ASC, s.id ASC", argID+3, argID+4), 1)
+		args = append(args, currentMonth, currentYear, intLimit, cursorName, cursorID)
 	} else {
 		args = append(args, currentMonth, currentYear, intLimit, offset)
 	}
@@ -459,7 +467,7 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 	classQuery := `
 		SELECT id, name
 		FROM classes
-		WHERE branch_id = $1
+		WHERE branch_id = $1 AND deleted_at IS NULL
 		ORDER BY name ASC
 	`
 	classRows, err := s.db.GetConn().QueryContext(ctx, classQuery, branchID)
@@ -480,7 +488,8 @@ func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in Stud
 	// Build next cursor from the last item's full_name (keyset pagination)
 	var nextCursor string
 	if len(students) == intLimit {
-		nextCursor = students[len(students)-1].FullName
+		last := students[len(students)-1]
+		nextCursor = encodeStudentCursor(last.FullName, last.ID)
 	}
 
 	return &models.StudentListResponse{

@@ -455,16 +455,6 @@ func (s *HikvisionService) ProcessWebhookEvent(ctx context.Context, deviceID str
 // arrive by two different paths (push webhook and PollAndRecordEvents below)
 // that could otherwise both see it. Returns whether a new row was inserted.
 func (s *HikvisionService) recordFaceEvent(ctx context.Context, deviceID, employeeNoString string, minor int, eventTime time.Time, source string) (bool, error) {
-	var dupCount int
-	if err := s.db.GetConn().QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM attendance_records WHERE device_id = $1 AND employee_no = $2 AND event_time = $3`,
-		deviceID, employeeNoString, eventTime).Scan(&dupCount); err != nil {
-		return false, err
-	}
-	if dupCount > 0 {
-		return false, nil
-	}
-
 	var employeeID *string
 	var id string
 	row := s.db.GetConn().QueryRowContext(ctx,
@@ -479,14 +469,35 @@ func (s *HikvisionService) recordFaceEvent(ctx context.Context, deviceID, employ
 		return false, err
 	}
 
-	_, err = s.db.GetConn().ExecContext(ctx, `
+	// Dedupe is enforced by the unique index uq_attendance_records_scan
+	// (migration 000046), not by a check-then-insert, so the push webhook and
+	// the poller racing on the same scan cannot both insert it.
+	res, err := s.db.GetConn().ExecContext(ctx, `
 		INSERT INTO attendance_records (id, device_id, employee_id, employee_no, event_time, event_type, minor_event, source, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		ON CONFLICT (device_id, employee_no, event_time) DO NOTHING`,
 		uuid.New().String(), deviceID, employeeID, employeeNoString, eventTime, eventType, minor, source, time.Now().UTC())
 	if err != nil {
 		return false, err
 	}
-	return true, nil
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// deviceLocation resolves the device's configured IANA timezone
+// (hikvision_devices.timezone). Empty or unknown names fall back to UTC,
+// which is the historical behaviour: the terminal's wall clock is assumed to
+// be UTC, so set the column (e.g. 'Asia/Tashkent') for devices whose clock
+// is local time.
+func deviceLocation(name string) *time.Location {
+	if name == "" {
+		return time.UTC
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 // PollAndRecordEvents fetches access-control events straight from the
@@ -516,7 +527,14 @@ func (s *HikvisionService) PollAndRecordEvents(ctx context.Context, deviceID str
 		return 0, err
 	}
 
-	since := time.Now().UTC().Add(-24 * time.Hour)
+	// AcsEvent start/end are naive wall-clock strings in the DEVICE's clock.
+	// Stored event_time values are that same naive wall clock, so they are
+	// used as-is; only "now" must be expressed in the device's timezone.
+	var tzName string
+	_ = s.db.GetConn().QueryRowContext(ctx,
+		`SELECT COALESCE(timezone,'') FROM hikvision_devices WHERE id = $1`, deviceID).Scan(&tzName)
+	nowWall := time.Now().In(deviceLocation(tzName))
+	since := nowWall.Add(-24 * time.Hour)
 	var lastTime sql.NullTime
 	if err := s.db.GetConn().QueryRowContext(ctx,
 		`SELECT MAX(event_time) FROM attendance_records WHERE device_id = $1`, deviceID).Scan(&lastTime); err == nil && lastTime.Valid {
@@ -525,7 +543,7 @@ func (s *HikvisionService) PollAndRecordEvents(ctx context.Context, deviceID str
 
 	client := NewHikvisionClient(device.Host, device.Username, device.Password)
 	client.SetTimeout(60 * time.Second) // AcsEvent searches run measurably slower than this device's other endpoints — see SetTimeout's doc comment
-	events, err := client.SearchAccessEvents(since, time.Now().UTC(), 200)
+	events, err := client.SearchAccessEvents(since, nowWall, 200)
 	if err != nil {
 		return 0, err
 	}

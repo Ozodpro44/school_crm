@@ -157,7 +157,7 @@ func (s *TeacherService) GetByUserID(ctx context.Context, userID string) (*model
 	teacher := &models.Teacher{}
 	err := s.db.GetConn().QueryRowContext(ctx,
 		`SELECT id, full_name, monthly_salary, phone, email, user_id, branch_id, joined_date, created_at, updated_at
-		 FROM teachers WHERE user_id = $1 LIMIT 1`, userID,
+		 FROM teachers WHERE user_id = $1 AND deleted_at IS NULL LIMIT 1`, userID,
 	).Scan(
 		&teacher.ID, &teacher.FullName, &teacher.MonthlySalary,
 		&teacher.Phone, &teacher.Email, &teacher.UserID, &teacher.BranchID,
