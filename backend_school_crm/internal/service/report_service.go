@@ -284,12 +284,11 @@ func (s *ReportService) GetSalaryReport(ctx context.Context, branchID string, st
 	JOIN teachers t ON sal.teacher_id = t.id
 	LEFT JOIN users u ON sal.created_by = u.id
 	WHERE sal.branch_id = $1
-		AND sal.created_at >= $2
-		AND sal.created_at <= $3
+		AND (sal.year*100 + CAST(sal.month AS INT)) BETWEEN $2 AND $3
 		AND sal.deleted_at IS NULL
 	`
 
-	args := []interface{}{branchID, startDate, endDate.AddDate(0, 0, 1)}
+	args := []interface{}{branchID, startDate.Year()*100 + int(startDate.Month()), endDate.Year()*100 + int(endDate.Month())}
 
 	if status != "all" && status != "" {
 		query += " AND sal.status = $4"
@@ -344,7 +343,7 @@ func (s *ReportService) GetDebtorsReport(ctx context.Context, branchID string, m
 		COALESCE(SUM(p.amount), 0) as paid_amount
 	FROM students st
 	LEFT JOIN classes c ON st.class_id = c.id
-	LEFT JOIN payments p ON st.id = p.student_id AND p.month = $1 AND p.year = $2 AND p.branch_id = $3 AND p.amount > 0 AND p.deleted_at IS NULL
+	LEFT JOIN payments p ON st.id = p.student_id AND p.month = $1 AND p.year = $2 AND p.branch_id = $3 AND p.amount > 0 AND p.status IN ('paid','partial') AND p.deleted_at IS NULL
 	WHERE st.branch_id = $3 AND st.status = 'active' AND st.deleted_at IS NULL
 		AND (st.enrollment_date IS NULL OR (EXTRACT(YEAR FROM st.enrollment_date) < $2 OR (EXTRACT(YEAR FROM st.enrollment_date) = $2 AND EXTRACT(MONTH FROM st.enrollment_date) <= CAST($1 AS INT))))
 	`
@@ -427,7 +426,7 @@ func (s *ReportService) GetExpensesReport(ctx context.Context, branchID string, 
 	LEFT JOIN users u ON e.created_by = u.id
 	WHERE e.branch_id = $1
 		AND e.date >= $2
-		AND e.date <= $3
+		AND e.date < $3
 		AND e.deleted_at IS NULL
 	`
 
@@ -479,15 +478,15 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 	var totalIncome, totalPaid, totalUnpaid, totalPartial sql.NullFloat64
 	incomeQuery := `
 	SELECT 
-		COALESCE(SUM(amount), 0) as total,
+		COALESCE(SUM(CASE WHEN status IN ('paid','partial') THEN amount ELSE 0 END), 0) as total,
 		COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0) as paid,
 		COALESCE(SUM(CASE WHEN status = 'unpaid' THEN amount ELSE 0 END), 0) as unpaid,
 		COALESCE(SUM(CASE WHEN status = 'partial' THEN amount ELSE 0 END), 0) as partial
 	FROM payments
-	WHERE branch_id = $1 AND created_at >= $2 AND created_at <= $3 AND deleted_at IS NULL
+	WHERE branch_id = $1 AND (year*100 + CAST(month AS INT)) BETWEEN $2 AND $3 AND deleted_at IS NULL
 	`
 
-	err := s.db.GetConn().QueryRowContext(ctx, incomeQuery, branchID, startDate, endDate.AddDate(0, 0, 1)).Scan(
+	err := s.db.GetConn().QueryRowContext(ctx, incomeQuery, branchID, startDate.Year()*100+int(startDate.Month()), endDate.Year()*100+int(endDate.Month())).Scan(
 		&totalIncome, &totalPaid, &totalUnpaid, &totalPartial,
 	)
 	if err != nil && err != sql.ErrNoRows {
@@ -499,10 +498,10 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 	salaryQuery := `
 	SELECT COALESCE(SUM(amount), 0)
 	FROM salaries
-	WHERE branch_id = $1 AND created_at >= $2 AND created_at <= $3 AND status = 'paid' AND deleted_at IS NULL
+	WHERE branch_id = $1 AND (year*100 + CAST(month AS INT)) BETWEEN $2 AND $3 AND status = 'paid' AND deleted_at IS NULL
 	`
 
-	err = s.db.GetConn().QueryRowContext(ctx, salaryQuery, branchID, startDate, endDate.AddDate(0, 0, 1)).Scan(&totalSalaries)
+	err = s.db.GetConn().QueryRowContext(ctx, salaryQuery, branchID, startDate.Year()*100+int(startDate.Month()), endDate.Year()*100+int(endDate.Month())).Scan(&totalSalaries)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
@@ -512,7 +511,7 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 	expenseQuery := `
 	SELECT COALESCE(SUM(amount), 0)
 	FROM expenses
-	WHERE branch_id = $1 AND date >= $2 AND date <= $3 AND deleted_at IS NULL
+	WHERE branch_id = $1 AND date >= $2 AND date < $3 AND deleted_at IS NULL
 	`
 
 	err = s.db.GetConn().QueryRowContext(ctx, expenseQuery, branchID, startDate, endDate.AddDate(0, 0, 1)).Scan(&totalExpenses)
@@ -525,11 +524,11 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 	methodQuery := `
 	SELECT payment_method, COALESCE(SUM(amount), 0)
 	FROM payments
-	WHERE branch_id = $1 AND created_at >= $2 AND created_at <= $3 AND status = 'paid' AND deleted_at IS NULL
+	WHERE branch_id = $1 AND (year*100 + CAST(month AS INT)) BETWEEN $2 AND $3 AND status IN ('paid','partial') AND deleted_at IS NULL
 	GROUP BY payment_method
 	`
 
-	rows, err := s.db.GetConn().QueryContext(ctx, methodQuery, branchID, startDate, endDate.AddDate(0, 0, 1))
+	rows, err := s.db.GetConn().QueryContext(ctx, methodQuery, branchID, startDate.Year()*100+int(startDate.Month()), endDate.Year()*100+int(endDate.Month()))
 	if err != nil {
 		return nil, err
 	}
@@ -549,11 +548,11 @@ func (s *ReportService) GetFinancialSummary(ctx context.Context, branchID string
 	statusQuery := `
 	SELECT status, COALESCE(SUM(amount), 0)
 	FROM salaries
-	WHERE branch_id = $1 AND created_at >= $2 AND created_at <= $3 AND deleted_at IS NULL
+	WHERE branch_id = $1 AND (year*100 + CAST(month AS INT)) BETWEEN $2 AND $3 AND deleted_at IS NULL
 	GROUP BY status
 	`
 
-	rows, err = s.db.GetConn().QueryContext(ctx, statusQuery, branchID, startDate, endDate.AddDate(0, 0, 1))
+	rows, err = s.db.GetConn().QueryContext(ctx, statusQuery, branchID, startDate.Year()*100+int(startDate.Month()), endDate.Year()*100+int(endDate.Month()))
 	if err != nil {
 		return nil, err
 	}

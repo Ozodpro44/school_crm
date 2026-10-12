@@ -122,7 +122,7 @@ func (s *PaymentService) GetByID(ctx context.Context, id string) (*models.Paymen
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.id = $1`
+	         WHERE p.id = $1 AND p.deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&payment.ID, &payment.StudentID, &payment.Amount, &payment.Month, &payment.Year,
@@ -140,7 +140,7 @@ func (s *PaymentService) GetByBranchID(ctx context.Context, branchID string) ([]
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.branch_id = $1 ORDER BY p.created_at DESC`
+	         WHERE p.branch_id = $1 AND p.deleted_at IS NULL ORDER BY p.created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
 	if err != nil {
@@ -166,7 +166,7 @@ func (s *PaymentService) GetByBranchIDAndPeriod(ctx context.Context, branchID, m
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 ORDER BY p.created_at DESC`
+	         WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 AND p.deleted_at IS NULL ORDER BY p.created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
 	if err != nil {
@@ -190,7 +190,7 @@ func (s *PaymentService) GetByBranchIDAndPeriod(ctx context.Context, branchID, m
 
 func (s *PaymentService) GetByBranchIDAndPeriodPaginated(ctx context.Context, branchID, month, year string, page, limit int) (map[string]interface{}, error) {
 	// Get total count
-	countQuery := `SELECT COUNT(*) FROM payments WHERE branch_id = $1 AND month = $2 AND year = $3`
+	countQuery := `SELECT COUNT(*) FROM payments WHERE branch_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL`
 	var total int64
 	err := s.db.GetConn().QueryRowContext(ctx, countQuery, branchID, month, year).Scan(&total)
 	if err != nil {
@@ -202,7 +202,7 @@ func (s *PaymentService) GetByBranchIDAndPeriodPaginated(ctx context.Context, br
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 ORDER BY p.created_at DESC LIMIT $4 OFFSET $5`
+	         WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 AND p.deleted_at IS NULL ORDER BY p.created_at DESC LIMIT $4 OFFSET $5`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year, limit, offset)
 	if err != nil {
@@ -238,7 +238,7 @@ func (s *PaymentService) GetByBranchIDAndPeriodPaginated(ctx context.Context, br
 
 func (s *PaymentService) GetByBranchIDAndPeriodPaginatedWithSearch(ctx context.Context, branchID, month, year, search, statusFilter string, page, limit int) (map[string]interface{}, error) {
 	// Build WHERE clause dynamically
-	whereClause := "WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3"
+	whereClause := "WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 AND p.deleted_at IS NULL"
 	args := []interface{}{branchID, month, year}
 	argCount := 3
 
@@ -316,7 +316,7 @@ func (s *PaymentService) GetByStudentIDAndPeriod(ctx context.Context, studentID,
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.student_id = $1 AND p.month = $2 AND p.year = $3`
+	         WHERE p.student_id = $1 AND p.month = $2 AND p.year = $3 AND p.deleted_at IS NULL`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, studentID, month, year)
 	if err != nil {
@@ -417,7 +417,7 @@ func (s *PaymentService) GetPaymentSummary(ctx context.Context, branchID string)
 		SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) as total_paid,
 		SUM(CASE WHEN status = 'unpaid' THEN amount ELSE 0 END) as total_unpaid,
 		SUM(CASE WHEN status = 'partial' THEN amount ELSE 0 END) as total_partial
-	FROM payments WHERE branch_id = $1
+	FROM payments WHERE branch_id = $1 AND deleted_at IS NULL
 	`
 
 	var totalPaid, totalUnpaid, totalPartial sql.NullFloat64
@@ -431,7 +431,7 @@ func (s *PaymentService) GetPaymentSummary(ctx context.Context, branchID string)
 	methodRows, err := s.db.GetConn().QueryContext(ctx, `
 		SELECT payment_method, COALESCE(SUM(amount), 0)
 		FROM payments
-		WHERE branch_id = $1
+		WHERE branch_id = $1 AND deleted_at IS NULL
 		GROUP BY payment_method
 	`, branchID)
 	if err != nil {
@@ -465,7 +465,7 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 	paymentQuery := `
 	SELECT 
 		SUM(CASE WHEN status = 'paid' OR status = 'partial' THEN amount ELSE 0 END) as total_paid
-	FROM payments WHERE branch_id = $1 AND month = $2 AND year = $3
+	FROM payments WHERE branch_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL
 	`
 
 	var totalPaid sql.NullFloat64
@@ -504,7 +504,7 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 	methodRows, err := s.db.GetConn().QueryContext(ctx, `
 		SELECT payment_method, COALESCE(SUM(amount), 0)
 		FROM payments
-		WHERE branch_id = $1 AND month = $2 AND year = $3
+		WHERE branch_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL
 		GROUP BY payment_method
 	`, branchID, month, year)
 	if err != nil {
@@ -536,7 +536,7 @@ func (s *PaymentService) GetByStudentID(ctx context.Context, studentID string) (
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.student_id = $1 ORDER BY p.year DESC, p.month DESC, p.created_at DESC`
+	         WHERE p.student_id = $1 AND p.deleted_at IS NULL ORDER BY p.year DESC, p.month DESC, p.created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, studentID)
 	if err != nil {
@@ -664,7 +664,7 @@ func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in Paym
 	// -------------------------
 	// dynamic filters
 	// -------------------------
-	where := `WHERE p.branch_id = $1`
+	where := `WHERE p.branch_id = $1 AND p.deleted_at IS NULL`
 	args := []interface{}{branchID}
 	argID := 2
 
@@ -873,7 +873,7 @@ func (s *PaymentService) BulkCreate(ctx context.Context, branchID, paymentMethod
 			Year:          currentYear,
 			PaymentMethod: method,
 			Status:        "paid",
-			InvoiceNumber: fmt.Sprintf("QP-%d", time.Now().UnixMilli()),
+			InvoiceNumber: fmt.Sprintf("QP-%d-%s", time.Now().UnixMilli(), uuid.New().String()[:8]),
 			Notes:         e.Notes,
 			PaidDate:      &now,
 			BranchID:      branchID,
@@ -896,7 +896,7 @@ func (s *PaymentService) GetByStudentAndPeriod(ctx context.Context, studentID, m
 			payment_method, status, invoice_number, notes, paid_date,
 			branch_id, created_by, financial_month_id, created_at
 		FROM payments
-		WHERE student_id = $1 AND month = $2 AND year = $3
+		WHERE student_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL
 		ORDER BY created_at DESC
 	`
 

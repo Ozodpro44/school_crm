@@ -73,7 +73,7 @@ func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, cr
 func (s *SalaryService) GetByID(ctx context.Context, id string) (*models.Salary, error) {
 	salary := &models.Salary{}
 	query := `SELECT id, teacher_id, amount, month, year, payment_method, status, notes, paid_date, branch_id, created_by, created_at
-	         FROM salaries WHERE id = $1`
+	         FROM salaries WHERE id = $1 AND deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&salary.ID, &salary.TeacherID, &salary.Amount, &salary.Month, &salary.Year,
@@ -88,7 +88,7 @@ func (s *SalaryService) GetByID(ctx context.Context, id string) (*models.Salary,
 
 func (s *SalaryService) GetByBranchID(ctx context.Context, branchID string) ([]models.Salary, error) {
 	query := `SELECT id, teacher_id, amount, month, year, payment_method, status, notes, paid_date, branch_id, created_by, created_at
-	         FROM salaries WHERE branch_id = $1 ORDER BY created_at DESC`
+	         FROM salaries WHERE branch_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
 	if err != nil {
@@ -153,14 +153,14 @@ func (s *SalaryService) Update(ctx context.Context, id string, updates map[strin
 }
 
 func (s *SalaryService) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM salaries WHERE id = $1`
+	query := `DELETE FROM salaries WHERE id = $1 AND deleted_at IS NULL`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
 	return err
 }
 
 func (s *SalaryService) GetByBranchIDAndPeriod(ctx context.Context, branchID string, month string, year int) ([]models.Salary, error) {
 	query := `SELECT id, teacher_id, amount, month, year, payment_method, status, notes, paid_date, branch_id, created_by, created_at
-	         FROM salaries WHERE branch_id = $1 AND month = $2 AND year = $3 ORDER BY created_at DESC`
+	         FROM salaries WHERE branch_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL ORDER BY created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
 	if err != nil {

@@ -54,7 +54,9 @@ func (f *FinanceService) SearchStudentsWithPayments(ctx context.Context, branchI
 			payments, err := f.payments.GetByStudentAndPeriod(ctx, student.ID, month, year)
 			if err == nil {
 				for _, p := range payments {
-					paidAmount += p.Amount
+					if p.Status == "paid" || p.Status == "partial" {
+						paidAmount += p.Amount
+					}
 				}
 			}
 		}
@@ -121,7 +123,9 @@ func (f *FinanceService) SearchStudentsWithPaymentStatus(ctx context.Context, br
 
 		totalPaid := 0.0
 		for _, p := range payments {
-			totalPaid += p.Amount
+			if p.Status == "paid" || p.Status == "partial" {
+				totalPaid += p.Amount
+			}
 		}
 
 		paymentStatusStr := "not_paid"
@@ -189,7 +193,9 @@ func (f *FinanceService) GetStudentCurrentPaymentStatus(ctx context.Context, stu
 
 	totalPaid := 0.0
 	for _, p := range payments {
-		totalPaid += p.Amount
+		if p.Status == "paid" || p.Status == "partial" {
+			totalPaid += p.Amount
+		}
 	}
 
 	status := "not_paid"
