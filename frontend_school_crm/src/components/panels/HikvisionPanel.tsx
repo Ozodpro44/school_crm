@@ -1,6 +1,6 @@
 // Hikvision Face ID terminals: devices, enrolled staff, and the check-in/out log.
 // Embedded as a tab on the Attendance page (admin only).
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Card,
   CardContent,
@@ -117,6 +117,9 @@ export function HikvisionPanel() {
 
   const [removingEmployeeId, setRemovingEmployeeId] = useState<string | null>(null);
 
+  const recordsRequestIdRef = useRef(0);
+  const activeTabRef = useRef<string>("");
+
   // Rendered only for admins (the host page hides this tab otherwise); the
   // backend enforces the same restriction on every /hikvision endpoint.
   useEffect(() => {
@@ -128,8 +131,11 @@ export function HikvisionPanel() {
     const handleBranchChange = () => {
       setSelectedDeviceId("");
       setEmployees([]);
+      setRecords([]);
       setRecordsLoaded(false);
+      setFilterDeviceId("all");
       loadDevices();
+      if (activeTabRef.current === "records") loadRecords("all");
     };
     window.addEventListener("branchChange", handleBranchChange);
     return () => window.removeEventListener("branchChange", handleBranchChange);
@@ -146,6 +152,7 @@ export function HikvisionPanel() {
   }, [selectedDeviceId]);
 
   useEffect(() => {
+    activeTabRef.current = activeTab;
     if (activeTab === "records" && !recordsLoaded) {
       loadRecords();
     }
@@ -195,17 +202,21 @@ export function HikvisionPanel() {
     }
   };
 
-  const loadRecords = async () => {
+  const loadRecords = async (deviceOverride?: string) => {
+    const myId = ++recordsRequestIdRef.current;
+    const deviceFilter = deviceOverride ?? filterDeviceId;
     try {
       setRecordsLoading(true);
       const list = await listHikvisionAttendance({
-        deviceId: filterDeviceId !== "all" ? filterDeviceId : undefined,
+        deviceId: deviceFilter !== "all" ? deviceFilter : undefined,
         from: filterFrom || undefined,
         to: filterTo || undefined,
       });
+      if (myId !== recordsRequestIdRef.current) return;
       setRecords(list);
       setRecordsLoaded(true);
     } catch (error) {
+      if (myId !== recordsRequestIdRef.current) return;
       toast({
         title: t("error"),
         description: error instanceof Error ? error.message : t("failedToLoadAttendance"),

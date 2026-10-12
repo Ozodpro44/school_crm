@@ -136,20 +136,11 @@ export default function HomePage() {
       performLoadData();
     };
 
-    // Branch change is the one event that DOES warrant a fresh skeleton —
-    // the previous numbers are no longer relevant.
-    const handleBranchChange = () => {
-      setIsLoading(true);
-      performLoadData().finally(() => setIsLoading(false));
-    };
-
     window.addEventListener("storage", refreshSilently);
-    window.addEventListener("branchChange", handleBranchChange);
     window.addEventListener("focus", refreshSilently);
 
     return () => {
       window.removeEventListener("storage", refreshSilently);
-      window.removeEventListener("branchChange", handleBranchChange);
       window.removeEventListener("focus", refreshSilently);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -298,10 +289,13 @@ export default function HomePage() {
     }
   };
 
+  const statsRequestIdRef = useRef(0);
+
   const calculateStats = async () => {
     try {
       const branchId = currentBranch?.id;
       if (!branchId) return;
+      const myId = ++statsRequestIdRef.current;
 
       // Fetch branch data to get current financial month
       const branch = await api.getBranch(branchId);
@@ -312,6 +306,9 @@ export default function HomePage() {
 
       // Fetch all dashboard data in a single API call
       const dashboardData = await api.getDashboardData(branchId, branchMonth, branchYear);
+
+      // A newer request (e.g. after a branch switch) supersedes this one.
+      if (myId !== statsRequestIdRef.current) return;
 
       // Generate chart with the data
       generateChartData(
