@@ -30,8 +30,9 @@ func (h *AuthHandler) Register(r *gin.RouterGroup) {
 	r.POST("/auth/resend-otp", h.ResendOTP)
 	r.POST("/auth/reset-password", h.ResetPassword)
 	r.POST("/auth/logout", h.Logout)
-	r.GET("/auth/sessions", h.ListSessions)
-	r.DELETE("/auth/sessions/:id", h.RevokeSession)
+	sess := middleware.JWTAuth(h.jwtSecret)
+	r.GET("/auth/sessions", sess, h.ListSessions)
+	r.DELETE("/auth/sessions/:id", sess, h.RevokeSession)
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -243,7 +244,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var req struct {
 		Email       string `json:"email"       binding:"required,email"`
 		ResetToken  string `json:"resetToken"  binding:"required"`
-		NewPassword string `json:"newPassword" binding:"required,min=6"`
+		NewPassword string `json:"newPassword" binding:"required,min=8"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
