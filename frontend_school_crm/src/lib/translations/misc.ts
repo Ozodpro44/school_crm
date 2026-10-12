@@ -226,6 +226,7 @@ export const miscTranslations: Partial<Translation> = {
   receipt:             { "uz-cyrl": "Квитансия",                "uz-latn": "Kvitansiya",              en: "Receipt" },
   printReceipt:        { "uz-cyrl": "Квитансияни чоп этиш",     "uz-latn": "Kvitansiyani chop etish", en: "Print Receipt" },
   paymentSuccess:      { "uz-cyrl": "Тўлов муваффақиятли",      "uz-latn": "To'lov muvaffaqiyatli",   en: "Payment successful" },
+  paymentPartial:      { "uz-cyrl": "Баъзи тўловлар амалга ошмади", "uz-latn": "Ba'zi to'lovlar amalga oshmadi", en: "Some payments failed" },
   paymentFailed:       { "uz-cyrl": "Тўлов амалга ошмади",      "uz-latn": "To'lov amalga oshmadi",   en: "Payment failed" },
   allPaid:             { "uz-cyrl": "Ҳаммаси тўланган",         "uz-latn": "Hammasi to'langan",       en: "All students paid" },
   scanQR:              { "uz-cyrl": "QR кодни сканер қилинг",   "uz-latn": "QR kodni skaner qiling",  en: "Scan QR code" },

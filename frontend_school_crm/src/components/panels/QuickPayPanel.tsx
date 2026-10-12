@@ -77,7 +77,7 @@ interface ReceiptData {
 // ─── API ──────────────────────────────────────────────────────────────────────
 
 async function bulkPay(branchId: string, paymentMethod: string, entries: BulkEntry[]) {
-  return apiRequest<{ results: BulkResult[]; succeeded: number; failed: number }>(
+  return apiRequest<{ results: BulkResult[] }>(
     "/payments/bulk",
     {
       method: "POST",
@@ -87,6 +87,16 @@ async function bulkPay(branchId: string, paymentMethod: string, entries: BulkEnt
 }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
+
+/** Escape a value for safe interpolation into an HTML string. */
+function esc(v: unknown): string {
+  return String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 function fmtMoney(n: number) {
   return new Intl.NumberFormat("ru-RU").format(Math.round(n));
@@ -114,7 +124,7 @@ function ReceiptModal({ data, onClose }: { data: ReceiptData | null; onClose: ()
     const win = window.open("", "_blank", "width=360,height=520");
     if (!win) return;
     win.document.write(`
-      <html><head><title>${t("receiptTitle")}</title>
+      <html><head><title>${esc(t("receiptTitle"))}</title>
       <style>
         body { font-family: monospace; font-size: 13px; padding: 16px; max-width: 300px; margin: 0 auto; }
         h2 { text-align: center; font-size: 15px; margin-bottom: 8px; }
@@ -124,17 +134,17 @@ function ReceiptModal({ data, onClose }: { data: ReceiptData | null; onClose: ()
         .center { text-align: center; }
         .big { font-size: 18px; font-weight: bold; text-align: center; margin: 8px 0; }
       </style></head><body>
-      <h2>${data.branchName}</h2>
+      <h2>${esc(data.branchName)}</h2>
       <hr/>
-      <div class="row"><span>${t("receiptStudent")}:</span><span class="bold">${data.studentName}</span></div>
-      <div class="row"><span>${t("receiptPeriod")}:</span><span>${data.month} ${data.year}</span></div>
-      <div class="row"><span>${t("receiptMethod")}:</span><span>${data.method}</span></div>
-      <div class="row"><span>${t("receiptInvoice")}:</span><span>${data.invoiceNumber}</span></div>
-      <div class="row"><span>${t("receiptDate")}:</span><span>${data.paidAt}</span></div>
+      <div class="row"><span>${esc(t("receiptStudent"))}:</span><span class="bold">${esc(data.studentName)}</span></div>
+      <div class="row"><span>${esc(t("receiptPeriod"))}:</span><span>${esc(data.month)} ${esc(data.year)}</span></div>
+      <div class="row"><span>${esc(t("receiptMethod"))}:</span><span>${esc(data.method)}</span></div>
+      <div class="row"><span>${esc(t("receiptInvoice"))}:</span><span>${esc(data.invoiceNumber)}</span></div>
+      <div class="row"><span>${esc(t("receiptDate"))}:</span><span>${esc(data.paidAt)}</span></div>
       <hr/>
-      <div class="big">${fmtMoney(data.amount)} UZS</div>
+      <div class="big">${esc(fmtMoney(data.amount))} UZS</div>
       <hr/>
-      <div class="center" style="font-size:11px;color:#666;">${t("receiptThankYou")}</div>
+      <div class="center" style="font-size:11px;color:#666;">${esc(t("receiptThankYou"))}</div>
       </body></html>
     `);
     win.document.close();
@@ -350,8 +360,9 @@ function QRScanTab({
     stopCamera();
     setError("");
     try {
-      const res = await searchStudentsWithPaymentStatus({ branchId, search: studentId, status: "active", limit: 1 });
-      const found = res.data.find((s) => s.id === studentId) ?? res.data[0] ?? null;
+      const res = await searchStudentsWithPaymentStatus({ branchId, search: studentId, status: "active", limit: 20 });
+      // Exact id match only: never fall back to an unrelated search hit.
+      const found = res.data.find((s) => s.id === studentId) ?? null;
       if (!found) { setError(t("studentNotFound")); return; }
       setStudent(found);
     } catch {
@@ -517,7 +528,7 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
   const [students, setStudents]           = useState<StudentPaymentInfo[]>([]);
   const [loading, setLoading]             = useState(false);
   const [selected, setSelected]           = useState<Set<string>>(new Set());
-  const [payingId, setPayingId]           = useState<string | null>(null);
+  const [payingIds, setPayingIds]         = useState<Set<string>>(new Set());
   const [bulkPaying, setBulkPaying]       = useState(false);
   const [receipt, setReceipt]             = useState<ReceiptData | null>(null);
 
@@ -598,7 +609,7 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
 
   // Pay a single student (collect mode one-tap)
   const payOne = async (student: StudentPaymentInfo) => {
-    setPayingId(student.id);
+    setPayingIds((prev) => new Set(prev).add(student.id));
     try {
       const res = await bulkPay(branchId, payMethod, [{
         studentId: student.id,
@@ -613,7 +624,11 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
     } catch (e: any) {
       notify.error(t("paymentFailed"), e.message);
     } finally {
-      setPayingId(null);
+      setPayingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(student.id);
+        return next;
+      });
     }
   };
 
@@ -629,8 +644,19 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
         paymentMethod: payMethod,
       }));
       const res = await bulkPay(branchId, payMethod, entries);
-      notify.success(t("paymentSuccess"), `${res.succeeded} / ${targets.length} ${t("students").toLowerCase()}`);
-      setSelected(new Set());
+      const results = res.results ?? [];
+      const okCount = results.filter((r) => r.payment && !r.error).length;
+      const failedRows = results.filter((r) => r.error || !r.payment);
+      const summary = `${okCount} / ${targets.length} ${t("students").toLowerCase()}`;
+      if (failedRows.length === 0) {
+        notify.success(t("paymentSuccess"), summary);
+      } else if (okCount === 0) {
+        notify.error(t("paymentFailed"), failedRows[0]?.error ?? summary);
+      } else {
+        notify.warning(t("paymentPartial"), `${summary}. ${failedRows[0]?.error ?? ""}`.trim());
+      }
+      // Keep failed rows selected so they can be retried
+      setSelected(new Set(failedRows.map((r) => r.studentId)));
       // Show receipt for first success
       const first = res.results.find((r) => r.payment);
       if (first) {
@@ -778,7 +804,7 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
                   key={s.id}
                   student={s}
                   selected={selected.has(s.id)}
-                  paying={payingId === s.id}
+                  paying={payingIds.has(s.id)}
                   onToggle={() => toggleSelect(s.id)}
                   onPayNow={() => payOne(s)}
                   payMethod={payMethod}
@@ -846,7 +872,7 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
                     key={s.id}
                     student={s}
                     selected={selected.has(s.id)}
-                    paying={payingId === s.id}
+                    paying={payingIds.has(s.id)}
                     onToggle={() => toggleSelect(s.id)}
                     onPayNow={() => payOne(s)}
                     payMethod={payMethod}
