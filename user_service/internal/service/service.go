@@ -187,8 +187,11 @@ func (s *UserService) Create(ctx context.Context, email, password, fullName, rol
 	id := uuid.NewString()
 	now := time.Now().UTC()
 	_, err = s.db.Conn().ExecContext(ctx,
-		`INSERT INTO users (id, email, password_hash, full_name, role, branch_id, language, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, 'en', $7, $7)`,
+		// email_verified = true: an admin creating the account vouches for the
+		// address (there is no signup OTP for it); the column defaults to false
+		// and auth_service refuses to log in unverified accounts.
+		`INSERT INTO users (id, email, password_hash, full_name, role, branch_id, language, email_verified, email_verified_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, 'en', true, $7, $7, $7)`,
 		id, email, string(hash), fullName, role, branchID, now,
 	)
 	if err != nil {

@@ -44,9 +44,11 @@ function apiOrigin() {
 // or middleware). 'unsafe-inline' scripts remain because Next.js emits inline
 // bootstrap scripts; 'unsafe-eval' is only needed by the dev server/HMR.
 function buildCsp() {
-  const connect = ["'self'", apiOrigin(), "https://*.sentry.io"];
+  // Cloudflare injects its Web Analytics beacon when the site is proxied by
+  // Cloudflare; without these two hosts the browser logs a CSP violation.
+  const connect = ["'self'", apiOrigin(), "https://*.sentry.io", "https://cloudflareinsights.com"];
   if (!isProd) connect.push("http://localhost:*", "ws://localhost:*");
-  const script = ["'self'", "'unsafe-inline'"];
+  const script = ["'self'", "'unsafe-inline'", "https://static.cloudflareinsights.com"];
   if (!isProd) script.push("'unsafe-eval'");
   return [
     "default-src 'self'",
