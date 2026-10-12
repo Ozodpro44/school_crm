@@ -18,8 +18,7 @@ import {
   setStoredUser as writeStoredUser,
 } from "@/lib/storage";
 
-// NEXT_PUBLIC_API_URL must be set in production. Fallback to localhost for local dev only.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+import { API_BASE_URL } from "./apiBase";
 
 // Microservices return { items: T[] }; the monolith returned plain T[].
 // This helper handles both so callers don't have to.

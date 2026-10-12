@@ -10,59 +10,18 @@ import {
   SubscriptionPayment,
   SubscriptionResponse,
 } from "@/types";
-import { getAuthToken } from "@/lib/storage";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api/v1";
+import { apiRequest } from "./api";
+import { publicRequest } from "./apiBase";
 
-// Helper function for unauthenticated API requests
-async function makePublicRequest<T>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<T> {
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...options?.headers,
-  };
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `API request failed: ${response.statusText}`);
-  }
-
-  return response.json();
+// Unauthenticated requests (public plan listing etc.)
+async function makePublicRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  return publicRequest<T>(endpoint, options);
 }
 
-// Helper function for authenticated API requests
-async function makeRequest<T>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<T> {
-  const token = getAuthToken();
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...options?.headers,
-  };
-
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `API request failed: ${response.statusText}`);
-  }
-
-  return response.json();
+// Authenticated requests go through the shared helper (401 handling, branch header)
+async function makeRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  return apiRequest<T>(endpoint, options);
 }
 
 // ============================================================================
