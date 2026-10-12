@@ -332,9 +332,59 @@ func (s *ExpenseService) GetByIDScoped(ctx context.Context, id, branchID string)
 	return e, nil
 }
 
-func (s *ExpenseService) Create(ctx context.Context, e *Expense) (*Expense, error) {
+// dbQuerier is the subset of *sql.DB / *sql.Tx used by checkPeriod.
+type dbQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// checkPeriod resolves the branch's current financial month (latest OPEN
+// row, else the calendar month) and the target month's open/closed state,
+// then applies CheckPeriodWritable.
+func checkPeriod(ctx context.Context, q dbQuerier, branchID, month string, year int, isAdmin bool) error {
+	curMonth := fmt.Sprintf("%02d", int(time.Now().Month()))
+	curYear := time.Now().Year()
+	var m, y int
+	err := q.QueryRowContext(ctx,
+		`SELECT month, year FROM financial_months
+		 WHERE branch_id = $1 AND status = 'OPEN'
+		 ORDER BY year DESC, month DESC LIMIT 1`, branchID,
+	).Scan(&m, &y)
+	if err == nil {
+		curMonth, curYear = fmt.Sprintf("%02d", m), y
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+
+	var status string
+	err = q.QueryRowContext(ctx,
+		`SELECT status FROM financial_months WHERE branch_id=$1 AND month=$2 AND year=$3`,
+		branchID, month, year,
+	).Scan(&status)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return CheckPeriodWritable(month, year, curMonth, curYear, status == "CLOSED", isAdmin)
+}
+
+// checkDatePeriod applies the financial-month rule to the month containing
+// an expense's date.
+func (s *ExpenseService) checkDatePeriod(ctx context.Context, branchID string, date time.Time, role string) error {
+	if date.IsZero() {
+		return fmt.Errorf("%w: date is required", ErrInvalidInput)
+	}
+	if err := ValidateYear(date.Year(), time.Now()); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	return checkPeriod(ctx, s.db.Write(), branchID, fmt.Sprintf("%02d", int(date.Month())), date.Year(), IsAdminRole(role))
+}
+
+func (s *ExpenseService) Create(ctx context.Context, e *Expense, role string) (*Expense, error) {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+
+	if err := s.checkDatePeriod(ctx, e.BranchID, e.Date, role); err != nil {
+		return nil, err
+	}
 
 	e.ID = uuid.New().String()
 	e.CreatedAt = time.Now().UTC()
@@ -357,7 +407,18 @@ func (s *ExpenseService) Create(ctx context.Context, e *Expense) (*Expense, erro
 // A branch mismatch or missing id both surface as ErrNotFound. amount is
 // validated here too — Create enforces gt=0 via a binding tag, but this
 // generic map-driven update previously bypassed that entirely.
-func (s *ExpenseService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}) (*Expense, error) {
+func (s *ExpenseService) Update(ctx context.Context, id, branchID string, fields map[string]interface{}, role string) (*Expense, error) {
+	existing, err := s.GetByIDScoped(ctx, id, branchID)
+	if err != nil {
+		return nil, err
+	}
+	// Accept the camelCase key the frontend uses alongside the column name.
+	if v, ok := fields["paymentMethod"]; ok {
+		if _, dup := fields["payment_method"]; !dup {
+			fields["payment_method"] = v
+		}
+		delete(fields, "paymentMethod")
+	}
 	allowed := map[string]bool{
 		"title": true, "description": true, "amount": true, "category": true,
 		"payment_method": true, "date": true, "notes": true,
@@ -380,12 +441,27 @@ func (s *ExpenseService) Update(ctx context.Context, id, branchID string, fields
 		n++
 	}
 	if len(parts) == 0 {
-		return s.GetByIDScoped(ctx, id, branchID)
+		return existing, nil
 	}
 	args = append(args, id, branchID)
 
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+
+	// Both the expense's current period and, if the date is being moved, the
+	// destination period must be writable.
+	if err := s.checkDatePeriod(ctx, existing.BranchID, existing.Date, role); err != nil {
+		return nil, err
+	}
+	if v, ok := fields["date"]; ok {
+		newDate, err := parseExpenseDate(v)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.checkDatePeriod(ctx, existing.BranchID, newDate, role); err != nil {
+			return nil, err
+		}
+	}
 
 	res, err := s.db.Write().ExecContext(ctx,
 		"UPDATE expenses SET "+strings.Join(parts, ", ")+
@@ -399,13 +475,36 @@ func (s *ExpenseService) Update(ctx context.Context, id, branchID string, fields
 	return s.GetByID(ctx, id)
 }
 
+// parseExpenseDate accepts RFC3339 or YYYY-MM-DD (the JSON forms the
+// frontend sends) or an already-parsed time.Time.
+func parseExpenseDate(v interface{}) (time.Time, error) {
+	switch d := v.(type) {
+	case time.Time:
+		return d, nil
+	case string:
+		for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02"} {
+			if t, err := time.Parse(layout, d); err == nil {
+				return t, nil
+			}
+		}
+	}
+	return time.Time{}, fmt.Errorf("%w: date is not a valid date", ErrInvalidInput)
+}
+
 // Delete soft-deletes an expense, scoped to branchID directly in the
 // UPDATE statement — see Update's comment on why the filter belongs in
 // the SQL rather than a separate pre-check. Recoverable via Restore for
 // 7-30 days rather than gone immediately.
-func (s *ExpenseService) Delete(ctx context.Context, id, branchID, deletedBy string) error {
+func (s *ExpenseService) Delete(ctx context.Context, id, branchID, deletedBy, role string) error {
+	existing, err := s.GetByIDScoped(ctx, id, branchID)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+	if err := s.checkDatePeriod(ctx, existing.BranchID, existing.Date, role); err != nil {
+		return err
+	}
 	res, err := s.db.Write().ExecContext(ctx,
 		"UPDATE expenses SET deleted_at = now(), deleted_by = $3 WHERE id = $1 AND branch_id = $2 AND deleted_at IS NULL",
 		id, branchID, deletedBy)
@@ -421,9 +520,21 @@ func (s *ExpenseService) Delete(ctx context.Context, id, branchID, deletedBy str
 // Restore un-deletes an expense soft-deleted within the last 30 days (the
 // longer of the two trash windows — callers enforce the shorter 7-day
 // window for non-super-role callers before reaching here).
-func (s *ExpenseService) Restore(ctx context.Context, id, branchID string) error {
+func (s *ExpenseService) Restore(ctx context.Context, id, branchID, role string) error {
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
+	var date time.Time
+	if err := s.db.Write().QueryRowContext(ctx,
+		"SELECT date FROM expenses WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL", id, branchID,
+	).Scan(&date); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	if err := s.checkDatePeriod(ctx, branchID, date, role); err != nil {
+		return err
+	}
 	res, err := s.db.Write().ExecContext(ctx,
 		"UPDATE expenses SET deleted_at = NULL, deleted_by = NULL WHERE id = $1 AND branch_id = $2 AND deleted_at IS NOT NULL",
 		id, branchID)
