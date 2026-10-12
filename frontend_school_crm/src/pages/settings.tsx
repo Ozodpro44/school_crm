@@ -17,17 +17,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Settings, Language, Branch } from "@/types";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { Save, Globe, DollarSign, Building2, Calendar, ChevronRight, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { hasPermission, getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
 import { useSetLanguage } from "@/hooks/use-language";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
-import { getSettings, updateSettings, UpdateSettingsRequest, switchBranchMonth, getBranch } from "@/lib/api";
+import { formatCurrency } from "@/lib/exportUtils";
+import { getSettings, updateSettings, UpdateSettingsRequest, switchBranchMonth, getBranch, syncBranchStudentPayments } from "@/lib/api";
+import { Switch } from "@/components/ui/switch";
 import { useBranch } from "@/context/BranchContext";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatDateTimeInTashkent } from "@/lib/timezone";
+import { PageHeader } from "@/components/PageHeader";
 import {
   Dialog,
   DialogContent,
@@ -43,37 +48,42 @@ export default function SettingsPage() {
   );
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [monthlyPaymentError, setMonthlyPaymentError] = useState<string>("");
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [showSwitchMonthDialog, setShowSwitchMonthDialog] = useState(false);
   const [isSwitchingMonth, setIsSwitchingMonth] = useState(false);
-  const { toast } = useToast();
+  const [syncDialog, setSyncDialog] = useState<{ branchId: string; from: number; to: number } | null>(null);
+  const [syncApplyToAll, setSyncApplyToAll] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const language = useLanguage();
   const setLanguage = useSetLanguage();
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
   const router = useRouter();
   const { currentBranch, refreshBranches } = useBranch();
+  const queryClient = useQueryClient();
   const currentUser = getCurrentUser();
   const isAdmin = currentUser?.role === "admin";
 
   const fetchSettings = async () => {
     try {
       setLoading(true);
-      const data = await getSettings();
+      // Explicit branchId — without it, this always read the JWT's home
+      // branch's settings, even while viewing/editing a different branch
+      // that this admin/manager also administers (branch switching doesn't
+      // reissue a JWT).
+      const data = await getSettings(currentBranch?.id);
       setSettings(data);
       setOriginalSettings(data);
       
       // Also fetch branch data for current month info
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (branchId) {
         const branch = await getBranch(branchId);
         setBranchData(branch);
       }
     } catch (error) {
-      toast({
-        title: t("error"),
-        description: t("failedToLoadSettings"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToLoadSettings"));
     } finally {
       setLoading(false);
     }
@@ -82,18 +92,18 @@ export default function SettingsPage() {
   const getMonthName = (month: number | string) => {
     const monthNum = typeof month === "string" ? parseInt(month) : month;
     const monthNames: { [key: number]: string } = {
-      1: t("january") || "Январь",
-      2: t("february") || "Февраль",
-      3: t("march") || "Март",
-      4: t("april") || "Апрель",
-      5: t("may") || "Май",
-      6: t("june") || "Июнь",
-      7: t("july") || "Июль",
-      8: t("august") || "Август",
-      9: t("september") || "Сентябрь",
-      10: t("october") || "Октябрь",
-      11: t("november") || "Ноябрь",
-      12: t("december") || "Декабрь",
+      1: t("january"),
+      2: t("february"),
+      3: t("march"),
+      4: t("april"),
+      5: t("may"),
+      6: t("june"),
+      7: t("july"),
+      8: t("august"),
+      9: t("september"),
+      10: t("october"),
+      11: t("november"),
+      12: t("december"),
     };
     return monthNames[monthNum] || month;
   };
@@ -110,7 +120,7 @@ export default function SettingsPage() {
   };
 
   const handleSwitchMonth = async () => {
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) return;
 
     try {
@@ -119,26 +129,19 @@ export default function SettingsPage() {
       setBranchData(updatedBranch);
       setShowSwitchMonthDialog(false);
       
-      // Refresh branch context
+      // Refresh branch context and invalidate React Query cache so pages
+      // reading financialMonth from useBranchQuery get fresh data immediately
       if (refreshBranches) {
         await refreshBranches();
       }
-      
+      queryClient.invalidateQueries({ queryKey: ["branch"] });
+
       // Dispatch branchChange event to reload all pages with new month data
-      // This will cause payments, expenses, salaries pages to reload with new (empty) data
       window.dispatchEvent(new CustomEvent("branchChange", { detail: branchId }));
       
-      toast({
-        title: t("success"),
-        description: t("monthSwitched") || `Месяц переключён на ${updatedBranch.currentFinancialMonth ? getMonthName(updatedBranch.currentFinancialMonth.month) : "неизвестный"} ${updatedBranch.currentFinancialMonth?.year || ""}`,
-        variant: "success",
-      });
+      notify.success(t("success"), t("monthSwitched"));
     } catch (error) {
-      toast({
-        title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToSwitchMonth") || "Не удалось переключить месяц",
-        variant: "destructive",
-      });
+      notify.error(t("error"), error instanceof Error ? error.message : t("failedToSwitchMonth"));
     } finally {
       setIsSwitchingMonth(false);
     }
@@ -164,13 +167,16 @@ export default function SettingsPage() {
     if (!settings) return;
 
     if (!hasPermission("canEditSettings")) {
-      toast({
-        title: t("error"),
-        description: t("noPermissionEditSettings"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("noPermissionEditSettings"));
       return;
     }
+
+    if (monthlyPaymentError) {
+      notify.error(t("error"), monthlyPaymentError);
+      return;
+    }
+
+    const previousPayment = originalSettings?.monthlyPayment;
 
     try {
       setIsSaving(true);
@@ -182,31 +188,62 @@ export default function SettingsPage() {
         name: settings.name,
       };
 
-      const updatedSettings = await updateSettings(updatePayload);
+      const updatedSettings = await updateSettings(updatePayload, currentBranch?.id);
 
       // Update original settings so changes are no longer detected
       setOriginalSettings(updatedSettings);
       setSettings(updatedSettings);
 
-      toast({
-        title: t("success"),
-        description: t("settingsSaved"),
-        variant: "success",
-      });
+      notify.success(t("success"), t("settingsSaved"));
+
+      if (
+        currentBranch?.id &&
+        previousPayment !== undefined &&
+        updatedSettings.monthlyPayment !== previousPayment
+      ) {
+        setSyncApplyToAll(false);
+        setSyncDialog({
+          branchId: currentBranch.id,
+          from: previousPayment,
+          to: updatedSettings.monthlyPayment,
+        });
+      }
     } catch (error) {
-      toast({
-        title: t("error"),
-        description:
-          error instanceof Error ? error.message : t("failedToSaveSettings"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), error instanceof Error ? error.message : t("failedToSaveSettings"));
     } finally {
       setIsSaving(false);
     }
   };
 
+  const handleApplySync = async () => {
+    if (!syncDialog) return;
+    setIsSyncing(true);
+    try {
+      const { updated } = await syncBranchStudentPayments(
+        syncDialog.branchId,
+        syncDialog.from,
+        syncDialog.to,
+        syncApplyToAll
+      );
+      notify.success(t("success"), t("studentPaymentsSynced").replace("{count}", String(updated)));
+      setSyncDialog(null);
+    } catch (error) {
+      notify.error(t("error"), t("failedToSyncStudentPayments"));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleChange = (field: keyof Settings, value: string | number) => {
     if (!settings) return;
+    if (field === "monthlyPayment") {
+      const raw = typeof value === "string" ? removeNumberFormatting(value) : String(value);
+      if (raw !== "" && (!/^\d+$/.test(raw) || isNaN(Number(raw)))) {
+        setMonthlyPaymentError(t("onlyNumericAllowed"));
+      } else {
+        setMonthlyPaymentError("");
+      }
+    }
     setSettings({ ...settings, [field]: value });
   };
 
@@ -219,10 +256,45 @@ export default function SettingsPage() {
     return JSON.stringify(settings) !== JSON.stringify(originalSettings);
   };
 
+  // Title/Save button are static chrome — `hasChanges()` already returns
+  // false while `settings` is null, so the button is naturally disabled
+  // during loading with no extra check needed. Only the field cards below
+  // still branch on `loading` (it used to hide this header too).
+  const header = (
+    <div className="flex justify-between items-center">
+      <PageHeader title={t("settings")} subtitle={t("manageSystemSettings")} />
+      <Button
+        onClick={handleSave}
+        disabled={
+          loading || !hasPermission("canEditSettings") || !hasChanges() || isSaving || !!monthlyPaymentError
+        }
+      >
+        <Save className="mr-2 h-4 w-4" />
+        {isSaving ? t("saving") : t("save")}
+      </Button>
+    </div>
+  );
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="space-y-6">
+        {header}
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="rounded-lg border">
+            <div className="p-6 border-b space-y-1">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-4 w-64" />
+            </div>
+            <div className="p-6 grid gap-4 sm:grid-cols-2">
+              {[...Array(4)].map((_, j) => (
+                <div key={j} className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -231,21 +303,7 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t("settings")}</h1>
-          <p className="text-muted-foreground">{t("manageSystemSettings")}</p>
-        </div>
-        <Button
-          onClick={handleSave}
-          disabled={
-            !hasPermission("canEditSettings") || !hasChanges() || isSaving
-          }
-        >
-          <Save className="mr-2 h-4 w-4" />
-          {isSaving ? t("saving") : t("save")}
-        </Button>
-      </div>
+      {header}
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* General Settings */}
@@ -282,7 +340,7 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="monthlyPayment">
+              <Label htmlFor="monthlyPayment" className={monthlyPaymentError ? "text-destructive" : ""}>
                 {t("monthlyPayment")}
               </Label>
               <Input
@@ -291,16 +349,23 @@ export default function SettingsPage() {
                 value={formatNumberWithSpaces(
                   settings.monthlyPayment.toString()
                 )}
-                onChange={(e) =>
-                  handleChange(
-                    "monthlyPayment",
-                    parseInt(removeNumberFormatting(e.target.value)) || 0
-                  )
-                }
+                onChange={(e) => {
+                  const raw = removeNumberFormatting(e.target.value);
+                  if (raw !== "" && !/^\d*$/.test(raw)) {
+                    setMonthlyPaymentError(t("onlyNumericAllowed"));
+                    return; // reject non-numeric input entirely
+                  }
+                  setMonthlyPaymentError("");
+                  handleChange("monthlyPayment", parseInt(raw) || 0);
+                }}
                 disabled={!hasPermission("canEditSettings")}
                 placeholder="500 000"
-                step="500"
+                className={monthlyPaymentError ? "border-destructive focus-visible:ring-destructive" : ""}
+                inputMode="numeric"
               />
+              {monthlyPaymentError && (
+                <p className="text-sm text-destructive">{monthlyPaymentError}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -329,10 +394,10 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5" />
-                {t("currentMonth") || "Текущий месяц"}
+                {t("currentMonth")}
               </CardTitle>
               <CardDescription>
-                {t("currentMonthDescription") || "Все платежи, расходы и зарплаты записываются в этот месяц"}
+                {t("currentMonthDescription")}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -344,11 +409,11 @@ export default function SettingsPage() {
                     </p>
                   ) : (
                     <p className="text-3xl font-bold text-gray-400 dark:text-gray-600">
-                      {t("loading") || "Загрузка..."}
+                      {t("loading")}
                     </p>
                   )}
                   <p className="text-sm text-muted-foreground mt-1">
-                    {t("activeMonth") || "Активный период для записи данных"}
+                    {t("activeMonth")}
                   </p>
                 </div>
                 <Button
@@ -357,7 +422,7 @@ export default function SettingsPage() {
                   className="flex items-center gap-2"
                   disabled={!branchData?.currentFinancialMonth}
                 >
-                  {t("switchToNextMonth") || "Следующий месяц"}
+                  {t("switchToNextMonth")}
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -412,21 +477,21 @@ export default function SettingsPage() {
       <Dialog open={showSwitchMonthDialog} onOpenChange={setShowSwitchMonthDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("confirmSwitchMonth") || "Подтвердите переключение месяца"}</DialogTitle>
+            <DialogTitle>{t("confirmSwitchMonth")}</DialogTitle>
             <DialogDescription>
-              {t("switchMonthWarning") || "После переключения менеджеры не смогут видеть и редактировать данные предыдущего месяца."}
+              {t("switchMonthWarning")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div className="bg-muted p-4 rounded-lg">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">{t("currentMonth") || "Текущий месяц"}</p>
+                  <p className="text-sm text-muted-foreground">{t("currentMonth")}</p>
                   <p className="font-semibold">{branchData?.currentFinancialMonth && `${getMonthName(branchData.currentFinancialMonth.month)} ${branchData.currentFinancialMonth.year}`}</p>
                 </div>
                 <ChevronRight className="h-5 w-5 text-muted-foreground" />
                 <div>
-                  <p className="text-sm text-muted-foreground">{t("nextMonth") || "Следующий месяц"}</p>
+                  <p className="text-sm text-muted-foreground">{t("nextMonth")}</p>
                   <p className="font-semibold text-blue-600">
                     {getMonthName(getNextMonth().month)} {getNextMonth().year}
                   </p>
@@ -435,10 +500,10 @@ export default function SettingsPage() {
             </div>
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
               <p className="text-sm text-amber-900 dark:text-amber-100">
-                {t("switchMonthNote") || "• Новый месяц начнётся с нуля (payments = 0, expenses = 0, salaries = 0)"}
+                {t("switchMonthNote")}
               </p>
               <p className="text-sm text-amber-900 dark:text-amber-100 mt-1">
-                {t("switchMonthNoteManager") || "• Менеджеры потеряют доступ к данным прошлого месяца"}
+                {t("switchMonthNoteManager")}
               </p>
             </div>
             <div className="flex justify-end gap-3 pt-2">
@@ -457,13 +522,59 @@ export default function SettingsPage() {
                 {isSwitchingMonth ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {t("switching") || "Переключение..."}
+                    {t("switching")}
                   </>
                 ) : (
-                  t("confirmSwitch") || "Подтвердить"
+                  t("confirmSwitch")
                 )}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sync students' monthly payment to the new branch default */}
+      <Dialog open={!!syncDialog} onOpenChange={(open) => !open && !isSyncing && setSyncDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("syncPaymentsDialogTitle")}</DialogTitle>
+            <DialogDescription>
+              {syncDialog &&
+                t("syncPaymentsDialogDesc")
+                  .replace("{from}", formatCurrency(syncDialog.from))
+                  .replace("{to}", formatCurrency(syncDialog.to))}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-start justify-between gap-4 rounded-lg border p-4">
+            <div className="space-y-1">
+              <Label htmlFor="syncApplyToAll">{t("syncPaymentsAllLabel")}</Label>
+              <p className="text-sm text-muted-foreground">
+                {syncApplyToAll ? t("syncPaymentsAllDescOn") : t("syncPaymentsAllDescOff")}
+              </p>
+            </div>
+            <Switch
+              id="syncApplyToAll"
+              checked={syncApplyToAll}
+              onCheckedChange={setSyncApplyToAll}
+              disabled={isSyncing}
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={() => setSyncDialog(null)} disabled={isSyncing}>
+              {t("syncPaymentsSkip")}
+            </Button>
+            <Button type="button" onClick={handleApplySync} disabled={isSyncing}>
+              {isSyncing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t("updating")}
+                </>
+              ) : (
+                t("syncPaymentsApply")
+              )}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

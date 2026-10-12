@@ -4,6 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
+import { InitialsAvatar } from "@/components/InitialsAvatar";
+import { PageBreadcrumbs } from "@/components/PageBreadcrumbs";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -33,7 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { hasPermission } from "@/lib/auth";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -53,10 +56,12 @@ import {
 import type { Payment } from "@/lib/api";
 import type { Branch } from "@/types";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { useBranch } from "@/context/BranchContext";
 
 export default function ClassDetailsPage() {
   const router = useRouter();
   const { id } = router.query;
+  const { currentBranch, isLoading: branchLoading } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [classData, setClassData] = useState<Class | null>(null);
   const [students, setStudents] = useState<Student[]>([]);
@@ -89,7 +94,6 @@ export default function ClassDetailsPage() {
     isLoading: false,
   });
   const language = useLanguage();
-  const { toast } = useToast();
   const canEditStudents = hasPermission("canEditStudents");
   const canEditClasses = hasPermission("canEditClasses");
   const canDeleteClasses = hasPermission("canDeleteClasses");
@@ -105,6 +109,7 @@ export default function ClassDetailsPage() {
   } = useMultiSelect<Student>();
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   const getCurrentMonthPaymentStatus = (studentId: string): string => {
     // Use branch's current month, fall back to system month
@@ -152,61 +157,82 @@ export default function ClassDetailsPage() {
     return getCurrentMonthPaymentStatus(studentId) === "paid";
   };
 
+  // Guards a rapid class/branch switch: without it, an older still-in-flight
+  // loadData() call could resolve after a newer one and overwrite the
+  // screen with the previous class's data.
+  const loadRequestIdRef = useRef(0);
+
   useEffect(() => {
     if (!id) return;
+    // See the equivalent guard in assignments.tsx: without the branchLoading
+    // check, a branch that never resolves left isLoading stuck forever.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
-    loadData().finally(() => {
-      setIsLoading(false);
+    const myId = ++loadRequestIdRef.current;
+    loadData(myId).finally(() => {
+      if (myId === loadRequestIdRef.current) setIsLoading(false);
     });
-  }, [id]);
+  }, [id, currentBranch?.id, branchLoading]);
 
-  // Reload data when branch changes
-  useEffect(() => {
-    const handleBranchChange = () => {
-      loadData();
-    };
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
-
-  const loadData = async () => {
+  const loadData = async (myId?: number) => {
+    // Callers refreshing after a mutation (remove student, delete class,
+    // etc.) don't pass myId — they claim the latest id themselves, so their
+    // result is always applied (it always was the most recent request).
+    const requestId = myId ?? ++loadRequestIdRef.current;
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) return;
 
-      // Fetch all independent data in parallel
-      const [classList, studentsResponse, teachersList, branch, paymentsResponse] =
-        await Promise.all([
-          apiListClasses(branchId),
-          apiListStudents(branchId, 1, 10000),
-          apiListTeachers(branchId),
-          getBranch(branchId),
-          apiListPayments({ branchId, limit: 10000, page: 1 }),
-        ]);
+      // Run independent requests in parallel
+      const [classList, teachersList, branch] = await Promise.all([
+        apiListClasses(branchId),
+        apiListTeachers(branchId),
+        getBranch(branchId),
+      ]);
 
       const classDataFetched = classList.find((c) => c.id === id);
+      if (requestId !== loadRequestIdRef.current) return;
 
       if (classDataFetched) {
-        const allStudents = studentsResponse.data || [];
-        const studentsInClass = allStudents.filter(
-          (s) => s.classId === classDataFetched.id,
-        );
-        const paymentsList = Array.isArray(paymentsResponse)
-          ? paymentsResponse
-          : paymentsResponse?.data || [];
-
         setClassData(classDataFetched);
         setAllClasses(classList);
-        setStudents(allStudents);
-        setClassStudents(studentsInClass);
         setTeachers(teachersList);
         setBranchData(branch);
+
+        const currentMonth = branch.currentFinancialMonth?.month
+          ? String(branch.currentFinancialMonth.month).padStart(2, "0")
+          : String(new Date().getMonth() + 1).padStart(2, "0");
+        const currentYear = branch.currentFinancialMonth?.year || new Date().getFullYear();
+
+        // Fetch only students in this class + payments in parallel
+        const [studentsResponse, paymentsResponse] = await Promise.all([
+          // status: "active" — matches classes.tsx's card count (an active-only
+          // COUNT(*) FILTER in ClassService.GetAll), so the two pages agree on
+          // what "student count" means for the same class instead of this one
+          // silently including left/suspended students who still hold a
+          // class_id.
+          apiListStudents(branchId, 1, 300, { classId: classDataFetched.id, status: "active" }),
+          apiListPayments({ branchId, month: currentMonth, year: currentYear, limit: 500, page: 1 }),
+        ]);
+        if (requestId !== loadRequestIdRef.current) return;
+
+        const classStudentsList = studentsResponse.data || [];
+        setStudents(classStudentsList);
+        setClassStudents(classStudentsList);
+
+        const paymentsList = Array.isArray(paymentsResponse)
+          ? paymentsResponse
+          : paymentsResponse?.items || paymentsResponse?.data || [];
         setPayments(paymentsList);
 
         if (classDataFetched.teacherId) {
           const teacher = teachersList.find(
-            (tch) => tch.id === classDataFetched.teacherId,
+            (t) => t.id === classDataFetched.teacherId,
           );
           setTeacherName(teacher?.fullName || "Unknown");
         } else {
@@ -216,6 +242,7 @@ export default function ClassDetailsPage() {
         setClassData(null);
       }
     } catch (error) {
+      if (requestId !== loadRequestIdRef.current) return;
       console.error("Failed to load class data:", error);
       setClassData(null);
     }
@@ -223,38 +250,24 @@ export default function ClassDetailsPage() {
 
   const handleRemoveStudent = (studentId: string) => {
     if (!canEditStudents) {
-      toast({
-        title: t("error"),
-        description: "You don't have permission to update students.",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("noPermissionUpdateStudents"));
       return;
     }
 
     setConfirmDialog({
       isOpen: true,
-      title: "Remove Student",
-      message:
-        t("removeStudentFromClassConfirmation") ||
-        "Remove this student from the class?",
+      title: t("removeStudent"),
+      message: t("removeStudentFromClassConfirmation"),
       onConfirm: async () => {
         try {
           await apiUpdateStudent(studentId, {
             classId: null as unknown as string,
           });
           await loadData();
-          toast({
-            title: t("success"),
-            description: t("studentRemovedFromClass"),
-            variant: "success",
-          });
+          notify.success(t("success"), t("studentRemovedFromClass"));
         } catch (error) {
           console.error("Failed to remove student:", error);
-          toast({
-            title: t("error"),
-            description: t("failedToRemoveStudentFromClass"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToRemoveStudentFromClass"));
         }
         setConfirmDialog({ ...confirmDialog, isOpen: false });
       },
@@ -267,20 +280,12 @@ export default function ClassDetailsPage() {
   const handleSwitchStudents = () => {
     const ids = getSelectedIds();
     if (ids.length === 0 || !targetClassId || !classData) {
-      toast({
-        title: t("error"),
-        description: "Please select students and a target class",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("selectStudentsAndTargetClass"));
       return;
     }
 
     if (!canEditStudents) {
-      toast({
-        title: t("error"),
-        description: "You don't have permission to update students.",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("noPermissionUpdateStudents"));
       return;
     }
 
@@ -291,10 +296,8 @@ export default function ClassDetailsPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: "Switch Students",
-      message:
-        t("switchConfirmation") ||
-        `Switch ${selectedCount} student(s) to ${targetClass.name}?`,
+      title: t("switchStudents"),
+      message: t("switchConfirmation") || `Switch ${selectedCount} student(s) to ${targetClass.name}?`,
       onConfirm: async () => {
         try {
           setConfirmDialog((prev) => ({ ...prev, isLoading: true }));
@@ -306,18 +309,10 @@ export default function ClassDetailsPage() {
           clearSelection();
           setTargetClassId("");
           await loadData();
-          toast({
-            title: t("success"),
-            description: t("studentsSwitchedSuccess"),
-            variant: "success",
-          });
+          notify.success(t("success"), t("studentsSwitchedSuccess"));
         } catch (error) {
           console.error("Failed to switch students:", error);
-          toast({
-            title: t("error"),
-            description: t("failedToSwitchStudents"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToSwitchStudents"));
         } finally {
           setConfirmDialog({ ...confirmDialog, isOpen: false, isLoading: false });
         }
@@ -331,20 +326,12 @@ export default function ClassDetailsPage() {
   const handleDeleteMultipleStudents = () => {
     const ids = getSelectedIds();
     if (ids.length === 0) {
-      toast({
-        title: t("error"),
-        description: "Please select students to delete",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("selectStudentsToDelete"));
       return;
     }
 
     if (!canEditStudents) {
-      toast({
-        title: t("error"),
-        description: "You don't have permission to update students.",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("noPermissionUpdateStudents"));
       return;
     }
 
@@ -352,8 +339,8 @@ export default function ClassDetailsPage() {
 
     setConfirmDialog({
       isOpen: true,
-      title: "Remove Students",
-      message: `Remove ${selectedCount} student(s) from this class?`,
+      title: t("removeStudents"),
+      message: t("removeStudentsConfirmation") || `Remove ${selectedCount} student(s) from this class?`,
       onConfirm: async () => {
         try {
           await Promise.all(
@@ -365,18 +352,10 @@ export default function ClassDetailsPage() {
           );
           clearSelection();
           await loadData();
-          toast({
-            title: t("success"),
-            description: t("studentsRemovedFromClass"),
-            variant: "success",
-          });
+          notify.success(t("success"), t("studentsRemovedFromClass"));
         } catch (error) {
           console.error("Failed to remove students:", error);
-          toast({
-            title: t("error"),
-            description: t("failedToRemoveStudentsFromClass"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToRemoveStudentsFromClass"));
         }
         setConfirmDialog({ ...confirmDialog, isOpen: false });
       },
@@ -389,18 +368,21 @@ export default function ClassDetailsPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-60 w-full" />
+        <div className="flex items-center gap-4">
+          <Skeleton className="w-9 h-9 rounded-lg" />
+          <div className="flex-1"><Skeleton className="h-8 w-48 mb-1" /><Skeleton className="h-4 w-32" /></div>
+          <Skeleton className="h-9 w-20 rounded-lg" />
+          <Skeleton className="h-9 w-20 rounded-lg" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader><CardContent className="space-y-3"><Skeleton className="h-5 w-1/2" /><Skeleton className="h-5 w-2/3" /></CardContent></Card>
+          <Card><CardHeader><Skeleton className="h-6 w-1/3" /></CardHeader><CardContent><Skeleton className="h-8 w-1/4" /></CardContent></Card>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="border-l-4 border-l-blue-200"><CardHeader className="pb-2"><Skeleton className="h-4 w-1/3" /></CardHeader><CardContent><Skeleton className="h-10 w-1/4" /></CardContent></Card>
+          <Card className="border-l-4 border-l-green-200"><CardHeader className="pb-2"><Skeleton className="h-4 w-1/3" /></CardHeader><CardContent><Skeleton className="h-10 w-1/4" /></CardContent></Card>
+        </div>
+        <Card><CardHeader><Skeleton className="h-6 w-1/4" /></CardHeader><CardContent className="space-y-2">{[1,2,3,4,5].map(i=><Skeleton key={i} className="h-14 w-full rounded-xl" />)}</CardContent></Card>
       </div>
     );
   }
@@ -409,7 +391,7 @@ export default function ClassDetailsPage() {
     return (
       <div className="text-center py-12">
         <p className="text-slate-500 dark:text-slate-400">
-          {t("classNotFound") || "Class not found"}
+          {t("classNotFound")}
         </p>
         <Button
           variant="outline"
@@ -417,7 +399,7 @@ export default function ClassDetailsPage() {
           className="mt-4"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          {t("backToClasses") || "Back to Classes"}
+          {t("backToClasses")}
         </Button>
       </div>
     );
@@ -433,11 +415,7 @@ export default function ClassDetailsPage() {
 
   const handleEdit = () => {
     if (!canEditClasses) {
-      toast({
-        title: t("error"),
-        description: "You don't have permission to edit classes.",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("noPermissionEditClasses"));
       return;
     }
     if (classData) {
@@ -451,11 +429,7 @@ export default function ClassDetailsPage() {
 
   const handleSaveEdit = async () => {
     if (!classData || !editFormData.name.trim()) {
-      toast({
-        title: t("error"),
-        description: "Class name is required",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("classNameRequired"));
       return;
     }
 
@@ -467,54 +441,31 @@ export default function ClassDetailsPage() {
 
       await loadData();
       setIsEditModalOpen(false);
-      toast({
-        title: t("success"),
-        description: "Class updated successfully",
-        variant: "success",
-      });
+      notify.success(t("success"), t("classUpdatedSuccessfully"));
     } catch (error) {
       console.error("Failed to update class:", error);
-      toast({
-        title: t("error"),
-        description: "Failed to update class",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToUpdateClass"));
     }
   };
 
   const handleDelete = () => {
     if (!canDeleteClasses) {
-      toast({
-        title: t("error"),
-        description: "You don't have permission to delete classes.",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("noPermissionDeleteClasses"));
       return;
     }
 
     setConfirmDialog({
       isOpen: true,
-      title: "Delete Class",
-      message:
-        t("deleteClassConfirmation") ||
-        "Are you sure you want to delete this class?",
+      title: t("deleteClass"),
+      message: t("deleteClassConfirmation"),
       onConfirm: async () => {
         try {
           await apiDeleteClass(classData!.id);
-          toast({
-            title: t("success"),
-            description:
-              t("classDeletedSuccessfully") || "Class deleted successfully",
-            variant: "success",
-          });
+          notify.success(t("success"), t("classDeletedSuccessfully"));
           router.push("/classes");
         } catch (error) {
           console.error("Failed to delete class:", error);
-          toast({
-            title: t("error"),
-            description: "Failed to delete class",
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToDeleteClass"));
           setConfirmDialog({ ...confirmDialog, isOpen: false });
         }
       },
@@ -524,100 +475,26 @@ export default function ClassDetailsPage() {
     });
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        {/* Header Skeleton */}
-        <div className="flex items-center gap-4">
-          <Skeleton className="w-10 h-10 rounded" />
-          <div className="flex-1">
-            <Skeleton className="w-1/3 h-10 rounded" />
-            <Skeleton className="w-1/4 h-5 rounded mt-2" />
-          </div>
-        </div>
-
-        {/* Info Cards Skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-start justify-between">
-                <Skeleton className="w-1/3 h-6 rounded" />
-                <div className="flex gap-2">
-                  <Skeleton className="w-20 h-9 rounded" />
-                  <Skeleton className="w-20 h-9 rounded" />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Skeleton className="w-1/4 h-4 rounded mb-2" />
-                <Skeleton className="w-1/2 h-6 rounded" />
-              </div>
-              <div>
-                <Skeleton className="w-1/4 h-4 rounded mb-2" />
-                <Skeleton className="w-1/2 h-6 rounded" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <Skeleton className="w-1/3 h-6 rounded" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="w-1/2 h-10 rounded" />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Stats Cards Skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <Card className="border-l-4 border-l-blue-500">
-            <CardHeader className="pb-3">
-              <Skeleton className="w-1/3 h-5 rounded" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="w-1/4 h-12 rounded" />
-            </CardContent>
-          </Card>
-          <Card className="border-l-4 border-l-green-500">
-            <CardHeader className="pb-3">
-              <Skeleton className="w-1/3 h-5 rounded" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="w-1/4 h-12 rounded" />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Students List Skeleton */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Skeleton className="w-1/4 h-6 rounded" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="w-full h-16 rounded" />
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
+      <PageBreadcrumbs
+        items={[
+          { label: t("classes"), href: "/classes" },
+          { label: classData.name },
+        ]}
+      />
+
       <div className="flex items-center gap-4">
         <Button
           variant="ghost"
           size="icon"
+          aria-label={t("back")}
           onClick={() => router.push("/classes")}
         >
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
+          <h1 className="text-display text-slate-900 dark:text-slate-100">
             {classData.name}
           </h1>
           <p className="text-slate-600 dark:text-slate-400 mt-1">
@@ -679,7 +556,7 @@ export default function ClassDetailsPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <Card className="border-l-4 border-l-blue-500">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
                 <Users className="w-4 h-4" />
                 {t("studentCount")}
@@ -694,7 +571,7 @@ export default function ClassDetailsPage() {
 
           {classStudents.length > 0 && (
             <Card className="border-l-4 border-l-green-500">
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
                   <Check className="w-4 h-4" />
                   {t("paid")}
@@ -724,7 +601,7 @@ export default function ClassDetailsPage() {
         <CardContent className="py-3 px-4 space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <p className="text-sm font-medium">
-              {getSelectedCount()} {t("itemsSelected") || "selected"}
+              {getSelectedCount()} {t("itemsSelected")}
             </p>
             <div className="flex gap-2 flex-wrap">
               <Select
@@ -733,7 +610,7 @@ export default function ClassDetailsPage() {
                 disabled={getSelectedCount() === 0}
               >
                 <SelectTrigger className="w-auto min-w-[150px]">
-                  <SelectValue placeholder={t("chooseClass") || "Class"} />
+                  <SelectValue placeholder={t("chooseClass")} />
                 </SelectTrigger>
                 <SelectContent>
                   {otherClasses.map((cls) => (
@@ -752,7 +629,7 @@ export default function ClassDetailsPage() {
                 className="whitespace-nowrap"
               >
                 <ArrowRight className="w-4 h-4 mr-1" />
-                {t("switch") || "Switch"}
+                {t("switch")}
               </Button>
               <Button
                 size="sm"
@@ -789,7 +666,7 @@ export default function ClassDetailsPage() {
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
               <Input
-                placeholder={t("searchStudents") || "Search by name or phone"}
+                placeholder={t("searchStudents")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -809,7 +686,7 @@ export default function ClassDetailsPage() {
                   onCheckedChange={() => toggleSelectAll(filteredStudents)}
                 />
                 <label className="text-sm font-medium cursor-pointer flex-1">
-                  {t("selectAll") || "Select All"} ({filteredStudents.length})
+                  {t("selectAll")} ({filteredStudents.length})
                 </label>
               </div>
 
@@ -828,10 +705,11 @@ export default function ClassDetailsPage() {
                         checked={isSelected(student.id)}
                         onCheckedChange={() => toggleSelect(student.id)}
                       />
+                      <InitialsAvatar name={student.fullName} size="md" className="flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p
-                            className="font-medium text-slate-900 dark:text-slate-100 text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                            className="font-medium text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
                               router.push(
@@ -841,18 +719,10 @@ export default function ClassDetailsPage() {
                           >
                             {toTitleCase(student.fullName)}
                           </p>
-                          {hasCurrentMonthPayment(student.id) ? (
-                            <div className="flex items-center gap-1">
-                              <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
-                              <span className="text-xs text-green-600 dark:text-green-400">
-                                {t("paid")}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1">
-                              <span className="text-xs text-red-500 dark:text-red-400">✗ {t("unpaid") || "To'lanmadi"}</span>
-                            </div>
-                          )}
+                          <PaymentStatusBadge
+                            status={hasCurrentMonthPayment(student.id) ? "paid" : "unpaid"}
+                            label={hasCurrentMonthPayment(student.id) ? t("paid") : t("unpaid")}
+                          />
                         </div>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
                           {formatPhoneNumber(student.phone) || "—"} •{" "}
@@ -898,7 +768,7 @@ export default function ClassDetailsPage() {
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("editClass") || "Edit Class"}</DialogTitle>
+            <DialogTitle>{t("editClass")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -909,13 +779,13 @@ export default function ClassDetailsPage() {
                 onChange={(e) =>
                   setEditFormData({ ...editFormData, name: e.target.value })
                 }
-                placeholder={t("classNamePlaceholder") || "e.g., 7A, Grade 9B"}
+                placeholder={t("classNamePlaceholder")}
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="teacherId">
-                {t("classTeacher") || "Class Teacher"}
+                {t("classTeacher")}
               </Label>
               <Select
                 value={editFormData.teacherId || "none"}
@@ -928,12 +798,12 @@ export default function ClassDetailsPage() {
               >
                 <SelectTrigger>
                   <SelectValue
-                    placeholder={t("selectTeacherOptional") || "Select teacher"}
+                    placeholder={t("selectTeacherOptional")}
                   />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">
-                    {t("noTeacherAssigned") || "No teacher assigned"}
+                    {t("noTeacherAssigned")}
                   </SelectItem>
                   {teachers.map((teacher) => (
                     <SelectItem key={teacher.id} value={teacher.id}>
@@ -953,7 +823,7 @@ export default function ClassDetailsPage() {
             >
               {t("cancel")}
             </Button>
-            <Button onClick={handleSaveEdit}>{t("save") || "Save"}</Button>
+            <Button onClick={handleSaveEdit}>{t("save")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -990,7 +860,7 @@ export default function ClassDetailsPage() {
                 confirmDialog.onConfirm();
               }}
               disabled={confirmDialog.isLoading}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              className="bg-brand hover:bg-brand-hover"
             >
               {confirmDialog.isLoading ? (
                 <>

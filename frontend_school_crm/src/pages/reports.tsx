@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,40 +21,36 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  studentsDB,
-  paymentsDB,
-  salariesDB,
-  teachersDB,
-  classesDB,
-  monthArchivesDB,
-  usersDB,
-} from "@/lib/storage";
 import * as api from "@/lib/api";
 import {
-  getPaymentReport,
-  getSalaryReport,
-  getDebtorsReport,
-  getExpensesReport,
-  getFinancialSummary,
+  runReportJob,
   getBranch,
   listClasses,
+  listStudents,
+  listUsers,
+  getForecastData,
+  type ForecastData,
 } from "@/lib/api";
-import { Payment, Salary, Branch } from "@/types";
-import { Download, FileText, AlertCircle, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Payment, Salary, Branch, Class, Student } from "@/types";
+import type { User as ApiUser } from "@/lib/api";
+import { Download, FileText, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, Loader2, TrendingUp, TrendingDown, DollarSign, Users, Printer, FileDown } from "lucide-react";
+import { EmptyState } from "@/components/EmptyState";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
+import { printReport, downloadCSV, type PrintColumn } from "@/lib/printExport";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { useBranch } from "@/context/BranchContext";
 
-type ReportType = "payment" | "salary" | "debtors" | "income" | "expenses";
+type ReportType = "payment" | "salary" | "debtors" | "income" | "expenses" | "forecast";
 
 export default function ReportsPage() {
   const router = useRouter();
-  const { toast } = useToast();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
+  const [isFetching, setIsFetching] = useState(false);
   const [reportType, setReportType] = useState<ReportType>("payment");
   const [classId, setClassId] = useState("all");
   const [paymentMonth, setPaymentMonth] = useState("");
@@ -65,53 +61,81 @@ export default function ReportsPage() {
   const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
-  const [classes, setClasses] = useState<any[]>([]);
-  const [students, setStudents] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [users, setUsers] = useState<ApiUser[]>([]);
   const [reportData, setReportData] = useState<any[]>([]);
   const [summary, setSummary] = useState({ total: 0, count: 0, avg: 0 });
   const [branchData, setBranchData] = useState<Branch | null>(null);
-  const [paymentMethodsData, setPaymentMethodsData] = useState<any[]>([]);
+  const [paymentMethodsData, setPaymentMethodsData] = useState<{ name: string; value: number }[]>([]);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [forecastData, setForecastData] = useState<ForecastData | null>(null);
   const language = useLanguage();
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
   const canViewReports = hasPermission("canViewReports");
   const currentUser = getCurrentUser();
+
+  // Guards against a stale, still-in-flight report request (from an older
+  // filter/page selection) resolving after a newer one and overwriting the
+  // screen with outdated data. requestIdRef gates every state commit below;
+  // abortControllerRef additionally cancels the older request's polling
+  // loop outright instead of just letting it run to a discarded result.
+  const requestIdRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!canViewReports) {
       setIsLoading(false);
       return;
     }
+    // See the equivalent guard in assignments.tsx: without the branchLoading
+    // check, a branch that never resolves left isLoading stuck forever.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
     const timer = setTimeout(async () => {
-      loadClasses();
-      loadStudents();
-      loadUsers();
-      await loadBranch();
+      await Promise.all([loadClasses(), loadStudents(), loadUsers(), loadBranch()]);
       setDefaultDates();
       setIsLoading(false);
     }, 300);
     return () => clearTimeout(timer);
-  }, [canViewReports, router]);
+  }, [canViewReports, currentBranch?.id, branchLoading]);
 
   // Apply default dates when branch data loads
   useEffect(() => {
     if (branchData && !debtorMonth) {
-      console.log("Setting default dates with branchData:", branchData);
       setDefaultDates();
     }
   }, [branchData]);
 
+  // Reset to page 1 whenever a filter (not the page itself, and not the
+  // branch — handled by the branch effect above) changes. Previously this
+  // lived in the same effect as the page-change dependency below: setting
+  // page here re-triggered that effect, which saw page !== 1 and called
+  // setPage(1) again — so navigating to page 2+ immediately snapped back to
+  // page 1, and pagination could never advance.
   useEffect(() => {
-    // Reset to first page when filters change (but not when page changes)
-    if (page !== 1) {
-      setPage(1);
-      return; // Don't generate report yet, wait for page to be set
-    }
-    // Generate report when filters or page changes
-    generateReport();
-  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit, page]);
+    setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit]);
+
+  // Generate the report whenever the page or any filter changes. Also
+  // depends on currentBranch?.id directly — previously an admin switching
+  // branches with every other filter unchanged wouldn't re-trigger this at
+  // all, leaving the previous branch's data on screen.
+  useEffect(() => {
+    if (!currentBranch?.id) return;
+    // Debounce one tick so a filter change and its follow-up setPage(1)
+    // (previous effect) coalesce into a single request instead of two.
+    const timer = setTimeout(() => { generateReport(); }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportType, paymentMonth, paymentYear, classId, debtorMonth, debtorYear, limit, page, currentBranch?.id]);
 
   const setDefaultDates = () => {
     // Use branch's current financial month if available, fallback to current date
@@ -129,7 +153,7 @@ export default function ReportsPage() {
 
   const loadBranch = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (branchId) {
         const branch = await getBranch(branchId);
         setBranchData(branch);
@@ -141,24 +165,36 @@ export default function ReportsPage() {
 
   const loadClasses = async () => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (branchId) {
         const classesData = await listClasses(branchId);
         setClasses(classesData);
       }
     } catch (error) {
       console.error("Failed to load classes:", error);
-      // Fallback to localStorage
-      setClasses(classesDB.getAll());
     }
   };
 
-  const loadStudents = () => {
-    setStudents(studentsDB.getAll());
+  const loadStudents = async () => {
+    try {
+      const branchId = currentBranch?.id;
+      if (branchId) {
+        const res = await listStudents(branchId, undefined, 1000);
+        setStudents(res.data ?? []);
+      }
+    } catch (error) {
+      console.error("Failed to load students:", error);
+    }
   };
 
-  const loadUsers = () => {
-    setUsers(usersDB.getAll());
+  const loadUsers = async () => {
+    try {
+      const branchId = currentBranch?.id;
+      const data = await listUsers(branchId || undefined);
+      setUsers(data);
+    } catch (error) {
+      console.error("Failed to load users:", error);
+    }
   };
 
   const getUserName = (userId: string, userName?: string) => {
@@ -174,16 +210,11 @@ export default function ReportsPage() {
     currentUser?.role === "admin" || currentUser?.role === "branch_admin";
 
   const isMonthVisible = (
-    month: string | number,
-    year: string | number
+    _month: string | number,
+    _year: string | number
   ): boolean => {
-    // Admins can see all data including archived
-    if (isAdmin) return true;
-
-    // Non-admins can't see archived months
-    const monthStr = month.toString().padStart(2, "0");
-    const yearNum = parseInt(year.toString());
-    return !monthArchivesDB.isMonthArchived(monthStr, yearNum);
+    // Backend handles month visibility filtering
+    return true;
   };
 
   const getStatusLabel = (status: string) => {
@@ -198,7 +229,16 @@ export default function ReportsPage() {
   };
 
   const generateReport = async () => {
-    setIsLoading(true);
+    // Cancel whatever the previous call was still polling for, and claim a
+    // fresh request id — every sub-function below checks this before
+    // touching state, so a response that arrives after a newer request has
+    // already started is dropped instead of overwriting the screen.
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const myId = ++requestIdRef.current;
+
+    setIsFetching(true);
     try {
       switch (reportType) {
         case "payment":
@@ -206,64 +246,71 @@ export default function ReportsPage() {
             setReportData([]);
             return;
           }
-          await generatePaymentReport();
+          await generatePaymentReport(myId, controller.signal);
           break;
         case "salary":
           if (!paymentMonth || !paymentYear) {
             setReportData([]);
             return;
           }
-          await generateSalaryReport();
+          await generateSalaryReport(myId, controller.signal);
           break;
         case "debtors":
           if (!debtorMonth || !debtorYear) {
             setReportData([]);
             return;
           }
-          generateDebtorsReport();
+          await generateDebtorsReport(myId, controller.signal);
           break;
         case "income":
           if (!paymentMonth || !paymentYear) {
             setReportData([]);
             return;
           }
-          await generateIncomeReport();
+          await generateIncomeReport(myId, controller.signal);
           break;
         case "expenses":
           if (!paymentMonth || !paymentYear) {
             setReportData([]);
             return;
           }
-          await generateExpensesReport();
+          await generateExpensesReport(myId, controller.signal);
+          break;
+        case "forecast":
+          await generateForecastReport(myId);
           break;
       }
     } finally {
-      setIsLoading(false);
+      if (myId === requestIdRef.current) setIsFetching(false);
     }
   };
 
-  const generatePaymentReport = async () => {
+  const generatePaymentReport = async (myId: number, signal: AbortSignal) => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
-        toast({
-          title: t("error"),
-          description: "No branch selected",
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("noBranchSelected"));
         return;
       }
 
-      const response = await getPaymentReport(
-        branchId,
-        paymentMonth,
-        paymentYear,
-        classId,
-        page,
-        limit
-      );
+      const startYear = parseInt(paymentYear) || new Date().getFullYear();
+      const startDate = new Date(Date.UTC(startYear, parseInt(paymentMonth) - 1, 1)).toISOString();
+      const endDate   = new Date(Date.UTC(startYear, parseInt(paymentMonth), 0, 23, 59, 59)).toISOString();
 
-      if (!response || !response.data) {
+      const result = await runReportJob("payment_report", {
+        branchId,
+        startDate,
+        endDate,
+        classId: classId !== "all" ? classId : "",
+        page,
+        limit,
+      }, { signal });
+      if (myId !== requestIdRef.current) return;
+
+      const items = result?.items ?? result ?? [];
+      const response = { data: Array.isArray(items) ? items : [], total: result?.total ?? 0, totalPages: Math.ceil((result?.total ?? 0) / limit) };
+
+      if (!response.data.length) {
         setReportData([]);
         setSummary({ total: 0, count: 0, avg: 0 });
         setTotal(0);
@@ -271,7 +318,7 @@ export default function ReportsPage() {
         return;
       }
 
-      const data = response.data.map((item) => ({
+      const data = response.data.map((item: any) => ({
         id: item.id,
         studentName: item.studentName,
         className: item.className,
@@ -288,6 +335,13 @@ export default function ReportsPage() {
               minute: "2-digit",
             })
           : "N/A",
+        enrollmentDate: item.enrollmentDate
+          ? new Date(item.enrollmentDate).toLocaleDateString("uz-UZ", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+            })
+          : "N/A",
         addedBy: getUserName(item.createdBy || "", item.createdByName),
       }));
 
@@ -302,44 +356,40 @@ export default function ReportsPage() {
       setTotal(response.total);
       setTotalPages(response.totalPages);
     } catch (error) {
+      if (myId !== requestIdRef.current || (error as Error)?.name === "AbortError") return;
       console.error("Failed to generate payment report:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToGeneratePaymentReport"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToGeneratePaymentReport"));
       setReportData([]);
     }
   };
 
-  const generateSalaryReport = async () => {
+  const generateSalaryReport = async (myId: number, signal: AbortSignal) => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
-        toast({
-          title: t("error"),
-          description: "No branch selected",
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("noBranchSelected"));
         return;
       }
 
       // Convert month/year to dates
       const startYear = parseInt(paymentYear) || new Date().getFullYear();
-      const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
-      const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
+      const startDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth) - 1, 1));
+      const endDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth), 0));
 
-      const newStartDate = startDateObj.toISOString().split("T")[0];
-      const newEndDate = endDateObj.toISOString().split("T")[0];
+      const newStartDate = startDateObj.toISOString().split("T")[0]!;
+      const newEndDate = endDateObj.toISOString().split("T")[0]!;
 
-      const items = await getSalaryReport(
+      const result = await runReportJob("salary_report", {
         branchId,
-        newStartDate,
-        newEndDate,
-        ""
-      );
+        startDate: new Date(newStartDate).toISOString(),
+        endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
+        status: "",
+      }, { signal });
+      if (myId !== requestIdRef.current) return;
 
-      if (!items || !Array.isArray(items)) {
+      const items = Array.isArray(result) ? result : [];
+
+      if (!items.length) {
         setReportData([]);
         setSummary({ total: 0, count: 0, avg: 0 });
         return;
@@ -373,25 +423,18 @@ export default function ReportsPage() {
 
       setReportData(data);
     } catch (error) {
+      if (myId !== requestIdRef.current || (error as Error)?.name === "AbortError") return;
       console.error("Failed to generate salary report:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToGenerateSalaryReport"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToGenerateSalaryReport"));
       setReportData([]);
     }
   };
 
-  const generateDebtorsReport = async () => {
+  const generateDebtorsReport = async (myId: number, signal: AbortSignal) => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
-        toast({
-          title: t("error"),
-          description: "No branch selected",
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("noBranchSelected"));
         return;
       }
 
@@ -402,21 +445,15 @@ export default function ReportsPage() {
 
       const yearNum = parseInt(debtorYear, 10);
 
-      console.log("Debtors Report Query Params:", {
+      const result = await runReportJob("debtors_report", {
         branchId,
-        debtorMonth,
-        debtorYear,
-        yearNum,
-      });
+        month: debtorMonth,
+        year: yearNum,
+        classId: classId !== "all" ? classId : "",
+      }, { signal });
+      if (myId !== requestIdRef.current) return;
 
-      const items = await getDebtorsReport(
-        branchId,
-        debtorMonth,
-        yearNum,
-        classId === "all" ? undefined : classId
-      );
-
-      console.log("Debtors Report Response:", items);
+      const items = Array.isArray(result) ? result : [];
 
       const data = items.map((item) => ({
         id: item.id,
@@ -430,7 +467,6 @@ export default function ReportsPage() {
         status: item.status,
       }));
 
-      console.log("Processed Debtors Data:", data);
 
       const total = data.reduce((sum, item) => sum + item.dueAmount, 0);
       setSummary({
@@ -441,42 +477,38 @@ export default function ReportsPage() {
 
       setReportData(data);
     } catch (error) {
+      if (myId !== requestIdRef.current || (error as Error)?.name === "AbortError") return;
       console.error("Failed to generate debtors report:", error);
-      toast({
-        title: t("error"),
-        description: "Failed to generate debtors report",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToGenerateDebtorsReport"));
       setReportData([]);
     }
   };
 
-  const generateExpensesReport = async () => {
+  const generateExpensesReport = async (myId: number, signal: AbortSignal) => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
-        toast({
-          title: t("error"),
-          description: "No branch selected",
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("noBranchSelected"));
         setReportData([]);
         return;
       }
 
       // Convert month/year to dates
       const startYear = parseInt(paymentYear) || new Date().getFullYear();
-      const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
-      const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
+      const startDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth) - 1, 1));
+      const endDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth), 0));
 
-      const newStartDate = startDateObj.toISOString().split("T")[0];
-      const newEndDate = endDateObj.toISOString().split("T")[0];
+      const newStartDate = startDateObj.toISOString().split("T")[0]!;
+      const newEndDate = endDateObj.toISOString().split("T")[0]!;
 
-      const expenses = await getExpensesReport(
+      const result = await runReportJob("expenses_report", {
         branchId,
-        newStartDate,
-        newEndDate
-      );
+        startDate: new Date(newStartDate).toISOString(),
+        endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
+      }, { signal });
+      if (myId !== requestIdRef.current) return;
+
+      const expenses = Array.isArray(result) ? result : [];
 
       const data = expenses.map((e: any) => {
         return {
@@ -507,41 +539,35 @@ export default function ReportsPage() {
 
       setReportData(data);
     } catch (error) {
+      if (myId !== requestIdRef.current || (error as Error)?.name === "AbortError") return;
       console.error("Failed to generate expenses report:", error);
-      toast({
-        title: t("error"),
-        description: "Failed to generate expenses report",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToGenerateExpensesReport"));
       setReportData([]);
     }
   };
 
-  const generateIncomeReport = async () => {
+  const generateIncomeReport = async (myId: number, signal: AbortSignal) => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (!branchId) {
-        toast({
-          title: t("error"),
-          description: "No branch selected",
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("noBranchSelected"));
         return;
       }
 
       // Convert month/year to dates
       const startYear = parseInt(paymentYear) || new Date().getFullYear();
-      const startDateObj = new Date(startYear, parseInt(paymentMonth) - 1, 1);
-      const endDateObj = new Date(startYear, parseInt(paymentMonth), 0);
+      const startDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth) - 1, 1));
+      const endDateObj = new Date(Date.UTC(startYear, parseInt(paymentMonth), 0));
 
-      const newStartDate = startDateObj.toISOString().split("T")[0];
-      const newEndDate = endDateObj.toISOString().split("T")[0];
+      const newStartDate = startDateObj.toISOString().split("T")[0]!;
+      const newEndDate = endDateObj.toISOString().split("T")[0]!;
 
-      const financialSummary = await getFinancialSummary(
+      const financialSummary = await runReportJob("financial_summary", {
         branchId,
-        newStartDate,
-        newEndDate
-      );
+        startDate: new Date(newStartDate).toISOString(),
+        endDate:   new Date(newEndDate + "T23:59:59").toISOString(),
+      }, { signal });
+      if (myId !== requestIdRef.current) return;
 
       const totalExpense =
         financialSummary.totalSalaries + financialSummary.totalExpenses;
@@ -549,25 +575,25 @@ export default function ReportsPage() {
 
       setReportData([
         {
-          label: t("totalIncome") || "Total Income",
+          label: t("totalIncome"),
           amount: financialSummary.totalIncome,
           type: "income",
           count: 0,
         },
         {
-          label: t("totalSalaries") || "Total Salaries",
+          label: t("totalSalaries"),
           amount: financialSummary.totalSalaries,
           type: "expense",
           count: 0,
         },
         {
-          label: t("totalExpenses") || "Total Expenses",
+          label: t("totalExpenses"),
           amount: financialSummary.totalExpenses,
           type: "expense",
           count: 0,
         },
         {
-          label: t("netProfit") || "Net Profit",
+          label: t("netProfit"),
           amount: profit,
           type: profit >= 0 ? "profit" : "loss",
           count: 0,
@@ -592,138 +618,303 @@ export default function ReportsPage() {
         avg: 0,
       });
     } catch (error) {
+      if (myId !== requestIdRef.current || (error as Error)?.name === "AbortError") return;
       console.error("Failed to generate income report:", error);
-      toast({
-        title: t("error"),
-        description: "Failed to generate income report",
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToGenerateIncomeReport"));
       setReportData([]);
     }
   };
 
-  const downloadReport = () => {
-    let csv = "";
-    const periodLabel = `${paymentMonth}/${paymentYear}`;
-
-    if (reportType === "income") {
-      csv = "Financial Summary Report\n";
-      csv += `Period: ${periodLabel}\n\n`;
-      csv += "Label,Amount\n";
-      reportData.forEach((item) => {
-        csv += `${item.label},${item.amount}\n`;
-      });
-    } else {
-      let columns: string[] = [];
-      if (reportType === "debtors") {
-        columns = [
-          "Student Name",
-          "Class",
-          "Month",
-          "Year",
-          "Monthly Payment",
-          "Paid Amount",
-          "Due Amount",
-          "Status",
-        ];
-      } else if (reportType === "expenses") {
-        columns = [
-          "Title",
-          "Category",
-          "Amount",
-          "Payment Method",
-          "Date",
-          "Notes",
-        ];
-      } else if (reportType === "salary") {
-        columns = [
-          "Teacher Name",
-          "Amount",
-          "Month",
-          "Year",
-          "Status",
-          "Paid Date",
-          "Added By",
-        ];
-      } else {
-        columns = [
-          "Student Name",
-          "Class",
-          "Amount",
-          "Month",
-          "Year",
-          "Status",
-          "Paid Date",
-          "Added By",
-        ];
+  const generateForecastReport = async (myId: number) => {
+    try {
+      const branchId = currentBranch?.id;
+      if (!branchId) {
+        notify.error(t("error"), t("noBranchSelected"));
+        return;
       }
-
-      csv = `${reportType.toUpperCase()} REPORT\n`;
-      csv += `Period: ${periodLabel}\n\n`;
-      csv += columns.join(",") + "\n";
-
-      reportData.forEach((item) => {
-        if (reportType === "debtors") {
-          csv += `${item.studentName},${item.className},${item.month},${item.year},${item.monthlyPayment},${item.paidAmount},${item.dueAmount},${item.status}\n`;
-        } else if (reportType === "expenses") {
-          csv += `${item.title},${item.category},${item.amount},${item.paymentMethod},${item.date},${item.description}\n`;
-        } else if (reportType === "salary") {
-          csv += `${item.teacherName},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
-        } else {
-          csv += `${item.studentName},${item.className},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
-        }
-      });
+      const now = new Date();
+      const month = now.getMonth() + 1;
+      const year = now.getFullYear();
+      const data = await getForecastData(branchId, month, year);
+      if (myId !== requestIdRef.current) return;
+      setForecastData(data);
+    } catch (error) {
+      if (myId !== requestIdRef.current) return;
+      console.error("Failed to load forecast data:", error);
+      notify.error(t("error"), t("failedToLoadForecastData"));
+      setForecastData(null);
     }
-
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${reportType}-report-${periodLabel}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
-  }
+  const downloadReport = async () => {
+    if (reportData.length === 0) {
+      notify.error(t("noDataFound"), t("generateReportFirst"));
+      return;
+    }
 
+    setIsDownloading(true);
+    try {
+      let csv = "";
+      const periodLabel = `${paymentMonth}/${paymentYear}`;
+
+      if (reportType === "income") {
+        csv = `${t("financialSummary")}\n`;
+        csv += `${t("dateRange")}: ${periodLabel}\n\n`;
+        csv += `${t("label")},${t("amount")}\n`;
+        reportData.forEach((item) => {
+          csv += `${item.label},${item.amount}\n`;
+        });
+      } else {
+        let columns: string[] = [];
+        if (reportType === "debtors") {
+          columns = [
+            t("fullName"),
+            t("class"),
+            t("month"),
+            t("year"),
+            t("monthlyPayment"),
+            t("paidAmount"),
+            t("dueAmount"),
+            t("status"),
+          ];
+        } else if (reportType === "expenses") {
+          columns = [
+            t("title"),
+            t("category"),
+            t("amount"),
+            t("paymentMethod"),
+            t("date"),
+            t("notes"),
+          ];
+        } else if (reportType === "salary") {
+          columns = [
+            t("teacherName"),
+            t("amount"),
+            t("month"),
+            t("year"),
+            t("status"),
+            t("paidDate"),
+            t("addedBy"),
+          ];
+        } else {
+          columns = [
+            t("fullName"),
+            t("class"),
+            t("enrollmentDate"),
+            t("amount"),
+            t("month"),
+            t("year"),
+            t("status"),
+            t("paidDate"),
+            t("addedBy"),
+          ];
+        }
+
+        csv = `${t(reportType + "Report") || reportType.toUpperCase()}\n`;
+        csv += `${t("dateRange")}: ${periodLabel}\n\n`;
+        csv += columns.join(",") + "\n";
+
+        reportData.forEach((item) => {
+          if (reportType === "debtors") {
+            csv += `${item.studentName},${item.className},${item.month},${item.year},${item.monthlyPayment},${item.paidAmount},${item.dueAmount},${item.status}\n`;
+          } else if (reportType === "expenses") {
+            csv += `${item.title},${item.category},${item.amount},${item.paymentMethod},${item.date},${item.description}\n`;
+          } else if (reportType === "salary") {
+            csv += `${item.teacherName},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
+          } else {
+            csv += `${item.studentName},${item.className},${item.enrollmentDate},${item.amount},${item.month},${item.year},${item.status},${item.paidDate},${item.addedBy}\n`;
+          }
+        });
+      }
+
+      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${reportType}-report-${periodLabel}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      notify.success(t("success"), t("reportDownloaded"));
+    } catch {
+      notify.error(t("error"), t("failedToDownloadReport"));
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // Build a PrintColumn/data structure for the current reportType
+  const buildPrintOptions = (format: "pdf" | "csv") => {
+    const periodLabel = reportType === "debtors"
+      ? `${debtorMonth}/${debtorYear}`
+      : `${paymentMonth}/${paymentYear}`;
+
+    const titles: Record<string, string> = {
+      payment: t("studentPayments"),
+      salary:  t("teacherSalaries"),
+      debtors: t("studentDebtors"),
+      income:  t("financialSummary"),
+      expenses: t("expensesReport"),
+    };
+
+    const title = titles[reportType] || reportType;
+    const subtitle = `${t("period")}: ${periodLabel}`;
+    const filename = `${reportType}-report-${periodLabel}`;
+
+    let columns: PrintColumn[] = [];
+    let data: Record<string, unknown>[] = [];
+
+    if (reportType === "payment") {
+      columns = [
+        { header: t("fullName"), key: "studentName" },
+        { header: t("class"), key: "className" },
+        { header: t("enrollmentDate"), key: "enrollmentDate" },
+        { header: t("amount"), key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("month"), key: "month", align: "center" },
+        { header: t("year"), key: "year", align: "center" },
+        { header: t("status"), key: "status", align: "center" },
+        { header: t("paidDate"), key: "paidDate" },
+        { header: t("addedBy"), key: "addedBy" },
+      ];
+      data = reportData;
+    } else if (reportType === "salary") {
+      columns = [
+        { header: t("teacherName"), key: "teacherName" },
+        { header: t("amount"), key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("month"), key: "month", align: "center" },
+        { header: t("year"), key: "year", align: "center" },
+        { header: t("status"), key: "status", align: "center" },
+        { header: t("paidDate"), key: "paidDate" },
+        { header: t("addedBy"), key: "addedBy" },
+      ];
+      data = reportData;
+    } else if (reportType === "debtors") {
+      columns = [
+        { header: t("fullName"), key: "studentName" },
+        { header: t("class"), key: "className" },
+        { header: t("month"), key: "month", align: "center" },
+        { header: t("year"), key: "year", align: "center" },
+        { header: t("monthlyPayment"), key: "monthlyPayment", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("paid"), key: "paidAmount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("due"), key: "dueAmount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("status"), key: "status", align: "center" },
+      ];
+      data = reportData;
+    } else if (reportType === "income") {
+      columns = [
+        { header: t("label"), key: "label" },
+        { header: t("amount"), key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
+      ];
+      data = reportData;
+    } else if (reportType === "expenses") {
+      columns = [
+        { header: t("title"), key: "title" },
+        { header: t("category"), key: "category" },
+        { header: t("amount"), key: "amount", align: "right", format: (v) => formatCurrency(Number(v)) },
+        { header: t("paymentMethod"), key: "paymentMethod", align: "center" },
+        { header: t("date"), key: "date" },
+        { header: t("description"), key: "description" },
+      ];
+      data = reportData;
+    }
+
+    return { title, subtitle, columns, data, filename };
+  };
+
+  const handleExportPDF = () => {
+    if (reportData.length === 0 && reportType !== "forecast") return;
+    printReport(buildPrintOptions("pdf"));
+  };
+
+  const handleExportCSV = () => {
+    if (reportData.length === 0 && reportType !== "forecast") return;
+    downloadCSV(buildPrintOptions("csv"));
+  };
+
+  // `canViewReports` comes from the already-loaded session (hasPermission),
+  // not the report fetch — checking it before `isLoading` means a forbidden
+  // user never sees the loading skeleton at all, instead of flashing it
+  // before the forbidden message replaces it.
   if (!canViewReports) {
     return (
       <div className="flex flex-col items-center justify-center h-96 space-y-4">
         <AlertCircle className="w-16 h-16 text-red-500" />
-        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">403 – Ruxsat yo'q</h2>
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{t("forbidden")}</h2>
         <p className="text-slate-600 dark:text-slate-400 text-center max-w-md">
-          Hisobotlar bo'limiga kirish huquqingiz yo'q.
+          {t("noPermissionReports")}
         </p>
+      </div>
+    );
+  }
+
+  // Title is static chrome (translated, no report data needed), so it
+  // renders immediately instead of waiting behind the loading skeleton.
+  const header = (
+    <div>
+      <h1 className="text-display text-slate-900 dark:text-slate-100">
+        {t("reports")}
+      </h1>
+      <p className="text-slate-600 dark:text-slate-400 mt-1">
+        {t("reportsSubtitle") || t("generateDetailedReports")}
+      </p>
+    </div>
+  );
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        {header}
+        {/* FilterBar — matches the actual filter bar shape */}
+        <Card>
+          <CardHeader className="pb-2"><Skeleton className="h-5 w-32" /></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {[180, 130, 130, 130, 130].map((w, i) => (
+                <Skeleton key={i} className="h-9 rounded-lg" style={{ width: w }} />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2"><Skeleton className="h-4 w-24" /></CardHeader>
+              <CardContent><Skeleton className="h-8 w-28" /></CardContent>
+            </Card>
+          ))}
+        </div>
+        {/* Table area */}
+        <Card>
+          <CardHeader className="pb-2"><Skeleton className="h-5 w-40" /></CardHeader>
+          <CardContent className="p-0">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-slate-100 dark:border-slate-800 last:border-0">
+                <Skeleton className="h-4 w-40 flex-shrink-0" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 w-24 flex-shrink-0" />
+                <Skeleton className="h-6 w-16 rounded-full flex-shrink-0" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-          {t("reports") || "Reports"}
-        </h1>
-        <p className="text-slate-600 dark:text-slate-400 mt-1">
-          {t("reportsSubtitle") || "Moslashtirilgan sana oralig'i bilan batafsil hisobotlar yarating"}
-        </p>
-      </div>
+      {header}
 
       {/* Filters */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5" />
             {t("reportFilters")}
+            {isFetching && <Loader2 className="w-4 h-4 animate-spin text-indigo-500 ml-auto" />}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -749,17 +940,20 @@ export default function ReportsPage() {
                   <SelectItem value="income">
                     {t("financialSummary")}
                   </SelectItem>
+                  <SelectItem value="forecast">
+                    {t("financialForecast")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {reportType !== "debtors" && (
+            {reportType !== "debtors" && reportType !== "forecast" && (
               <div className="space-y-2">
-                <Label htmlFor="paymentMonth">{t("month") || "Month"}</Label>
+                <Label htmlFor="paymentMonth">{t("month")}</Label>
                 <div className="flex gap-2">
                   <Select value={paymentMonth} onValueChange={setPaymentMonth}>
                     <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="Month" />
+                      <SelectValue placeholder={t("month")} />
                     </SelectTrigger>
                     <SelectContent>
                       {Array.from({ length: 12 }, (_, i) => {
@@ -780,7 +974,7 @@ export default function ReportsPage() {
                         ];
                         return (
                           <SelectItem key={monthNum} value={monthNum}>
-                            {t(monthNames[i])}
+                            {t(monthNames[i]!)}
                           </SelectItem>
                         );
                       })}
@@ -800,7 +994,8 @@ export default function ReportsPage() {
 
             {reportType !== "salary" &&
               reportType !== "income" &&
-              reportType !== "expenses" && (
+              reportType !== "expenses" &&
+              reportType !== "forecast" && (
                 <div className="space-y-2">
                   <Label htmlFor="classId">{t("class")}</Label>
                   <Select value={classId} onValueChange={setClassId}>
@@ -846,7 +1041,7 @@ export default function ReportsPage() {
                         ];
                         return (
                           <SelectItem key={monthNum} value={monthNum}>
-                            {t(monthNames[i])}
+                            {t(monthNames[i]!)}
                           </SelectItem>
                         );
                       })}
@@ -862,72 +1057,295 @@ export default function ReportsPage() {
                     min="2000"
                     max="2099"
                     value={debtorYear || ""}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      console.log("Debtor year changed to:", val);
-                      setDebtorYear(val);
-                    }}
+                    onChange={(e) => setDebtorYear(e.target.value)}
                   />
                 </div>
               </>
             )}
           </div>
 
-          <div className="flex justify-end">
-            <Button onClick={downloadReport} disabled={reportData.length === 0}>
-              <Download className="w-4 h-4 mr-2" />
-              {t("downloadReport")}
+          <div className="flex justify-end gap-2 flex-wrap">
+            {/* Legacy CSV (keeps existing behaviour for income/forecast types) */}
+            <Button
+              variant="outline"
+              onClick={downloadReport}
+              disabled={(reportData.length === 0 && reportType !== "forecast") || isDownloading}
+              title={t("downloadCSV")}
+            >
+              {isDownloading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4 mr-2" />
+              )}
+              CSV
             </Button>
+
+            {/* Improved CSV with proper quoting */}
+            {reportType !== "forecast" && (
+              <Button
+                variant="outline"
+                onClick={handleExportCSV}
+                disabled={reportData.length === 0}
+                title={t("downloadExcel")}
+              >
+                <FileDown className="w-4 h-4 mr-2" />
+                {t("excel")}
+              </Button>
+            )}
+
+            {/* PDF via print dialog */}
+            {reportType !== "forecast" && (
+              <Button
+                onClick={handleExportPDF}
+                disabled={reportData.length === 0}
+                title={t("exportPDF")}
+                className="bg-brand hover:bg-brand-hover"
+              >
+                <Printer className="w-4 h-4 mr-2" />
+                {t("printPDF")}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
 
       {/* Summary */}
-      {reportType !== "income" && (
+      {reportType !== "income" && reportType !== "forecast" && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="border-l-4 border-l-blue-500">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                {t("totalAmount")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                {formatCurrency(summary.total)}
-              </div>
-            </CardContent>
-          </Card>
+          {isFetching ? (
+            [1, 2, 3].map((i) => (
+              <Card key={i}>
+                <CardHeader className="pb-2"><Skeleton className="h-4 w-24" /></CardHeader>
+                <CardContent><Skeleton className="h-8 w-28" /></CardContent>
+              </Card>
+            ))
+          ) : (
+            <>
+              <Card className="border-l-4 border-l-blue-500">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                    {t("totalAmount")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    {formatCurrency(summary.total)}
+                  </div>
+                </CardContent>
+              </Card>
 
-          <Card className="border-l-4 border-l-green-500">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                {t("count")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                {summary.count}
-              </div>
-            </CardContent>
-          </Card>
+              <Card className="border-l-4 border-l-green-500">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                    {t("count")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                    {summary.count}
+                  </div>
+                </CardContent>
+              </Card>
 
-          <Card className="border-l-4 border-l-purple-500">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                {t("average")}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                {formatCurrency(summary.avg)}
-              </div>
-            </CardContent>
-          </Card>
+              <Card className="border-l-4 border-l-purple-500">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                    {t("average")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                    {formatCurrency(summary.avg)}
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
       )}
 
+      {/* Forecast UI */}
+      {reportType === "forecast" && (
+        isFetching ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Card key={i}>
+                  <CardHeader className="pb-2"><Skeleton className="h-4 w-28" /></CardHeader>
+                  <CardContent>
+                    <Skeleton className="h-7 w-24" />
+                    <Skeleton className="h-3 w-32 mt-2" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <Card>
+              <CardHeader className="pb-2"><Skeleton className="h-5 w-40" /></CardHeader>
+              <CardContent><Skeleton className="h-3 w-full rounded-full" /></CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2"><Skeleton className="h-5 w-32" /></CardHeader>
+              <CardContent><Skeleton className="h-[300px] w-full" /></CardContent>
+            </Card>
+          </div>
+        ) : forecastData ? (
+          <div className="space-y-6">
+            {/* KPI cards row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="border-l-4 border-l-emerald-500">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <DollarSign className="w-3.5 h-3.5" />
+                    {t("expectedMonthlyIncome")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                    {formatCurrency(forecastData.expectedMonthlyIncome)}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {forecastData.activeStudentCount} {t("activeStudents")} · {t("avg")} {formatCurrency(forecastData.avgMonthlyPayment)}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-l-4 border-l-blue-500">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    {t("actualIncomeThisMonth")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    {formatCurrency(forecastData.actualIncomeThisMonth)}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {forecastData.expectedMonthlyIncome > 0
+                      ? `${Math.round((forecastData.actualIncomeThisMonth / forecastData.expectedMonthlyIncome) * 100)}% ${t("ofExpected")}`
+                      : "—"}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-l-4 border-l-red-400">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <TrendingDown className="w-3.5 h-3.5" />
+                    {t("totalExpensesThisMonth")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-red-500 dark:text-red-400">
+                    {formatCurrency(forecastData.totalExpensesThisMonth)}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {t("salaries")} + {t("expenses")}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="border-l-4 border-l-orange-400">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5" />
+                    {t("projectedSalaryCosts")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-orange-500 dark:text-orange-400">
+                    {formatCurrency(forecastData.projectedSalaryCosts)}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {t("nextMonthEstimate")}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Break-even analysis */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle>{t("breakEvenAnalysis")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-4">
+                  <div className={`flex items-center gap-2 text-sm font-semibold px-3 py-1.5 rounded-full ${forecastData.isBreakingEven ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"}`}>
+                    {forecastData.isBreakingEven ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                    {forecastData.isBreakingEven ? (t("profitable")) : (t("operatingAtLoss"))}
+                  </div>
+                  <span className="text-sm text-slate-500">
+                    {t("expensesCoverRate")} {Math.round(forecastData.breakEvenRate)}% {t("ofExpectedIncome")}
+                  </span>
+                </div>
+                <div className="mt-4 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${forecastData.breakEvenRate <= 100 ? "bg-emerald-500" : "bg-red-500"}`}
+                    style={{ width: `${Math.min(forecastData.breakEvenRate, 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1 text-[11px] text-slate-400">
+                  <span>0%</span>
+                  <span>100%</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 6-month expected vs actual chart */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle>{t("sixMonthTrend")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={forecastData.trend} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatCurrency(v)} width={90} />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="expectedIncome" name={t("expectedIncome")} fill="#6366f1" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="actualIncome" name={t("actualIncome")} fill="#10b981" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="actualExpenses" name={t("actualExpenses")} fill="#f87171" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="py-16 text-center text-slate-400">
+              <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm">{t("loadingForecast")}</p>
+            </CardContent>
+          </Card>
+        )
+      )}
+
       {/* Report Data */}
-      {reportType === "income" ? (
+      {reportType !== "forecast" && (reportType === "income" ? (
+        isFetching ? (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <Card key={i}>
+                  <CardHeader className="pb-2"><Skeleton className="h-4 w-24" /></CardHeader>
+                  <CardContent><Skeleton className="h-8 w-28" /></CardContent>
+                </Card>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader><Skeleton className="h-5 w-40" /></CardHeader>
+                <CardContent><Skeleton className="h-[300px] w-full" /></CardContent>
+              </Card>
+              <Card>
+                <CardHeader><Skeleton className="h-5 w-48" /></CardHeader>
+                <CardContent><Skeleton className="h-[300px] w-full" /></CardContent>
+              </Card>
+            </div>
+          </>
+        ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {reportData.map((item, idx) => (
@@ -972,7 +1390,7 @@ export default function ReportsPage() {
             {/* Bar Chart */}
             <Card>
               <CardHeader>
-                <CardTitle>{t("incomeVsExpenses") || "Income vs Expenses"}</CardTitle>
+                <CardTitle>{t("incomeVsExpenses")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -980,7 +1398,7 @@ export default function ReportsPage() {
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="label" />
                     <YAxis />
-                    <Tooltip formatter={(value) => formatCurrency(value)} />
+                    <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
                     <Legend />
                     <Bar dataKey="amount" fill="#3b82f6" />
                   </BarChart>
@@ -992,7 +1410,7 @@ export default function ReportsPage() {
             {paymentMethodsData.length > 0 && (
               <Card>
                 <CardHeader>
-                  <CardTitle>{t("incomeByPaymentMethod") || "Income by Payment Method"}</CardTitle>
+                  <CardTitle>{t("incomeByPaymentMethod")}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -1022,7 +1440,7 @@ export default function ReportsPage() {
                           />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => formatCurrency(value)} />
+                      <Tooltip formatter={(value) => formatCurrency(Number(value ?? 0))} />
                     </PieChart>
                   </ResponsiveContainer>
                 </CardContent>
@@ -1030,12 +1448,26 @@ export default function ReportsPage() {
             )}
           </div>
         </>
+        )
       ) : (
         <Card>
           <CardHeader>
             <CardTitle>{t("reportDetails")}</CardTitle>
           </CardHeader>
           <CardContent>
+            {isFetching ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="flex items-center gap-4 px-1 py-2">
+                    <Skeleton className="h-4 w-40 flex-shrink-0" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-4 w-24 flex-shrink-0" />
+                    <Skeleton className="h-6 w-16 rounded-full flex-shrink-0" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+            <>
             <div className="overflow-x-auto">
               {reportType === "debtors" && (
                 <table className="w-full text-sm">
@@ -1164,6 +1596,11 @@ export default function ReportsPage() {
                           {t("class")}
                         </th>
                       )}
+                      {reportType === "payment" && (
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 dark:text-slate-400">
+                          {t("enrollmentDate")}
+                        </th>
+                      )}
                       <th className="text-right py-3 px-4 font-medium text-slate-600 dark:text-slate-400">
                         {t("amount")}
                       </th>
@@ -1200,6 +1637,11 @@ export default function ReportsPage() {
                             {item.className}
                           </td>
                         )}
+                        {reportType === "payment" && (
+                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+                            {item.enrollmentDate}
+                          </td>
+                        )}
                         <td className="py-3 px-4 text-right text-slate-900 dark:text-slate-100 font-medium">
                           {formatCurrency(item.amount)}
                         </td>
@@ -1233,12 +1675,11 @@ export default function ReportsPage() {
               )}
 
               {reportData.length === 0 && (
-                <div className="text-center py-12">
-                  <AlertCircle className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-4" />
-                  <p className="text-slate-500 dark:text-slate-400">
-                    {t("noDataFound")}
-                  </p>
-                </div>
+                <EmptyState
+                  icon={FileText}
+                  title={t("noDataFound")}
+                  description={t("generateReportFirst")}
+                />
               )}
             </div>
 
@@ -1247,7 +1688,7 @@ export default function ReportsPage() {
               <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-4">
                   <Label className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("perPage") || "Per Page"}
+                    {t("perPage")}
                   </Label>
                   <Select value={limit.toString()} onValueChange={(val) => setLimit(parseInt(val))}>
                     <SelectTrigger className="w-20">
@@ -1262,7 +1703,7 @@ export default function ReportsPage() {
                     </SelectContent>
                   </Select>
                   <span className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("showing") || "Showing"} {(page - 1) * limit + 1} {t("to") || "to"} {Math.min(page * limit, total)} {t("of") || "of"} {total}
+                    {t("showing")} {(page - 1) * limit + 1} {t("to")} {Math.min(page * limit, total)} {t("of")} {total}
                   </span>
                 </div>
 
@@ -1270,32 +1711,36 @@ export default function ReportsPage() {
                   <Button
                     variant="outline"
                     size="sm"
+                    aria-label={t("previous")}
                     onClick={() => setPage(Math.max(1, page - 1))}
                     disabled={page === 1}
                     className="h-8"
                   >
                     <ChevronLeft className="w-4 h-4" />
-                    <span className="hidden sm:inline ml-1">{t("previous") || "Previous"}</span>
+                    <span className="hidden sm:inline ml-1">{t("previous")}</span>
                   </Button>
                   <div className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("page") || "Page"} {page} {t("of") || "of"} {totalPages}
+                    {t("page")} {page} {t("of")} {totalPages}
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
+                    aria-label={t("next")}
                     onClick={() => setPage(Math.min(totalPages, page + 1))}
                     disabled={page === totalPages || totalPages === 0}
                     className="h-8"
                   >
-                    <span className="hidden sm:inline mr-1">{t("next") || "Next"}</span>
+                    <span className="hidden sm:inline mr-1">{t("next")}</span>
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
             )}
+            </>
+            )}
           </CardContent>
         </Card>
-      )}
+      ))}
     </div>
   );
 }

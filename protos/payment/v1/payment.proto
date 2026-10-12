@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package payment.v1;
+
+import "common/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/school-crm/protos/payment/v1;paymentv1";
+
+// ── Messages ──────────────────────────────────────────────────────────────────
+
+message Payment {
+  string payment_id      = 1;
+  string student_id      = 2;
+  string student_name    = 3;
+  double amount          = 4;
+  string month           = 5;
+  int32  year            = 6;
+  string payment_method  = 7;
+  string status          = 8; // paid | partial | unpaid
+  string invoice_number  = 9;
+  string notes           = 10;
+  string branch_id       = 11;
+  string created_by      = 12;
+  google.protobuf.Timestamp paid_date  = 13;
+  google.protobuf.Timestamp created_at = 14;
+}
+
+message PaymentSummary {
+  double total_paid    = 1;
+  double total_unpaid  = 2;
+  double total_partial = 3;
+  int32  paid_count    = 4;
+  int32  unpaid_count  = 5;
+  int32  partial_count = 6;
+}
+
+// ── Requests / Responses ──────────────────────────────────────────────────────
+
+message GetPaymentRequest {
+  string payment_id = 1;
+}
+message GetPaymentResponse {
+  Payment payment = 1;
+}
+
+message ListPaymentsRequest {
+  string branch_id      = 1;
+  string month          = 2;
+  int32  year           = 3;
+  string status         = 4;
+  string payment_method = 5;
+  string class_id       = 6;
+  string search         = 7;
+  common.v1.PageRequest page = 8;
+}
+message ListPaymentsResponse {
+  repeated Payment         payments = 1;
+  PaymentSummary           summary  = 2;
+  common.v1.PageResponse   page     = 3;
+}
+
+message CheckSubscriptionActiveRequest {
+  string branch_id = 1; // used by payment service to guard against expired trial
+}
+message CheckSubscriptionActiveResponse {
+  bool   active  = 1;
+  string plan    = 2;
+  string expires = 3; // RFC3339
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+
+service PaymentService {
+  rpc GetPayment(GetPaymentRequest) returns (GetPaymentResponse);
+  rpc ListPayments(ListPaymentsRequest) returns (ListPaymentsResponse);
+  rpc CheckSubscriptionActive(CheckSubscriptionActiveRequest) returns (CheckSubscriptionActiveResponse);
+}

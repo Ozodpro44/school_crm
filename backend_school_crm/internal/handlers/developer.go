@@ -4,12 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/db"
+	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/platformsettings"
 	"github.com/school-crm/backend/internal/service"
 )
 
@@ -399,16 +402,12 @@ func generateTestStudents(ctx context.Context, conn *sql.DB, branchID string) (i
 
 	count := 0
 	for i, name := range testNames {
-		parts := ""
-		if i < len(testNames) {
-			parts = name
-		}
-
+		phone := fmt.Sprintf("+998901234%03d", i)
 		_, err := conn.ExecContext(ctx, `
-			INSERT INTO students (id, first_name, last_name, email, phone, branch_id, created_at, updated_at)
-			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
+			INSERT INTO students (id, full_name, phone, parent_phone, monthly_payment, status, branch_id, created_at, updated_at)
+			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW(), NOW())
 			ON CONFLICT DO NOTHING
-		`, "Test", parts, "", "", branchID)
+		`, name, phone, phone, 500000.0, "active", branchID)
 
 		if err == nil {
 			count++
@@ -419,18 +418,28 @@ func generateTestStudents(ctx context.Context, conn *sql.DB, branchID string) (i
 }
 
 func generateTestTeachers(ctx context.Context, conn *sql.DB, branchID string) (int, error) {
-	testTeachers := []string{
-		"Mr. Johnson", "Ms. Williams", "Dr. Brown", "Prof. Davis",
-		"Mr. Miller", "Ms. Wilson", "Mr. Moore", "Ms. Taylor",
+	testTeachers := []struct {
+		name  string
+		phone string
+		email string
+	}{
+		{"Mr. Johnson", "+998901110001", "johnson@test.com"},
+		{"Ms. Williams", "+998901110002", "williams@test.com"},
+		{"Dr. Brown", "+998901110003", "brown@test.com"},
+		{"Prof. Davis", "+998901110004", "davis@test.com"},
+		{"Mr. Miller", "+998901110005", "miller@test.com"},
+		{"Ms. Wilson", "+998901110006", "wilson@test.com"},
+		{"Mr. Moore", "+998901110007", "moore@test.com"},
+		{"Ms. Taylor", "+998901110008", "taylor@test.com"},
 	}
 
 	count := 0
-	for _, name := range testTeachers {
+	for _, t := range testTeachers {
 		_, err := conn.ExecContext(ctx, `
-			INSERT INTO teachers (id, first_name, last_name, email, phone, branch_id, created_at, updated_at)
+			INSERT INTO teachers (id, full_name, phone, email, monthly_salary, branch_id, created_at, updated_at)
 			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW(), NOW())
 			ON CONFLICT DO NOTHING
-		`, "Teacher", name, "", "", branchID)
+		`, t.name, t.phone, t.email, 3000000.0, branchID)
 
 		if err == nil {
 			count++
@@ -464,35 +473,46 @@ func generateTestClasses(ctx context.Context, conn *sql.DB, branchID string) (in
 func generateTestPayments(ctx context.Context, conn *sql.DB, branchID string) (int, error) {
 	// Get some students first
 	studentRows, err := conn.QueryContext(ctx, `
-		SELECT id FROM students WHERE branch_id = $1 LIMIT 10
+		SELECT id, monthly_payment FROM students WHERE branch_id = $1 LIMIT 10
 	`, branchID)
 	if err != nil {
 		return 0, err
 	}
 	defer studentRows.Close()
 
-	var studentIDs []string
+	type studentRow struct {
+		id             string
+		monthlyPayment float64
+	}
+	var students []studentRow
 	for studentRows.Next() {
-		var id string
-		if err := studentRows.Scan(&id); err != nil {
+		var s studentRow
+		if err := studentRows.Scan(&s.id, &s.monthlyPayment); err != nil {
 			continue
 		}
-		studentIDs = append(studentIDs, id)
+		students = append(students, s)
 	}
 
-	count := 0
-	amounts := []float64{50000, 100000, 150000, 200000, 250000}
-	statuses := []string{"paid", "pending", "overdue"}
+	now := time.Now()
+	month := now.Format("January")
+	year := now.Year()
+	statuses := []string{"paid", "partial"}
+	methods := []string{"cash", "card", "bank"}
 
-	for i, studentID := range studentIDs {
-		amount := amounts[i%len(amounts)]
+	count := 0
+	for i, s := range students {
+		amount := s.monthlyPayment
+		if i%3 == 1 {
+			amount = s.monthlyPayment / 2 // partial payment
+		}
 		status := statuses[i%len(statuses)]
+		method := methods[i%len(methods)]
 
 		_, err := conn.ExecContext(ctx, `
-			INSERT INTO payments (id, student_id, amount, status, date, created_at, updated_at)
-			VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW(), NOW())
+			INSERT INTO payments (id, student_id, amount, month, year, payment_method, status, branch_id, created_at)
+			VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, NOW())
 			ON CONFLICT DO NOTHING
-		`, studentID, amount, status)
+		`, s.id, amount, month, year, method, status, branchID)
 
 		if err == nil {
 			count++
@@ -601,174 +621,358 @@ func GetDevSubscriptions(database *db.Database) gin.HandlerFunc {
 	}
 }
 
-// GetDevUsers returns all users for dev dashboard
-func GetDevUsers(database *db.Database) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		query := `
-			SELECT id, email, full_name, role, created_at, updated_at
-			FROM users
-			ORDER BY created_at DESC
-			LIMIT 100
-		`
+// RegisterDeveloperRoutes registers the only genuinely public developer
+// endpoint — static API documentation. Schema/migrations/test-data/seeding
+// used to live here unauthenticated too; they now require a developer JWT,
+// see RegisterDevUtilityRoutes.
+func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database, subscriptionService *service.SubscriptionService) {
+	log.Println("[ROUTES] Registering public developer routes")
 
-		rows, err := database.GetConn().QueryContext(c.Request.Context(), query)
-		if err != nil {
-			log.Printf("[DEV ERROR] Failed to fetch users: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
-			return
-		}
-		defer rows.Close()
-
-		var users []map[string]interface{}
-		for rows.Next() {
-			var id, email, fullName, role string
-			var createdAt, updatedAt time.Time
-
-			if err := rows.Scan(&id, &email, &fullName, &role, &createdAt, &updatedAt); err != nil {
-				continue
-			}
-
-			users = append(users, map[string]interface{}{
-				"id":        id,
-				"email":     email,
-				"fullName":  fullName,
-				"role":      role,
-				"createdAt": createdAt,
-				"updatedAt": updatedAt,
-			})
-		}
-
-		if users == nil {
-			users = []map[string]interface{}{}
-		}
-
-		c.JSON(http.StatusOK, users)
-	}
+	router.GET("/dev/api-docs", GetAPIDocumentation())
 }
 
-// RegisterDeveloperRoutes registers developer endpoints
-func RegisterDeveloperRoutes(router *gin.RouterGroup, database *db.Database, subscriptionService *service.SubscriptionService) {
-	log.Println("[ROUTES] Registering developer routes")
-
-	// Schema and migrations info (no auth required for learning)
+// RegisterDevUtilityRoutes registers developer-only operational endpoints
+// (schema/migration introspection, test-data generation, plan seeding).
+// Must be mounted on a router group behind DevAuthMiddleware — these expose
+// full DB schema and can write data, and were previously reachable with no
+// auth at all.
+func RegisterDevUtilityRoutes(router *gin.RouterGroup, database *db.Database) {
 	router.GET("/dev/schema", GetDatabaseSchema(database))
 	router.GET("/dev/migrations", GetDatabaseMigrations(database))
-	router.GET("/dev/api-docs", GetAPIDocumentation())
-
-	// Test data generation (admin only)
-	router.POST("/dev/generate-test-data", GenerateTestData(database))
-	
-	// Subscription plans seeding
-	router.POST("/dev/seed-subscription-plans", SeedSubscriptionPlans(database))
-	
-	// Subscription plans CRUD (dev endpoints)
-	router.POST("/dev/subscription-plans", CreateSubscriptionPlanHandler(subscriptionService))
-	router.PUT("/dev/subscription-plans/:id", UpdateSubscriptionPlanHandler(subscriptionService))
-	router.DELETE("/dev/subscription-plans/:id", DeleteSubscriptionPlanHandler(subscriptionService))
-	
-	// Subscriptions and users data (dev endpoints)
-	router.GET("/dev/subscriptions", GetDevSubscriptions(database))
-	router.GET("/dev/users", GetDevUsers(database))
+	router.POST("/dev/generate-test-data", middleware.RequireDeveloperRole("admin"), GenerateTestData(database))
+	router.POST("/dev/seed-subscription-plans", middleware.RequireDeveloperRole("admin"), SeedSubscriptionPlans(database))
 }
 
 // ==================== DEV SETTINGS ====================
 
-// RegisterDevSettingsRoutes registers authenticated developer settings routes.
+// RegisterDevCRMRoutes registers developer-accessible user and branch management routes.
 // Must be called with a router group that uses DevAuthMiddleware.
-func RegisterDevSettingsRoutes(router *gin.RouterGroup, database *db.Database) {
-	router.GET("/dev/settings", GetDevSettings(database))
-	router.PUT("/dev/settings", UpdateDevSettings(database))
+func RegisterDevCRMRoutes(router *gin.RouterGroup, userService *service.UserService, branchService *service.BranchService) {
+	// Users (full CRUD without user-context permission checks)
+	users := router.Group("/dev/crm/users")
+	users.GET("", listUsers(userService))
+	users.GET("/:id", getUser(userService))
+	users.PUT("/:id", devUpdateUser(userService))
+	users.DELETE("/:id", middleware.RequireDeveloperRole("admin"), devDeleteUser(userService))
+	users.POST("/:id/restore", middleware.RequireDeveloperRole("admin"), devRestoreUser(userService))
+
+	// Branches (reuse existing handlers — ownership checks skipped for dev context)
+	branches := router.Group("/dev/crm/branches")
+	branches.GET("", listBranches(branchService, userService))
+	branches.GET("/:id", getBranch(branchService))
+	branches.POST("", createBranch(branchService, nil)) // dev path — no subscription limit enforcement
+	branches.PUT("/:id", updateBranch(branchService))
+	branches.DELETE("/:id", middleware.RequireDeveloperRole("admin"), deleteBranch(branchService))
+	branches.POST("/:id/restore", middleware.RequireDeveloperRole("admin"), devRestoreBranch(branchService))
+
+	// Trash — platform-wide, 30-day window (this whole group is
+	// developer-only per DevAuthMiddleware, so there's no shorter/scoped
+	// variant to pick between the way the regular API does).
+	router.GET("/dev/crm/trash", devListTrash(userService, branchService))
 }
 
-// GetDevSettings returns the authenticated developer's stored settings.
-func GetDevSettings(database *db.Database) gin.HandlerFunc {
+func devRestoreUser(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		developerID, _ := c.Get("developer_id")
-		devID, ok := developerID.(string)
-		if !ok || devID == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "developer not authenticated"})
+		if err := userService.Restore(c.Request.Context(), c.Param("id")); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		var raw []byte
-		err := database.GetConn().QueryRowContext(
-			c.Request.Context(),
-			"SELECT COALESCE(settings, '{}') FROM developers WHERE id = $1",
-			devID,
-		).Scan(&raw)
-		if err == sql.ErrNoRows {
-			c.JSON(http.StatusNotFound, gin.H{"error": "developer not found"})
-			return
-		}
-		if err != nil {
-			log.Printf("[DEV SETTINGS] DB error reading settings: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read settings"})
-			return
-		}
-
-		var settings map[string]interface{}
-		if err := json.Unmarshal(raw, &settings); err != nil {
-			settings = map[string]interface{}{}
-		}
-
-		c.JSON(http.StatusOK, settings)
+		c.JSON(http.StatusOK, gin.H{"message": "user restored"})
 	}
 }
 
-// UpdateDevSettings merges the request body into the developer's stored settings.
-func UpdateDevSettings(database *db.Database) gin.HandlerFunc {
+func devRestoreBranch(branchService *service.BranchService) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		developerID, _ := c.Get("developer_id")
-		devID, ok := developerID.(string)
-		if !ok || devID == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "developer not authenticated"})
+		if err := branchService.Restore(c.Request.Context(), c.Param("id")); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		c.JSON(http.StatusOK, gin.H{"message": "branch restored"})
+	}
+}
 
+// devListTrash returns both trashed users and trashed branches in one call
+// — the only two dev/crm resources with a delete action today.
+func devListTrash(userService *service.UserService, branchService *service.BranchService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		users, err := userService.ListTrash(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		branches, err := branchService.ListTrash(c.Request.Context())
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if users == nil {
+			users = []service.TrashedUser{}
+		}
+		if branches == nil {
+			branches = []service.TrashedBranch{}
+		}
+		c.JSON(http.StatusOK, gin.H{"users": users, "branches": branches})
+	}
+}
+
+func devUpdateUser(userService *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		var updates map[string]interface{}
+		if err := c.ShouldBindJSON(&updates); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		user, err := userService.UpdateByAdmin(c.Request.Context(), id, updates)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, user)
+	}
+}
+
+func devDeleteUser(userService *service.UserService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id := c.Param("id")
+		if err := userService.Delete(c.Request.Context(), id); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "user deleted"})
+	}
+}
+
+// RegisterDevSettingsRoutes registers authenticated developer settings routes.
+// Must be called with a router group that uses DevAuthMiddleware.
+func RegisterDevSettingsRoutes(router *gin.RouterGroup, database *db.Database, settingsStore *platformsettings.Store) {
+	router.GET("/dev/settings", GetDevSettings(settingsStore))
+	router.PUT("/dev/settings", middleware.RequireDeveloperRole("admin"), UpdateDevSettings(settingsStore))
+	// Notification-specific sub-routes (convenience wrappers around the
+	// per-developer settings JSONB column — a different blob than
+	// GetDevSettings/UpdateDevSettings above, which moved to a global
+	// platform-wide Redis key since Server/Security/Logging are operational
+	// settings shared across every developer, not personal preferences).
+	router.GET("/dev/notifications/preferences", GetNotificationPreferences(database))
+	router.PUT("/dev/notifications/preferences", UpdateNotificationPreferences(database))
+	router.GET("/dev/notifications/channels", GetNotificationChannels(database))
+	router.PUT("/dev/notifications/channels", UpdateNotificationChannels(database))
+	router.GET("/dev/notifications/recent", GetRecentAlerts(database))
+}
+
+// GetDevSettings returns the current platform-wide settings — shared by
+// every developer, not scoped to the caller.
+func GetDevSettings(settingsStore *platformsettings.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.JSON(http.StatusOK, settingsStore.Get())
+	}
+}
+
+// validLogLevels are the only values SafeRequestLogger (internal/handlers/logs.go)
+// knows how to compare against its threshold.
+var validLogLevels = map[string]bool{"debug": true, "info": true, "warn": true, "error": true}
+
+// UpdateDevSettings merges the request body into the current platform-wide
+// settings and persists the result via settingsStore (Redis-backed, read by
+// auth_service/api_gateway/backend_school_crm — see internal/platformsettings).
+func UpdateDevSettings(settingsStore *platformsettings.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
 		var incoming map[string]interface{}
 		if err := c.ShouldBindJSON(&incoming); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
 			return
 		}
 
-		// Read current settings
-		var raw []byte
-		err := database.GetConn().QueryRowContext(
-			c.Request.Context(),
-			"SELECT COALESCE(settings, '{}') FROM developers WHERE id = $1",
-			devID,
-		).Scan(&raw)
-		if err != nil && err != sql.ErrNoRows {
-			log.Printf("[DEV SETTINGS] DB error reading settings: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read settings"})
+		if lvl, ok := incoming["logLevel"].(string); ok && !validLogLevels[lvl] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "logLevel must be one of debug, info, warn, error"})
 			return
 		}
 
-		// Merge: existing + incoming (top-level merge)
-		current := map[string]interface{}{}
-		_ = json.Unmarshal(raw, &current)
+		current := settingsStore.Get()
+		currentJSON, err := json.Marshal(current)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read current settings"})
+			return
+		}
+		merged := map[string]interface{}{}
+		_ = json.Unmarshal(currentJSON, &merged)
 		for k, v := range incoming {
-			current[k] = v
+			merged[k] = v
 		}
 
-		merged, err := json.Marshal(current)
+		mergedJSON, err := json.Marshal(merged)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to serialize settings"})
 			return
 		}
+		var newSettings platformsettings.Settings
+		if err := json.Unmarshal(mergedJSON, &newSettings); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid settings value: " + err.Error()})
+			return
+		}
 
-		_, err = database.GetConn().ExecContext(
-			c.Request.Context(),
-			"UPDATE developers SET settings = $1, updated_at = $2 WHERE id = $3",
-			string(merged), time.Now(), devID,
-		)
-		if err != nil {
-			log.Printf("[DEV SETTINGS] DB error updating settings: %v", err)
+		if err := settingsStore.Save(c.Request.Context(), newSettings); err != nil {
+			log.Printf("[DEV SETTINGS] failed to save platform settings: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save settings"})
 			return
 		}
 
-		log.Printf("[DEV SETTINGS] Saved settings for developer %s", devID)
-		c.JSON(http.StatusOK, current)
+		log.Printf("[DEV SETTINGS] platform settings updated: %+v", newSettings)
+		c.JSON(http.StatusOK, newSettings)
+	}
+}
+
+// ==================== DEV NOTIFICATIONS ====================
+
+// readDevSettings reads the full JSONB settings blob for the authenticated developer.
+func readDevSettings(c *gin.Context, database *db.Database) (string, map[string]interface{}, bool) {
+	developerID, _ := c.Get("developer_id")
+	devID, ok := developerID.(string)
+	if !ok || devID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "developer not authenticated"})
+		return "", nil, false
+	}
+	var raw []byte
+	err := database.GetConn().QueryRowContext(
+		c.Request.Context(),
+		"SELECT COALESCE(settings, '{}') FROM developers WHERE id = $1",
+		devID,
+	).Scan(&raw)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read settings"})
+		return "", nil, false
+	}
+	settings := map[string]interface{}{}
+	_ = json.Unmarshal(raw, &settings)
+	return devID, settings, true
+}
+
+// saveDevSettings persists the full settings blob for a developer.
+func saveDevSettings(c *gin.Context, database *db.Database, devID string, settings map[string]interface{}) bool {
+	merged, _ := json.Marshal(settings)
+	_, err := database.GetConn().ExecContext(
+		c.Request.Context(),
+		"UPDATE developers SET settings = $1, updated_at = $2 WHERE id = $3",
+		string(merged), time.Now(), devID,
+	)
+	if err != nil {
+		log.Printf("[DEV NOTIFICATIONS] DB error saving settings: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save settings"})
+		return false
+	}
+	return true
+}
+
+// GetNotificationPreferences returns the per-event notification toggles.
+func GetNotificationPreferences(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		_, settings, ok := readDevSettings(c, database)
+		if !ok {
+			return
+		}
+		prefs, _ := settings["notification_preferences"].(map[string]interface{})
+		if prefs == nil {
+			prefs = map[string]interface{}{}
+		}
+		c.JSON(http.StatusOK, prefs)
+	}
+}
+
+// UpdateNotificationPreferences replaces the per-event notification toggles.
+func UpdateNotificationPreferences(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		devID, settings, ok := readDevSettings(c, database)
+		if !ok {
+			return
+		}
+		var incoming map[string]interface{}
+		if err := c.ShouldBindJSON(&incoming); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+			return
+		}
+		settings["notification_preferences"] = incoming
+		if !saveDevSettings(c, database, devID, settings) {
+			return
+		}
+		c.JSON(http.StatusOK, incoming)
+	}
+}
+
+// GetNotificationChannels returns the channel integration config (email, telegram, slack).
+func GetNotificationChannels(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		_, settings, ok := readDevSettings(c, database)
+		if !ok {
+			return
+		}
+		channels, _ := settings["notification_channels"].(map[string]interface{})
+		if channels == nil {
+			channels = map[string]interface{}{}
+		}
+		c.JSON(http.StatusOK, channels)
+	}
+}
+
+// UpdateNotificationChannels replaces the channel integration config.
+func UpdateNotificationChannels(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		devID, settings, ok := readDevSettings(c, database)
+		if !ok {
+			return
+		}
+		var incoming map[string]interface{}
+		if err := c.ShouldBindJSON(&incoming); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+			return
+		}
+		settings["notification_channels"] = incoming
+		if !saveDevSettings(c, database, devID, settings) {
+			return
+		}
+		c.JSON(http.StatusOK, incoming)
+	}
+}
+
+// GetRecentAlerts returns the 20 most recent error/warning log entries from the
+// logs table to populate the "Recent Alerts" panel.
+func GetRecentAlerts(database *db.Database) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rows, err := database.GetConn().QueryContext(c.Request.Context(), `
+			SELECT id, level, module, message, metadata, created_at
+			FROM logs
+			WHERE level IN ('ERROR', 'WARN', 'WARNING', 'CRITICAL', 'INFO')
+			ORDER BY created_at DESC
+			LIMIT 20
+		`)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows.Close()
+
+		type Alert struct {
+			ID        string      `json:"id"`
+			Level     string      `json:"level"`
+			Module    string      `json:"module"`
+			Message   string      `json:"message"`
+			Metadata  interface{} `json:"metadata"`
+			CreatedAt time.Time   `json:"createdAt"`
+		}
+
+		alerts := make([]Alert, 0)
+		for rows.Next() {
+			var a Alert
+			var meta []byte
+			if err := rows.Scan(&a.ID, &a.Level, &a.Module, &a.Message, &meta, &a.CreatedAt); err != nil {
+				continue
+			}
+			if meta != nil {
+				var m interface{}
+				_ = json.Unmarshal(meta, &m)
+				a.Metadata = m
+			}
+			alerts = append(alerts, a)
+		}
+		c.JSON(http.StatusOK, alerts)
 	}
 }

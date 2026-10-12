@@ -115,32 +115,17 @@ export const classTranslations: Partial<Translation> = {
     en: "Back to Classes"
   },
 
+  // Missing keys
+  confirmDeleteClass: { "uz-cyrl": "Синфни ўчиришни тасдиқланг", "uz-latn": "Sinfni o'chirishni tasdiqlang", en: "Confirm delete class" },
+  confirmRemoveStudent: { "uz-cyrl": "Ўқувчини чиқаришни тасдиқланг", "uz-latn": "O'quvchini chiqarishni tasdiqlang", en: "Confirm remove student" },
   deleteClass: { "uz-cyrl": "Синфни ўчириш", "uz-latn": "Sinfni o'chirish", en: "Delete Class" },
-  confirmDeleteClass: {
-    "uz-cyrl": "Бу синфни ўчиришни хоҳлайсизми? Барча ўқувчилар синфсиз қолади.",
-    "uz-latn": "Bu sinfni o'chirishni xohlaysizmi? Barcha o'quvchilar sinfisiz qoladi.",
-    en: "Are you sure you want to delete this class? All students will be unassigned.",
-  },
-  removeStudent: { "uz-cyrl": "Ўқувчини олиб ташлаш", "uz-latn": "O'quvchini olib tashlash", en: "Remove Student" },
-  confirmRemoveStudent: {
-    "uz-cyrl": "Ушбу ўқувчини синфдан олиб ташламоқчимисиз?",
-    "uz-latn": "Ushbu o'quvchini sinfdan olib tashlamoqchimisiz?",
-    en: "Are you sure you want to remove this student from the class?",
-  },
-  willBeAddedTo: { "uz-cyrl": "Қуйидаги синфга қўшилади:", "uz-latn": "Quyidagi sinfga qo'shiladi:", en: "Will be added to:" },
-  noPermissionAssignStudents: {
-    "uz-cyrl": "Ўқувчиларни синфга бириктириш учун рухсатингиз йўқ",
-    "uz-latn": "O'quvchilarni sinfga biriktirish uchun ruxsatingiz yo'q",
-    en: "You don't have permission to assign students to classes",
-  },
-  noPermissionDeleteClasses: {
-    "uz-cyrl": "Синфларни ўчириш учун рухсатингиз йўқ",
-    "uz-latn": "Sinflarni o'chirish uchun ruxsatingiz yo'q",
-    en: "You don't have permission to delete classes",
-  },
-  noPermissionRemoveStudents: {
-    "uz-cyrl": "Ўқувчиларни синфдан олиб ташлаш учун рухсатингиз йўқ",
-    "uz-latn": "O'quvchilarni sinfdan olib tashlash uchun ruxsatingiz yo'q",
-    en: "You don't have permission to remove students from classes",
-  },
+  removeStudent: { "uz-cyrl": "Ўқувчини чиқариш", "uz-latn": "O'quvchini chiqarish", en: "Remove Student" },
+  willBeAddedTo: { "uz-cyrl": "Қуйидаги синфга қўшилади", "uz-latn": "Quyidagi sinfga qo'shiladi", en: "Will be added to" },
+  noPermissionAssignStudents: { "uz-cyrl": "Ўқувчиларни синфга бириктириш ҳуқуқи йўқ", "uz-latn": "O'quvchilarni sinfga biriktirish huquqi yo'q", en: "No permission to assign students" },
+  noPermissionDeleteClasses: { "uz-cyrl": "Синфларни ўчириш ҳуқуқи йўқ", "uz-latn": "Sinflarni o'chirish huquqi yo'q", en: "No permission to delete classes" },
+  noPermissionRemoveStudents: { "uz-cyrl": "Ўқувчиларни синфдан чиқариш ҳуқуқи йўқ", "uz-latn": "O'quvchilarni sinfdan chiqarish huquqi yo'q", en: "No permission to remove students" },
+
+  // Tab label on the merged Classes page (list + the former standalone
+  // /schedule page, now a "timetable" tab here for admin/manager).
+  classesListTab: { "uz-cyrl": "Рўйхат", "uz-latn": "Ro'yxat", en: "List" },
 };

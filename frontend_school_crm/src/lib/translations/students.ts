@@ -19,6 +19,12 @@ export const studentTranslations: Partial<Translation> = {
     en: "Monthly Payment",
   },
 
+  customAmount: {
+    "uz-cyrl": "Бошқа",
+    "uz-latn": "Boshqa",
+    en: "Custom",
+  },
+
   left: { "uz-cyrl": "Кетган", "uz-latn": "Ketgan", en: "Left" },
 
   suspended: {
@@ -185,6 +191,12 @@ export const studentTranslations: Partial<Translation> = {
     en: "Mark this student as left?",
   },
 
+  markAsLeft: {
+    "uz-cyrl": "Кетган деб белгилаш",
+    "uz-latn": "Ketgan deb belgilash",
+    en: "Mark as left",
+  },
+
   willBeDeleted: { "uz-cyrl": "Ўчирилади", "uz-latn": "O‘chiriladi", en: "Will be deleted" },
 
   willStopPaymentTracking: {
@@ -221,37 +233,14 @@ export const studentTranslations: Partial<Translation> = {
     en: "No payments",
   },
 
-  importStudentsFromCSV: {
-    "uz-cyrl": "CSV дан ўқувчиларни импорт қилиш",
-    "uz-latn": "CSV dan o’quvchilarni import qilish",
-    en: "Import Students from CSV",
-  },
-  importing: { "uz-cyrl": "Импорт қилинмоқда...", "uz-latn": "Import qilinmoqda...", en: "Importing..." },
-  importComplete: { "uz-cyrl": "Импорт тугади", "uz-latn": "Import tugadi", en: "Import Complete" },
-  importError: { "uz-cyrl": "Импорт хатоси", "uz-latn": "Import xatosi", en: "Import Error" },
-  noPermissionToCreateOrEditStudents: {
-    "uz-cyrl": "Ўқувчи яратиш ёки таҳрирлаш учун рухсатингиз йўқ",
-    "uz-latn": "O’quvchi yaratish yoki tahrirlash uchun ruxsatingiz yo’q",
-    en: "You don’t have permission to create or edit students",
-  },
-  studentCreatedSuccessfully: {
-    "uz-cyrl": "Ўқувчи муваффақиятли яратилди",
-    "uz-latn": "O’quvchi muvaffaqiyatli yaratildi",
-    en: "Student created successfully",
-  },
-  studentUpdatedSuccessfully: {
-    "uz-cyrl": "Ўқувчи маълумотлари муваффақиятли янгиланди",
-    "uz-latn": "O’quvchi ma’lumotlari muvaffaqiyatli yangilandi",
-    en: "Student updated successfully",
-  },
-  failedToDeleteStudents: {
-    "uz-cyrl": "Ўқувчиларни ўчиришда хатолик",
-    "uz-latn": "O’quvchilarni o’chirishda xatolik",
-    en: "Failed to delete students",
-  },
-  failedToUpdateStudentStatus: {
-    "uz-cyrl": "Ўқувчи ҳолатини янгилашда хатолик",
-    "uz-latn": "O’quvchi holatini yangilashda xatolik",
-    en: "Failed to update student status",
-  },
+  // Missing keys
+  studentCreatedSuccessfully: { "uz-cyrl": "Ўқувчи муваффақиятли қўшилди", "uz-latn": "O’quvchi muvaffaqiyatli qo’shildi", en: "Student created successfully" },
+  studentUpdatedSuccessfully: { "uz-cyrl": "Ўқувчи маълумотлари янгиланди", "uz-latn": "O’quvchi ma’lumotlari yangilandi", en: "Student updated successfully" },
+  failedToDeleteStudents: { "uz-cyrl": "Ўқувчиларни ўчиришда хатолик", "uz-latn": "O’quvchilarni o’chirishda xatolik", en: "Failed to delete students" },
+  failedToUpdateStudent: { "uz-cyrl": "Ўқувчини янгилашда хатолик", "uz-latn": "O’quvchini yangilashda xatolik", en: "Failed to update student" },
+  failedToUpdateStudentStatus: { "uz-cyrl": "Ўқувчи статусини янгилашда хатолик", "uz-latn": "O’quvchi statusini yangilashda xatolik", en: "Failed to update student status" },
+  addFirstStudent: { "uz-cyrl": "Биринчи ўқувчингизни қўшинг", "uz-latn": "Birinchi o’quvchingizni qo’shing", en: "Add your first student to get started" },
+  noClassesFound: { "uz-cyrl": "Синфлар топилмади", "uz-latn": "Sinflar topilmadi", en: "No classes found" },
+  studentsWillBeMoved: { "uz-cyrl": "ўқувчи кўчирилади", "uz-latn": "o’quvchi ko’chiriladi", en: "students will be moved" },
+  noPermissionToCreateOrEditStudents: { "uz-cyrl": "Ўқувчи қўшиш ёки таҳрирлаш ҳуқуқи йўқ", "uz-latn": "O’quvchi qo’shish yoki tahrirlash huquqi yo’q", en: "No permission to create or edit students" },
 };

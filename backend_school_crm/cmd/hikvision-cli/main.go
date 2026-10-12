@@ -19,7 +19,7 @@
 // machine on its LAN and writes straight to the database — that machine has
 // the internet access the terminal doesn't.
 //
-// This CLI reuses the exact same internal/service.AttendanceService used by
+// This CLI reuses the exact same internal/service.HikvisionService used by
 // the API, but you run it on a machine that IS on the device's network
 // (e.g. this laptop, connected to the school's Wi-Fi), while it talks to
 // the SAME production database over Railway's public Postgres proxy — so
@@ -77,7 +77,7 @@ func main() {
 	// NewStorageServiceFromEnv returns nil (not an error) when no bucket env
 	// vars are set — fine here, this CLI's commands don't need it, but the
 	// constructor now requires a *StorageService argument regardless.
-	attendanceService := service.NewAttendanceService(database, service.NewStorageServiceFromEnv())
+	attendanceService := service.NewHikvisionService(database, service.NewStorageServiceFromEnv())
 
 	switch os.Args[1] {
 	case "add-device":
@@ -130,7 +130,7 @@ func printJSON(v interface{}) {
 	fmt.Println(string(b))
 }
 
-func cmdAddDevice(ctx context.Context, s *service.AttendanceService, args []string) {
+func cmdAddDevice(ctx context.Context, s *service.HikvisionService, args []string) {
 	fs := flag.NewFlagSet("add-device", flag.ExitOnError)
 	branch := fs.String("branch", "", "branch ID")
 	name := fs.String("name", "", "device name")
@@ -169,7 +169,7 @@ func cmdAddDevice(ctx context.Context, s *service.AttendanceService, args []stri
 // on an older password). Every other command's 401 is the symptom to
 // watch for — re-run this with -pass once you've confirmed, by logging
 // into the device's own web UI, which password it currently accepts.
-func cmdUpdateDevice(ctx context.Context, s *service.AttendanceService, args []string) {
+func cmdUpdateDevice(ctx context.Context, s *service.HikvisionService, args []string) {
 	fs := flag.NewFlagSet("update-device", flag.ExitOnError)
 	device := fs.String("device", "", "device ID")
 	host := fs.String("host", "", "new device IP (or IP:port), e.g. 185.213.230.149:8081")
@@ -196,7 +196,7 @@ func cmdUpdateDevice(ctx context.Context, s *service.AttendanceService, args []s
 	fmt.Println("device host updated successfully")
 }
 
-func cmdListDevices(ctx context.Context, s *service.AttendanceService, args []string) {
+func cmdListDevices(ctx context.Context, s *service.HikvisionService, args []string) {
 	fs := flag.NewFlagSet("list-devices", flag.ExitOnError)
 	branch := fs.String("branch", "", "branch ID")
 	_ = fs.Parse(args)
@@ -210,7 +210,7 @@ func cmdListDevices(ctx context.Context, s *service.AttendanceService, args []st
 	printJSON(devices)
 }
 
-func cmdConfigurePush(ctx context.Context, s *service.AttendanceService, args []string) {
+func cmdConfigurePush(ctx context.Context, s *service.HikvisionService, args []string) {
 	fs := flag.NewFlagSet("configure-push", flag.ExitOnError)
 	device := fs.String("device", "", "device ID")
 	host := fs.String("host", "", "public host/domain the device should push events to")
@@ -228,7 +228,7 @@ func cmdConfigurePush(ctx context.Context, s *service.AttendanceService, args []
 
 // cmdShowWebhookURL prints the exact webhook URL for a device — the same
 // deviceID/WebhookToken pair ConfigurePush already sends to the device
-// itself (see the urlPath built in AttendanceService.ConfigurePush). Needed
+// itself (see the urlPath built in HikvisionService.ConfigurePush). Needed
 // because WebhookToken is deliberately excluded from every JSON API
 // response (models.HikvisionDevice tags it `json:"-"`, since it's a bearer
 // secret anyone with it could POST fake attendance events with) — so the
@@ -239,7 +239,7 @@ func cmdConfigurePush(ctx context.Context, s *service.AttendanceService, args []
 // Integration) instead of a device's own push config — it hits a separate
 // route so the two integrations can be told apart in logs and neither can
 // be confused for a device sending directly.
-func cmdShowWebhookURL(ctx context.Context, s *service.AttendanceService, args []string) {
+func cmdShowWebhookURL(ctx context.Context, s *service.HikvisionService, args []string) {
 	fs := flag.NewFlagSet("show-webhook-url", flag.ExitOnError)
 	device := fs.String("device", "", "device ID")
 	base := fs.String("base", "https://incredible-love-production-0008.up.railway.app", "backend's public base URL")
@@ -259,7 +259,7 @@ func cmdShowWebhookURL(ctx context.Context, s *service.AttendanceService, args [
 	fmt.Printf("%s/api/hikvision/%s/%s/%s\n", strings.TrimRight(*base, "/"), kind, d.ID, d.WebhookToken)
 }
 
-func cmdAddEmployee(ctx context.Context, s *service.AttendanceService, args []string) {
+func cmdAddEmployee(ctx context.Context, s *service.HikvisionService, args []string) {
 	fs := flag.NewFlagSet("add-employee", flag.ExitOnError)
 	device := fs.String("device", "", "device ID")
 	no := fs.String("no", "", "employee number (used on the device)")
@@ -285,7 +285,7 @@ func cmdAddEmployee(ctx context.Context, s *service.AttendanceService, args []st
 	printJSON(emp)
 }
 
-func cmdUploadFace(ctx context.Context, s *service.AttendanceService, args []string) {
+func cmdUploadFace(ctx context.Context, s *service.HikvisionService, args []string) {
 	fs := flag.NewFlagSet("upload-face", flag.ExitOnError)
 	employee := fs.String("employee", "", "employee ID")
 	photo := fs.String("photo", "", "path to a JPEG photo")
@@ -303,7 +303,7 @@ func cmdUploadFace(ctx context.Context, s *service.AttendanceService, args []str
 	fmt.Println("face uploaded successfully")
 }
 
-func cmdRemoveEmployee(ctx context.Context, s *service.AttendanceService, args []string) {
+func cmdRemoveEmployee(ctx context.Context, s *service.HikvisionService, args []string) {
 	fs := flag.NewFlagSet("remove-employee", flag.ExitOnError)
 	employee := fs.String("employee", "", "employee ID")
 	_ = fs.Parse(args)
@@ -316,7 +316,7 @@ func cmdRemoveEmployee(ctx context.Context, s *service.AttendanceService, args [
 	fmt.Println("employee removed successfully")
 }
 
-func cmdListEmployees(ctx context.Context, s *service.AttendanceService, args []string) {
+func cmdListEmployees(ctx context.Context, s *service.HikvisionService, args []string) {
 	fs := flag.NewFlagSet("list-employees", flag.ExitOnError)
 	device := fs.String("device", "", "device ID")
 	_ = fs.Parse(args)
@@ -337,7 +337,7 @@ func cmdListEmployees(ctx context.Context, s *service.AttendanceService, args []
 // attendance events reach the CRM for terminals that can't push events out
 // over the internet themselves (see the doc comment at the top of this
 // file).
-func cmdWatchEvents(ctx context.Context, s *service.AttendanceService, args []string) {
+func cmdWatchEvents(ctx context.Context, s *service.HikvisionService, args []string) {
 	fs := flag.NewFlagSet("watch-events", flag.ExitOnError)
 	device := fs.String("device", "", "device ID")
 	interval := fs.Int("interval", 15, "seconds between polls")

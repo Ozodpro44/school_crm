@@ -10,15 +10,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
-	"github.com/school-crm/backend/internal/utils"
 )
 
 type SalaryService struct {
-	db *db.Database
+	db        *db.Database
+	branchSvc *BranchService
 }
 
-func NewSalaryService(database *db.Database) *SalaryService {
-	return &SalaryService{db: database}
+func NewSalaryService(database *db.Database, branchSvc *BranchService) *SalaryService {
+	return &SalaryService{db: database, branchSvc: branchSvc}
 }
 
 type CreateSalaryRequest struct {
@@ -34,6 +34,17 @@ type CreateSalaryRequest struct {
 }
 
 func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, createdBy string) (*models.Salary, error) {
+	// Guard: financial month lock — only allow salaries for the branch's current month.
+	if s.branchSvc != nil && req.BranchID != "" {
+		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, req.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify financial month: %w", err)
+		}
+		if req.Month != currentMonth || req.Year != currentYear {
+			return nil, fmt.Errorf("%w: can only create salaries for current month (%s/%d)", ErrFinancialMonthLocked, currentMonth, currentYear)
+		}
+	}
+
 	salary := &models.Salary{
 		ID:            uuid.New().String(),
 		TeacherID:     req.TeacherID,
@@ -61,7 +72,7 @@ func (s *SalaryService) Create(ctx context.Context, req *CreateSalaryRequest, cr
 func (s *SalaryService) GetByID(ctx context.Context, id string) (*models.Salary, error) {
 	salary := &models.Salary{}
 	query := `SELECT id, teacher_id, amount, month, year, payment_method, status, notes, paid_date, branch_id, created_by, created_at
-	         FROM salaries WHERE id = $1`
+	         FROM salaries WHERE id = $1 AND deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&salary.ID, &salary.TeacherID, &salary.Amount, &salary.Month, &salary.Year,
@@ -76,7 +87,7 @@ func (s *SalaryService) GetByID(ctx context.Context, id string) (*models.Salary,
 
 func (s *SalaryService) GetByBranchID(ctx context.Context, branchID string) ([]models.Salary, error) {
 	query := `SELECT id, teacher_id, amount, month, year, payment_method, status, notes, paid_date, branch_id, created_by, created_at
-	         FROM salaries WHERE branch_id = $1 ORDER BY created_at DESC`
+	         FROM salaries WHERE branch_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
 	if err != nil {
@@ -97,26 +108,31 @@ func (s *SalaryService) GetByBranchID(ctx context.Context, branchID string) ([]m
 	return salaries, rows.Err()
 }
 
-func (s *SalaryService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Salary, error) {
-	updates = utils.ConvertKeysToSnakeCase(updates)
-
-	query := `UPDATE salaries SET `
-	args := []interface{}{}
-	argCount := 1
-
-	for key, value := range updates {
-		if argCount > 1 {
-			query += ", "
+func (s *SalaryService) Update(ctx context.Context, id string, updates map[string]interface{}, isAdmin bool) (*models.Salary, error) {
+	// Guard: financial month lock — non-admin users cannot edit past-month salaries.
+	if s.branchSvc != nil {
+		existing, err := s.GetByID(ctx, id)
+		if err != nil {
+			return nil, err
 		}
-		query += key + " = $" + fmt.Sprintf("%d", argCount)
-		args = append(args, value)
-		argCount++
+		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, existing.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify financial month: %w", err)
+		}
+		isPast := existing.Month != currentMonth || existing.Year != currentYear
+		if isPast && !isAdmin {
+			return nil, fmt.Errorf("%w: cannot modify salaries from past months", ErrFinancialMonthLocked)
+		}
 	}
 
-	query += fmt.Sprintf(" WHERE id = $%d", argCount)
+	setClause, args, err := buildUpdateSet(updates, salaryUpdateRule, isAdmin, nil)
+	if err != nil {
+		return nil, err
+	}
+	query := `UPDATE salaries SET ` + setClause + fmt.Sprintf(" WHERE id = $%d", len(args)+1)
 	args = append(args, id)
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, args...)
+	_, err = s.db.GetConn().ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -125,14 +141,14 @@ func (s *SalaryService) Update(ctx context.Context, id string, updates map[strin
 }
 
 func (s *SalaryService) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM salaries WHERE id = $1`
+	query := `DELETE FROM salaries WHERE id = $1 AND deleted_at IS NULL`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
 	return err
 }
 
 func (s *SalaryService) GetByBranchIDAndPeriod(ctx context.Context, branchID string, month string, year int) ([]models.Salary, error) {
 	query := `SELECT id, teacher_id, amount, month, year, payment_method, status, notes, paid_date, branch_id, created_by, created_at
-	         FROM salaries WHERE branch_id = $1 AND month = $2 AND year = $3 ORDER BY created_at DESC`
+	         FROM salaries WHERE branch_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL ORDER BY created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
 	if err != nil {

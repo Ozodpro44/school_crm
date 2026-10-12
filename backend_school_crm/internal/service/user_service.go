@@ -2,10 +2,14 @@ package service
 
 import (
 	"context"
+	"crypto/subtle"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/school-crm/backend/internal/db"
@@ -25,7 +29,7 @@ type UserService struct {
 func NewUserService(database *db.Database) *UserService {
 	return &UserService{
 		db:                  database,
-		branchService:       NewBranchService(database),
+		branchService:       NewBranchService(database, NewSubscriptionService(database)),
 		subscriptionService: NewSubscriptionService(database),
 		redisClient:         nil,
 		emailSender:         nil,
@@ -59,20 +63,21 @@ type LoginRequest struct {
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
-	FullName string `json:"fullName" binding:"required"`
-	Role     string `json:"role" binding:"required"`
+	Email      string `json:"email"      binding:"required,email"`
+	Password   string `json:"password"   binding:"required,min=8"`
+	FullName   string `json:"fullName"   binding:"required"`
+	Role       string `json:"role"       binding:"required"`
+	SchoolName string `json:"schoolName"`
 }
 
 func (s *UserService) Login(ctx context.Context, email, password string) (*models.User, error) {
 	log.Printf("[UserService.Login] Authenticating user: %s", email)
 
 	user := &models.User{}
-	query := `SELECT id, email, password, role, full_name, created_at, updated_at FROM users WHERE email = $1`
+	query := `SELECT id, email, password_hash, role, full_name, branch_id, created_at, updated_at FROM users WHERE email = $1 AND deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, email).Scan(
-		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.CreatedAt, &user.UpdatedAt,
+		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.BranchID, &user.CreatedAt, &user.UpdatedAt,
 	)
 
 	if err == sql.ErrNoRows {
@@ -94,13 +99,17 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*model
 
 	log.Printf("[UserService.Login] Password verified for %s", email)
 
+	// Stamp last_login_at (best-effort — don't fail login if this errors)
+	_, _ = s.db.GetConn().ExecContext(ctx,
+		`UPDATE users SET last_login_at = NOW() WHERE id = $1`, user.ID)
+
 	// Fetch branches for managers, branch admins, and admins
 	var branches []models.Branch
 
 	if user.Role == models.RoleAdmin {
 		// For admins, get branches they created (admin_id = user.ID)
 		query := `
-			SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at
+			SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, created_at, updated_at
 			FROM branches
 			WHERE admin_id = $1
 			ORDER BY name
@@ -152,92 +161,256 @@ func (s *UserService) Login(ctx context.Context, email, password string) (*model
 	return user, nil
 }
 
+// pendingRegistration is what InitiateRegistration stores in Redis under
+// pending_registration:<email> until CompleteRegistration confirms the OTP.
+// Nothing is written to Postgres until then — a signup that never verifies
+// leaves no user/branch/permissions rows behind at all.
+type pendingRegistration struct {
+	OTP string          `json:"otp"`
+	Req RegisterRequest `json:"req"`
+}
+
+// InitiateRegistration validates a signup, stores it (unhashed nowhere —
+// the password sits in Redis only as long as the pending_registration TTL)
+// alongside a fresh OTP, and emails the code. No Postgres row exists yet;
+// CompleteRegistration is what actually creates the account.
+func (s *UserService) InitiateRegistration(ctx context.Context, req *RegisterRequest) error {
+	if s.redisClient == nil || s.emailSender == nil {
+		return errors.New("redis or email service not configured")
+	}
+
+	// Public registration only ever creates admin (school-owner) accounts —
+	// mirrors the check handlers.Register used to do before this existed.
+	if req.Role != string(models.RoleAdmin) {
+		return errors.New("only admin accounts may register through this endpoint")
+	}
+
+	var existingID string
+	err := s.db.GetConn().QueryRowContext(ctx, `SELECT id FROM users WHERE email = $1`, req.Email).Scan(&existingID)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("initiate registration: check existing email: %w", err)
+	}
+	if existingID != "" {
+		return errors.New("an account with this email already exists")
+	}
+
+	otp := utils.GenerateOTP()
+	pending := pendingRegistration{OTP: otp, Req: *req}
+	data, err := json.Marshal(pending)
+	if err != nil {
+		return fmt.Errorf("initiate registration: encode pending signup: %w", err)
+	}
+
+	if err := s.redisClient.SetPendingRegistration(ctx, req.Email, string(data)); err != nil {
+		log.Printf("[UserService.InitiateRegistration] Failed to store pending signup: %v", err)
+		return errors.New("failed to start registration")
+	}
+
+	if err := s.emailSender.SendRegistrationVerificationEmail(req.Email, otp); err != nil {
+		log.Printf("[UserService.InitiateRegistration] Failed to send verification email: %v", err)
+		return errors.New("failed to send verification email")
+	}
+
+	log.Printf("[UserService.InitiateRegistration] Verification OTP sent to %s", req.Email)
+	return nil
+}
+
+// CompleteRegistration verifies the OTP from InitiateRegistration and, only
+// on success, actually creates the account (via Register) and marks the
+// email verified.
+func (s *UserService) CompleteRegistration(ctx context.Context, email, otp string) (*models.User, error) {
+	if s.redisClient == nil {
+		return nil, errors.New("redis service not configured")
+	}
+
+	data, err := s.redisClient.GetPendingRegistration(ctx, email)
+	if err != nil {
+		return nil, errors.New("verification code expired or invalid — please sign up again")
+	}
+
+	var pending pendingRegistration
+	if err := json.Unmarshal([]byte(data), &pending); err != nil {
+		return nil, fmt.Errorf("complete registration: decode pending signup: %w", err)
+	}
+
+	if subtle.ConstantTimeCompare([]byte(pending.OTP), []byte(otp)) != 1 {
+		return nil, errors.New("invalid verification code")
+	}
+
+	_ = s.redisClient.DeletePendingRegistration(ctx, email)
+
+	user, err := s.Register(ctx, &pending.Req)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := s.db.GetConn().ExecContext(ctx,
+		`UPDATE users SET email_verified = true, email_verified_at = $1 WHERE id = $2`,
+		utils.GetLocalTime(), user.ID,
+	); err != nil {
+		// Non-fatal — the account is fully created and usable; only the
+		// verification timestamp bookkeeping failed to persist.
+		log.Printf("[UserService.CompleteRegistration] Failed to mark email verified for %s: %v", user.ID, err)
+	}
+
+	return user, nil
+}
+
 func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*models.User, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("register: hash password: %w", err)
 	}
+
+	isAdmin := models.UserRole(req.Role) == models.RoleAdmin
+
+	tx, err := s.db.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("register: begin transaction: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+
+	now := utils.GetLocalTime()
+	userID := uuid.New().String()
+
+	// Step 1: Insert the user row (branch_id is NULL until Step 3).
+	log.Printf("[UserService.Register] Step 1/5: inserting user %s", req.Email)
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO users (id, email, password_hash, role, full_name, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		userID, req.Email, string(hashedPassword), req.Role, req.FullName, now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: insert user: %w", err)
+	}
+
+	// Non-admin users need no branch/subscription setup — commit and return.
+	if !isAdmin {
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("register: commit: %w", err)
+		}
+		return &models.User{
+			ID:        userID,
+			Email:     req.Email,
+			Role:      models.UserRole(req.Role),
+			FullName:  req.FullName,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}, nil
+	}
+
+	// ── Admin (school-owner) full onboarding ──────────────────────────────────
+
+	// Step 2: Create the default branch inline, bypassing BranchService.Create
+	// so we avoid the subscription-limit guard that would reject a brand-new user.
+	log.Printf("[UserService.Register] Step 2/5: creating default branch for user %s", userID)
+	branchID := uuid.New().String()
+	branchName := req.SchoolName
+	if branchName == "" {
+		branchName = req.FullName + " Branch"
+	}
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO branches (id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		branchID, branchName, "Default Address", "N/A",
+		0.0, "UZS", userID, now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: create branch: %w", err)
+	}
+
+	// Step 3: Link the user to their new branch and mark the trial as used.
+	log.Printf("[UserService.Register] Step 3/5: linking branch %s to user %s", branchID, userID)
+	_, err = tx.ExecContext(ctx,
+		`UPDATE users SET branch_id = $1, trial_used_at = $2, updated_at = $3 WHERE id = $4`,
+		branchID, now, now, userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: update user branch_id: %w", err)
+	}
+
+	// Trial subscription creation used to happen here as a raw INSERT with a
+	// hardcoded 14-day end date. It was immediately superseded anyway: the
+	// caller (handlers.Register) always follows up with
+	// subscriptionService.AdminGrantTrial(user.ID, 30, …), which first
+	// expires every non-terminal subscription for this user and then inserts
+	// its OWN 30-day row. So every registration silently created a
+	// throwaway 14-day trial that was expired a moment later by the 30-day
+	// one — two inserts and an update where one insert does the job, and two
+	// competing trial lengths defined in two different places. If
+	// AdminGrantTrial's second insert ever failed partway through (its own
+	// expire-then-insert isn't wrapped in this transaction), the customer
+	// could have been left on the undocumented 14-day trial instead of the
+	// intended 30 with nothing in the UI to say so. Removed — AdminGrantTrial
+	// is the single source of truth for trial length now.
+
+	// Step 4: Initialize full admin permissions.
+	// Column list mirrors PermissionService.CreateForUser to stay in sync with the schema.
+	log.Printf("[UserService.Register] Step 4/5: initializing admin permissions for user %s", userID)
+	permID := uuid.New().String()
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO permissions (
+		     id, user_id,
+		     can_view_students, can_edit_students, can_delete_students,
+		     can_view_teachers, can_edit_teachers, can_delete_teachers,
+		     can_view_classes,  can_edit_classes,  can_delete_classes,
+		     can_view_payments, can_edit_payments,
+		     can_view_salaries, can_edit_salaries,
+		     can_view_expenses, can_edit_expenses, can_delete_expenses,
+		     can_view_reports,  can_view_settings, can_edit_settings
+		 ) VALUES (
+		     $1, $2,
+		     true, true, true,
+		     true, true, true,
+		     true, true, true,
+		     true, true,
+		     true, true,
+		     true, true, true,
+		     true, true, true
+		 )`,
+		permID, userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: create permissions: %w", err)
+	}
+
+	// Step 6: Open the first financial month for the new branch.
+	log.Printf("[UserService.Register] Step 5/5: opening financial month for branch %s", branchID)
+	fmID := uuid.New().String()
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO financial_months
+		     (id, branch_id, year, month, status, payment_amount, opened_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 ON CONFLICT (branch_id, year, month) DO NOTHING`,
+		fmID, branchID, now.Year(), int(now.Month()),
+		models.MonthStatusOpen, 0.0, now, now, now,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("register: create financial month: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("register: commit: %w", err)
+	}
+	log.Printf("[UserService.Register] Onboarding complete — user=%s branch=%s", userID, branchID)
 
 	user := &models.User{
-		ID:        uuid.New().String(),
+		ID:        userID,
 		Email:     req.Email,
-		Password:  string(hashedPassword),
 		Role:      models.UserRole(req.Role),
 		FullName:  req.FullName,
-		CreatedAt: utils.GetLocalTime(),
-		UpdatedAt: utils.GetLocalTime(),
+		BranchID:  &branchID,
+		BranchIDs: []string{branchID},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 
-	// Insert user
-	query := `INSERT INTO users (id, email, password, role, full_name, created_at, updated_at) 
-	         VALUES ($1, $2, $3, $4, $5, $6, $7)`
-
-	_, err = s.db.GetConn().ExecContext(ctx, query, user.ID, user.Email, user.Password, user.Role, user.FullName, user.CreatedAt, user.UpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-
-	// For admin users, create a default branch after user is inserted
-	var branchID *string
-	if user.Role == models.RoleAdmin {
-		log.Printf("[UserService.Register] Creating default branch for admin user: %s", req.Email)
-
-		branchReq := &CreateBranchRequest{
-			Name:           req.FullName + " Branch",
-			Address:        "Default Address",
-			Phone:          "N/A",
-			MonthlyPayment: 0,
-			AdminID:        &user.ID,
-		}
-
-		branch, err := s.branchService.Create(ctx, branchReq)
-		if err != nil {
-			log.Printf("[UserService.Register] Failed to create default branch for %s: %v", req.Email, err)
-			return nil, err
-		}
-
-		log.Printf("[UserService.Register] Default branch created: %s (ID: %s)", branch.Name, branch.ID)
-		branchID = &branch.ID
-	}
-
-	// Create free trial subscription for new user
-	log.Printf("[UserService.Register] Creating free trial subscription for user: %s", req.Email)
-	trialPlan, err := s.subscriptionService.GetOrCreateFreeTrial(ctx)
-	if err != nil {
-		log.Printf("[UserService.Register] Warning: Failed to create free trial subscription: %v", err)
-		// Don't fail the registration if subscription creation fails
-	} else {
-		now := utils.GetLocalTime()
-		endDate := now.AddDate(0, 0, 14) // 14 days from now
-		paymentMethod := "free_trial"
-		notes := "Automatic free trial subscription"
-		subscription := &models.Subscription{
-			UserID:        user.ID,
-			PlanID:        trialPlan.ID,
-			BranchID:      branchID,
-			Status:        "active",
-			StartDate:     now,
-			RenewalDate:   &endDate,
-			AutoRenew:     false,
-			PaymentMethod: &paymentMethod,
-			Notes:         &notes,
-		}
-
-		err = s.subscriptionService.CreateSubscription(ctx, subscription)
-		if err != nil {
-			log.Printf("[UserService.Register] Warning: Failed to create subscription for user %s: %v", user.ID, err)
-		} else {
-			log.Printf("[UserService.Register] Free trial subscription created for user: %s (Plan: %s)", user.ID, trialPlan.Name)
-		}
-	}
-
-	user.Password = ""
-
-	// Fetch permissions for the user
+	// Fetch the permissions we just inserted so the auth handler can embed
+	// them in the JWT response without a second round-trip login.
 	permissionService := NewPermissionService(s.db)
-	permissions, err := permissionService.GetByUserID(ctx, user.ID)
+	permissions, err := permissionService.GetByUserID(ctx, userID)
 	if err != nil {
-		log.Printf("[UserService.Register] Failed to fetch permissions for user %s: %v", user.ID, err)
+		log.Printf("[UserService.Register] Warning: failed to fetch permissions for user %s: %v", userID, err)
 	} else {
 		user.Permissions = permissions
 	}
@@ -247,7 +420,7 @@ func (s *UserService) Register(ctx context.Context, req *RegisterRequest) (*mode
 
 func (s *UserService) GetByID(ctx context.Context, id string) (*models.User, error) {
 	user := &models.User{}
-	query := `SELECT id, email, password, role, full_name, created_at, updated_at FROM users WHERE id = $1`
+	query := `SELECT id, email, password_hash, role, full_name, created_at, updated_at FROM users WHERE id = $1 AND deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.CreatedAt, &user.UpdatedAt,
@@ -275,7 +448,14 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*models.User, err
 }
 
 func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
-	query := `SELECT id, email, password, role, full_name, created_at, updated_at FROM users`
+	query := `
+		SELECT u.id, u.email, u.password_hash, u.role, u.full_name, u.created_at, u.updated_at,
+		       bm.branch_id
+		FROM users u
+		LEFT JOIN branch_managers bm ON bm.manager_id = u.id
+		WHERE u.deleted_at IS NULL
+		ORDER BY u.created_at
+	`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query)
 	if err != nil {
@@ -283,36 +463,74 @@ func (s *UserService) GetAll(ctx context.Context) ([]models.User, error) {
 	}
 	defer rows.Close()
 
-	var users []models.User
+	// Deduplicate by user ID (a manager can appear in multiple branches)
+	seen := map[string]*models.User{}
+	var order []string
 	permissionService := NewPermissionService(s.db)
 
 	for rows.Next() {
-		var user models.User
-		if err := rows.Scan(&user.ID, &user.Email, &user.Password, &user.Role, &user.FullName, &user.CreatedAt, &user.UpdatedAt); err != nil {
+		var u models.User
+		var branchID *string
+		if err := rows.Scan(&u.ID, &u.Email, &u.Password, &u.Role, &u.FullName, &u.CreatedAt, &u.UpdatedAt, &branchID); err != nil {
 			return nil, err
 		}
-		user.Password = ""
+		u.Password = ""
 
-		// Fetch permissions for the user
-		permissions, err := permissionService.GetByUserID(ctx, user.ID)
-		if err == nil {
-			user.Permissions = permissions
+		if existing, ok := seen[u.ID]; ok {
+			// Additional branch for a manager — append to BranchIDs
+			if branchID != nil {
+				existing.BranchIDs = append(existing.BranchIDs, *branchID)
+			}
+			continue
 		}
 
-		users = append(users, user)
+		if branchID != nil {
+			u.BranchID = branchID
+			u.BranchIDs = []string{*branchID}
+		}
+
+		permissions, err := permissionService.GetByUserID(ctx, u.ID)
+		if err == nil {
+			u.Permissions = permissions
+		}
+
+		seen[u.ID] = &u
+		order = append(order, u.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
-	return users, rows.Err()
+	users := make([]models.User, 0, len(order))
+	for _, id := range order {
+		users = append(users, *seen[id])
+	}
+	return users, nil
 }
 
+// Update applies profile/password changes. A password change ("password" key)
+// REQUIRES a correct "current_password"; use UpdateByAdmin for an admin or
+// developer resetting someone else's password.
 func (s *UserService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.User, error) {
-	// Validate and sanitize input fields
+	return s.update(ctx, id, updates, true)
+}
+
+// UpdateByAdmin is Update without the current-password requirement, for an
+// admin acting on another user or the developer portal. Callers must have
+// already authorised the actor.
+func (s *UserService) UpdateByAdmin(ctx context.Context, id string, updates map[string]interface{}) (*models.User, error) {
+	return s.update(ctx, id, updates, false)
+}
+
+func (s *UserService) update(ctx context.Context, id string, updates map[string]interface{}, requireCurrent bool) (*models.User, error) {
+	// Only these columns can be written. password_hash is deliberately NOT
+	// client-settable: it is derived below from "password" after the
+	// current-password check (a raw "password_hash" key is dropped).
 	allowedFields := map[string]bool{
-		"full_name":           true,
-		"email":               true,
-		"password":            true,
-		"current_password":    true,
+		"full_name": true,
+		"email":     true,
 	}
+	delete(updates, "password_hash")
 
 	query := `UPDATE users SET `
 	args := []interface{}{}
@@ -329,12 +547,19 @@ func (s *UserService) Update(ctx context.Context, id string, updates map[string]
 	}
 
 	if newPwd, exists := updates["password"]; exists {
+		delete(updates, "password") // callers use "password"; internally we store as "password_hash"
 		if pwdStr, ok := newPwd.(string); ok {
-			// If current_password is provided, verify it
-			if currentPassword != "" {
+			if len(pwdStr) < 8 {
+				return nil, errors.New("password must be at least 8 characters")
+			}
+			if requireCurrent && currentPassword == "" {
+				return nil, errors.New("current_password is required to change password")
+			}
+			// Verify the current password when required (or when supplied)
+			if requireCurrent || currentPassword != "" {
 				// Note: user.Password is cleared in GetByID, need to fetch separately
 				userRow := &models.User{}
-				userQuery := `SELECT password FROM users WHERE id = $1`
+				userQuery := `SELECT password_hash FROM users WHERE id = $1`
 				err := s.db.GetConn().QueryRowContext(ctx, userQuery, id).Scan(&userRow.Password)
 				if err != nil {
 					log.Printf("[UserService.Update] Failed to fetch current password: %v", err)
@@ -352,12 +577,12 @@ func (s *UserService) Update(ctx context.Context, id string, updates map[string]
 				log.Printf("[UserService.Update] Failed to hash password: %v", err)
 				return nil, errors.New("failed to update password")
 			}
-			updates["password"] = string(hashedPassword)
+			updates["password_hash"] = string(hashedPassword)
 		}
 	}
 
 	for key, value := range updates {
-		if !allowedFields[key] {
+		if !allowedFields[key] && key != "password_hash" {
 			continue
 		}
 		if hasUpdates {
@@ -395,17 +620,90 @@ func (s *UserService) Update(ctx context.Context, id string, updates map[string]
 	return s.GetByID(ctx, id)
 }
 
+// Delete soft-deletes the user: recoverable via Restore for 30 days (this
+// path is developer-portal-only — see RegisterDevCRMRoutes — so the
+// platform-wide 30-day window always applies, not the 7-day one).
 func (s *UserService) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM users WHERE id = $1`
-	_, err := s.db.GetConn().ExecContext(ctx, query, id)
-	return err
+	query := `UPDATE users SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL`
+	res, err := s.db.GetConn().ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("user not found")
+	}
+	s.revokeAllSessions(ctx, id)
+	return nil
+}
+
+// revokeAllSessions marks every live session of the user revoked in Postgres
+// and flags it in Redis (same key auth_service/AuthMiddleware use), so a
+// soft-deleted user's outstanding tokens stop working. Best-effort.
+func (s *UserService) revokeAllSessions(ctx context.Context, userID string) {
+	rows, err := s.db.GetConn().QueryContext(ctx,
+		`UPDATE user_sessions SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL RETURNING id`, userID)
+	if err != nil {
+		log.Printf("[UserService] revoke sessions for %s failed: %v", userID, err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sid string
+		if rows.Scan(&sid) != nil || s.redisClient == nil {
+			continue
+		}
+		if rerr := s.redisClient.GetClient().Set(ctx, "auth:session:revoked:"+sid, "1", 25*time.Hour).Err(); rerr != nil {
+			log.Printf("[UserService] redis revoke flag for session %s failed: %v", sid, rerr)
+		}
+	}
+}
+
+// Restore un-deletes a user soft-deleted within the last 30 days.
+func (s *UserService) Restore(ctx context.Context, id string) error {
+	query := `UPDATE users SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`
+	res, err := s.db.GetConn().ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return errors.New("user not found in trash")
+	}
+	return nil
+}
+
+// TrashedUser is a monolith User soft-deleted within the last 30 days.
+type TrashedUser struct {
+	models.User
+	DeletedAt time.Time `json:"deletedAt"`
+}
+
+// ListTrash returns users soft-deleted within the last 30 days, platform-wide.
+func (s *UserService) ListTrash(ctx context.Context) ([]TrashedUser, error) {
+	query := `SELECT id, email, role, full_name, created_at, updated_at, deleted_at
+	          FROM users WHERE deleted_at IS NOT NULL AND deleted_at > now() - interval '30 days'
+	          ORDER BY deleted_at DESC`
+	rows, err := s.db.GetConn().QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrashedUser
+	for rows.Next() {
+		var u TrashedUser
+		if err := rows.Scan(&u.ID, &u.Email, &u.Role, &u.FullName, &u.CreatedAt, &u.UpdatedAt, &u.DeletedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
 }
 
 // GetUserBranches returns all branches managed by a user
 func (s *UserService) GetUserBranches(ctx context.Context, userID string) ([]models.Branch, error) {
 	branches := []models.Branch{}
 	query := `
-		SELECT b.id, b.name, b.address, b.phone, b.monthly_payment, b.currency, b.admin_id, b.created_at, b.updated_at
+		SELECT b.id, b.name, COALESCE(b.address, ''), COALESCE(b.phone, ''), b.monthly_payment, b.currency, b.admin_id, b.created_at, b.updated_at
 		FROM branches b
 		INNER JOIN branch_managers bm ON b.id = bm.branch_id
 		WHERE bm.manager_id = $1
@@ -432,7 +730,7 @@ func (s *UserService) GetUserBranches(ctx context.Context, userID string) ([]mod
 // GetAdminBranch returns the first branch owned by the given admin
 func (s *UserService) GetAdminBranch(ctx context.Context, adminID string) (*models.Branch, error) {
 	branch := &models.Branch{}
-	query := `SELECT id, name, address, phone, monthly_payment, currency, admin_id, created_at, updated_at
+	query := `SELECT id, name, COALESCE(address, ''), COALESCE(phone, ''), monthly_payment, currency, admin_id, created_at, updated_at
 	          FROM branches WHERE admin_id = $1 ORDER BY created_at ASC LIMIT 1`
 	err := s.db.GetConn().QueryRowContext(ctx, query, adminID).Scan(
 		&branch.ID, &branch.Name, &branch.Address, &branch.Phone,
@@ -474,6 +772,96 @@ func (s *UserService) RemoveBranchManager(ctx context.Context, branchID, manager
 }
 
 // GetBranchManagers returns all managers for a branch
+// GetBranchAdminID returns the admin_id for the given branch.
+// Used by subscription gating to trace staff → branch admin → subscription.
+func (s *UserService) GetBranchAdminID(ctx context.Context, branchID string) (string, error) {
+	var adminID string
+	err := s.db.GetConn().QueryRowContext(ctx,
+		`SELECT COALESCE(admin_id::text, '') FROM branches WHERE id = $1`, branchID,
+	).Scan(&adminID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return adminID, err
+}
+
+// GetOwnerIDForUser resolves the school-owner (admin) user ID for any non-admin
+// user. It covers three association paths in one query:
+//  1. users.branch_id → branches.admin_id  (teachers, accountants, staff)
+//  2. branch_managers → branches.admin_id  (managers, branch_admins)
+//
+// Returns "" when no branch association is found.
+func (s *UserService) GetOwnerIDForUser(ctx context.Context, userID string) (string, error) {
+	var adminID string
+	err := s.db.GetConn().QueryRowContext(ctx, `
+		SELECT COALESCE(b.admin_id::text, '')
+		FROM branches b
+		WHERE b.id = (
+			SELECT branch_id FROM users WHERE id = $1 AND branch_id IS NOT NULL
+			UNION
+			SELECT branch_id FROM branch_managers WHERE manager_id = $1
+			LIMIT 1
+		)
+		LIMIT 1
+	`, userID).Scan(&adminID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return adminID, err
+}
+
+// BelongsToBranch returns true when userID is legitimately associated with branchID.
+// Covers three cases:
+//   - admin:         they own the branch (branches.admin_id = userID)
+//   - manager/ba:    they are in branch_managers for this branch
+//   - teacher/staff: their users.branch_id points to this branch
+//
+// A single UNION query keeps it to one round-trip.
+func (s *UserService) BelongsToBranch(ctx context.Context, userID, branchID string) (bool, error) {
+	var count int
+	err := s.db.GetConn().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM (
+			SELECT 1 FROM branches        WHERE id = $2 AND admin_id = $1
+			UNION ALL
+			SELECT 1 FROM branch_managers WHERE branch_id = $2 AND manager_id = $1
+			UNION ALL
+			SELECT 1 FROM users           WHERE id = $1 AND branch_id = $2
+		) AS access
+	`, userID, branchID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("BelongsToBranch: %w", err)
+	}
+	return count > 0, nil
+}
+
+// resourceTables is the allowlist of tables ResourceBranchID may query. The
+// table name is interpolated into SQL, so it must never come from user input.
+var resourceTables = map[string]bool{
+	"students": true,
+	"classes":  true,
+	"expenses": true,
+	"payments": true,
+	"salaries": true,
+	"teachers": true,
+}
+
+// ResourceBranchID returns the branch_id that owns the row with the given id.
+// found is false when the row does not exist (or has no branch).
+func (s *UserService) ResourceBranchID(ctx context.Context, table, id string) (branchID string, found bool, err error) {
+	if !resourceTables[table] {
+		return "", false, fmt.Errorf("ResourceBranchID: table %q not allowed", table)
+	}
+	var bid sql.NullString
+	err = s.db.GetConn().QueryRowContext(ctx, "SELECT branch_id FROM "+table+" WHERE id = $1", id).Scan(&bid)
+	if err == sql.ErrNoRows {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("ResourceBranchID: %w", err)
+	}
+	return bid.String, bid.Valid && bid.String != "", nil
+}
+
 func (s *UserService) GetBranchManagers(ctx context.Context, branchID string) ([]models.User, error) {
 	managers := []models.User{}
 	query := `
@@ -508,7 +896,7 @@ func (s *UserService) GetManagersByBranch(ctx context.Context, branchID string) 
 		SELECT DISTINCT u.id, u.email, u.role, u.full_name, u.created_at, u.updated_at
 		FROM users u
 		INNER JOIN branch_managers bm ON u.id = bm.manager_id
-		WHERE bm.branch_id = $1
+		WHERE bm.branch_id = $1 AND u.deleted_at IS NULL
 		ORDER BY u.full_name
 	`
 
@@ -653,7 +1041,7 @@ func (s *UserService) ResetPasswordWithToken(ctx context.Context, email, resetTo
 	}
 
 	// Update password in database
-	query := `UPDATE users SET password = $1, updated_at = $2 WHERE email = $3`
+	query := `UPDATE users SET password_hash = $1, updated_at = $2 WHERE email = $3`
 	_, err = s.db.GetConn().ExecContext(ctx, query, string(hashedPassword), utils.GetLocalTime(), email)
 	if err != nil {
 		log.Printf("[UserService.ResetPasswordWithToken] Failed to update password: %v", err)

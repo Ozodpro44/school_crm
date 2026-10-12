@@ -3,6 +3,8 @@ package handlers
 import (
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/service"
@@ -15,10 +17,10 @@ import (
 // @Accept json
 // @Produce json
 // @Param id path string true "Subscription ID"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 401 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/{id}/pay-telegram [post]
 func InitiateTelegramPayment(telegramService *service.TelegramPaymentService, subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -81,23 +83,36 @@ func InitiateTelegramPayment(telegramService *service.TelegramPaymentService, su
 // @Produce json
 // @Param invoice_id query string true "Invoice number"
 // @Param status query string true "Payment status (confirmed/completed)"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Param amount query number true "Amount paid (must match the invoice)"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /webhooks/telegram-callback [post]
 func TelegramPaymentCallback(telegramService *service.TelegramPaymentService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Previously this callback trusted invoice_id/status with no proof
+		// the request actually came from the payment bot — anyone who knew
+		// or guessed an invoice number could activate that subscription for
+		// free. Require the dedicated webhook secret (TELEGRAM_WEBHOOK_SECRET) as a bearer token.
+		auth := c.GetHeader("Authorization")
+		if !strings.HasPrefix(auth, "Bearer ") || !telegramService.VerifyWebhookSecret(strings.TrimPrefix(auth, "Bearer ")) {
+			log.Printf("[TelegramPaymentCallback] Rejected: missing or invalid webhook secret")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid webhook credentials"})
+			return
+		}
+
 		invoiceID := c.Query("invoice_id")
 		status := c.Query("status")
+		amount, amountErr := strconv.ParseFloat(c.Query("amount"), 64)
 
-		if invoiceID == "" || status == "" {
+		if invoiceID == "" || status == "" || amountErr != nil {
 			log.Printf("[TelegramPaymentCallback] Missing required parameters")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing required parameters"})
 			return
 		}
 
 		// Process callback
-		success, err := telegramService.HandleTelegramCallback(c.Request.Context(), invoiceID, status)
+		success, err := telegramService.HandleTelegramCallback(c.Request.Context(), invoiceID, status, amount)
 		if err != nil || !success {
 			log.Printf("[TelegramPaymentCallback] Failed to process callback: %v", err)
 			c.JSON(http.StatusOK, gin.H{"error": "failed to process payment"})
@@ -120,6 +135,11 @@ func RegisterTelegramPaymentRoutes(router *gin.RouterGroup, telegramService *ser
 }
 
 // RegisterTelegramPaymentWebhooks registers Telegram payment webhook routes (public, no auth)
+// Not registered at all when TELEGRAM_WEBHOOK_SECRET is unset.
 func RegisterTelegramPaymentWebhooks(router *gin.RouterGroup, telegramService *service.TelegramPaymentService) {
+	if !telegramService.WebhookEnabled() {
+		log.Println("[Telegram payments] TELEGRAM_WEBHOOK_SECRET not set; webhook route not registered")
+		return
+	}
 	router.POST("/webhooks/telegram-callback", TelegramPaymentCallback(telegramService))
 }

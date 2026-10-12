@@ -17,11 +17,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { usersDB } from "@/lib/storage";
+import { FormDialog } from "@/components/FormDialog";
+import { Field } from "@/components/Field";
+import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { Expense, PaymentMethod } from "@/types";
 import {
   Plus,
@@ -32,9 +32,11 @@ import {
   Banknote,
   Building2,
   TrendingDown,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
+  Target,
+  AlertTriangle,
+  CheckCircle2,
+  X,
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
 import {
@@ -44,11 +46,15 @@ import {
   getUser,
   getBranch,
   getExpensesConsolidatedData,
+  getExpenseBudgets,
+  upsertExpenseBudget,
+  deleteExpenseBudget,
   ExpenseSummary,
+  type BudgetWithActual,
 } from "@/lib/api";
 import { Branch } from "@/types";
 import MonthYearSelector from "@/components/MonthYearSelector";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -56,10 +62,15 @@ import { useMultiSelect } from "@/hooks/use-multi-select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DialogFooter } from "@/components/ui/dialog";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
+import { DataTable, Column } from "@/components/DataTable";
+import { PageHeader } from "@/components/PageHeader";
+import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
+import { useBranch } from "@/context/BranchContext";
 import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function ExpensesPage() {
   const router = useRouter();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [searchInput, setSearchInput] = useState("");
@@ -72,12 +83,16 @@ export default function ExpensesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [totalExpenses, setTotalExpenses] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [indicators, setIndicators] = useState<ExpenseSummary | null>(null);
   const [userCache, setUserCache] = useState<{ [key: string]: string }>({});
   const [branchData, setBranchData] = useState<Branch | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedYear, setSelectedYear] = useState<number>(0);
+  const [budgets, setBudgets] = useState<BudgetWithActual[]>([]);
+  const [isBudgetDialogOpen, setIsBudgetDialogOpen] = useState(false);
+  const [budgetEditCategory, setBudgetEditCategory] = useState("");
+  const [budgetEditAmount, setBudgetEditAmount] = useState("");
+  const [isSavingBudget, setIsSavingBudget] = useState(false);
   const initialLoadDoneRef = useRef(false);
   const currentLoadIdRef = useRef(0);
   const filterChangeInProgressRef = useRef(false);
@@ -100,41 +115,18 @@ export default function ExpensesPage() {
     isLoading: false,
   });
   const language = useLanguage();
-  const { toast } = useToast();
   const canCreateExpenses = hasPermission("canCreateExpenses");
   const canEditExpenses = hasPermission("canEditExpenses");
   const canDeleteExpenses = hasPermission("canDeleteExpenses");
   const {
+    selectedIds,
     toggleSelect,
     toggleSelectAll,
     clearSelection,
-    isSelected,
-    getSelectedCount,
     getSelectedIds,
     areAllSelected,
     areSomeSelected,
   } = useMultiSelect<Expense>();
-
-  const getDefaultExpenseDate = (branch?: Branch | null): string => {
-    const data = branch ?? branchData;
-    if (!data?.currentFinancialMonth) {
-      return new Date().toISOString().split("T")[0];
-    }
-    const { month: branchMonth, year: branchYear } = data.currentFinancialMonth;
-    const now = new Date();
-    const realMonth = now.getMonth() + 1;
-    const realYear = now.getFullYear();
-    // Branch is behind the real calendar — use last day of branch month
-    if (branchYear < realYear || (branchYear === realYear && branchMonth < realMonth)) {
-      // new Date(year, monthIndex, 0) → last day of previous month; branchMonth is 1-based
-      const lastDay = new Date(branchYear, branchMonth, 0);
-      const y = lastDay.getFullYear();
-      const m = String(lastDay.getMonth() + 1).padStart(2, "0");
-      const d = String(lastDay.getDate()).padStart(2, "0");
-      return `${y}-${m}-${d}`;
-    }
-    return now.toISOString().split("T")[0];
-  };
 
   const [formData, setFormData] = useState({
     category: "",
@@ -144,6 +136,11 @@ export default function ExpensesPage() {
     date: new Date().toISOString().split("T")[0],
     notes: "",
   });
+  const [formErrors, setFormErrors] = useState<{
+    category?: string;
+    description?: string;
+    amount?: string;
+  }>({});
 
   const categories = [
     "Utilities",
@@ -173,49 +170,86 @@ export default function ExpensesPage() {
   };
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
+
+  const financialMonthKey = currentBranch?.currentFinancialMonth
+    ? `${currentBranch.currentFinancialMonth.year}-${currentBranch.currentFinancialMonth.month}`
+    : undefined;
+
+  // The sidebar already hides this link for anyone lacking canViewExpenses
+  // (see Layout.tsx), but that alone doesn't stop someone from typing the
+  // URL directly — settings.tsx already guards its own page this way for
+  // canViewSettings, so this mirrors that pattern for consistency.
+  useEffect(() => {
+    if (!hasPermission("canViewExpenses")) {
+      router.push("/");
+    }
+  }, [router]);
+
+  useEffect(() => {
+    // Only persist once the first load has restored (or defaulted) the filters.
+    if (!initialLoadDoneRef.current) return;
+    savePageFilters("expenses", { search: searchTerm, category: filterCategory, paymentMethod: filterPaymentMethod, limit: itemsPerPage });
+  }, [searchTerm, filterCategory, filterPaymentMethod, itemsPerPage]);
 
   // Initialize state from URL params
   useEffect(() => {
     if (!router.isReady) return;
+    // See the equivalent guard in assignments.tsx: without the branchLoading
+    // check, a branch that never resolves left isLoading stuck at its
+    // initial `true` forever — this effect never ran, so nothing ever
+    // called setIsLoading(false).
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
 
+    if (initialLoadDoneRef.current) {
+      // Branch switched or financial month changed — reset filters and reload.
+      // loadData runs in "branch defaults" mode so it never reads the
+      // previous branch's month/filters out of this render's stale closure.
+      setCurrentPage(1);
+      setSelectedMonth("");
+      setFilterCategory("all");
+      setFilterPaymentMethod("all");
+      setSearchTerm("");
+      setSearchInput("");
+      setIsLoading(true);
+      loadData(undefined, undefined, "", "all", "all", 1, true).finally(() => setIsLoading(false));
+      return;
+    }
+
+    // Initial load — read URL params first
     const { page, limit, search, category, paymentMethod, month, year } = router.query;
+    const urlMonth = typeof month === "string" && /^(0[1-9]|1[0-2])$/.test(month) ? month : undefined;
+    const urlYear = typeof year === "string" ? parseInt(year, 10) || undefined : undefined;
+    // URL params win; otherwise fall back to the last filters used on this page.
     const saved = loadPageFilters("expenses", { search: "", category: "all", paymentMethod: "all", limit: 10 });
-
+    const urlSearch = typeof search === "string" ? search : String(saved.search);
+    const urlCategory = typeof category === "string" ? category : String(saved.category);
+    const urlPaymentMethod = typeof paymentMethod === "string" ? paymentMethod : String(saved.paymentMethod);
+    const urlPage = typeof page === "string" ? parseInt(page, 10) || 1 : 1;
+    const urlLimit = typeof limit === "string" ? parseInt(limit, 10) || 10 : Number(saved.limit) || 10;
     if (page) setCurrentPage(parseInt(page as string) || 1);
-    setItemsPerPage(limit ? (parseInt(limit as string) || 10) : Number(saved.limit) || 10);
-    const initSearch = (search as string) ?? String(saved.search);
-    setSearchTerm(initSearch);
-    setSearchInput(initSearch);
-    setFilterCategory((category as string) ?? String(saved.category));
-    setFilterPaymentMethod((paymentMethod as string) ?? String(saved.paymentMethod));
-    if (month) setSelectedMonth(month as string);
-    if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
+    setItemsPerPage(urlLimit);
+    setSearchTerm(urlSearch);
+    setSearchInput(urlSearch);
+    setFilterCategory(urlCategory);
+    setFilterPaymentMethod(urlPaymentMethod);
+    if (urlMonth) setSelectedMonth(urlMonth);
+    if (urlYear) setSelectedYear(urlYear);
 
-    // Load initial data
     setIsLoading(true);
-    loadData().finally(() => {
+    // Pass URL values explicitly: state set above is not visible to loadData
+    // in this render, so relying on it dropped the URL month/filters.
+    loadData(urlMonth, urlYear, urlSearch, urlCategory, urlPaymentMethod, urlPage, false, urlLimit).finally(() => {
       setIsLoading(false);
       initialLoadDoneRef.current = true;
     });
+    loadBudgets(urlMonth, urlYear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.isReady]);
-
-  useEffect(() => {
-    savePageFilters("expenses", { search: searchTerm, category: filterCategory, paymentMethod: filterPaymentMethod, limit: itemsPerPage });
-  }, [searchTerm, filterCategory, filterPaymentMethod, itemsPerPage]);
-
-  // Refetch when branch changes
-  useEffect(() => {
-    const handleBranchChange = async () => {
-      setIsLoading(true);
-      setCurrentPage(1);
-      setSelectedMonth("");
-      loadData().finally(() => setIsLoading(false));
-    };
-
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
+  }, [router.isReady, currentBranch?.id, financialMonthKey, branchLoading]);
 
   // Reload data when page or items per page changes
   useEffect(() => {
@@ -277,16 +311,6 @@ export default function ExpensesPage() {
     router.push(`/expenses?${params.toString()}`, undefined, { shallow: true });
   };
 
-  const waitForSelectedBranchId = async () => {
-    let retries = 0;
-    const maxRetries = 20;
-    while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      retries++;
-    }
-    return localStorage.getItem("selectedBranchId");
-  };
-
   const loadData = async (
     monthOverride?: string,
     yearOverride?: number,
@@ -294,10 +318,13 @@ export default function ExpensesPage() {
     categoryOverride?: string,
     paymentMethodOverride?: string,
     pageOverride?: number,
+    useBranchDefaults = false,
+    limitOverride?: number,
   ) => {
     try {
       const loadId = ++currentLoadIdRef.current;
-      const branchId = await waitForSelectedBranchId();
+      // No polling — caller (effects below) gate loadData on currentBranch.
+      const branchId = currentBranch?.id;
       if (!branchId) {
         return;
       }
@@ -314,21 +341,29 @@ export default function ExpensesPage() {
         branch.currentFinancialMonth?.year || new Date().getFullYear();
 
       // Set selected month to branch's current month if not already set
-      if (!selectedMonth) {
+      const stateMonth = useBranchDefaults ? "" : selectedMonth;
+      const stateYear = useBranchDefaults ? 0 : selectedYear;
+      if (useBranchDefaults || (!monthOverride && !selectedMonth)) {
         setSelectedMonth(currentMonth);
         setSelectedYear(currentYear);
+      } else if (monthOverride && !selectedMonth) {
+        setSelectedMonth(monthOverride);
+        setSelectedYear(yearOverride || currentYear);
+      }
+      if (useBranchDefaults) {
+        void loadBudgets(currentMonth, currentYear);
       }
 
-      // Use override values first, then state, then URL params
-      const queryMonth = monthOverride || selectedMonth || currentMonth;
-      const queryYear = yearOverride || selectedYear || currentYear;
+      // Use override values first, then state (unless resetting), then branch default
+      const queryMonth = monthOverride || stateMonth || currentMonth;
+      const queryYear = yearOverride || stateYear || currentYear;
       const querySearch = searchOverride !== undefined ? searchOverride : searchTerm;
       const queryCategory = categoryOverride !== undefined ? categoryOverride : filterCategory;
       const queryPaymentMethod = paymentMethodOverride !== undefined ? paymentMethodOverride : filterPaymentMethod;
       const queryPage = pageOverride !== undefined ? pageOverride : currentPage;
 
       // Build filters
-      const filters: any = {
+      const filters: Record<string, string> = {
         month: queryMonth,
         year: queryYear.toString(),
       };
@@ -337,14 +372,13 @@ export default function ExpensesPage() {
       if (queryPaymentMethod !== "all") filters.paymentMethod = queryPaymentMethod;
 
       // Call consolidated API
-      const result = await getExpensesConsolidatedData(branchId, queryPage, itemsPerPage, filters);
+      const result = await getExpensesConsolidatedData(branchId, queryPage, limitOverride ?? itemsPerPage, filters);
       if (loadId !== currentLoadIdRef.current) {
         return;
       }
 
       setExpenses(result.items || []);
       setTotalExpenses(result.total || 0);
-      setTotalPages(Math.ceil((result.total || 0) / itemsPerPage));
       setIndicators(result.indicators);
 
       // Fetch user names for all unique creators
@@ -354,11 +388,60 @@ export default function ExpensesPage() {
       }
     } catch (error) {
       console.error("Failed to load expenses:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadExpenses"),
-        variant: "destructive",
+      notify.error(t("error"), t("failedToLoadExpenses"));
+    }
+  };
+
+  const loadBudgets = async (month?: string, year?: number) => {
+    try {
+      const branchId = currentBranch?.id;
+      if (!branchId) return;
+      const m = month || selectedMonth;
+      const y = year || selectedYear;
+      if (!m || !y) return;
+      const data = await getExpenseBudgets(branchId, m, y);
+      setBudgets(data);
+    } catch {
+      setBudgets([]);
+    }
+  };
+
+  const handleSaveBudget = async () => {
+    const branchId = currentBranch?.id;
+    if (!branchId || !budgetEditCategory || !budgetEditAmount) return;
+    const budgetValue = parseFloat(budgetEditAmount);
+    if (!Number.isFinite(budgetValue) || budgetValue <= 0) {
+      notify.error(t("error"), t("mustBePositive"));
+      return;
+    }
+    setIsSavingBudget(true);
+    try {
+      await upsertExpenseBudget({
+        branchId,
+        category: budgetEditCategory,
+        month: selectedMonth,
+        year: selectedYear,
+        amount: budgetValue,
       });
+      await loadBudgets();
+      setBudgetEditCategory("");
+      setBudgetEditAmount("");
+      notify.success(t("saved"), t("budgetSaved"));
+    } catch {
+      notify.error(t("error"), t("failedToSaveBudget"));
+    } finally {
+      setIsSavingBudget(false);
+    }
+  };
+
+  const handleDeleteBudget = async (category: string) => {
+    const branchId = currentBranch?.id;
+    if (!branchId) return;
+    try {
+      await deleteExpenseBudget(branchId, category, selectedMonth, selectedYear);
+      setBudgets((prev) => prev.filter((b) => b.category !== category));
+    } catch {
+      notify.error(t("error"), t("failedToDeleteBudget"));
     }
   };
 
@@ -369,6 +452,7 @@ export default function ExpensesPage() {
     setCurrentPage(1);
     setIsLoading(true);
     loadData(month, year, searchTerm, filterCategory, filterPaymentMethod, 1).finally(() => setIsLoading(false));
+    loadBudgets(month, year);
     // Update URL
     const params = new URLSearchParams();
     if (searchTerm) params.set("search", searchTerm);
@@ -455,19 +539,7 @@ export default function ExpensesPage() {
 
   const getUserName = (userId: string) => {
     if (!userId) return "-";
-
-    // Check cache first
-    if (userCache[userId]) {
-      return userCache[userId];
-    }
-
-    // Try local storage fallback
-    const localUser = usersDB.getAll().find((u) => u.id === userId);
-    if (localUser?.fullName) {
-      return localUser.fullName;
-    }
-
-    // Return loading state and fetch from API
+    if (userCache[userId]) return userCache[userId];
     return "-";
   };
 
@@ -479,13 +551,28 @@ export default function ExpensesPage() {
       setUserCache((prev) => ({ ...prev, [userId]: user.fullName }));
     } catch (error) {
       console.error(`Failed to fetch user ${userId}:`, error);
-      // Cache empty name to avoid retrying
       setUserCache((prev) => ({ ...prev, [userId]: "Unknown" }));
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // None of these were ever checked before: category/description (the
+    // expense's title) could be submitted empty, and amount could be
+    // blank/negative/zero — parseFloat of an empty string is NaN, sent
+    // straight to the API.
+    const errors: typeof formErrors = {};
+    if (!formData.category) errors.category = t("fieldRequired");
+    if (!formData.description.trim()) errors.description = t("fieldRequired");
+    if (!formData.amount.trim() || !(parseFloat(formData.amount) > 0)) {
+      errors.amount = formData.amount.trim() ? t("mustBePositive") : t("fieldRequired");
+    }
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
     setIsSubmitting(true);
 
     const user = getCurrentUser();
@@ -510,11 +597,7 @@ export default function ExpensesPage() {
           date: dateTimestamp,
           branchId: editingExpense.branchId,
         });
-        toast({
-          title: "Updated",
-          description: "Expense updated successfully",
-          variant: "success",
-        });
+        notify.success(t("updated"), t("expenseUpdatedSuccess"));
       } else {
         await createExpense({
           title: formData.description, // Mapped from description
@@ -523,13 +606,9 @@ export default function ExpensesPage() {
           amount: parseFloat(formData.amount),
           paymentMethod: formData.paymentMethod,
           date: dateTimestamp,
-          branchId: localStorage.getItem("selectedBranchId") || "",
+          branchId: currentBranch?.id || "",
         });
-        toast({
-          title: t("created"),
-          description: t("expenseCreatedSuccess"),
-          variant: "success",
-        });
+        notify.success(t("created"), t("expenseCreatedSuccess"));
       }
 
       resetForm();
@@ -537,11 +616,7 @@ export default function ExpensesPage() {
       setIsDialogOpen(false);
     } catch (error) {
       console.error("Failed to save expense:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToSaveExpense"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToSaveExpense"));
     } finally {
       setIsSubmitting(false);
     }
@@ -573,18 +648,10 @@ export default function ExpensesPage() {
         try {
           await deleteExpense(id);
           await loadData();
-          toast({
-            title: t("deletedItem"),
-            description: t("expenseDeleted"),
-            variant: "success",
-          });
+          notify.success(t("deletedItem"), t("expenseDeleted"));
         } catch (error) {
           console.error("Failed to delete expense:", error);
-          toast({
-            title: t("error"),
-            description: t("expenseDeletedError"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("expenseDeletedError"));
         } finally {
           setConfirmDialog(prev => ({ ...prev, isOpen: false, isLoading: false }));
         }
@@ -603,43 +670,40 @@ export default function ExpensesPage() {
       isOpen: true,
       title: t("deleteMultipleExpenses"),
       message: t("confirmDeleteMultipleExpensesMessage"),
+      isLoading: false,
       onConfirm: async () => {
+        setConfirmDialog((prev) => ({ ...prev, isLoading: true }));
         try {
           await Promise.all(selectedIds.map((id) => deleteExpense(id)));
           clearSelection();
           await loadData();
-          toast({
-            title: t("deleted"),
-            description: `${selectedIds.length} ${t("expensesDeleted") || "expenses deleted"
-              }`,
-            variant: "success",
-          });
-          setConfirmDialog({ ...confirmDialog, isOpen: false });
+          notify.success(t("deleted"), `${selectedIds.length} ${t("expensesDeleted")
+              }`);
         } catch (error) {
           console.error("Failed to delete expenses:", error);
-          toast({
-            title: t("error"),
-            description: t("failedToDeleteExpenses"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToDeleteExpenses"));
+        } finally {
+          setConfirmDialog((prev) => ({ ...prev, isOpen: false, isLoading: false }));
         }
       },
       onCancel: () => {
-        setConfirmDialog({ ...confirmDialog, isOpen: false });
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
       },
     });
   };
 
   const resetForm = () => {
+    const today = new Date().toISOString().split("T")[0];
     setFormData({
       category: "",
       description: "",
       amount: "",
       paymentMethod: "cash",
-      date: getDefaultExpenseDate(),
+      date: today,
       notes: "",
     });
     setEditingExpense(null);
+    setFormErrors({});
   };
 
   const getPaymentMethodIcon = (method: PaymentMethod) => {
@@ -675,131 +739,102 @@ export default function ExpensesPage() {
     bank: indicators?.byMethod?.bank || 0,
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        {/* Header Skeleton */}
-        <div className="space-y-2">
-          <Skeleton className="h-10 w-48" />
-          <Skeleton className="h-4 w-64" />
+  // ── Column definitions ────────────────────────────────────────────────────────
+  const columns: Column<Expense>[] = [
+    {
+      key: "date",
+      header: t("date"),
+      render: (expense) => (
+        <span className="text-slate-900 dark:text-slate-100">
+          {new Date(expense.date).toLocaleDateString("en-GB").replace(/\//g, ".")}
+        </span>
+      ),
+    },
+    {
+      key: "category",
+      header: t("category"),
+      render: (expense) => (
+        <Badge variant="outline">
+          {t(getCategoryTranslationKey(expense.category))}
+        </Badge>
+      ),
+    },
+    {
+      key: "description",
+      header: t("description"),
+      render: (expense) => (
+        <span className="text-slate-900 dark:text-slate-100">{expense.title}</span>
+      ),
+    },
+    {
+      key: "amount",
+      header: t("amount"),
+      render: (expense) => (
+        <span className="font-semibold text-red-600 dark:text-red-400 tabular-nums">
+          {formatCurrency(expense.amount)}
+        </span>
+      ),
+    },
+    {
+      key: "paymentMethod",
+      header: t("paymentMethod"),
+      hideOnMobile: true,
+      render: (expense) => (
+        <Badge className={`gap-1 ${getPaymentMethodColor(expense.paymentMethod)}`}>
+          {getPaymentMethodIcon(expense.paymentMethod)}
+          <span>
+            {t(expense.paymentMethod === "bank" ? "bankTransfer" : expense.paymentMethod)}
+          </span>
+        </Badge>
+      ),
+    },
+    {
+      key: "createdBy",
+      header: t("whoAddedExpenses"),
+      hideOnMobile: true,
+      render: (expense) => (
+        <span className="text-sm text-slate-900 dark:text-slate-100">
+          {expense.createdBy ? getUserName(expense.createdBy) : "-"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: t("actions"),
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (expense) => (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={t("edit")}
+            onClick={(e) => { e.stopPropagation(); handleEdit(expense); }}
+            disabled={!canEditExpenses}
+            title={canEditExpenses ? "" : t("noPermission")}
+          >
+            <Edit2 className="w-4 h-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-label={t("delete")}
+            onClick={(e) => { e.stopPropagation(); handleDelete(expense.id); }}
+            disabled={!canDeleteExpenses}
+            title={canDeleteExpenses ? "" : t("noPermission")}
+          >
+            <Trash2 className="w-4 h-4 text-red-500" />
+          </Button>
         </div>
-
-        {/* Stats Cards Skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-3">
-                <Skeleton className="h-4 w-24" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-20 mb-2" />
-                <Skeleton className="h-3 w-32" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Action Button Skeleton */}
-        <Skeleton className="h-10 w-32" />
-
-        {/* Search and Filters Skeleton */}
-        <div className="flex gap-4 flex-col sm:flex-row">
-          <Skeleton className="h-10 w-full sm:flex-1" />
-          <Skeleton className="h-10 w-40" />
-          <Skeleton className="h-10 w-40" />
-        </div>
-
-        {/* Table Skeleton */}
-        <Card>
-          <CardContent className="space-y-4 pt-6">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center gap-4 py-4 border-b">
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-8 w-20" />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Custom Confirmation Dialog */}
-        <Dialog
-          open={confirmDialog.isOpen}
-          onOpenChange={(open) => {
-            if (!open) setConfirmDialog({ ...confirmDialog, isOpen: false });
-          }}
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{confirmDialog.title}</DialogTitle>
-            </DialogHeader>
-            <div className="py-4">
-              <p className="text-slate-600 dark:text-slate-400">
-                {confirmDialog.message}
-              </p>
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  confirmDialog.onCancel();
-                }}
-                disabled={confirmDialog.isLoading}
-              >
-                {t("cancel")}
-              </Button>
-              <Button
-                onClick={() => {
-                  confirmDialog.onConfirm();
-                }}
-                disabled={confirmDialog.isLoading}
-                className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
-              >
-                {confirmDialog.isLoading && (
-                  <svg
-                    className="w-4 h-4 mr-2 animate-spin"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                )}
-                {confirmDialog.isLoading
-                  ? t("loading") || "Loading..."
-                  : t("delete")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-    );
-  }
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex-1">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-            {t("expenses")}
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
-            {t("trackManageExpenses")}
-          </p>
+          <PageHeader title={t("expenses")} subtitle={t("trackManageExpenses")} />
         </div>
 
         {isAdmin && branchData && selectedMonth && (
@@ -817,539 +852,466 @@ export default function ExpensesPage() {
         )}
 
         <div className="flex-1 flex justify-end">
-          <Dialog
+          <Button
+            className="bg-brand hover:bg-brand-hover"
+            onClick={() => { resetForm(); setIsDialogOpen(true); }}
+            disabled={!canCreateExpenses}
+            title={
+              !canCreateExpenses
+                ? t("noPermission")
+                : ""
+            }
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            {t("addExpense")}
+          </Button>
+
+          <FormDialog
             open={isDialogOpen}
             onOpenChange={(open) => {
               setIsDialogOpen(open);
               if (!open) resetForm();
             }}
+            title={editingExpense ? t("editExpense") : t("addNewExpense")}
+            onSubmit={handleSubmit}
+            submitLabel={editingExpense ? t("update") : t("addExpense")}
+            submittingLabel={editingExpense ? t("updating") : t("creating")}
+            cancelLabel={t("cancel")}
+            isPending={isSubmitting}
+            maxWidth="max-w-2xl"
           >
-            <DialogTrigger asChild>
-              <Button
-                className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
-                onClick={() => resetForm()}
-                disabled={!canCreateExpenses}
-                title={
-                  !canCreateExpenses
-                    ? t("noPermission") || "No permission to create expenses"
-                    : ""
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="category">{t("category")} *</Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) => {
+                    setFormData({ ...formData, category: value });
+                    if (formErrors.category) setFormErrors((er) => ({ ...er, category: undefined }));
+                  }}
+                >
+                  <SelectTrigger className={formErrors.category ? "border-red-500 focus:ring-red-500" : ""}>
+                    <SelectValue placeholder={t("selectCategory")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((category) => (
+                      <SelectItem key={category} value={category}>
+                        {t(category.toLowerCase()) !==
+                          String(category.toLowerCase())
+                          ? t(category.toLowerCase())
+                          : category}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formErrors.category && (
+                  <p className="text-xs text-red-500">{formErrors.category}</p>
+                )}
+              </div>
+
+              <Field
+                id="amount"
+                label={`${t("amount")} *`}
+                type="text"
+                inputMode="decimal"
+                value={formatNumberWithSpaces(formData.amount)}
+                error={formErrors.amount}
+                placeholder="0"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, amount: removeNumberFormatting(e.target.value).replace(/[^\d.]/g, "") });
+                  if (formErrors.amount) setFormErrors((er) => ({ ...er, amount: undefined }));
+                }}
+              />
+
+              <div className="space-y-1.5">
+                <Label htmlFor="paymentMethod">{t("paymentMethod")} *</Label>
+                <Select
+                  value={formData.paymentMethod}
+                  onValueChange={(value: PaymentMethod) =>
+                    setFormData({ ...formData, paymentMethod: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="card">{t("card")}</SelectItem>
+                    <SelectItem value="cash">{t("cash")}</SelectItem>
+                    <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Field
+                id="date"
+                label={`${t("date")} *`}
+                type="date"
+                value={formData.date}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({ ...formData, date: e.target.value })
                 }
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {t("addExpense")}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingExpense ? t("editExpense") : t("addNewExpense")}
-                </DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="category">{t("category")} *</Label>
-                    <Select
-                      value={formData.category}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, category: value })
-                      }
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("selectCategory")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {t(category.toLowerCase()) !==
-                              String(category.toLowerCase())
-                              ? t(category.toLowerCase())
-                              : category}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+              />
 
-                  <div className="space-y-2">
-                    <Label htmlFor="amount">{t("amount")} *</Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      value={formData.amount}
-                      onChange={(e) =>
-                        setFormData({ ...formData, amount: e.target.value })
-                      }
-                      required
-                      placeholder="0"
-                      step="0.01"
-                    />
-                  </div>
+              <Field
+                id="description"
+                label={`${t("description")} *`}
+                value={formData.description}
+                error={formErrors.description}
+                placeholder={t("briefDescription")}
+                className="md:col-span-2"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, description: e.target.value });
+                  if (formErrors.description) setFormErrors((er) => ({ ...er, description: undefined }));
+                }}
+              />
 
-                  <div className="space-y-2">
-                    <Label htmlFor="paymentMethod">
-                      {t("paymentMethod")} *
-                    </Label>
-                    <Select
-                      value={formData.paymentMethod}
-                      onValueChange={(value: PaymentMethod) =>
-                        setFormData({ ...formData, paymentMethod: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="card">{t("card")}</SelectItem>
-                        <SelectItem value="cash">{t("cash")}</SelectItem>
-                        <SelectItem value="bank">
-                          {t("bankTransfer")}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="date">{t("date")} *</Label>
-                    <Input
-                      id="date"
-                      type="date"
-                      value={formData.date}
-                      onChange={(e) =>
-                        setFormData({ ...formData, date: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="description">{t("description")} *</Label>
-                    <Input
-                      id="description"
-                      value={formData.description}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          description: e.target.value,
-                        })
-                      }
-                      placeholder={t("briefDescription")}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="notes">{t("notes")}</Label>
-                    <Textarea
-                      id="notes"
-                      value={formData.notes}
-                      onChange={(e) =>
-                        setFormData({ ...formData, notes: e.target.value })
-                      }
-                      placeholder={t("notesPlaceholder")}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                    disabled={isSubmitting}
-                  >
-                    {t("cancel")}
-                  </Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
-                        {editingExpense ? t("updating") : t("creating")}
-                      </>
-                    ) : editingExpense ? (
-                      t("update")
-                    ) : (
-                      t("addExpense")
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+              <Field
+                id="notes"
+                label={t("notes")}
+                as="textarea"
+                value={formData.notes}
+                placeholder={t("notesPlaceholder")}
+                className="md:col-span-2"
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setFormData({ ...formData, notes: e.target.value })
+                }
+              />
+            </div>
+          </FormDialog>
         </div>
       </div>
 
+      {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card className="border-l-4 border-l-red-500">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <TrendingDown className="w-4 h-4" />
               {t("totalExpenses")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600 dark:text-red-400">
-              {formatCurrency(totalExpenseAmount)}
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("thisMonth")}
-            </p>
+            {isLoading ? <Skeleton className="h-8 w-36 mb-1" /> : (
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(totalExpenseAmount)}</div>
+            )}
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("thisMonth")}</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <CreditCard className="w-4 h-4" />
               {t("cardPayments")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {formatCurrency(totalByMethod.card)}
-            </div>
+            {isLoading ? <Skeleton className="h-8 w-28" /> : (
+              <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{formatCurrency(totalByMethod.card)}</div>
+            )}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <Banknote className="w-4 h-4" />
               {t("cashPayments")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {formatCurrency(totalByMethod.cash)}
-            </div>
+            {isLoading ? <Skeleton className="h-8 w-28" /> : (
+              <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{formatCurrency(totalByMethod.cash)}</div>
+            )}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <Building2 className="w-4 h-4" />
               {t("bankTransfers")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              {formatCurrency(totalByMethod.bank)}
-            </div>
+            {isLoading ? <Skeleton className="h-8 w-28" /> : (
+              <div className="text-2xl font-bold text-slate-900 dark:text-slate-100">{formatCurrency(totalByMethod.bank)}</div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <Card
-        className={`border-l-4 transition-all ${getSelectedCount() > 0
-            ? "border-l-blue-500 bg-blue-50 dark:bg-blue-900/20"
-            : "border-l-slate-300 dark:border-l-slate-600 bg-slate-50 dark:bg-slate-900/50 opacity-50"
-          }`}
-      >
-        <CardContent className="py-4 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium">
-              {getSelectedCount()} {t("itemsSelected") || "items selected"}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleBulkDelete}
-              disabled={getSelectedCount() === 0}
-            >
-              {t("deleteSelected") || "Delete Selected"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={clearSelection}
-              disabled={getSelectedCount() === 0}
-            >
-              {t("cancel")}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col sm:flex-row gap-2">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                <Input
-                  placeholder={t("searchExpenses")}
-                  value={searchInput}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setSearchInput(value);
-                    // Auto-clear search when input is empty
-                    if (value === "" && searchTerm !== "") {
-                      handleClearSearch();
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleSearch();
-                    }
-                  }}
-                  className="pl-10"
-                />
-              </div>
+      {/* Budget vs Actual Widget */}
+      {isAdmin && (budgets.length > 0 || selectedMonth) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="w-4 h-4 text-indigo-500" />
+                {t("budgetVsActual")}
+              </CardTitle>
               <Button
-                onClick={handleSearch}
-                className="bg-blue-600 hover:bg-blue-700"
+                variant="outline"
                 size="sm"
+                className="h-8 gap-1.5"
+                onClick={() => setIsBudgetDialogOpen(true)}
               >
-                {t("search") || "Search"}
+                <Plus className="w-3.5 h-3.5" />
+                {t("setBudget")}
               </Button>
-              {searchInput && (
-                <Button
-                  onClick={handleClearSearch}
-                  variant="outline"
-                  size="sm"
-                >
-                  {t("clear") || "Clear"}
-                </Button>
-              )}
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Select value={filterCategory} onValueChange={handleCategoryChange}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder={t("allCategories")} />
+          </CardHeader>
+          <CardContent>
+            {budgets.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">
+                {t("noBudgetsSet")}
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {budgets.map((b) => (
+                  <div key={b.category} className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        {b.isExceeded ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-500" />
+                        ) : b.isNearLimit ? (
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                        ) : (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                        )}
+                        <span className="font-medium text-slate-700 dark:text-slate-300">
+                          {t(b.category.toLowerCase()) || b.category}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs font-semibold ${b.isExceeded ? "text-red-600 dark:text-red-400" : b.isNearLimit ? "text-amber-600 dark:text-amber-400" : "text-slate-600 dark:text-slate-400"}`}>
+                          {formatCurrency(b.actual)} / {formatCurrency(b.amount)}
+                        </span>
+                        <button
+                          onClick={() => handleDeleteBudget(b.category)}
+                          aria-label={t("delete")}
+                          className="text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${b.isExceeded ? "bg-red-500" : b.isNearLimit ? "bg-amber-400" : "bg-emerald-500"}`}
+                        style={{ width: `${Math.min(b.usedPct, 100)}%` }}
+                      />
+                    </div>
+                    {b.isNearLimit && !b.isExceeded && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                        {t("budgetNearLimit")} ({Math.round(b.usedPct)}%)
+                      </p>
+                    )}
+                    {b.isExceeded && (
+                      <p className="text-[11px] text-red-600 dark:text-red-400">
+                        {t("budgetExceeded")} ({Math.round(b.usedPct)}%)
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Budget Editor Dialog */}
+      <Dialog open={isBudgetDialogOpen} onOpenChange={setIsBudgetDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Target className="w-4 h-4 text-indigo-500" />
+              {t("setBudget")}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>{t("category")}</Label>
+              <Select value={budgetEditCategory} onValueChange={setBudgetEditCategory}>
+                <SelectTrigger>
+                  <SelectValue placeholder={t("selectCategory")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">{t("allCategories")}</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category}>
-                      {t(getCategoryTranslationKey(category))}
+                  {categories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {t(cat.toLowerCase()) || cat}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Select
-                value={filterPaymentMethod}
-                onValueChange={handlePaymentMethodChange}
-              >
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <SelectValue placeholder={t("allMethods")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("allMethods")}</SelectItem>
-                  <SelectItem value="cash">{t("cash")}</SelectItem>
-                  <SelectItem value="click">Click</SelectItem>
-                  <SelectItem value="terminal">{t("terminal") || "Terminal"}</SelectItem>
-                  <SelectItem value="card">{t("card")}</SelectItem>
-                  <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={itemsPerPage.toString()} onValueChange={(val) => {
-                const limit = parseInt(val);
-                filterChangeInProgressRef.current = true;
-                setItemsPerPage(limit);
-                setCurrentPage(1);
-              }}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10">10 {t("perPage")}</SelectItem>
-                  <SelectItem value="20">20 {t("perPage")}</SelectItem>
-                  <SelectItem value="50">50 {t("perPage")}</SelectItem>
-                  <SelectItem value="100">100 {t("perPage")}</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
+            <div className="space-y-2">
+              <Label>{t("budgetAmount")}</Label>
+              <Input
+                type="text"
+                inputMode="numeric"
+                placeholder="0"
+                value={formatNumberWithSpaces(budgetEditAmount)}
+                onChange={(e) => setBudgetEditAmount(removeNumberFormatting(e.target.value).replace(/[^\d]/g, ""))}
+              />
+            </div>
+            {budgetEditCategory && budgets.find((b) => b.category === budgetEditCategory) && (
+              <p className="text-xs text-slate-500">
+                {t("currentBudget")}: {formatCurrency(budgets.find((b) => b.category === budgetEditCategory)!.amount)}
+              </p>
+            )}
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800">
-                  <th className="text-left py-3 px-4">
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsBudgetDialogOpen(false)}>
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={handleSaveBudget}
+              disabled={!budgetEditCategory || !(parseFloat(budgetEditAmount) > 0) || isSavingBudget}
+            >
+              {isSavingBudget && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {t("save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Filter bar */}
+      <FilterBar>
+        <FilterSearch
+          value={searchInput}
+          onChange={(v) => { setSearchInput(v); if (v === "" && searchTerm !== "") handleClearSearch(); }}
+          onSearch={handleSearch}
+          placeholder={t("searchExpenses")}
+        />
+        <Select value={filterCategory} onValueChange={handleCategoryChange}>
+          <SelectTrigger className={filterSelectClass("w-44")}>
+            <SelectValue placeholder={t("allCategories")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allCategories")}</SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category} value={category}>
+                {t(getCategoryTranslationKey(category))}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filterPaymentMethod} onValueChange={handlePaymentMethodChange}>
+          <SelectTrigger className={filterSelectClass("w-36")}>
+            <SelectValue placeholder={t("allMethods")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allMethods")}</SelectItem>
+            <SelectItem value="cash">{t("cash")}</SelectItem>
+            <SelectItem value="card">{t("card")}</SelectItem>
+            <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <FilterReset
+          onClick={handleClearSearch}
+          show={searchInput !== "" || filterCategory !== "all" || filterPaymentMethod !== "all"}
+          label={t("reset")}
+        />
+      </FilterBar>
+
+      {/* Table */}
+      <Card>
+        <CardContent className="p-0">
+          <DataTable
+            columns={columns}
+            data={paginatedExpenses}
+            loading={isLoading}
+            skeletonRows={8}
+            selectable
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onToggleSelectAll={() => toggleSelectAll(paginatedExpenses)}
+            areAllSelected={areAllSelected(paginatedExpenses)}
+            areSomeSelected={areSomeSelected(paginatedExpenses)}
+            bulkActions={
+              canDeleteExpenses ? (
+                <>
+                  <Button size="sm" variant="destructive" onClick={handleBulkDelete}>
+                    <Trash2 className="w-3.5 h-3.5 mr-1" />
+                    {t("deleteSelected")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={clearSelection}>
+                    {t("cancel")}
+                  </Button>
+                </>
+              ) : null
+            }
+            emptyIcon={TrendingDown}
+            emptyTitle={t("noExpensesFound")}
+            pagination={{
+              page: currentPage,
+              limit: itemsPerPage,
+              total: totalExpenses,
+            }}
+            onPageChange={handlePageChange}
+            onLimitChange={(limit) => {
+              filterChangeInProgressRef.current = true;
+              setItemsPerPage(limit);
+              setCurrentPage(1);
+            }}
+            limitOptions={[10, 20, 50, 100]}
+            renderCard={(expense, isSelected, onToggle) => (
+              <div
+                key={expense.id}
+                className={`border rounded-lg p-4 transition-all ${
+                  isSelected
+                    ? "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700"
+                    : "border-slate-200 dark:border-slate-700"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
                     <Checkbox
-                      checked={
-                        areAllSelected(paginatedExpenses) ||
-                        areSomeSelected(paginatedExpenses)
-                      }
-                      onCheckedChange={() => toggleSelectAll(paginatedExpenses)}
+                      checked={isSelected}
+                      onCheckedChange={onToggle}
+                      className="mt-0.5 flex-shrink-0"
                     />
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("date")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("category")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("description")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("amount")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("paymentMethod")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("whoAddedExpenses")}
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("actions")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedExpenses.map((expense) => (
-                  <tr
-                    key={expense.id}
-                    className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 ${isSelected(expense.id)
-                        ? "bg-blue-50 dark:bg-blue-900/20"
-                        : ""
-                      }`}
-                  >
-                    <td className="py-3 px-4">
-                      <Checkbox
-                        checked={isSelected(expense.id)}
-                        onCheckedChange={() => toggleSelect(expense.id)}
-                      />
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      {new Date(expense.date).toLocaleDateString()}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge variant="outline">
-                        {t(getCategoryTranslationKey(expense.category))}
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      {expense.title}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="font-semibold text-red-600 dark:text-red-400">
-                        {formatCurrency(expense.amount)}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge
-                        className={`gap-1 ${getPaymentMethodColor(
-                          expense.paymentMethod,
-                        )}`}
-                      >
-                        {getPaymentMethodIcon(expense.paymentMethod)}
-                        <span>
-                          {t(
-                            expense.paymentMethod === "bank"
-                              ? "bankTransfer"
-                              : expense.paymentMethod,
-                          )}
-                        </span>
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      <span className="text-sm">
-                        {expense.createdBy
-                          ? getUserName(expense.createdBy)
-                          : "-"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleEdit(expense)}
-                          disabled={!canEditExpenses}
-                          title={canEditExpenses ? "" : "No permission"}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDelete(expense.id)}
-                          disabled={!canDeleteExpenses}
-                          title={canDeleteExpenses ? "" : "No permission"}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {paginatedExpenses.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-slate-500 dark:text-slate-400">
-                  {t("noExpensesFound")}
-                </p>
-              </div>
-            )}
-
-            {/* Pagination */}
-            {totalExpenses > 0 && (
-              <div className="flex flex-col gap-4 mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-slate-600 dark:text-slate-400">
-                    {t("showing")} {(currentPage - 1) * itemsPerPage + 1} –{" "}
-                    {Math.min(currentPage * itemsPerPage, totalExpenses)}{" "}
-                    {t("of")} {totalExpenses}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-slate-900 dark:text-slate-100 truncate">
+                        {expense.title}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {new Date(expense.date).toLocaleDateString("en-GB").replace(/\//g, ".")}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="font-semibold text-red-600 dark:text-red-400 flex-shrink-0">
+                    {formatCurrency(expense.amount)}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="text-xs">
+                      {t(getCategoryTranslationKey(expense.category))}
+                    </Badge>
+                    <Badge className={`gap-1 text-xs ${getPaymentMethodColor(expense.paymentMethod)}`}>
+                      {getPaymentMethodIcon(expense.paymentMethod)}
+                      <span>{t(expense.paymentMethod === "bank" ? "bankTransfer" : expense.paymentMethod)}</span>
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button size="icon" variant="ghost" aria-label={t("edit")} className="h-7 w-7" onClick={() => handleEdit(expense)} disabled={!canEditExpenses}>
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" aria-label={t("delete")} className="h-7 w-7" onClick={() => handleDelete(expense.id)} disabled={!canDeleteExpenses}>
+                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    </Button>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const newPage = Math.max(1, currentPage - 1);
-                      handlePageChange(newPage);
-                    }}
-                    disabled={currentPage === 1}
-                  >
-                    <ChevronLeft className="w-4 h-4 mr-1" />
-                    {t("previous")}
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      const startPage = Math.max(1, currentPage - 2);
-                      return startPage + i;
-                    })
-                      .filter((page) => page <= totalPages)
-                      .map((page) => (
-                        <Button
-                          key={page}
-                          variant={currentPage === page ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => {
-                            handlePageChange(page);
-                          }}
-                          className="h-8 w-8 p-0"
-                        >
-                          {page}
-                        </Button>
-                      ))}
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const newPage = Math.min(totalPages, currentPage + 1);
-                      handlePageChange(newPage);
-                    }}
-                    disabled={currentPage === totalPages || totalPages === 0}
-                  >
-                    {t("next")}
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </div>
+                {expense.createdBy && (
+                  <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                    {t("whoAddedExpenses")}: {getUserName(expense.createdBy)}
+                  </p>
+                )}
               </div>
             )}
-          </div>
+          />
         </CardContent>
       </Card>
 
@@ -1357,7 +1319,7 @@ export default function ExpensesPage() {
       <Dialog
         open={confirmDialog.isOpen}
         onOpenChange={(open) => {
-          if (!open) setConfirmDialog({ ...confirmDialog, isOpen: false });
+          if (!open) setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
         }}
       >
         <DialogContent>
@@ -1385,7 +1347,7 @@ export default function ExpensesPage() {
                 confirmDialog.onConfirm();
               }}
               disabled={confirmDialog.isLoading}
-              className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700"
+              className="bg-brand hover:bg-brand-hover"
             >
               {confirmDialog.isLoading ? (
                 <>

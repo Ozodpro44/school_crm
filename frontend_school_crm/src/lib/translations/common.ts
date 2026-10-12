@@ -197,7 +197,7 @@ export const commonTranslations: Partial<Translation> = {
   left: { "uz-cyrl": "Чиқиб кетган", "uz-latn": "Chiqib ketgan", en: "Left" },
   amount: { "uz-cyrl": "Миқдор", "uz-latn": "Miqdor", en: "Amount" },
   date: { "uz-cyrl": "Сана", "uz-latn": "Sana", en: "Date" },
-  period: { "uz-cyrl": "Davr", "uz-latn": "Davr", en: "Period" },
+  period: { "uz-cyrl": "Давр", "uz-latn": "Davr", en: "Period" },
   description: { "uz-cyrl": "Тавсиф", "uz-latn": "Tavsif", en: "Description" },
   actions: { "uz-cyrl": "Амаллар", "uz-latn": "Amallar", en: "Actions" },
 
@@ -625,6 +625,17 @@ export const commonTranslations: Partial<Translation> = {
     en: "Manage teachers",
   },
 
+  activeTeachers: {
+    "uz-cyrl": "Фаол ўқитувчилар",
+    "uz-latn": "Faol o'qituvchilar",
+    en: "Active teachers",
+  },
+  ushbuOyUchun: {
+    "uz-cyrl": "Ушбу ой учун",
+    "uz-latn": "Ushbu oy uchun",
+    en: "For this month",
+  },
+
   // Class specific
   class: { "uz-cyrl": "Синф", "uz-latn": "Sinf", en: "Class" },
   addClass: {
@@ -851,10 +862,25 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Ushbu maydon kerak",
     en: "This field is required",
   },
+  branchRequired: {
+    "uz-cyrl": "Филиал танланиши шарт",
+    "uz-latn": "Filial tanlanishi shart",
+    en: "Branch is required",
+  },
   invalidEmail: {
     "uz-cyrl": "Электрон почта ноғич",
     "uz-latn": "Elektron pochta noghich",
     en: "Invalid email",
+  },
+  invalidPhone: {
+    "uz-cyrl": "Телефон рақамини тўғри киритинг: +998 XX XXX-XX-XX",
+    "uz-latn": "Telefon raqamini to'g'ri kiriting: +998 XX XXX-XX-XX",
+    en: "Enter a valid phone: +998 XX XXX-XX-XX",
+  },
+  mustBePositive: {
+    "uz-cyrl": "Сумма нолдан катта бўлиши керак",
+    "uz-latn": "Summa noldan katta bo'lishi kerak",
+    en: "Amount must be greater than zero",
   },
   passwordMinLength: {
     "uz-cyrl": "Пароль камида 6 та белгидан иборат бўлиши керак",
@@ -900,6 +926,24 @@ export const commonTranslations: Partial<Translation> = {
   yes: { "uz-cyrl": "Ха", "uz-latn": "Ha", en: "Yes" },
   no: { "uz-cyrl": "Йўқ", "uz-latn": "Yoq", en: "No" },
   close: { "uz-cyrl": "Ёпиш", "uz-latn": "Yopish", en: "Close" },
+
+  subscriptionLimitReached: {
+    "uz-cyrl": "Тариф чекловига етдингиз",
+    "uz-latn": "Tarif chegarasiga yetdingiz",
+    en: "Plan limit reached",
+  },
+
+  subscriptionLimitDetail: {
+    "uz-cyrl": "Жорий тарифингизда рухсат этилган максимал миқдорга етдингиз. Кўпроқ қўшиш учун тарифни янгиланг.",
+    "uz-latn": "Joriy tarifingizda ruxsat etilgan maksimal miqdorga yetdingiz. Ko'proq qo'shish uchun tarifni yangilang.",
+    en: "You have reached the maximum allowed by your current plan. Upgrade to add more.",
+  },
+
+  upgradePlan: {
+    "uz-cyrl": "Тарифни янгилаш",
+    "uz-latn": "Tarifni yangilash",
+    en: "Upgrade Plan",
+  },
   printReceipt: {
     "uz-cyrl": "Квитанциялар матнини чоп қилиш",
     "uz-latn": "Kvitansiyalar matnini chop qilish",
@@ -1050,8 +1094,79 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Jami xarajatlar",
     en: "Total Expenses",
   },
+  // Audit log translations (2.3)
+  auditLog: { "uz-cyrl": "Аудит журнали", "uz-latn": "Audit jurnali", en: "Audit Log" },
+  auditLogDesc: {
+    "uz-cyrl": "Филиалдаги ким нима қилганини кузатинг",
+    "uz-latn": "Filialdagi kim nima qilganini kuzating",
+    en: "Track who did what and when across your branch",
+  },
+
+  // KPI translations (2.1)
+  collectionRate: { "uz-cyrl": "Йиғиш даражаси", "uz-latn": "Yig'ish darajasi", en: "Collection Rate" },
+  collectionRateDesc: { "uz-cyrl": "Тўланган / Кутилган", "uz-latn": "To'langan / Kutilgan", en: "Paid / Expected" },
+  studentChurn: { "uz-cyrl": "Чиққан ўқувчилар", "uz-latn": "Chiqqan o'quvchilar", en: "Students Left" },
+  churnThisMonth: { "uz-cyrl": "Бу ой", "uz-latn": "Bu oy", en: "This month" },
+  churnLastMonth: { "uz-cyrl": "Ўтган ой", "uz-latn": "O'tgan oy", en: "Last month" },
+  salaryPayoutPct: { "uz-cyrl": "Иш ҳақи тўлови", "uz-latn": "Ish haqqi to'lovi", en: "Salary Payout" },
+  salaryPayoutDesc: { "uz-cyrl": "Тўланган / Жами иш ҳақи", "uz-latn": "To'langan / Jami ish haqqi", en: "Paid / Total salaries" },
+  unpaidByClass: { "uz-cyrl": "Синф бўйича қарздорлар", "uz-latn": "Sinf bo'yicha qarzdorlar", en: "Debtors by Class" },
+  topDebtors: { "uz-cyrl": "Асосий қарздорлар", "uz-latn": "Asosiy qarzdorlar", en: "Top Debtors" },
+  outstanding: { "uz-cyrl": "Қолган қарз", "uz-latn": "Qolgan qarz", en: "Outstanding" },
+  debtors: { "uz-cyrl": "Қарздорлар", "uz-latn": "Qarzdorlar", en: "Debtors" },
+
+  // Multi-branch analytics translations (2.5)
+  branchesOverview: { "uz-cyrl": "Филиаллар таҳлили", "uz-latn": "Filiallar tahlili", en: "Multi-Branch Overview" },
+  branchesOverviewDesc: { "uz-cyrl": "Барча филиалларнинг даромади, ўқувчилар сони ва тўлов кўрсаткичларини солиштиринг", "uz-latn": "Barcha filiallarning daromadi, o'quvchilar soni va to'lov ko'rsatkichlarini solishtiring", en: "Compare revenue, students, and collection rate across all your branches" },
+  totalRevenue: { "uz-cyrl": "Жами даромад", "uz-latn": "Jami daromad", en: "Total Revenue" },
+  topPerformingBranch: { "uz-cyrl": "Энг яхши филиал", "uz-latn": "Eng yaxshi filial", en: "Top Performing Branch" },
+  revenueByBranch: { "uz-cyrl": "Филиал бўйича даромад", "uz-latn": "Filial bo'yicha daromad", en: "Revenue by Branch" },
+  branchComparison: { "uz-cyrl": "Филиаллар таққослаш", "uz-latn": "Filiallar taqqoslash", en: "Branch Comparison" },
+  studentCountByBranch: { "uz-cyrl": "Филиал бўйича ўқувчилар", "uz-latn": "Filial bo'yicha o'quvchilar", en: "Active Students by Branch" },
+  revenue: { "uz-cyrl": "Даромад", "uz-latn": "Daromad", en: "Revenue" },
+
+  // Printable / exportable reports translations (2.7)
+  downloadCSV:    { "uz-cyrl": "CSV юклаш", "uz-latn": "CSV yuklash", en: "Download CSV" },
+  downloadExcel:  { "uz-cyrl": "Excel юклаш", "uz-latn": "Excel yuklash", en: "Download Excel CSV" },
+  excel:          { "uz-cyrl": "Excel", "uz-latn": "Excel", en: "Excel" },
+  exportPDF:      { "uz-cyrl": "PDF экспорт", "uz-latn": "PDF eksport", en: "Export PDF" },
+  printPDF:       { "uz-cyrl": "Чоп этиш / PDF", "uz-latn": "Chop etish / PDF", en: "Print / PDF" },
+
+  // Expense budget translations (2.6)
+  budgetVsActual: { "uz-cyrl": "Бюджет / Реал харажат", "uz-latn": "Byudjet / Real xarajat", en: "Budget vs Actual" },
+  setBudget: { "uz-cyrl": "Бюджет белгилаш", "uz-latn": "Byudjet belgilash", en: "Set Budget" },
+  noBudgetsSet: { "uz-cyrl": "Бу давр учун бюджет белгиланмаган. \"Бюджет белгилаш\" тугмасини босинг.", "uz-latn": "Bu davr uchun byudjet belgilanmagan. \"Byudjet belgilash\" tugmasini bosing.", en: "No budgets set for this period. Click \"Set Budget\" to add one." },
+  budgetNearLimit: { "uz-cyrl": "Бюджет чегарасига яқинлашяпти", "uz-latn": "Byudjet chegarasiga yaqinlashyapti", en: "Approaching budget limit" },
+  budgetExceeded: { "uz-cyrl": "Бюджет ошиб кетди", "uz-latn": "Byudjet oshib ketdi", en: "Budget exceeded" },
+  budgetAmount: { "uz-cyrl": "Бюджет миқдори", "uz-latn": "Byudjet miqdori", en: "Budget Amount" },
+  currentBudget: { "uz-cyrl": "Жорий бюджет", "uz-latn": "Joriy byudjet", en: "Current budget" },
+  budgetSaved: { "uz-cyrl": "Бюджет сақланди", "uz-latn": "Byudjet saqlandi", en: "Budget saved" },
+  failedToSaveBudget: { "uz-cyrl": "Бюджетни сақлаб бўлмади", "uz-latn": "Byudjetni saqlab bo'lmadi", en: "Failed to save budget" },
+  failedToDeleteBudget: { "uz-cyrl": "Бюджетни ўчириб бўлмади", "uz-latn": "Byudjetni o'chirib bo'lmadi", en: "Failed to delete budget" },
+
+  // Forecast translations (2.4)
+  financialForecast: { "uz-cyrl": "Молиявий прогноз", "uz-latn": "Moliyaviy prognoz", en: "Financial Forecast" },
+  expectedMonthlyIncome: { "uz-cyrl": "Кутилган ойлик даромад", "uz-latn": "Kutilgan oylik daromad", en: "Expected Monthly Income" },
+  actualIncomeThisMonth: { "uz-cyrl": "Реал даромад (бу ой)", "uz-latn": "Real daromad (bu oy)", en: "Actual Income (This Month)" },
+  totalExpensesThisMonth: { "uz-cyrl": "Жами харажатлар (бу ой)", "uz-latn": "Jami xarajatlar (bu oy)", en: "Total Expenses (This Month)" },
+  projectedSalaryCosts: { "uz-cyrl": "Прогноз иш ҳақи харажатлари", "uz-latn": "Prognoz ish haqqi xarajatlari", en: "Projected Salary Costs" },
+  breakEvenAnalysis: { "uz-cyrl": "Зарарсизлик таҳлили", "uz-latn": "Zararsizlik tahlili", en: "Break-Even Analysis" },
+  sixMonthTrend: { "uz-cyrl": "6 ойлик тренд", "uz-latn": "6 oylik trend", en: "6-Month Trend" },
+  expectedIncome: { "uz-cyrl": "Кутилган", "uz-latn": "Kutilgan", en: "Expected" },
+  actualIncome: { "uz-cyrl": "Реал даромад", "uz-latn": "Real daromad", en: "Actual Income" },
+  actualExpenses: { "uz-cyrl": "Реал харажатлар", "uz-latn": "Real xarajatlar", en: "Actual Expenses" },
+  profitable: { "uz-cyrl": "Фойдали", "uz-latn": "Foydali", en: "Profitable" },
+  operatingAtLoss: { "uz-cyrl": "Зарарда ишлаяпти", "uz-latn": "Zararda ishlamoqda", en: "Operating at Loss" },
+  ofExpected: { "uz-cyrl": "кутилганнинг", "uz-latn": "kutilganining", en: "of expected" },
+  expensesCoverRate: { "uz-cyrl": "Харажатлар қоплайди", "uz-latn": "Xarajatlar qoplaydi", en: "Expenses cover" },
+  ofExpectedIncome: { "uz-cyrl": "кутилган даромаднинг", "uz-latn": "kutilgan daromadning", en: "of expected income" },
+  avg: { "uz-cyrl": "ўрт.", "uz-latn": "o'rt.", en: "avg" },
+  nextMonthEstimate: { "uz-cyrl": "фаол ўқитувчилар асосида", "uz-latn": "faol o'qituvchilar asosida", en: "based on active teachers" },
+  loadingForecast: { "uz-cyrl": "Прогноз маълумотлари юкланмоқда…", "uz-latn": "Prognoz ma'lumotlari yuklanmoqda…", en: "Loading forecast data…" },
+
   daily: { "uz-cyrl": "Кунлик", "uz-latn": "Kunlik", en: "Daily" },
   monthly: { "uz-cyrl": "Ойлик", "uz-latn": "Oylik", en: "Monthly" },
+  yearly: { "uz-cyrl": "Йиллик", "uz-latn": "Yillik", en: "Yearly" },
   dailyFourteenDays: {
     "uz-cyrl": "Кунлик - 14 кун",
     "uz-latn": "Kunlik - 14 kun",
@@ -1196,6 +1311,11 @@ export const commonTranslations: Partial<Translation> = {
     "uz-cyrl": "Тасдиқлаш",
     "uz-latn": "Tasdiqlaš",
     en: "Confirm",
+  },
+  back: {
+    "uz-cyrl": "Орқага",
+    "uz-latn": "Orqaga",
+    en: "Back",
   },
   backToClasses: {
     "uz-cyrl": "Синфларга қайтиш",
@@ -1614,8 +1734,133 @@ export const commonTranslations: Partial<Translation> = {
   },
   updateError: {
     "uz-cyrl": "Хатолик юзага келди",
-    "uz-latn": "Xatolic yuzaga keldi",
+    "uz-latn": "Xatolik yuzaga keldi",
     en: "An error occurred",
+  },
+  newPasswordRequired: {
+    "uz-cyrl": "Янги парол керак",
+    "uz-latn": "Yangi parol kerak",
+    en: "New password is required",
+  },
+  confirmPasswordRequired: {
+    "uz-cyrl": "Паролни тасдиқлаш керак",
+    "uz-latn": "Parolni tasdiqlash kerak",
+    en: "Confirm password is required",
+  },
+  passwordMismatch: {
+    "uz-cyrl": "Паролlar мос келмаяпти",
+    "uz-latn": "Parollar mos kelmayapti",
+    en: "Passwords do not match",
+  },
+  markAllStudents: {
+    "uz-cyrl": "Сақлашдан олдин барча ўқувчиларни белгиланг",
+    "uz-latn": "Saqlashdan oldin barcha o'quvchilarni belgilang",
+    en: "Mark every student before saving",
+  },
+  attendanceNotePlaceholder: {
+    "uz-cyrl": "Изоҳ (ихтиёрий)",
+    "uz-latn": "Izoh (ixtiyoriy)",
+    en: "Note (optional)",
+  },
+  auditSearchPage: {
+    "uz-cyrl": "Ушбу саҳифада қидириш",
+    "uz-latn": "Shu sahifada qidirish",
+    en: "Search this page",
+  },
+  noPermissionUpdateStudents: {
+    "uz-cyrl": "Талабаларни янгилашга рухсатингиз йўқ.",
+    "uz-latn": "O'quvchilarni yangilashga ruxsatingiz yo'q.",
+    en: "You don't have permission to update students.",
+  },
+  noPermissionEditStudents: {
+    "uz-cyrl": "Талабаларни таҳрирлашга рухсатингиз йўқ.",
+    "uz-latn": "O'quvchilarni tahrirlashga ruxsatingiz yo'q.",
+    en: "You don't have permission to edit students.",
+  },
+  selectStudentsAndTargetClass: {
+    "uz-cyrl": "Талабалар ва мақсадли синфни танланг",
+    "uz-latn": "O'quvchilar va maqsadli sinfni tanlang",
+    en: "Please select students and a target class",
+  },
+  selectStudentsToDelete: {
+    "uz-cyrl": "Ўчириш учун талабаларни танланг",
+    "uz-latn": "O'chirish uchun o'quvchilarni tanlang",
+    en: "Please select students to delete",
+  },
+  classNameRequired: {
+    "uz-cyrl": "Синф номи керак",
+    "uz-latn": "Sinf nomi kerak",
+    en: "Class name is required",
+  },
+  classUpdatedSuccessfully: {
+    "uz-cyrl": "Синф муваффақиятли янгиланди",
+    "uz-latn": "Sinf muvaffaqiyatli yangilandi",
+    en: "Class updated successfully",
+  },
+  paymentAlreadyRemoved: {
+    "uz-cyrl": "Тўлов аллақачон ўчирилган",
+    "uz-latn": "To'lov allaqachon o'chirilgan",
+    en: "Payment was already removed",
+  },
+  failedToDeletePayment: {
+    "uz-cyrl": "Тўловни ўчириб бўлмади",
+    "uz-latn": "To'lovni o'chirib bo'lmadi",
+    en: "Failed to delete payment",
+  },
+  salaryMarkedPaid: {
+    "uz-cyrl": "Маош тўланган деб белгиланди",
+    "uz-latn": "Oylik to'langan deb belgilandi",
+    en: "Salary marked as paid",
+  },
+  messageSentSummary: {
+    "uz-cyrl": "{sent} та қабул қилувчи, {delivered} таси етказилди",
+    "uz-latn": "{sent} ta qabul qiluvchi, {delivered} tasi yetkazildi",
+    en: "{sent} recipients, {delivered} delivered",
+  },
+  confirmDeleteTeachers: {
+    "uz-cyrl": "{n} та ўқитувчини ўчирасизми?",
+    "uz-latn": "{n} ta o'qituvchini o'chirasizmi?",
+    en: "Delete {n} teachers?",
+  },
+  teachersDeletedCount: {
+    "uz-cyrl": "{n} та ўқитувчи ўчирилди",
+    "uz-latn": "{n} ta o'qituvchi o'chirildi",
+    en: "{n} teachers deleted",
+  },
+  teachersPartiallyDeleted: {
+    "uz-cyrl": "{ok}/{total} ўчирилди — {failed} таси хато",
+    "uz-latn": "{ok}/{total} o'chirildi — {failed} tasi xato",
+    en: "{ok}/{total} deleted — {failed} failed",
+  },
+  csvRowImportFailed: {
+    "uz-cyrl": "{row}-қатор: \"{name}\" ни импорт қилиб бўлмади - {error}",
+    "uz-latn": "{row}-qator: \"{name}\" ni import qilib bo'lmadi - {error}",
+    en: "Row {row}: Failed to import \"{name}\" - {error}",
+  },
+  unknownError: {
+    "uz-cyrl": "Номаълум хато",
+    "uz-latn": "Noma'lum xato",
+    en: "Unknown error",
+  },
+  newPasswordMin8: {
+    "uz-cyrl": "Янги парол камида 8 та белгидан иборат бўлиши керак",
+    "uz-latn": "Yangi parol kamida 8 ta belgidan iborat bo'lishi kerak",
+    en: "New password must be at least 8 characters",
+  },
+  emailChangeUnsupported: {
+    "uz-cyrl": "Электрон почтани ўзгартириб бўлмайди",
+    "uz-latn": "Elektron pochtani o'zgartirib bo'lmaydi",
+    en: "Email cannot be changed",
+  },
+  passwordTooShort: {
+    "uz-cyrl": "Парол камида 6 та белгидан иборат бўлиши керак",
+    "uz-latn": "Parol kamida 6 ta belgidan iborat bo'lishi kerak",
+    en: "Password must be at least 6 characters",
+  },
+  emailRequired: {
+    "uz-cyrl": "Электрон почта манзили керак",
+    "uz-latn": "Elektron pochta manzili kerak",
+    en: "Email is required",
   },
   emptyResponse: {
     "uz-cyrl": "Сервердан бўш жавоб",
@@ -1811,19 +2056,166 @@ export const commonTranslations: Partial<Translation> = {
     en: "Notes",
   },
 
-  // Common UI actions
+  // Missing keys — general
+  account: { "uz-cyrl": "Аккаунт", "uz-latn": "Akkaunt", en: "Account" },
+  action: { "uz-cyrl": "Амал", "uz-latn": "Amal", en: "Action" },
+  added: { "uz-cyrl": "Қўшилди", "uz-latn": "Qo'shildi", en: "Added" },
+  administration: { "uz-cyrl": "Бошқарув", "uz-latn": "Boshqaruv", en: "Administration" },
+  all: { "uz-cyrl": "Барчаси", "uz-latn": "Barchasi", en: "All" },
+  allStatuses: { "uz-cyrl": "Барча статуслар", "uz-latn": "Barcha statuslar", en: "All Statuses" },
   clear: { "uz-cyrl": "Тозалаш", "uz-latn": "Tozalash", en: "Clear" },
-  added: { "uz-cyrl": "қўшилди", "uz-latn": "qo'shildi", en: "added to" },
-  searching: { "uz-cyrl": "Қидирилмоқда...", "uz-latn": "Qidirilmoqda...", en: "Searching..." },
-  recording: { "uz-cyrl": "Қайд этилмоқда...", "uz-latn": "Qayd etilmoqda...", en: "Recording..." },
-  switching: { "uz-cyrl": "Ўзгартирилмоқда...", "uz-latn": "O'zgartirilmoqda...", en: "Switching..." },
-  movedTo: { "uz-cyrl": "га кўчирилди", "uz-latn": "ga ko'chirildi", en: "moved to" },
-
-  // Date/report labels
-  monthYear: { "uz-cyrl": "Ой/Йил", "uz-latn": "Oy/Yil", en: "Month/Year" },
-  due: { "uz-cyrl": "Тўланиши керак", "uz-latn": "To'lanishi kerak", en: "Due" },
-  exportOptions: { "uz-cyrl": "Экспорт параметрлари", "uz-latn": "Eksport parametrlari", en: "Export Options" },
+  day: { "uz-cyrl": "Кун", "uz-latn": "Kun", en: "Day" },
+  due: { "uz-cyrl": "Қарз", "uz-latn": "Qarz", en: "Due" },
+  finance: { "uz-cyrl": "Молия", "uz-latn": "Moliya", en: "Finance" },
+  incomeVsExpenses: { "uz-cyrl": "Даромад ва харажатлар", "uz-latn": "Daromad va xarajatlar", en: "Income vs Expenses" },
+  invalidResponse: { "uz-cyrl": "Нотўғри жавоб", "uz-latn": "Noto'g'ri javob", en: "Invalid server response" },
+  main: { "uz-cyrl": "Асосий", "uz-latn": "Asosiy", en: "Main" },
+  monthYear: { "uz-cyrl": "Ой / Йил", "uz-latn": "Oy / Yil", en: "Month / Year" },
+  more: { "uz-cyrl": "Кўпроқ", "uz-latn": "Ko'proq", en: "More" },
+  movedTo: { "uz-cyrl": "Кўчирилди", "uz-latn": "Ko'chirildi", en: "Moved to" },
+  none: { "uz-cyrl": "Йўқ", "uz-latn": "Yo'q", en: "None" },
+  recording: { "uz-cyrl": "Ёзиб олиш", "uz-latn": "Yozib olish", en: "Recording" },
+  saved: { "uz-cyrl": "Сақланди", "uz-latn": "Saqlandi", en: "Saved" },
+  searching: { "uz-cyrl": "Қидириляпти…", "uz-latn": "Qidirilayapti…", en: "Searching…" },
+  subject: { "uz-cyrl": "Фан", "uz-latn": "Fan", en: "Subject" },
+  support: { "uz-cyrl": "Қўллаб-қувватлаш", "uz-latn": "Qo'llab-quvvatlash", en: "Support" },
+  switching: { "uz-cyrl": "Алмаштирилмоқда", "uz-latn": "Almashtirilmoqda", en: "Switching…" },
   studentName: { "uz-cyrl": "Ўқувчи исми", "uz-latn": "O'quvchi ismi", en: "Student Name" },
+
+  // Offline banner
+  offlineBannerTitle: { "uz-cyrl": "Интернет йўқ", "uz-latn": "Internet yo'q", en: "No internet connection" },
+  offlineBannerDesc: { "uz-cyrl": "Уланиш тикланганча ўзгаришлар сақланмайди", "uz-latn": "Ulanish tiklanguncha o'zgarishlar saqlanmaydi", en: "Changes may not be saved until connection is restored" },
+  connectionRestored: { "uz-cyrl": "Интернет тикланди", "uz-latn": "Internet tiklandi", en: "Connection restored" },
+  retryConnection: { "uz-cyrl": "Қайта уриниш", "uz-latn": "Qayta urinish", en: "Retry" },
+
+  // Generic UI
+  from:             { "uz-cyrl": "Дан",               "uz-latn": "Dan",             en: "From" },
+  to:               { "uz-cyrl": "Гача",              "uz-latn": "Gacha",           en: "To" },
+  reset:            { "uz-cyrl": "Тозалаш",           "uz-latn": "Tozalash",        en: "Reset" },
+  entry:            { "uz-cyrl": "Ёзув",              "uz-latn": "Yozuv",           en: "entry" },
+  entries:          { "uz-cyrl": "Ёзувлар",           "uz-latn": "Yozuvlar",        en: "entries" },
+  unknown:          { "uz-cyrl": "Номаълум",          "uz-latn": "Noma'lum",        en: "Unknown" },
+
+  // Audit log (new keys only — create/update/description/resource already exist above)
+  auditTime:        { "uz-cyrl": "Вақт",             "uz-latn": "Vaqt",             en: "Time" },
+  auditUser:        { "uz-cyrl": "Фойдаланувчи",     "uz-latn": "Foydalanuvchi",    en: "User" },
+  resourceId:       { "uz-cyrl": "Ресурс ID",         "uz-latn": "Resurs ID",        en: "Resource ID" },
+  noAuditEntries:   { "uz-cyrl": "Ёзувлар топилмади","uz-latn": "Yozuvlar topilmadi", en: "No audit entries found" },
+  allResources:     { "uz-cyrl": "Барча ресурслар",   "uz-latn": "Barcha resurslar", en: "All resources" },
+
+  // Quick-pay (new keys — selectAll already exists above)
+  cameraPermissionDenied: { "uz-cyrl": "Камера рухсати рад этилди", "uz-latn": "Kamera ruxsati rad etildi", en: "Camera permission denied" },
+  deselectAll:      { "uz-cyrl": "Барчасини бекор қилиш", "uz-latn": "Barchasini bekor qilish", en: "Deselect all" },
+  tryAgain:         { "uz-cyrl": "Қайта уриниш",      "uz-latn": "Qayta urinish",    en: "Try again" },
+
+  // Reports
+  noPermissionReports: { "uz-cyrl": "Ҳисоботларга кириш рухсати йўқ", "uz-latn": "Hisobotlarga kirish ruxsati yo'q", en: "You don't have permission to view reports" },
+  forbidden:        { "uz-cyrl": "Рухсат йўқ",        "uz-latn": "Ruxsat yo'q",      en: "Access denied" },
+
+  // Role descriptions
+  adminRoleDesc:        { "uz-cyrl": "Барча филиаллар ва маълумотларга тўлиқ кириш", "uz-latn": "Barcha filiallar va ma'lumotlarga to'liq kirish", en: "Full system access — manages all branches and data" },
+  branchAdminRoleDesc:  { "uz-cyrl": "Филиалингизга тўлиқ кириш", "uz-latn": "Filialingizga to'liq kirish", en: "Full access within your branch" },
+  managerRoleDesc:      { "uz-cyrl": "Ўқувчилар, тўловлар ва синфларни бошқаради", "uz-latn": "O'quvchilar, to'lovlar va sinflarni boshqaradi", en: "Manages students, payments and classes" },
+  accountantRoleDesc:   { "uz-cyrl": "Тўловлар, маошлар ва харажатларни бошқаради", "uz-latn": "To'lovlar, maoshlar va xarajatlarni boshqaradi", en: "Manages payments, salaries and expenses" },
+  teacherRoleDesc:      { "uz-cyrl": "Синфларингиз ва ўқувчиларингизга кириш", "uz-latn": "Sinflaringiz va o'quvchilaringizga kirish", en: "Access to your classes and students" },
+
+  // Permission labels
+  permViewStudents:     { "uz-cyrl": "Ўқувчиларни кўриш", "uz-latn": "O'quvchilarni ko'rish", en: "View Students" },
+  permCreateStudents:   { "uz-cyrl": "Ўқувчи қўшиш", "uz-latn": "O'quvchi qo'shish", en: "Create Students" },
+  permEditStudents:     { "uz-cyrl": "Ўқувчиларни таҳрирлаш", "uz-latn": "O'quvchilarni tahrirlash", en: "Edit Students" },
+  permDeleteStudents:   { "uz-cyrl": "Ўқувчиларни ўчириш", "uz-latn": "O'quvchilarni o'chirish", en: "Delete Students" },
+  permViewTeachers:     { "uz-cyrl": "Ўқитувчиларни кўриш", "uz-latn": "O'qituvchilarni ko'rish", en: "View Teachers" },
+  permCreateTeachers:   { "uz-cyrl": "Ўқитувчи қўшиш", "uz-latn": "O'qituvchi qo'shish", en: "Create Teachers" },
+  permEditTeachers:     { "uz-cyrl": "Ўқитувчиларни таҳрирлаш", "uz-latn": "O'qituvchilarni tahrirlash", en: "Edit Teachers" },
+  permDeleteTeachers:   { "uz-cyrl": "Ўқитувчиларни ўчириш", "uz-latn": "O'qituvchilarni o'chirish", en: "Delete Teachers" },
+  permViewPayments:     { "uz-cyrl": "Тўловларни кўриш", "uz-latn": "To'lovlarni ko'rish", en: "View Payments" },
+  permCreatePayments:   { "uz-cyrl": "Тўлов қўшиш", "uz-latn": "To'lov qo'shish", en: "Create Payments" },
+  permEditPayments:     { "uz-cyrl": "Тўловларни таҳрирлаш", "uz-latn": "To'lovlarni tahrirlash", en: "Edit Payments" },
+  permDeletePayments:   { "uz-cyrl": "Тўловларни ўчириш", "uz-latn": "To'lovlarni o'chirish", en: "Delete Payments" },
+  permViewSalaries:     { "uz-cyrl": "Маошларни кўриш", "uz-latn": "Maoshlarni ko'rish", en: "View Salaries" },
+  permManageSalaries:   { "uz-cyrl": "Маошларни бошқариш", "uz-latn": "Maoshlarni boshqarish", en: "Manage Salaries" },
+  permViewExpenses:     { "uz-cyrl": "Харажатларни кўриш", "uz-latn": "Xarajatlarni ko'rish", en: "View Expenses" },
+  permManageExpenses:   { "uz-cyrl": "Харажатларни бошқариш", "uz-latn": "Xarajatlarni boshqarish", en: "Manage Expenses" },
+  permViewReports:      { "uz-cyrl": "Ҳисоботларни кўриш", "uz-latn": "Hisobotlarni ko'rish", en: "View Reports" },
+  permManageBranches:   { "uz-cyrl": "Филиални бошқариш", "uz-latn": "Filialni boshqarish", en: "Manage Branches" },
+  permManageUsers:      { "uz-cyrl": "Фойдаланувчиларни бошқариш", "uz-latn": "Foydalanuvchilarni boshqarish", en: "Manage Users" },
+  permViewSettings:     { "uz-cyrl": "Созламаларни кўриш", "uz-latn": "Sozlamalarni ko'rish", en: "View Settings" },
+  permEditSettings:     { "uz-cyrl": "Созламаларни таҳрирлаш", "uz-latn": "Sozlamalarni tahrirlash", en: "Edit Settings" },
+
+  pending:          { "uz-cyrl": "Тўланмаган",             "uz-latn": "To'lanmagan",             en: "Pending" },
+  teachersNotPaid:  { "uz-cyrl": "ўқитувчи тўланмаган",    "uz-latn": "o'qituvchi to'lanmagan",  en: "teachers not paid" },
+
+  // Attendance
+  modified:         { "uz-cyrl": "Ўзгартирилди",            "uz-latn": "O'zgartirildi",           en: "Modified" },
+  unsavedChanges:   { "uz-cyrl": "Сақланмаган ўзгаришлар",  "uz-latn": "Saqlanmagan o'zgarishlar", en: "Unsaved changes" },
+  readOnly:         { "uz-cyrl": "Фақат кўриш",             "uz-latn": "Faqat ko'rish",           en: "Read only" },
+
+  // Auth / register
+  registrationFailed: { "uz-cyrl": "Рўйхатдан ўтиш муваффақиятсиз тугади", "uz-latn": "Ro'yxatdan o'tish muvaffaqiyatsiz tugadi", en: "Registration failed" },
+  creatingAccount:    { "uz-cyrl": "Аккаунт яратилмоқда...", "uz-latn": "Akkaunt yaratilmoqda...", en: "Creating Account..." },
+  createAccount:      { "uz-cyrl": "Аккаунт яратиш", "uz-latn": "Akkaunt yaratish", en: "Create Account" },
+  hidePassword:       { "uz-cyrl": "Паролни яшириш", "uz-latn": "Parolni yashirish", en: "Hide password" },
+  showPassword:       { "uz-cyrl": "Паролни кўрсатиш", "uz-latn": "Parolni ko'rsatish", en: "Show password" },
+
+  // Class-details confirm dialogs
+  removeStudent:              { "uz-cyrl": "Ўқувчини ўчириш",              "uz-latn": "O'quvchini o'chirish",              en: "Remove Student" },
+  removeStudents:             { "uz-cyrl": "Ўқувчиларни ўчириш",           "uz-latn": "O'quvchilarni o'chirish",           en: "Remove Students" },
+  switchStudents:             { "uz-cyrl": "Ўқувчиларни кўчириш",          "uz-latn": "O'quvchilarni ko'chirish",          en: "Switch Students" },
+  removeStudentsConfirmation: { "uz-cyrl": "Бу ўқувчиларни синфдан чиқармоқчимисиз?", "uz-latn": "Bu o'quvchilarni sinfdan chiqarmoqchimisiz?", en: "Remove these students from this class?" },
+
+  // Students
+  importCompletedWithWarnings: { "uz-cyrl": "Импорт огоҳлантиришлар билан якунланди", "uz-latn": "Import ogohlantirishlar bilan yakunlandi", en: "Import Completed with Warnings" },
+
+  // Salaries
+  failedToDeleteSalary: { "uz-cyrl": "Маошни ўчиришда хатолик", "uz-latn": "Maoshni o'chirishda xatolik", en: "Failed to delete salary" },
+
+  // Managers
+  failedToUpdatePermissions: { "uz-cyrl": "Рухсатларни янгилашда хатолик",    "uz-latn": "Ruxsatlarni yangilashda xatolik",    en: "Failed to update permissions" },
+  failedToDeleteManager:     { "uz-cyrl": "Менежер ўчиришда хатолик",          "uz-latn": "Menejer o'chirishda xatolik",          en: "Failed to delete manager" },
+  failedToDeleteManagers:    { "uz-cyrl": "Менежерларни ўчиришда хатолик",     "uz-latn": "Menejerlarni o'chirishda xatolik",     en: "Failed to delete managers" },
+  noManagersDesc:            { "uz-cyrl": "Филиалингизга кириш учун биринчи менежерни қўшинг", "uz-latn": "Filialingizga kirish uchun birinchi menejerni qo'shing", en: "Add your first manager to let them access and oversee a branch." },
+
+  // Activity feed
+  noRecentActivity:          { "uz-cyrl": "Яқинда фаолият йўқ", "uz-latn": "Yaqinda faoliyat yo'q", en: "No recent activity" },
+
+  // Time ago
+  justNow:  { "uz-cyrl": "Ҳозир",        "uz-latn": "Hozir",        en: "just now" },
+  minAgo:   { "uz-cyrl": "дақиқа олдин", "uz-latn": "daqiqa oldin", en: "m ago" },
+  hourAgo:  { "uz-cyrl": "соат олдин",   "uz-latn": "soat oldin",   en: "h ago" },
+  dayAgo:   { "uz-cyrl": "кун олдин",    "uz-latn": "kun oldin",    en: "d ago" },
+
+  // Notifications
+  notifications:        { "uz-cyrl": "Билдиришномалар",              "uz-latn": "Bildirishnomalar",              en: "Notifications" },
+  markAllRead:          { "uz-cyrl": "Барчасини ўқилди деб белгилаш", "uz-latn": "Barchasini o'qildi deb belgilash", en: "Mark all read" },
+  noNotificationsYet:   { "uz-cyrl": "Ҳали билдиришномалар йўқ",     "uz-latn": "Hali bildirishnomalar yo'q",     en: "No notifications yet" },
+  notificationHistory:  { "uz-cyrl": "Билдиришномалар тарихи",       "uz-latn": "Bildirishnomalar tarixi",       en: "Notification history" },
+  notificationHistoryDesc: { "uz-cyrl": "Ушбу филиал учун барча билдиришномалар", "uz-latn": "Ushbu filial uchun barcha bildirishnomalar", en: "All notifications for this branch" },
+  unreadOnly:           { "uz-cyrl": "Фақат ўқилмаганлар",           "uz-latn": "Faqat o'qilmaganlar",           en: "Unread only" },
+  markRead:             { "uz-cyrl": "Ўқилди деб белгилаш",          "uz-latn": "O'qildi deb belgilash",         en: "Mark read" },
+  failedToUpdate:       { "uz-cyrl": "Янгилаб бўлмади",              "uz-latn": "Yangilab bo'lmadi",             en: "Failed to update" },
+
+  // Receipt
+  receiptTitle:         { "uz-cyrl": "Квитансия",    "uz-latn": "Kvitansiya",    en: "Receipt" },
+  receiptStudent:       { "uz-cyrl": "Ўқувчи",       "uz-latn": "O'quvchi",      en: "Student" },
+  receiptPeriod:        { "uz-cyrl": "Давр",          "uz-latn": "Davr",          en: "Period" },
+  receiptMethod:        { "uz-cyrl": "Тўлов усули",   "uz-latn": "To'lov usuli",  en: "Method" },
+  receiptInvoice:       { "uz-cyrl": "Ҳисоб рақам",  "uz-latn": "Hisob raqam",  en: "Invoice" },
+  receiptDate:          { "uz-cyrl": "Сана",          "uz-latn": "Sana",          en: "Date" },
+  receiptThankYou:      { "uz-cyrl": "Раҳмат!",      "uz-latn": "Rahmat!",       en: "Thank you!" },
+
+  // Teacher portal
+  noClassesAssigned:    { "uz-cyrl": "Синфлар белгиланмаган", "uz-latn": "Sinflar belgilanmagan", en: "No classes assigned" },
+  noClassesAssignedDesc:{ "uz-cyrl": "Сизга ҳали ҳеч қандай синф белгиланмаган", "uz-latn": "Sizga hali hech qanday sinf belgilanmagan", en: "You haven't been assigned to any classes yet" },
+  selectClassToMark:    { "uz-cyrl": "Давоматни белгилаш учун синф танланг", "uz-latn": "Davomatni belgilash uchun sinf tanlang", en: "Select a class above to mark attendance" },
+
+  // Misc UI strings
+  print:               { "uz-cyrl": "Босиб чиқариш", "uz-latn": "Bosib chiqarish", en: "Print" },
+  resource:            { "uz-cyrl": "Манба", "uz-latn": "Manba", en: "Resource" },
+  last6Months:         { "uz-cyrl": "Сўнгги 6 ой", "uz-latn": "So'nggi 6 oy", en: "Last 6 months" },
+  selectPeriodToSeeData: { "uz-cyrl": "Даромад маълумотларини кўриш учун давр танланг", "uz-latn": "Daromad ma'lumotlarini ko'rish uchun davr tanlang", en: "Select a period to see revenue data" },
+  addSlotHint:         { "uz-cyrl": "Ҳафталик жадвалини яратиш учун вақт слотини қўшинг", "uz-latn": "Haftalik jadvalini yaratish uchun vaqt slotini qo'shing", en: "Add a time slot to build out your weekly schedule" },
+  rowsPerPage:         { "uz-cyrl": "Сатрлар", "uz-latn": "Satrlar", en: "Rows" },
+  noResults:           { "uz-cyrl": "Натижалар йўқ", "uz-latn": "Natijalar yo'q", en: "No results" },
   };
 
 

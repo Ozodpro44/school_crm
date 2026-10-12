@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend_school_crm",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend_school_crm", "run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "frontend_for_dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend_for_dev", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}

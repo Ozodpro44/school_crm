@@ -1,0 +1,1180 @@
+package handler
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/school-crm/student-service/internal/service"
+)
+
+type Handler struct {
+	students    *service.StudentService
+	classes     *service.ClassService
+	attendance  *service.AttendanceService
+	schedule    *service.ScheduleService
+	assignments *service.AssignmentService
+	notes       *service.StudentNotesService
+}
+
+func New(
+	students *service.StudentService,
+	classes *service.ClassService,
+	attendance *service.AttendanceService,
+	schedule *service.ScheduleService,
+	assignments *service.AssignmentService,
+	notes *service.StudentNotesService,
+) *Handler {
+	return &Handler{
+		students:    students,
+		classes:     classes,
+		attendance:  attendance,
+		schedule:    schedule,
+		assignments: assignments,
+		notes:       notes,
+	}
+}
+
+func (h *Handler) Register(r *gin.RouterGroup) {
+	// Students — static sub-paths must be registered before :id wildcard
+	r.GET("/students/consolidated/data", h.ConsolidatedData)
+	r.GET("/students/search/with-payments", h.SearchWithPayments)
+	r.GET("/students", h.ListStudents)
+	r.POST("/students", h.CreateStudent)
+	r.POST("/students/sync-monthly-payment", h.SyncStudentMonthlyPayment)
+	r.GET("/students/:id", h.GetStudent)
+	r.PUT("/students/:id", h.UpdateStudent)
+	r.DELETE("/students/:id", h.DeleteStudent)
+	r.POST("/students/:id/restore", h.RestoreStudent)
+	r.GET("/trash/students", h.ListStudentTrash)
+
+	// Student notes & contact log (sub-resources under /students/:id)
+	r.GET("/students/:id/notes", h.ListNotes)
+	r.POST("/students/:id/notes", h.AddNote)
+	r.DELETE("/students/:id/notes/:noteId", h.DeleteNote)
+	r.GET("/students/:id/contact-log", h.ListContactLog)
+	r.POST("/students/:id/contact-log", h.AddContactLog)
+	r.DELETE("/students/:id/contact-log/:logId", h.DeleteContactLog)
+	r.GET("/students/:id/attendance", h.GetStudentAttendanceByID)
+
+	// Classes
+	r.GET("/classes", h.ListClasses)
+	r.POST("/classes", h.CreateClass)
+	r.GET("/classes/:id", h.GetClass)
+	r.PUT("/classes/:id", h.UpdateClass)
+	r.DELETE("/classes/:id", h.DeleteClass)
+	r.POST("/classes/:id/restore", h.RestoreClass)
+	r.GET("/trash/classes", h.ListClassTrash)
+
+	// Attendance — static sub-paths before :id wildcard
+	r.GET("/attendance/summary", h.GetAttendanceSummary)
+	r.GET("/attendance/alerts", h.GetAbsenceAlerts)
+	r.GET("/attendance/student/:studentId", h.GetStudentAttendance)
+	r.GET("/attendance", h.GetAttendance)
+	r.POST("/attendance", h.SaveAttendance)
+	r.POST("/attendance/bulk", h.SaveAttendance)
+
+	// Schedule
+	r.GET("/schedule", h.ListSchedule)
+	r.POST("/schedule", h.UpsertSchedule)
+	r.DELETE("/schedule/:id", h.DeleteSchedule)
+
+	// Assignments
+	r.GET("/assignments", h.ListAssignments)
+	r.POST("/assignments", h.CreateAssignment)
+	r.DELETE("/assignments/:id", h.DeleteAssignment)
+	r.POST("/assignments/:id/restore", h.RestoreAssignment)
+	r.GET("/trash/assignments", h.ListAssignmentTrash)
+	r.GET("/assignments/:id/submissions", h.GetSubmissions)
+	r.PUT("/assignments/submissions/:subId", h.UpdateSubmission)
+	r.GET("/assignments/student/:studentId/progress", h.StudentProgress)
+}
+
+// ── Students ──────────────────────────────────────────────────────────────────
+
+func (h *Handler) ListStudents(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	classID := c.Query("classId")
+	noClass := classID == "unassigned"
+	if noClass {
+		classID = ""
+	}
+	resp, err := h.students.List(c.Request.Context(), service.ListFilter{
+		BranchID: branchID,
+		Search:   c.Query("search"),
+		Status:   c.Query("status"),
+		ClassID:  classID,
+		NoClass:  noClass,
+		Page:     c.Query("page"),
+		Limit:    c.Query("limit"),
+		Cursor:   c.Query("cursor"),
+	})
+	if err != nil {
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) CreateStudent(c *gin.Context) {
+	var body struct {
+		FullName       string     `json:"fullName"       binding:"required"`
+		Phone          string     `json:"phone"`
+		ParentPhone    string     `json:"parentPhone"`
+		ClassID        *string    `json:"classId"`
+		MonthlyPayment float64    `json:"monthlyPayment" binding:"required,gt=0"`
+		Status         string     `json:"status"         binding:"required"`
+		BranchID       string     `json:"branchId"       binding:"required"`
+		EnrollmentDate *time.Time `json:"enrollmentDate"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.requireBranchAccess(c, body.BranchID) {
+		return
+	}
+	// The frontend always sends today's date here, but default server-side
+	// too so any other caller that omits it doesn't leave enrollment_date
+	// permanently NULL (which previously happened for every student, since
+	// this field wasn't even in the bound struct — the frontend's value was
+	// silently discarded and student-details.tsx always showed "—").
+	enrollmentDate := body.EnrollmentDate
+	if enrollmentDate == nil {
+		now := time.Now().UTC()
+		enrollmentDate = &now
+	}
+	st, err := h.students.Create(c.Request.Context(), &service.Student{
+		FullName:       body.FullName,
+		Phone:          body.Phone,
+		ParentPhone:    body.ParentPhone,
+		ClassID:        body.ClassID,
+		MonthlyPayment: body.MonthlyPayment,
+		Status:         body.Status,
+		BranchID:       body.BranchID,
+		EnrollmentDate: enrollmentDate,
+	})
+	if err != nil {
+		respondServiceError(c, err, http.StatusBadRequest)
+		return
+	}
+	h.students.Audit(c.Request.Context(), body.BranchID, c.GetHeader("X-User-ID"), "create", "student", st.ID, "Student created: "+st.FullName)
+	c.JSON(http.StatusCreated, st)
+}
+
+// requestBranchID resolves which branch a request targets: an explicit
+// branchId query param wins (a manager/admin who legitimately administers
+// several branches picks among them client-side — branch switching in the
+// frontend does not reissue a JWT, so the token's own branch_id stays fixed
+// to the user's home branch and can't be used to infer which branch they
+// currently mean). Falls back to X-Branch-ID, the frontend's currently-
+// selected-branch header (same convention as ListSchedule/ListAssignments
+// below and every other microservice's branch-scoped handlers) — NOT
+// X-User-Branch-ID, which is the JWT's own fixed home-branch claim and is
+// often empty outright for admin/developer accounts with no single home
+// branch. Using X-User-Branch-ID here previously broke exactly that case:
+// an admin with an empty JWT branch_id got "branchId is required" even
+// though they had a valid X-Branch-ID selection the request already carried.
+//
+// Resolving a branch here is NOT an authorization decision — every caller
+// of this function MUST also call requireBranchAccess (or the resource's
+// own scoped fetch, e.g. GetByIDScoped, which checks branch match) before
+// using the resolved value. Trusting it on its own is exactly what the
+// list endpoints in this file used to do — c.Query("branchId") straight
+// into the DB filter — letting any authenticated caller of any role read
+// another branch's data by editing the query string.
+func requestBranchID(c *gin.Context) string {
+	if v := c.Query("branchId"); v != "" {
+		return v
+	}
+	return c.GetHeader("X-Branch-ID")
+}
+
+// canDelete reports whether role may delete a student/class record.
+// Matches frontend_school_crm's DEFAULT_PERMISSIONS matrix: only
+// admin/branch_admin (tenant-level) get canDeleteStudents/canDeleteClasses:
+// true — manager/accountant/teacher/student/parent all get false, and the
+// frontend hides delete buttons accordingly. Nothing server-side enforced
+// this before — any of those roles could call DELETE directly, as long as
+// they had branch access, and it would succeed.
+func canDelete(role string) bool {
+	switch role {
+	case "admin", "branch_admin", "developer", "super_admin":
+		return true
+	default:
+		return false
+	}
+}
+
+func (h *Handler) requireDeletePermission(c *gin.Context) bool {
+	if !canDelete(c.GetHeader("X-User-Role")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
+		return false
+	}
+	return true
+}
+
+// isSuperRole reports whether role is a platform-level role that operates
+// across every branch/tenant, rather than being scoped to one — used to
+// pick the Trash view's window (30 days platform-wide) vs a regular
+// caller's (7 days, own branch only).
+func isSuperRole(role string) bool {
+	return role == "developer" || role == "super_admin"
+}
+
+// requireBranchAccess checks that the caller (identified by the
+// JWT-verified X-User-ID/X-User-Role headers) is authorized for branchID —
+// granted if it's their own branch, they're linked to it via
+// branch_managers, they're its admin, or their role is developer/
+// super_admin. Writes a response and returns false if not authorized.
+func (h *Handler) requireBranchAccess(c *gin.Context, branchID string) bool {
+	allowed, err := h.students.HasBranchAccess(c.Request.Context(),
+		c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return false
+	}
+	if !allowed {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this branch"})
+		return false
+	}
+	return true
+}
+
+// restoreWindowDays is the same window the Trash list shows: 7 days for a
+// regular caller, 30 for developer/super_admin. Restore enforces it so a row
+// that has dropped out of the list can no longer be restored by id.
+func restoreWindowDays(c *gin.Context) int {
+	if isSuperRole(c.GetHeader("X-User-Role")) {
+		return 30
+	}
+	return 7
+}
+
+// respondServiceError maps domain errors to HTTP statuses. A plan-limit
+// failure uses the monolith's shape: 402 {error:"subscription_limit_reached",
+// detail:...}. Anything unrecognised gets fallback.
+func respondServiceError(c *gin.Context, err error, fallback int) {
+	switch {
+	case errors.Is(err, service.ErrLimitReached):
+		c.JSON(http.StatusPaymentRequired, gin.H{"error": "subscription_limit_reached", "detail": err.Error()})
+	case errors.Is(err, service.ErrNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, service.ErrScheduleConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, service.ErrInvalidInput):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	default:
+		c.JSON(fallback, gin.H{"error": err.Error()})
+	}
+}
+
+func (h *Handler) GetStudent(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	st, err := h.students.GetByIDScoped(c.Request.Context(), c.Param("id"), branchID)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "student not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, st)
+}
+
+func (h *Handler) UpdateStudent(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	var body map[string]interface{}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	st, err := h.students.Update(c.Request.Context(), c.Param("id"), branchID, body)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "student not found"})
+			return
+		}
+		respondServiceError(c, err, http.StatusBadRequest)
+		return
+	}
+	h.students.Audit(c.Request.Context(), st.BranchID, c.GetHeader("X-User-ID"), "update", "student", st.ID, "Student updated: "+st.FullName)
+	c.JSON(http.StatusOK, st)
+}
+
+func (h *Handler) DeleteStudent(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	id := c.Param("id")
+	st, _ := h.students.GetByIDScoped(c.Request.Context(), id, branchID)
+	if err := h.students.Delete(c.Request.Context(), id, branchID, c.GetHeader("X-User-ID")); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "student not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if st != nil {
+		h.students.Audit(c.Request.Context(), st.BranchID, c.GetHeader("X-User-ID"), "delete", "student", id, "Student deleted: "+st.FullName)
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "student deleted"})
+}
+
+// RestoreStudent undoes a soft-delete, same authorization as DeleteStudent.
+func (h *Handler) RestoreStudent(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.students.Restore(c.Request.Context(), c.Param("id"), branchID, restoreWindowDays(c)); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "student not found in trash"})
+			return
+		}
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "student restored"})
+}
+
+// SyncStudentMonthlyPayment bulk-moves students in a branch over to
+// toAmount — used when a branch's default fee changes. By default (All
+// false) only students still billed at fromAmount move, leaving anyone on
+// a custom/discounted rate untouched; with All true, every active student
+// in the branch moves to toAmount regardless of their current price.
+func (h *Handler) SyncStudentMonthlyPayment(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	var body struct {
+		FromAmount float64 `json:"fromAmount"`
+		ToAmount   float64 `json:"toAmount"`
+		All        bool    `json:"all"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if body.ToAmount <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "toAmount must be positive"})
+		return
+	}
+	updated, err := h.students.SyncMonthlyPayment(c.Request.Context(), branchID, body.FromAmount, body.ToAmount, body.All)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	scope := "still on the old price"
+	if body.All {
+		scope = "all students"
+	}
+	h.students.Audit(c.Request.Context(), branchID, c.GetHeader("X-User-ID"), "update", "student",
+		"", fmt.Sprintf("Bulk monthly payment sync (%s): %d student(s) moved from %.0f to %.0f", scope, updated, body.FromAmount, body.ToAmount))
+	c.JSON(http.StatusOK, gin.H{"updated": updated})
+}
+
+// ListStudentTrash returns soft-deleted students within the caller's
+// window: 7 days scoped to their branch, 30 days platform-wide for
+// developer/super_admin.
+func (h *Handler) ListStudentTrash(c *gin.Context) {
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	branchID := requestBranchID(c)
+	if isSuperRole(role) {
+		windowDays = 30
+		branchID = ""
+	} else if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	} else if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	items, err := h.students.ListTrash(c.Request.Context(), branchID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedStudent{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+// ── Classes ───────────────────────────────────────────────────────────────────
+
+func (h *Handler) ListClasses(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	classes, err := h.classes.GetAll(c.Request.Context(), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": classes})
+}
+
+func (h *Handler) CreateClass(c *gin.Context) {
+	var body struct {
+		Name      string  `json:"name"     binding:"required"`
+		BranchID  string  `json:"branchId" binding:"required"`
+		TeacherID *string `json:"teacherId"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.requireBranchAccess(c, body.BranchID) {
+		return
+	}
+	cl, err := h.classes.Create(c.Request.Context(), body.Name, body.BranchID, body.TeacherID)
+	if err != nil {
+		respondServiceError(c, err, http.StatusBadRequest)
+		return
+	}
+	c.JSON(http.StatusCreated, cl)
+}
+
+func (h *Handler) GetClass(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	cl, err := h.classes.GetByIDScoped(c.Request.Context(), c.Param("id"), branchID)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, cl)
+}
+
+func (h *Handler) UpdateClass(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	var body map[string]interface{}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	cl, err := h.classes.Update(c.Request.Context(), c.Param("id"), branchID, body)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+			return
+		}
+		respondServiceError(c, err, http.StatusBadRequest)
+		return
+	}
+	c.JSON(http.StatusOK, cl)
+}
+
+func (h *Handler) DeleteClass(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.classes.Delete(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-ID")); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "class not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "class deleted"})
+}
+
+// RestoreClass undoes a soft-delete, same authorization as DeleteClass.
+func (h *Handler) RestoreClass(c *gin.Context) {
+	if !h.requireDeletePermission(c) {
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.classes.Restore(c.Request.Context(), c.Param("id"), branchID, restoreWindowDays(c)); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "class not found in trash"})
+			return
+		}
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "class restored"})
+}
+
+// ListClassTrash returns soft-deleted classes within the caller's window:
+// 7 days scoped to their branch, 30 days platform-wide for
+// developer/super_admin.
+func (h *Handler) ListClassTrash(c *gin.Context) {
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	branchID := requestBranchID(c)
+	if isSuperRole(role) {
+		windowDays = 30
+		branchID = ""
+	} else if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	} else if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	items, err := h.classes.ListTrash(c.Request.Context(), branchID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedClass{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+// ── Attendance ────────────────────────────────────────────────────────────────
+
+// GetAttendance godoc
+// GET /attendance?classId=&date=
+func (h *Handler) GetAttendance(c *gin.Context) {
+	classID := c.Query("classId")
+	date := c.Query("date")
+	if classID == "" || date == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "classId and date are required"})
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	records, err := h.attendance.GetByClassDate(c.Request.Context(), classID, branchID, date)
+	if err != nil {
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	if records == nil {
+		records = []service.Attendance{}
+	}
+	c.JSON(http.StatusOK, records)
+}
+
+// SaveAttendance godoc
+// POST /attendance  or  POST /attendance/bulk
+func (h *Handler) SaveAttendance(c *gin.Context) {
+	var req service.BulkAttendanceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.requireBranchAccess(c, req.BranchID) {
+		return
+	}
+	createdBy := c.GetHeader("X-User-ID")
+	records, err := h.attendance.Save(c.Request.Context(), &req, createdBy)
+	if err != nil {
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"saved": len(records)})
+}
+
+// GetAttendanceSummary godoc
+// GET /attendance/summary?classId=&year=&month=
+func (h *Handler) GetAttendanceSummary(c *gin.Context) {
+	classID := c.Query("classId")
+	if classID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "classId is required"})
+		return
+	}
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	var year, month int
+	fmt.Sscanf(c.Query("year"), "%d", &year)
+	fmt.Sscanf(c.Query("month"), "%d", &month)
+	if year == 0 || month == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "year and month are required"})
+		return
+	}
+	summary, err := h.attendance.GetMonthSummary(c.Request.Context(), classID, branchID, year, month)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if summary == nil {
+		summary = []service.MonthSummary{}
+	}
+	c.JSON(http.StatusOK, summary)
+}
+
+// GetAbsenceAlerts godoc
+// GET /attendance/alerts?branchId=
+func (h *Handler) GetAbsenceAlerts(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	alerts, err := h.attendance.GetAbsenceAlerts(c.Request.Context(), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if alerts == nil {
+		alerts = []service.AbsenceAlert{}
+	}
+	c.JSON(http.StatusOK, alerts)
+}
+
+// GetStudentAttendance godoc
+// GET /attendance/student/:studentId?month=&year=
+func (h *Handler) GetStudentAttendance(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	var year int
+	if y := c.Query("year"); y != "" {
+		_, _ = fmt.Sscanf(y, "%d", &year)
+	}
+	records, err := h.attendance.GetByStudentMonth(c.Request.Context(),
+		c.Param("studentId"), branchID, c.Query("month"), year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": records})
+}
+
+// GetStudentAttendanceByID serves GET /students/:id/attendance?year=&month=
+func (h *Handler) GetStudentAttendanceByID(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	var year int
+	if y := c.Query("year"); y != "" {
+		_, _ = fmt.Sscanf(y, "%d", &year)
+	}
+	records, err := h.attendance.GetByStudentMonth(c.Request.Context(),
+		c.Param("id"), branchID, c.Query("month"), year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, records)
+}
+
+// ── Schedule ──────────────────────────────────────────────────────────────────
+
+func (h *Handler) ListSchedule(c *gin.Context) {
+	classID := c.Query("classId")
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId or classId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if classID != "" {
+		slots, err := h.schedule.GetByClass(c.Request.Context(), classID, branchID)
+		if err != nil {
+			respondServiceError(c, err, http.StatusInternalServerError)
+			return
+		}
+		c.JSON(http.StatusOK, slots)
+		return
+	}
+	slots, err := h.schedule.GetByBranch(c.Request.Context(), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, slots)
+}
+
+func (h *Handler) UpsertSchedule(c *gin.Context) {
+	var req service.UpsertScheduleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.requireBranchAccess(c, req.BranchID) {
+		return
+	}
+	slot, err := h.schedule.Upsert(c.Request.Context(), &req)
+	if err != nil {
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusOK, slot)
+}
+
+func (h *Handler) DeleteSchedule(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.schedule.Delete(c.Request.Context(), c.Param("id"), branchID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ── Assignments ───────────────────────────────────────────────────────────────
+
+func (h *Handler) ListAssignments(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	list, err := h.assignments.ListByBranch(c.Request.Context(), branchID, c.Query("classId"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, list)
+}
+
+func (h *Handler) CreateAssignment(c *gin.Context) {
+	var req service.CreateAssignmentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.requireBranchAccess(c, req.BranchID) {
+		return
+	}
+	a, err := h.assignments.Create(c.Request.Context(), &req, c.GetHeader("X-User-ID"))
+	if err != nil {
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusCreated, a)
+}
+
+func (h *Handler) DeleteAssignment(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.assignments.Delete(c.Request.Context(), c.Param("id"), branchID, c.GetHeader("X-User-ID")); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// RestoreAssignment undoes a soft-delete, same authorization as DeleteAssignment.
+func (h *Handler) RestoreAssignment(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.assignments.Restore(c.Request.Context(), c.Param("id"), branchID, restoreWindowDays(c)); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+// ListAssignmentTrash returns soft-deleted assignments within the caller's
+// window: 7 days scoped to their branch, 30 days platform-wide for
+// developer/super_admin.
+func (h *Handler) ListAssignmentTrash(c *gin.Context) {
+	role := c.GetHeader("X-User-Role")
+	windowDays := 7
+	branchID := requestBranchID(c)
+	if isSuperRole(role) {
+		windowDays = 30
+		branchID = ""
+	} else if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	} else if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	items, err := h.assignments.ListTrash(c.Request.Context(), branchID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedAssignment{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) GetSubmissions(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	subs, err := h.assignments.GetSubmissions(c.Request.Context(), c.Param("id"), branchID)
+	if err != nil {
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusOK, subs)
+}
+
+func (h *Handler) UpdateSubmission(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	var req service.UpdateSubmissionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	sub, err := h.assignments.UpdateSubmission(c.Request.Context(),
+		c.Param("subId"), branchID, &req, c.GetHeader("X-User-ID"))
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "submission not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, sub)
+}
+
+func (h *Handler) StudentProgress(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	subs, err := h.assignments.GetStudentProgress(c.Request.Context(), c.Param("studentId"), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, subs)
+}
+
+// ── Consolidated & Search ─────────────────────────────────────────────────────
+
+func (h *Handler) ConsolidatedData(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	classID := c.Query("classId")
+	noClass := classID == "unassigned"
+	if noClass {
+		classID = ""
+	}
+	result, err := h.students.ConsolidatedData(c.Request.Context(), service.ConsolidatedFilter{
+		BranchID:      branchID,
+		Page:          c.DefaultQuery("page", "1"),
+		Limit:         c.DefaultQuery("limit", "10"),
+		Cursor:        c.Query("cursor"),
+		Search:        c.Query("search"),
+		Status:        c.Query("status"),
+		ClassID:       classID,
+		NoClass:       noClass,
+		PaymentStatus: c.Query("paymentStatus"),
+		Month:         c.Query("month"),
+		Year:          c.Query("year"),
+	})
+	if err != nil {
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) SearchWithPayments(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId is required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	year := 0
+	if y := c.Query("year"); y != "" {
+		_, _ = fmt.Sscanf(y, "%d", &year)
+	}
+	result, err := h.students.SearchWithPayments(
+		c.Request.Context(),
+		branchID,
+		c.Query("search"),
+		c.Query("month"),
+		year,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to search students"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+// ── Student Notes ─────────────────────────────────────────────────────────────
+
+func (h *Handler) ListNotes(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	notes, err := h.notes.ListNotes(c.Request.Context(), branchID, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, notes)
+}
+
+func (h *Handler) AddNote(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	var req struct {
+		Content string `json:"content" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	note, err := h.notes.AddNote(c.Request.Context(), branchID, c.Param("id"),
+		req.Content, c.GetHeader("X-User-ID"), "")
+	if err != nil {
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusCreated, note)
+}
+
+func (h *Handler) DeleteNote(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.notes.DeleteNote(c.Request.Context(), branchID, c.Param("noteId")); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}
+
+func (h *Handler) ListContactLog(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	entries, err := h.notes.ListContactLog(c.Request.Context(), branchID, c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, entries)
+}
+
+func (h *Handler) AddContactLog(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	var req service.CreateContactLogRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	entry, err := h.notes.AddContactLog(c.Request.Context(), branchID, c.Param("id"),
+		&req, c.GetHeader("X-User-ID"), "")
+	if err != nil {
+		respondServiceError(c, err, http.StatusInternalServerError)
+		return
+	}
+	c.JSON(http.StatusCreated, entry)
+}
+
+func (h *Handler) DeleteContactLog(c *gin.Context) {
+	branchID := requestBranchID(c)
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !h.requireBranchAccess(c, branchID) {
+		return
+	}
+	if err := h.notes.DeleteContactLog(c.Request.Context(), branchID, c.Param("logId")); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true})
+}

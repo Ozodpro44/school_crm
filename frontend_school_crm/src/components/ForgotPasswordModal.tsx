@@ -218,7 +218,7 @@ export function ForgotPasswordModal({
 
               <Button
                 type="submit"
-                className="w-full h-11 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                className="w-full h-11 bg-brand hover:bg-brand-hover"
                 disabled={loading}
               >
                 {loading ? (
@@ -255,7 +255,7 @@ export function ForgotPasswordModal({
 
               <Button
                 type="submit"
-                className="w-full h-11 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                className="w-full h-11 bg-brand hover:bg-brand-hover"
                 disabled={loading || otp.length !== 6}
               >
                 {loading ? (
@@ -314,7 +314,7 @@ export function ForgotPasswordModal({
 
               <Button
                 type="submit"
-                className="w-full h-11 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                className="w-full h-11 bg-brand hover:bg-brand-hover"
                 disabled={loading || !newPassword || !confirmPassword}
               >
                 {loading ? (

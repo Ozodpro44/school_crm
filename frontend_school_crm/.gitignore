@@ -37,3 +37,7 @@ next-env.d.ts
 
 # firebase
 firebase-service-account.json
+
+# logs
+logs/
+*.log

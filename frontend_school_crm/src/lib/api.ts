@@ -1,39 +1,48 @@
 /**
- * Get students and classes consolidated data
- */
-export async function getStudentsConsolidatedData(
-  branchId: string,
-  page?: number,
-  limit?: number,
-  filters?: {
-    search?: string;
-    classId?: string;
-    status?: string;
-    paymentStatus?: string;
-    month?: string;
-    year?: string;
-  }
-): Promise<any> {
-  let query = `/students/consolidated/data?branchId=${branchId}`;
-  if (page) query += `&page=${page}`;
-  if (limit) query += `&limit=${limit}`;
-  if (filters?.search) query += `&search=${encodeURIComponent(filters.search)}`;
-  if (filters?.classId) query += `&classId=${filters.classId}`;
-  if (filters?.status) query += `&status=${filters.status}`;
-  if (filters?.paymentStatus) query += `&paymentStatus=${filters.paymentStatus}`;
-  if (filters?.month) query += `&month=${filters.month}`;
-  if (filters?.year) query += `&year=${filters.year}`;
-  return apiRequest<any>(query);
-}
-/**
  * API Client for Wonderkids' CRM Backend
  * Complete integration with all Golang backend endpoints
  * Handles all HTTP requests with authentication, error handling, and data marshalling
  */
 
-import { Branch, HikvisionDevice, HikvisionEmployee, AttendanceRecord } from "@/types";
+import { Branch, HikvisionDevice, HikvisionEmployee, HikvisionAttendanceRecord } from "@/types";
+import {
+  AuthEvents,
+  clearAuthState,
+  clearStoredBranchId,
+  getAuthToken as readAuthToken,
+  getStoredBranchId,
+  getStoredUser as readStoredUser,
+  markLastSync,
+  persistLogin,
+  setAuthToken as writeAuthToken,
+  setStoredUser as writeStoredUser,
+} from "@/lib/storage";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://incredible-love-production-0008.up.railway.app/api";
+import { API_BASE_URL } from "./apiBase";
+
+// Microservices return { items: T[] }; the monolith returned plain T[].
+// This helper handles both so callers don't have to.
+function unwrapItems<T>(response: T[] | { items: T[] } | unknown): T[] {
+  if (Array.isArray(response)) return response;
+  if (response && typeof response === "object" && Array.isArray((response as { items: T[] }).items)) {
+    return (response as { items: T[] }).items;
+  }
+  return [];
+}
+
+/**
+ * Build a query string from a params object, skipping undefined / null / empty values.
+ * Returns an empty string when no params remain (so callers can blindly append it).
+ */
+function buildQuery(params: Record<string, string | number | undefined | null>): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === "") continue;
+    sp.set(k, String(v));
+  }
+  const s = sp.toString();
+  return s ? `?${s}` : "";
+}
 
 // ============================================================================
 // TYPES & INTERFACES
@@ -56,14 +65,26 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
-  token: string;
-  user: {
+  token?: string;
+  // Present instead of token/user when the platform-wide "Require MFA"
+  // setting is on — the caller must collect the emailed OTP and call
+  // verifyLoginOtp() to actually complete the login.
+  mfaRequired?: boolean;
+  // Present instead of token/user right after register() — nothing usable
+  // exists yet (no trial subscription, no permissions row) until the emailed
+  // code is confirmed via verifyRegistrationOtp().
+  emailVerificationRequired?: boolean;
+  email?: string;
+  user?: {
     id: string;
     email: string;
     fullName: string;
     role: string;
     branchId?: string;
     branchIds?: string[];
+    // The school's own brand identity — distinct from any one branch's
+    // name. See the note on Settings.organizationName in @/types.
+    organizationName?: string;
     permissions?: Permissions;
   };
 }
@@ -73,6 +94,7 @@ export interface RegisterRequest {
   password: string;
   fullName: string;
   role: string;
+  schoolName?: string;
 }
 
 // User Types
@@ -89,7 +111,9 @@ export interface User {
 export interface Student {
   id: string;
   fullName: string;
-  classId: string;
+  // Nullable on the wire — see the note on Student in @/types. A student with
+  // no class (class deleted, or not yet assigned) omits this key entirely.
+  classId?: string;
   phone: string;
   parentPhone: string;
   monthlyPayment: number;
@@ -103,9 +127,34 @@ export interface Student {
   updatedAt: string;
 }
 
+// Consolidated row shape returned by /students/consolidated/data
+// (mirrors backend models.StudentList — embeds class + payment).
+export interface StudentListRow {
+  id: string;
+  fullName: string;
+  class: { id: string; name: string };
+  phone: string;
+  parentPhone: string;
+  monthlyPayment: number;
+  status: "active" | "left" | "suspended";
+  branchId: string;
+  payment: { status: "paid" | "partial" | "none"; amount: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudentsConsolidatedData {
+  items: StudentListRow[];
+  classes: { id: string; name: string }[];
+  total: number;
+  page: number;
+  limit: number;
+  nextCursor?: string;
+}
+
 export interface CreateStudentRequest {
   fullName: string;
-  classId: string;
+  classId?: string;
   phone: string;
   parentPhone: string;
   monthlyPayment: number;
@@ -152,6 +201,29 @@ export interface UpdatePaymentRequest {
   paidDate?: string;
   }
 
+// Consolidated payments response (mirrors backend models.PaymentListResponse).
+export interface PaymentsConsolidatedData {
+  items: Payment[];
+  classes: { id: string; name: string }[];
+  students: {
+    id: string;
+    fullName: string;
+    phone: string;
+    classId: string;
+    className: string;
+    monthlyPayment: number;
+  }[];
+  indicators: {
+    totalPaid: number;
+    totalUnpaid: number;
+    byMethod: Record<string, number>;
+  };
+  total: number;
+  page: number;
+  limit: number;
+  nextCursor?: string;
+}
+
 export interface PaymentSummary {
   totalPaid: number;
   totalUnpaid: number;
@@ -171,6 +243,8 @@ export interface Class {
   teacherId?: string;
   studentIds: string[];
   branchId: string;
+  studentCount: number;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -200,8 +274,8 @@ export interface Teacher {
   monthlySalary: number;
   phone: string;
   email: string;
-  assignedClasses: string[];
   branchId: string;
+  isActive: boolean;
   joinedDate?: string;
   createdAt: string;
   updatedAt: string;
@@ -213,6 +287,7 @@ export interface CreateTeacherRequest {
   monthlySalary: number;
   phone: string;
   email: string;
+  password?: string;
   branchId: string;
   joinedDate?: string;
 }
@@ -221,6 +296,7 @@ export interface CreateTeacherRequest {
 export interface Salary {
   id: string;
   teacherId: string;
+  teacherName?: string;
   amount: number;
   month: string;
   year: number;
@@ -309,6 +385,9 @@ export interface Settings {
 
 export interface UpdateSettingsRequest {
   name?: string;
+  // Handled specially server-side (written to the admin's user row, not this
+  // branch) — see the note on Settings.organizationName in @/types.
+  organizationName?: string;
   monthlyPayment?: number;
   currency?: string;
   address?: string;
@@ -328,11 +407,11 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const { timeout = 30000, ...fetchOptions } = options;
   const token = getAuthToken();
-  const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
+  const branchId = getStoredBranchId();
 
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    ...fetchOptions.headers,
+    ...(fetchOptions.headers as Record<string, string> | undefined),
   };
 
   if (token) {
@@ -361,31 +440,62 @@ export async function apiRequest<T>(
 
     clearTimeout(timeoutId);
 
+    // Track last successful sync time for the offline banner
+    if (response.ok) {
+      markLastSync();
+    }
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.error || `API Error: ${response.status}`;
-      
-      // Check for invalid token error and logout if needed (only 401, not 403)
-      const isInvalidToken =
-        (errorMessage.toLowerCase().includes("invalid token") ||
-          errorMessage.toLowerCase().includes("unauthorized") ||
-          errorMessage.toLowerCase().includes("user not found")) &&
-        response.status === 401;
-      
-      if (isInvalidToken) {
-        // Clear auth data from localStorage
-        if (typeof window !== "undefined") {
-          localStorage.removeItem("auth_token");
-          localStorage.removeItem("school_auth_user");
-          localStorage.removeItem("current_user");
-          localStorage.removeItem("selectedBranchId");
-        }
-        // Redirect to login
-        if (typeof window !== "undefined") {
+
+      // Auto-logout on ANY 401 from a protected endpoint.
+      // (Public auth endpoints — /auth/login, /auth/register, /auth/forgot-password,
+      // /auth/reset-password, /auth/verify-otp, /auth/resend-otp — return 401 for
+      // bad credentials and we must NOT redirect away from the login page in that case.)
+      if (response.status === 401 && typeof window !== "undefined") {
+        const isAuthEndpoint = endpoint.startsWith("/auth/");
+        const onPublicPage =
+          window.location.pathname.startsWith("/login") ||
+          window.location.pathname.startsWith("/register") ||
+          window.location.pathname.startsWith("/forgot-password");
+
+        if (!isAuthEndpoint && !onPublicPage) {
+          clearAuthState();
           window.location.href = "/login";
         }
       }
-      
+
+      // Subscription expired / paused → redirect to billing page.
+      if (response.status === 402 && errorData.error === "subscription_required") {
+        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/billing")) {
+          window.location.href = "/billing";
+        }
+      }
+
+      // Subscription plan limit reached (students / classes / branches) →
+      // fire a custom event so any mounted upgrade modal can open without a
+      // full-page redirect.
+      if (response.status === 402 && errorData.error === "subscription_limit_reached") {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent(AuthEvents.SUBSCRIPTION_LIMIT_REACHED, {
+              detail: { message: errorData.detail || errorMessage },
+            })
+          );
+        }
+      }
+
+      // Branch access denied — the X-Branch-ID header was rejected by the
+      // server's TenantBranchMiddleware. Clear the stale branch selection and
+      // notify the BranchContext so it can redirect / pick another branch.
+      if (response.status === 403 && errorData.error?.includes("branch")) {
+        clearStoredBranchId();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent(AuthEvents.BRANCH_ACCESS_DENIED));
+        }
+      }
+
       throw new Error(errorMessage);
     }
 
@@ -405,55 +515,27 @@ export async function apiRequest<T>(
   }
 }
 
-/**
- * Get stored authentication token
- */
+// Auth-state helpers are exported from @/lib/storage. We re-export the read
+// helpers under the old names so callers that imported `getAuthToken` from
+// "@/lib/api" keep working.
 export function getAuthToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("auth_token");
+  return readAuthToken();
 }
 
-/**
- * Set authentication token
- */
 export function setAuthToken(token: string): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("auth_token", token);
-  }
+  writeAuthToken(token);
 }
 
-/**
- * Clear authentication token
- */
-export function clearAuthToken(): void {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("auth_token");
-  }
-}
-
-/**
- * Check if user is authenticated
- */
 export function isAuthenticated(): boolean {
   return getAuthToken() !== null;
 }
 
-/**
- * Get current user from localStorage
- */
 export function getCurrentUser(): LoginResponse["user"] | null {
-  if (typeof window === "undefined") return null;
-  const userJson = localStorage.getItem("current_user");
-  return userJson ? JSON.parse(userJson) : null;
+  return readStoredUser() as unknown as LoginResponse["user"] | null;
 }
 
-/**
- * Set current user in localStorage
- */
 export function setCurrentUser(user: LoginResponse["user"]): void {
-  if (typeof window !== "undefined") {
-    localStorage.setItem("current_user", JSON.stringify(user));
-  }
+  writeStoredUser(user as unknown as Parameters<typeof writeStoredUser>[0]);
 }
 
 // ============================================================================
@@ -461,7 +543,8 @@ export function setCurrentUser(user: LoginResponse["user"]): void {
 // ============================================================================
 
 /**
- * Login user with email and password
+ * Login user with email and password. On success, the JWT and the user blob
+ * are persisted atomically (token + user + branch + LOGIN event in one place).
  */
 export async function login(request: LoginRequest): Promise<LoginResponse> {
   const response = await apiRequest<LoginResponse>("/auth/login", {
@@ -469,39 +552,109 @@ export async function login(request: LoginRequest): Promise<LoginResponse> {
     body: JSON.stringify(request),
   });
 
-  if (response.token) {
-    setAuthToken(response.token);
-    setCurrentUser(response.user);
+  if (response.token && response.user) {
+    persistLogin({
+      token: response.token,
+      user: response.user as unknown as Parameters<typeof persistLogin>[0]["user"],
+      branchId: response.user.branchId,
+    });
   }
 
   return response;
 }
 
 /**
- * Register new user
+ * Completes a login that Login paused for MFA (response.mfaRequired) — the
+ * caller collects the emailed OTP and submits it here. Same persistence
+ * rules as login() on success.
+ */
+export async function verifyLoginOtp(email: string, otp: string): Promise<LoginResponse> {
+  const response = await apiRequest<LoginResponse>("/auth/verify-login-otp", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
+  });
+
+  if (response.token && response.user) {
+    persistLogin({
+      token: response.token,
+      user: response.user as unknown as Parameters<typeof persistLogin>[0]["user"],
+      branchId: response.user.branchId,
+    });
+  }
+
+  return response;
+}
+
+/**
+ * Starts (or resumes, for an email that registered but never confirmed) a
+ * signup. Returns `{ emailVerificationRequired: true, email }` — nothing is
+ * persisted here, since no subscription/permissions exist until the emailed
+ * code is confirmed via verifyRegistrationOtp().
  */
 export async function register(request: RegisterRequest): Promise<LoginResponse> {
-  const response = await apiRequest<LoginResponse>("/auth/register", {
+  return apiRequest<LoginResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(request),
   });
+}
 
-  if (response.token) {
-    setAuthToken(response.token);
-    setCurrentUser(response.user);
+/**
+ * Completes a signup that register() paused for email verification — the
+ * caller collects the emailed OTP and submits it here. Same persistence
+ * rules as login() on success. The returned user has no branchId yet: the
+ * caller should route to the mandatory first-branch setup, not straight to
+ * the dashboard.
+ */
+export async function verifyRegistrationOtp(email: string, otp: string): Promise<LoginResponse> {
+  const response = await apiRequest<LoginResponse>("/auth/verify-registration-otp", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
+  });
+
+  if (response.token && response.user) {
+    persistLogin({
+      token: response.token,
+      user: response.user as unknown as Parameters<typeof persistLogin>[0]["user"],
+      branchId: response.user.branchId,
+    });
   }
 
   return response;
 }
 
+
 /**
- * Logout user
+ * Logout user — wipes all auth + branch state and emits AuthEvents.LOGOUT.
+ * Note: a separate `logout()` in @/lib/auth additionally redirects to /login.
+ * This one just clears state, leaving navigation to the caller.
  */
 export function logout(): void {
-  clearAuthToken();
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("current_user");
-  }
+  clearAuthState();
+}
+
+// ============================================================================
+// ACTIVE SESSIONS (logged-in devices)
+// ============================================================================
+
+export interface UserSession {
+  id: string;
+  userId: string;
+  ipAddress: string;
+  userAgent: string;
+  createdAt: string;
+}
+
+/** List the current user's own active (non-revoked) sessions/devices. */
+export async function listSessions(): Promise<UserSession[]> {
+  const response = await apiRequest<unknown>("/auth/sessions");
+  return unwrapItems<UserSession>(response);
+}
+
+/** Sign a single device out. Revoking the current device logs this browser out too. */
+export async function revokeSession(id: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(`/auth/sessions/${id}`, {
+    method: "DELETE",
+  });
 }
 
 // ============================================================================
@@ -513,8 +666,8 @@ export function logout(): void {
  */
 export async function listUsers(branchId?: string): Promise<User[]> {
   const endpoint = branchId ? `/users?branchId=${branchId}` : "/users";
-  const response = await apiRequest<User[]>(endpoint);
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(endpoint);
+  return unwrapItems<User>(response);
 }
 
 /**
@@ -558,6 +711,24 @@ export async function updateUser(
 }
 
 /**
+ * Change a user's password (PUT /users/:id/password).
+ * Self-service must send currentPassword; admin resets of another user omit it.
+ */
+export async function changePassword(
+  id: string,
+  newPassword: string,
+  currentPassword?: string
+): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(`/users/${id}/password`, {
+    method: "PUT",
+    body: JSON.stringify({
+      password: newPassword,
+      ...(currentPassword !== undefined ? { current_password: currentPassword } : {}),
+    }),
+  });
+}
+
+/**
  * Delete user
  */
 export async function deleteUser(id: string): Promise<{ success: boolean }> {
@@ -573,7 +744,10 @@ export async function updateUserPermissions(
   userId: string,
   permissions: Record<string, boolean>
 ): Promise<any> {
-  return apiRequest<any>(`/users/${userId}/permissions`, {
+  // user_service registers this at PUT /permissions/:userId (not nested
+  // under /users/:id) — the old path always 404'd, so no permission edit
+  // from the Managers page ever actually took effect.
+  return apiRequest<any>(`/permissions/${userId}`, {
     method: "PUT",
     body: JSON.stringify(permissions),
   });
@@ -629,7 +803,15 @@ export async function listStudents(
   if (filters?.status) query += `&status=${filters.status}`;
 
   const response = await apiRequest<any>(query);
-  return response || { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
+  if (!response) return { data: [], total: 0, page: 1, limit: 10, totalPages: 0 };
+  // student_service returns { items, total, page, limit }; monolith returned { data, ... }
+  const items: Student[] = Array.isArray(response.items) ? response.items
+    : Array.isArray(response.data) ? response.data
+    : Array.isArray(response) ? response : [];
+  const total = response.total ?? items.length;
+  const pg = response.page ?? 1;
+  const lim = response.limit ?? (limit ?? 10);
+  return { data: items, total, page: pg, limit: lim, totalPages: Math.ceil(total / lim) || 1 };
 }
 
 /**
@@ -691,6 +873,36 @@ export async function searchStudentsWithPayments(
   }>>(`/students/search/with-payments${query}`);
 }
 
+/**
+ * Get students and classes consolidated data — used by the students table.
+ */
+export async function getStudentsConsolidatedData(
+  branchId: string,
+  page?: number,
+  limit?: number,
+  filters?: {
+    search?: string;
+    classId?: string;
+    status?: string;
+    paymentStatus?: string;
+    month?: string;
+    year?: string;
+  }
+): Promise<StudentsConsolidatedData> {
+  const query = buildQuery({
+    branchId,
+    page,
+    limit,
+    search: filters?.search,
+    classId: filters?.classId,
+    status: filters?.status,
+    paymentStatus: filters?.paymentStatus,
+    month: filters?.month,
+    year: filters?.year,
+  });
+  return apiRequest<StudentsConsolidatedData>(`/students/consolidated/data${query}`);
+}
+
 // ============================================================================
 // PAYMENT ENDPOINTS
 // ============================================================================
@@ -728,7 +940,7 @@ export async function listPayments(
     search?: string;
     status?: string;
   }
-): Promise<Payment[] | { data: Payment[]; total: number; page: number; limit: number; totalPages: number }> {
+): Promise<Payment[] | { items?: Payment[]; data?: Payment[]; total: number; page: number; limit: number; totalPages?: number; nextCursor?: string }> {
   let query = "";
   if (filters?.branchId) query += `branchId=${filters.branchId}`;
   if (filters?.studentId)
@@ -740,22 +952,10 @@ export async function listPayments(
   if (filters?.search) query += `${query ? "&" : ""}search=${encodeURIComponent(filters.search)}`;
   if (filters?.status) query += `${query ? "&" : ""}status=${filters.status}`;
 
-  const response = await apiRequest<Payment[] | { data: Payment[]; total: number; page: number; limit: number; totalPages: number }>(
+  const response = await apiRequest<Payment[] | { items?: Payment[]; data?: Payment[]; total: number; page: number; limit: number; totalPages?: number; nextCursor?: string }>(
     `/payments${query ? "?" + query : ""}`
   );
   return Array.isArray(response) ? response : (response || []);
-}
-
-/**
- * Get payment status for a student in current month
- */
-export async function getPaymentStatus(
-  studentId: string,
-  branchId: string
-): Promise<{ status: string; amount: number }> {
-  return apiRequest<{ status: string; amount: number }>(
-    `/payments/status/${studentId}?branchId=${branchId}`
-  );
 }
 
 /**
@@ -830,26 +1030,6 @@ export async function deletePayment(id: string): Promise<{ success: boolean }> {
 }
 
 /**
- * Get payment summary for a branch
- */
-export async function getPaymentSummary(
-  branchId: string
-): Promise<PaymentSummary> {
-  return apiRequest<PaymentSummary>(`/payments/branch/${branchId}/summary`);
-}
-
-/**
- * Get payment indicators by period
- */
-export async function getPaymentIndicators(
-  branchId: string,
-  month: string,
-  year: number
-): Promise<PaymentSummary> {
-  return apiRequest<PaymentSummary>(`/payments/payments/${branchId}/indicators?month=${month}&year=${year}`);
-}
-
-/**
  * Get payments and classes consolidated data
  */
 export async function getPaymentsConsolidatedData(
@@ -864,17 +1044,19 @@ export async function getPaymentsConsolidatedData(
     paymentMethod?: string;
     classId?: string;
   }
-): Promise<any> {
-  let query = `/payments/consolidated/data?branchId=${branchId}`;
-  if (page) query += `&page=${page}`;
-  if (limit) query += `&limit=${limit}`;
-  if (filters?.search) query += `&search=${encodeURIComponent(filters.search)}`;
-  if (filters?.status) query += `&status=${filters.status}`;
-  if (filters?.month) query += `&month=${filters.month}`;
-  if (filters?.year) query += `&year=${filters.year}`;
-  if (filters?.paymentMethod) query += `&paymentMethod=${filters.paymentMethod}`;
-  if (filters?.classId) query += `&classId=${filters.classId}`;
-  return apiRequest<any>(query);
+): Promise<PaymentsConsolidatedData> {
+  const query = buildQuery({
+    branchId,
+    page,
+    limit,
+    search: filters?.search,
+    status: filters?.status,
+    month: filters?.month,
+    year: filters?.year,
+    paymentMethod: filters?.paymentMethod,
+    classId: filters?.classId,
+  });
+  return apiRequest<PaymentsConsolidatedData>(`/payments/consolidated/data${query}`);
 }
 
 // ============================================================================
@@ -902,10 +1084,8 @@ export async function getClass(id: string): Promise<Class> {
  * List classes by branch
  */
 export async function listClasses(branchId: string): Promise<Class[]> {
-  const response = await apiRequest<Class[]>(
-    `/classes?branchId=${branchId}`
-  );
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(`/classes?branchId=${branchId}`);
+  return unwrapItems<Class>(response);
 }
 
 /**
@@ -944,19 +1124,33 @@ export async function createBranch(request: CreateBranchRequest): Promise<Branch
   });
 }
 
+// Short-lived in-memory cache for getBranch — avoids re-fetching the same
+// branch on every loadData() call within the same page render cycle.
+const _branchCache = new Map<string, { data: Branch; expiresAt: number }>();
+const BRANCH_CACHE_TTL_MS = 10_000; // 10 seconds
+
 /**
- * Get branch by ID
+ * Get branch by ID (cached for 10 s to deduplicate parallel calls)
  */
 export async function getBranch(id: string): Promise<Branch> {
-  return apiRequest<Branch>(`/branches/${id}`);
+  const cached = _branchCache.get(id);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+  const data = await apiRequest<Branch>(`/branches/${id}`);
+  _branchCache.set(id, { data, expiresAt: Date.now() + BRANCH_CACHE_TTL_MS });
+  return data;
+}
+
+/** Call after updating a branch so the next getBranch reflects new data. */
+export function invalidateBranchCache(id: string) {
+  _branchCache.delete(id);
 }
 
 /**
  * List all branches
  */
 export async function listBranches(): Promise<Branch[]> {
-  const response = await apiRequest<Branch[]>("/branches");
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>("/branches");
+  return unwrapItems<Branch>(response);
 }
 
 /**
@@ -966,6 +1160,7 @@ export async function updateBranch(
   id: string,
   updates: Partial<Branch>
 ): Promise<Branch> {
+  invalidateBranchCache(id);
   return apiRequest<Branch>(`/branches/${id}`, {
     method: "PUT",
     body: JSON.stringify(updates),
@@ -982,10 +1177,36 @@ export async function deleteBranch(id: string): Promise<{ success: boolean }> {
 }
 
 /**
+ * Bulk-moves students in a branch over to toAmount — used after editing a
+ * branch's default monthly payment. By default (all=false) only students
+ * still billed at fromAmount move, leaving anyone on a custom/discounted
+ * rate untouched; with all=true, every active student in the branch moves
+ * to toAmount regardless of their current price.
+ */
+export async function syncBranchStudentPayments(
+  branchId: string,
+  fromAmount: number,
+  toAmount: number,
+  all: boolean = false
+): Promise<{ updated: number }> {
+  return apiRequest<{ updated: number }>(
+    `/students/sync-monthly-payment?branchId=${branchId}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ fromAmount, toAmount, all }),
+    }
+  );
+}
+
+/**
  * Switch branch to next month (Admin only)
  * Advances the branch's current_month to the next calendar month
  */
 export async function switchBranchMonth(id: string): Promise<Branch> {
+  // Without invalidating, getBranch(id) can keep serving the pre-switch
+  // month for up to the cache's TTL right after an admin switches it —
+  // updateBranch already does this for the same reason.
+  invalidateBranchCache(id);
   return apiRequest<Branch>(`/branches/${id}/switch-month`, {
     method: "POST",
   });
@@ -999,10 +1220,8 @@ export async function getStudentPaymentHistory(
   branchId?: string
 ): Promise<Payment[]> {
   const query = branchId ? `?branchId=${branchId}` : "";
-  const response = await apiRequest<Payment[]>(
-    `/payments/student/${studentId}/history${query}`
-  );
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(`/payments/student/${studentId}/history${query}`);
+  return unwrapItems<Payment>(response);
 }
 
 // ============================================================================
@@ -1032,10 +1251,8 @@ export async function getTeacher(id: string): Promise<Teacher> {
  * List teachers by branch
  */
 export async function listTeachers(branchId: string): Promise<Teacher[]> {
-  const response = await apiRequest<Teacher[]>(
-    `/teachers?branchId=${branchId}`
-  );
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(`/teachers?branchId=${branchId}`);
+  return unwrapItems<Teacher>(response);
 }
 
 /**
@@ -1077,13 +1294,6 @@ export async function createSalary(
 }
 
 /**
- * Get salary by ID
- */
-export async function getSalary(id: string): Promise<Salary> {
-  return apiRequest<Salary>(`/salaries/${id}`);
-}
-
-/**
  * List salaries by branch with optional month/year filter (Admin only for historical data)
  */
 export async function listSalaries(
@@ -1095,8 +1305,8 @@ export async function listSalaries(
   if (month) query += `&month=${month}`;
   if (year) query += `&year=${year}`;
   
-  const response = await apiRequest<Salary[]>(`/salaries?${query}`);
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(`/salaries?${query}`);
+  return unwrapItems<Salary>(response);
 }
 
 /**
@@ -1169,8 +1379,8 @@ export async function listExpenses(
   if (month) query += `&month=${month}`;
   if (year) query += `&year=${year}`;
   
-  const response = await apiRequest<Expense[]>(`/expenses?${query}`);
-  return Array.isArray(response) ? response : [];
+  const response = await apiRequest<unknown>(`/expenses?${query}`);
+  return unwrapItems<Expense>(response);
 }
 
 /**
@@ -1240,13 +1450,6 @@ export async function createIncome(request: CreateIncomeRequest): Promise<Income
     method: "POST",
     body: JSON.stringify(request),
   });
-}
-
-/**
- * Get income by ID
- */
-export async function getIncome(id: string): Promise<Income> {
-  return apiRequest<Income>(`/incomes/${id}`);
 }
 
 /**
@@ -1437,6 +1640,69 @@ export async function getFinancialSummary(
   return apiRequest<FinancialSummary>(`/reports/financial-summary${query}`);
 }
 
+// ── Background Job Queue ───────────────────────────────────────────────────
+
+export type JobStatus = "pending" | "running" | "done" | "failed";
+
+export interface JobResponse {
+  job_id: string;
+  status: JobStatus;
+  result?: any;
+  error?: string;
+  created_at?: string;
+  started_at?: string;
+  done_at?: string;
+}
+
+/** Submit a background job. Returns immediately with job_id. */
+export async function submitJob(
+  type: string,
+  payload: Record<string, unknown>
+): Promise<JobResponse> {
+  return apiRequest<JobResponse>("/jobs", {
+    method: "POST",
+    body: JSON.stringify({ type, ...payload }),
+  });
+}
+
+/** Poll a single job by ID. */
+export async function pollJob(jobId: string): Promise<JobResponse> {
+  return apiRequest<JobResponse>(`/jobs/${jobId}`);
+}
+
+/**
+ * Submit a job and poll every 1.5 s until it finishes.
+ * Resolves with the parsed result, or rejects with the server error message.
+ *
+ * maxAttempts caps the poll loop (default ~5 minutes) so a job that never
+ * reaches "done"/"failed" server-side can't poll forever. signal lets a
+ * caller cancel an in-flight poll — e.g. reports.tsx firing a new report
+ * request while an older one is still polling, where the old one finishing
+ * later would otherwise overwrite the newer result on screen.
+ */
+export async function runReportJob(
+  type: string,
+  payload: Record<string, unknown>,
+  options?: { signal?: AbortSignal; maxAttempts?: number }
+): Promise<any> {
+  const maxAttempts = options?.maxAttempts ?? 200;
+  const { job_id } = await submitJob(type, payload);
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (options?.signal?.aborted) {
+      throw new DOMException("Report polling cancelled", "AbortError");
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+    if (options?.signal?.aborted) {
+      throw new DOMException("Report polling cancelled", "AbortError");
+    }
+    const job = await pollJob(job_id);
+    if (job.status === "done") return job.result ?? null;
+    if (job.status === "failed")
+      throw new Error(job.error ?? "Report generation failed");
+  }
+  throw new Error("Report generation timed out");
+}
+
 /**
  * Get all dashboard data in a single API call
  */
@@ -1447,6 +1713,243 @@ export async function getDashboardData(
 ): Promise<any> {
   const query = `?branchId=${branchId}&month=${month}&year=${year}`;
   return apiRequest(`/reports/dashboard${query}`);
+}
+
+// ============================================================================
+// NOTIFICATIONS ENDPOINTS
+// ============================================================================
+
+export interface AppNotification {
+  id: string;
+  branchId: string;
+  title: string;
+  message: string;
+  type: "payment" | "student" | "system";
+  resourceType?: string;
+  resourceId?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
+export async function getNotifications(limit = 20): Promise<AppNotification[]> {
+  const branchId = getStoredBranchId();
+  const q = buildQuery({ branchId, limit });
+  const response = await apiRequest<unknown>(`/notifications${q}`);
+  return unwrapItems<AppNotification>(response);
+}
+
+export async function getUnreadCount(): Promise<number> {
+  const branchId = getStoredBranchId();
+  const q = buildQuery({ branchId });
+  const data = await apiRequest<{ count: number }>(`/notifications/count${q}`);
+  return data.count;
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  // Without branchId, notification_service falls back to the JWT's fixed
+  // home branch (X-User-Branch-ID), not the branch currently switched to
+  // (getStoredBranchId) — an admin/manager viewing a different branch would
+  // have this silently target the wrong branch's row (0 rows updated),
+  // same as getNotifications/getUnreadCount already account for below.
+  const branchId = getStoredBranchId();
+  const q = buildQuery({ branchId });
+  return apiRequest(`/notifications/${id}/read${q}`, { method: "PUT" });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  const branchId = getStoredBranchId();
+  const q = buildQuery({ branchId });
+  return apiRequest(`/notifications/read-all${q}`, { method: "PUT" });
+}
+
+// ============================================================================
+// AUDIT LOG ENDPOINTS
+// ============================================================================
+
+export interface AuditLogEntry {
+  id: string;
+  branchId: string | null;
+  userId: string | null;
+  userName: string;
+  action: "create" | "update" | "delete";
+  resource: string;
+  resourceId: string | null;
+  description: string;
+  createdAt: string;
+}
+
+export interface AuditLogResponse {
+  data: AuditLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+// ============================================================================
+// TRASH / RESTORE
+// ============================================================================
+//
+// A deleted item of any of these 9 types is soft-deleted server-side, not
+// gone immediately — recoverable for 7 days (30 for developer/super_admin,
+// see api_gateway's consolidatedTrash and each service's own trash/restore
+// handlers). Each item comes back as its normal shape plus deletedAt/
+// deletedBy.
+
+type Trashed<T> = T & { deletedAt: string; deletedBy?: string };
+
+export interface TrashResponse {
+  branches: { items: Trashed<Branch>[] };
+  users: { items: Trashed<User>[] };
+  students: { items: Trashed<Student>[] };
+  classes: { items: Trashed<Class>[] };
+  assignments: { items: Trashed<AssignmentItem>[] };
+  teachers: { items: Trashed<Teacher>[] };
+  salaries: { items: Trashed<Salary>[] };
+  payments: { items: Trashed<Payment>[] };
+  expenses: { items: Trashed<Expense>[] };
+  errors?: string[];
+}
+
+export type TrashResourceKey = keyof Omit<TrashResponse, "errors">;
+
+/** GET /consolidated/trash — one call, fans out across all 5 services. */
+export async function getTrash(): Promise<TrashResponse> {
+  return apiRequest<TrashResponse>("/consolidated/trash");
+}
+
+// Path segment per resource for the .../:id/restore call — matches each
+// service's own route registration (Register() in each handler.go).
+const TRASH_RESTORE_PATH: Record<TrashResourceKey, string> = {
+  branches: "branches",
+  users: "users",
+  students: "students",
+  classes: "classes",
+  assignments: "assignments",
+  teachers: "teachers",
+  salaries: "salaries",
+  payments: "payments",
+  expenses: "expenses",
+};
+
+export async function restoreTrashedItem(
+  resource: TrashResourceKey,
+  id: string
+): Promise<{ message: string }> {
+  return apiRequest<{ message: string }>(
+    `/${TRASH_RESTORE_PATH[resource]}/${id}/restore`,
+    { method: "POST" }
+  );
+}
+
+export async function getAuditLogs(params: {
+  resource?: string;
+  userId?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}): Promise<AuditLogResponse> {
+  const q = new URLSearchParams();
+  if (params.resource) q.set("resource", params.resource);
+  if (params.userId) q.set("userId", params.userId);
+  if (params.from) q.set("from", params.from);
+  if (params.to) q.set("to", params.to);
+  if (params.page) q.set("page", String(params.page));
+  if (params.limit) q.set("limit", String(params.limit));
+  return apiRequest<AuditLogResponse>(`/audit-logs?${q.toString()}`);
+}
+
+// ============================================================================
+// FORECAST ENDPOINTS
+// ============================================================================
+
+export interface MonthlyForecastPoint {
+  label: string;
+  expectedIncome: number;
+  actualIncome: number;
+  actualExpenses: number;
+}
+
+export interface ForecastData {
+  expectedMonthlyIncome: number;
+  activeStudentCount: number;
+  avgMonthlyPayment: number;
+  actualIncomeThisMonth: number;
+  totalExpensesThisMonth: number;
+  projectedSalaryCosts: number;
+  breakEvenRate: number;
+  isBreakingEven: boolean;
+  trend: MonthlyForecastPoint[];
+}
+
+export async function getForecastData(branchId: string, month: number, year: number): Promise<ForecastData> {
+  return apiRequest<ForecastData>(`/reports/forecast?branchId=${branchId}&month=${month}&year=${year}`);
+}
+
+export interface BranchAnalyticsItem {
+  branchId: string;
+  branchName: string;
+  activeStudents: number;
+  revenue: number;
+  collectionRate: number;
+  teacherCount: number;
+}
+
+export interface BranchesOverview {
+  month: number;
+  year: number;
+  branches: BranchAnalyticsItem[];
+  topBranchId: string;
+  topBranchName: string;
+  totalRevenue: number;
+  totalStudents: number;
+}
+
+export async function getBranchesOverview(month: number, year: number): Promise<BranchesOverview> {
+  return apiRequest<BranchesOverview>(`/reports/branches-overview?month=${month}&year=${year}`);
+}
+
+// ============================================================================
+// EXPENSE BUDGETS ENDPOINTS
+// ============================================================================
+
+export interface BudgetWithActual {
+  id: string;
+  branchId: string;
+  category: string;
+  month: string;
+  year: number;
+  amount: number;
+  actual: number;
+  usedPct: number;
+  isExceeded: boolean;
+  isNearLimit: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function getExpenseBudgets(branchId: string, month: string, year: number): Promise<BudgetWithActual[]> {
+  return apiRequest<BudgetWithActual[]>(`/expense-budgets?branchId=${branchId}&month=${month}&year=${year}`);
+}
+
+export async function upsertExpenseBudget(data: {
+  branchId: string;
+  category: string;
+  month: string;
+  year: number;
+  amount: number;
+}): Promise<BudgetWithActual> {
+  return apiRequest<BudgetWithActual>("/expense-budgets", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteExpenseBudget(branchId: string, category: string, month: string, year: number): Promise<void> {
+  return apiRequest<void>(`/expense-budgets?branchId=${branchId}&category=${encodeURIComponent(category)}&month=${month}&year=${year}`, {
+    method: "DELETE",
+  });
 }
 
 // ============================================================================
@@ -1462,14 +1965,372 @@ export async function getSettings(branchId?: string): Promise<Settings> {
 }
 
 /**
- * Update settings for authenticated user's branch
+ * Update settings for the given branch, or the authenticated user's default
+ * branch if branchId is omitted.
  */
 export async function updateSettings(
-  updates: UpdateSettingsRequest
+  updates: UpdateSettingsRequest,
+  branchId?: string
 ): Promise<Settings> {
-  return apiRequest<Settings>("/settings", {
+  const endpoint = branchId ? `/settings?branchId=${branchId}` : "/settings";
+  return apiRequest<Settings>(endpoint, {
     method: "PUT",
     body: JSON.stringify(updates),
+  });
+}
+
+// ============================================================================
+// CLASS SCHEDULE
+// ============================================================================
+
+export interface ScheduleSlot {
+  id: string;
+  branchId: string;
+  classId: string;
+  teacherId?: string;
+  teacherName?: string;
+  dayOfWeek: number; // 1=Mon…6=Sat
+  startTime: string; // "09:00"
+  endTime: string;
+  room: string;
+  subject: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listSchedule(branchId: string, classId?: string): Promise<ScheduleSlot[]> {
+  let q = `/schedule?branchId=${branchId}`;
+  if (classId) q += `&classId=${classId}`;
+  const res = await apiRequest<ScheduleSlot[]>(q);
+  return Array.isArray(res) ? res : [];
+}
+
+export async function upsertScheduleSlot(data: {
+  branchId: string; classId: string; teacherId?: string;
+  dayOfWeek: number; startTime: string; endTime: string; room?: string; subject?: string;
+}): Promise<ScheduleSlot> {
+  return apiRequest<ScheduleSlot>("/schedule", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function deleteScheduleSlot(id: string, branchId: string): Promise<void> {
+  return apiRequest<void>(`/schedule/${id}?branchId=${branchId}`, { method: "DELETE" });
+}
+
+// ============================================================================
+// MASS MESSAGING
+// ============================================================================
+
+export interface MessageLogEntry {
+  id: string;
+  branchId: string;
+  sentBy?: string;
+  message: string;
+  templateKey: string;
+  recipientsCount: number;
+  deliveredCount: number;
+  filters: string;
+  createdAt: string;
+}
+
+export interface SendMessagePayload {
+  branchId: string;
+  message: string;
+  templateKey?: string;
+  filters?: {
+    classIds?: string[];
+    paymentStatus?: string;
+    enrolledAfter?: string;
+    enrolledBefore?: string;
+    studentIds?: string[];
+  };
+}
+
+export async function listMessageHistory(branchId: string, limit = 50): Promise<MessageLogEntry[]> {
+  const res = await apiRequest<MessageLogEntry[]>(`/messages?branchId=${branchId}&limit=${limit}`);
+  return Array.isArray(res) ? res : [];
+}
+
+export async function sendMassMessage(payload: SendMessagePayload): Promise<MessageLogEntry> {
+  return apiRequest<MessageLogEntry>("/messages/send", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function setStudentTelegramChatId(studentId: string, chatId: string): Promise<void> {
+  return apiRequest<void>(`/messages/student/${studentId}/telegram`, {
+    method: "PUT",
+    body: JSON.stringify({ chatId }),
+  });
+}
+
+// ============================================================================
+// ASSIGNMENTS
+// ============================================================================
+
+export interface AssignmentItem {
+  id: string;
+  branchId: string;
+  classId: string;
+  className?: string;
+  teacherId?: string;
+  subject: string;
+  title: string;
+  description: string;
+  dueDate: string;
+  createdBy?: string;
+  totalStudents?: number;
+  submittedCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssignmentSubmission {
+  id: string;
+  assignmentId: string;
+  studentId: string;
+  studentName?: string;
+  status: "pending" | "submitted" | "late" | "missing";
+  grade?: number;
+  feedback: string;
+  submittedAt?: string;
+  gradedAt?: string;
+  gradedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function listAssignments(branchId: string, classId?: string): Promise<AssignmentItem[]> {
+  let q = `/assignments?branchId=${branchId}`;
+  if (classId) q += `&classId=${classId}`;
+  const res = await apiRequest<AssignmentItem[]>(q);
+  return Array.isArray(res) ? res : [];
+}
+
+export async function createAssignment(data: {
+  branchId: string; classId: string; teacherId?: string;
+  subject?: string; title: string; description?: string; dueDate: string;
+}): Promise<AssignmentItem> {
+  return apiRequest<AssignmentItem>("/assignments", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function deleteAssignment(id: string, branchId: string): Promise<void> {
+  return apiRequest<void>(`/assignments/${id}?branchId=${branchId}`, { method: "DELETE" });
+}
+
+export async function getAssignmentSubmissions(assignmentId: string): Promise<AssignmentSubmission[]> {
+  const res = await apiRequest<AssignmentSubmission[]>(`/assignments/${assignmentId}/submissions`);
+  return Array.isArray(res) ? res : [];
+}
+
+export async function updateSubmission(
+  submissionId: string,
+  data: { status?: string; grade?: number; feedback?: string }
+): Promise<AssignmentSubmission> {
+  return apiRequest<AssignmentSubmission>(`/assignments/submissions/${submissionId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getStudentAssignmentProgress(studentId: string, branchId: string): Promise<AssignmentSubmission[]> {
+  const res = await apiRequest<AssignmentSubmission[]>(`/assignments/student/${studentId}/progress?branchId=${branchId}`);
+  return Array.isArray(res) ? res : [];
+}
+
+// ============================================================================
+// TEACHER PORTAL
+// ============================================================================
+
+export interface TeacherPortalClass {
+  id: string;
+  name: string;
+  branchId: string;
+  studentCount: number;
+}
+
+export interface TeacherPortalStudent {
+  id: string;
+  fullName: string;
+  phone: string;
+  classId: string;
+  className: string;
+  monthlyPayment: number;
+  paymentStatus: "paid" | "partial" | "unpaid";
+  paidAmount: number;
+}
+
+export interface TeacherPortalSalary {
+  id?: string;
+  amount: number;
+  month: string;
+  year: number;
+  status: string;
+  monthlySalary: number;
+}
+
+export interface TeacherPortalData {
+  teacher: {
+    id: string;
+    fullName: string;
+    phone: string;
+    email: string;
+    monthlySalary: number;
+    subjects: string[];
+    userId?: string;
+    branchId: string;
+    joinedDate?: string;
+  } | null;
+  classes: TeacherPortalClass[];
+  students: TeacherPortalStudent[];
+  salary: TeacherPortalSalary | null;
+}
+
+/**
+ * Get teacher portal data for the currently logged-in teacher user
+ */
+export async function getTeacherPortalData(): Promise<TeacherPortalData> {
+  return apiRequest<TeacherPortalData>("/teacher-portal/me");
+}
+
+/**
+ * Link a teacher record to a user account (admin only)
+ */
+export async function linkTeacherToUser(teacherId: string, userId: string): Promise<{ success: boolean }> {
+  return apiRequest<{ success: boolean }>(`/teacher-portal/me/link/${teacherId}`, {
+    method: "PUT",
+    body: JSON.stringify({ userId }),
+  });
+}
+
+// ============================================================================
+// ATTENDANCE (per-student)
+// ============================================================================
+
+export interface AttendanceRecord {
+  id: string;
+  branchId: string;
+  classId: string;
+  studentId: string;
+  date: string;
+  status: "present" | "absent" | "late";
+  note?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+  studentName?: string;
+}
+
+/**
+ * Get attendance records for a specific student, optionally filtered by year/month
+ */
+export async function getStudentAttendanceRecords(
+  studentId: string,
+  year?: number,
+  month?: number
+): Promise<AttendanceRecord[]> {
+  let query = `/students/${studentId}/attendance`;
+  const params: string[] = [];
+  if (year) params.push(`year=${year}`);
+  if (month) params.push(`month=${month}`);
+  if (params.length > 0) query += "?" + params.join("&");
+  return apiRequest<AttendanceRecord[]>(query);
+}
+
+// ============================================================================
+// STUDENT NOTES
+// ============================================================================
+
+export interface StudentNote {
+  id: string;
+  branchId: string;
+  studentId: string;
+  content: string;
+  createdBy?: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * List internal notes for a student
+ */
+export async function listStudentNotes(studentId: string, branchId: string): Promise<StudentNote[]> {
+  return apiRequest<StudentNote[]>(`/students/${studentId}/notes?branchId=${branchId}`);
+}
+
+/**
+ * Add a note for a student
+ */
+export async function addStudentNote(
+  studentId: string,
+  branchId: string,
+  content: string
+): Promise<StudentNote> {
+  return apiRequest<StudentNote>(`/students/${studentId}/notes?branchId=${branchId}`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
+/**
+ * Delete a student note
+ */
+export async function deleteStudentNote(
+  studentId: string,
+  branchId: string,
+  noteId: string
+): Promise<void> {
+  return apiRequest<void>(`/students/${studentId}/notes/${noteId}?branchId=${branchId}`, {
+    method: "DELETE",
+  });
+}
+
+// ============================================================================
+// CONTACT LOG
+// ============================================================================
+
+export interface ContactLogEntry {
+  id: string;
+  branchId: string;
+  studentId: string;
+  contactType: string;
+  outcome: string;
+  note: string;
+  contactedAt: string;
+  createdBy?: string;
+  createdByName: string;
+  createdAt: string;
+}
+
+/**
+ * List contact log entries for a student
+ */
+export async function listContactLog(studentId: string, branchId: string): Promise<ContactLogEntry[]> {
+  return apiRequest<ContactLogEntry[]>(`/students/${studentId}/contact-log?branchId=${branchId}`);
+}
+
+/**
+ * Add a contact log entry
+ */
+export async function addContactLog(
+  studentId: string,
+  branchId: string,
+  data: { contactType?: string; outcome?: string; note: string; contactedAt?: string }
+): Promise<ContactLogEntry> {
+  return apiRequest<ContactLogEntry>(`/students/${studentId}/contact-log?branchId=${branchId}`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Delete a contact log entry
+ */
+export async function deleteContactLog(
+  studentId: string,
+  branchId: string,
+  logId: string
+): Promise<void> {
+  return apiRequest<void>(`/students/${studentId}/contact-log/${logId}?branchId=${branchId}`, {
+    method: "DELETE",
   });
 }
 
@@ -1501,7 +2362,7 @@ export async function healthCheck(): Promise<{ status: string }> {
  */
 async function apiUpload<T>(endpoint: string, formData: FormData): Promise<T> {
   const token = getAuthToken();
-  const branchId = typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
+  const branchId = getStoredBranchId();
 
   const headers: HeadersInit = {};
   if (token) {
@@ -1548,6 +2409,8 @@ export interface AddHikvisionEmployeeRequest {
 
 export interface HikvisionAttendanceFilter {
   deviceId?: string;
+  /** Defaults to the currently selected branch; only sent when no deviceId is given. */
+  branchId?: string;
   employeeId?: string;
   from?: string; // "YYYY-MM-DD"
   to?: string; // "YYYY-MM-DD"
@@ -1624,14 +2487,19 @@ export async function removeHikvisionEmployee(employeeId: string): Promise<{ mes
 
 export async function listHikvisionAttendance(
   filter: HikvisionAttendanceFilter = {}
-): Promise<AttendanceRecord[]> {
+): Promise<HikvisionAttendanceRecord[]> {
   const params = new URLSearchParams();
-  if (filter.deviceId) params.set("deviceId", filter.deviceId);
+  if (filter.deviceId) {
+    params.set("deviceId", filter.deviceId);
+  } else {
+    const branchId = filter.branchId ?? getStoredBranchId();
+    if (branchId) params.set("branchId", branchId);
+  }
   if (filter.employeeId) params.set("employeeId", filter.employeeId);
   if (filter.from) params.set("from", filter.from);
   if (filter.to) params.set("to", filter.to);
   const query = params.toString();
-  const response = await apiRequest<AttendanceRecord[]>(
+  const response = await apiRequest<HikvisionAttendanceRecord[]>(
     `/hikvision/attendance${query ? `?${query}` : ""}`
   );
   return Array.isArray(response) ? response : [];

@@ -8,6 +8,7 @@ import React, {
 import { Language, Settings } from "@/types";
 import { getSettings } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
+import { AuthEvents, getStoredBranchId, StorageKeys } from "@/lib/storage";
 
 interface LanguageContextType {
   language: Language;
@@ -58,19 +59,21 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       setLanguageState(savedLanguage);
     }
 
-    // Load settings from backend on mount and when branch changes
+    // Load settings from backend on mount and when branch changes.
+    // Always reads selectedBranchId from localStorage so the backend gets a
+    // branchId even when called before the BranchContext has fully hydrated.
     const loadSettings = async () => {
       try {
         // Only fetch settings if user is authenticated
         const user = getCurrentUser();
         if (!user) {
-          // User not logged in, use defaults and mark as initialized
           setSettings(DEFAULT_SETTINGS);
           setIsInitialized(true);
           return;
         }
 
-        const data = await getSettings();
+        const branchId = getStoredBranchId() ?? undefined;
+        const data = await getSettings(branchId);
         setSettings(data);
       } catch (error) {
         // Fallback to defaults if loading fails
@@ -83,16 +86,40 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
     loadSettings();
 
-    // Listen for branch changes via storage events
+    // Cross-tab: another tab changed branch.
     const handleStorageChange = (event: StorageEvent) => {
-      if (event.key === "selectedBranchId") {
+      if (event.key === StorageKeys.BRANCH_ID) {
         loadSettings();
       }
     };
+    // Same-tab: BranchContext / api.ts fire this on branch change.
+    const handleBranchChange = () => loadSettings();
+    // Login and registration navigate client-side (router.push, no full page
+    // reload), so this provider — mounted once in _app.tsx — never remounts
+    // and this effect never re-runs on its own. Without this listener,
+    // whatever loadSettings() resolved to BEFORE the user signed in (the
+    // unauthenticated DEFAULT_SETTINGS fallback shown on /login, or a
+    // previous session's data left over in a still-open tab) stayed
+    // permanently stuck as `settings` for the rest of the session — so a
+    // brand-new school's sidebar showed the placeholder "Wonderkids' CRM"
+    // right after registering, until they happened to switch branches or
+    // hard-refresh the page. BranchContext already listens for LOGIN/LOGOUT
+    // for the same reason; this brings LanguageContext in line with it.
+    const handleLogin = () => loadSettings();
+    const handleLogout = () => {
+      setSettings(DEFAULT_SETTINGS);
+      setIsInitialized(true);
+    };
 
     window.addEventListener("storage", handleStorageChange);
+    window.addEventListener(AuthEvents.BRANCH_CHANGE, handleBranchChange);
+    window.addEventListener(AuthEvents.LOGIN, handleLogin);
+    window.addEventListener(AuthEvents.LOGOUT, handleLogout);
     return () => {
       window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener(AuthEvents.BRANCH_CHANGE, handleBranchChange);
+      window.removeEventListener(AuthEvents.LOGIN, handleLogin);
+      window.removeEventListener(AuthEvents.LOGOUT, handleLogout);
     };
   }, []);
 
@@ -104,6 +131,15 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
     return unsubscribe;
   }, []);
+
+  // Keep <html lang> in step with the chosen language so screen readers use
+  // the right pronunciation rules and browsers offer the right translation.
+  // _document renders a static lang="uz"; this updates it on every change,
+  // including the initial read from localStorage.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.lang = language === "en" ? "en" : "uz";
+  }, [language]);
 
   const setLanguage = (newLanguage: Language) => {
     setLanguageState(newLanguage);

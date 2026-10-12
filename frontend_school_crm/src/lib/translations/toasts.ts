@@ -249,6 +249,11 @@ export const toastTranslations: Partial<Translation> = {
     "uz-latn": "Sinflarni yuklash muvaffaqiyatsiz bo'ldi",
     en: "Failed to load classes",
   },
+  failedToLoadAttendance: {
+    "uz-cyrl": "Давоматни юклаш муваффақиятсиз бўлди",
+    "uz-latn": "Davomatni yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load attendance",
+  },
   failedToLoadPayments: {
     "uz-cyrl": "Тўловларни юклаш муваффақиятсиз бўлди",
     "uz-latn": "To'lovlarni yuklash muvaffaqiyatsiz bo'ldi",
@@ -350,6 +355,26 @@ export const toastTranslations: Partial<Translation> = {
     "uz-latn": "Maosh hisobotini yaratish muvaffaqiyatsiz bo'ldi",
     en: "Failed to generate salary report",
   },
+  failedToGenerateDebtorsReport: {
+    "uz-cyrl": "Қарздорлар ҳисоботини яратиш муваффақиятсиз бўлди",
+    "uz-latn": "Qarzdorlar hisobotini yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to generate debtors report",
+  },
+  failedToGenerateExpensesReport: {
+    "uz-cyrl": "Харажатлар ҳисоботини яратиш муваффақиятсиз бўлди",
+    "uz-latn": "Xarajatlar hisobotini yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to generate expenses report",
+  },
+  failedToGenerateIncomeReport: {
+    "uz-cyrl": "Даромад ҳисоботини яратиш муваффақиятсиз бўлди",
+    "uz-latn": "Daromad hisobotini yaratish muvaffaqiyatsiz bo'ldi",
+    en: "Failed to generate income report",
+  },
+  failedToLoadForecastData: {
+    "uz-cyrl": "Прогноз маълумотларини юклаш муваффақиятсиз бўлди",
+    "uz-latn": "Prognoz ma'lumotlarini yuklash muvaffaqiyatsiz bo'ldi",
+    en: "Failed to load forecast data",
+  },
   failedToReadFile: {
     "uz-cyrl": "Файлни ўқиш муваффақиятсиз бўлди",
     "uz-latn": "Faylni o'qish muvaffaqiyatsiz bo'ldi",
@@ -447,6 +472,11 @@ export const toastTranslations: Partial<Translation> = {
     "uz-latn": "Sinflarni tahrirlash uchun ruxsatingiz yo'q",
     en: "You don't have permission to edit classes",
   },
+  noPermissionCreateClasses: {
+    "uz-cyrl": "Синфларни яратиш учун рухсатингиз йўқ",
+    "uz-latn": "Sinflarni yaratish uchun ruxsatingiz yo'q",
+    en: "You don't have permission to create classes",
+  },
   
   failedToLoadManagers: {
     "uz-cyrl": "Менежерларни юклаш муваффақиятсиз бўлди",
@@ -469,27 +499,12 @@ export const toastTranslations: Partial<Translation> = {
     en: "Failed to delete expenses",
   },
 
-  // Auth / profile
-  invalidResponse: {
-    "uz-cyrl": "Сервердан нотўғри жавоб",
-    "uz-latn": "Serverdan noto'g'ri javob",
-    en: "Invalid response from server",
-  },
-  passwordUpdatedSuccess: {
-    "uz-cyrl": "Парол муваффақиятли янгиланди",
-    "uz-latn": "Parol muvaffaqiyatli yangilandi",
-    en: "Password updated successfully",
-  },
-  passwordUpdateError: {
-    "uz-cyrl": "Паролни янгилашда хатолик",
-    "uz-latn": "Parolni yangilashda xatolik",
-    en: "Failed to update password",
-  },
-
-  // Branch admin
-  failedToCreateAdmin: {
-    "uz-cyrl": "Администраторни яратишда хатолик",
-    "uz-latn": "Administratorni yaratishda xatolik",
-    en: "Failed to create admin",
+  // Missing keys
+  passwordUpdatedSuccess: { "uz-cyrl": "Парол муваффақиятли янгиланди", "uz-latn": "Parol muvaffaqiyatli yangilandi", en: "Password updated successfully" },
+  passwordUpdateError: { "uz-cyrl": "Паролни янгилашда хатолик", "uz-latn": "Parolni yangilashda xatolik", en: "Failed to update password" },
+  managerCreatedSuccess: {
+    "uz-cyrl": "Менежер муваффақиятли қўшилди",
+    "uz-latn": "Menejer muvaffaqiyatli qo'shildi",
+    en: "Manager created successfully",
   },
 };

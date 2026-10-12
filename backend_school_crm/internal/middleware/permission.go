@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 
@@ -203,6 +205,9 @@ func GetUserRole(c *gin.Context, userService *service.UserService) (models.UserR
 	return user.Role, nil
 }
 
+// GetDefaultPermissionsForRole is the exported version used for testing.
+var GetDefaultPermissionsForRole = getDefaultPermissionsByRole
+
 // getDefaultPermissionsByRole returns role-based permissions as fallback
 func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 	switch role {
@@ -234,7 +239,46 @@ func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 			CanViewSettings:   true,
 			CanEditSettings:   true,
 		}
-	case models.RoleBranchAdmin, models.RoleManager:
+	case models.RoleBranchAdmin:
+		// branch_admin mirrors admin (frontend_school_crm's DEFAULT_PERMISSIONS
+		// gives branch_admin every flag admin has) — it used to be lumped in
+		// with manager below and get manager's more restricted set instead.
+		return &models.Permission{
+			CanViewStudents:   true,
+			CanCreateStudents: true,
+			CanEditStudents:   true,
+			CanDeleteStudents: true,
+			CanViewTeachers:   true,
+			CanCreateTeachers: true,
+			CanEditTeachers:   true,
+			CanDeleteTeachers: true,
+			CanViewClasses:    true,
+			CanCreateClasses:  true,
+			CanEditClasses:    true,
+			CanDeleteClasses:  true,
+			CanViewPayments:   true,
+			CanCreatePayments: true,
+			CanEditPayments:   true,
+			CanViewSalaries:   true,
+			CanCreateSalaries: true,
+			CanEditSalaries:   true,
+			CanViewExpenses:   true,
+			CanCreateExpenses: true,
+			CanEditExpenses:   true,
+			CanDeleteExpenses: true,
+			CanViewReports:    true,
+			CanViewSettings:   true,
+			CanEditSettings:   true,
+		}
+	case models.RoleManager:
+		// This fallback table (used when a user's Permissions row is nil —
+		// legacy account or a failed insert) previously disagreed with both
+		// permission_service.go's getDefaultPermissions (used when the row
+		// IS created) and frontend_school_crm's DEFAULT_PERMISSIONS: it set
+		// CanCreatePayments/CanEditPayments/CanCreateSalaries/CanEditSalaries
+		// all false, while the other two sources give manager edit access
+		// (just not delete). A manager whose permissions row was ever nil
+		// would see enabled edit buttons that silently 403'd server-side.
 		return &models.Permission{
 			CanViewStudents:   true,
 			CanCreateStudents: true,
@@ -249,14 +293,14 @@ func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 			CanEditClasses:    true,
 			CanDeleteClasses:  false,
 			CanViewPayments:   true,
-			CanCreatePayments: false,
-			CanEditPayments:   false,
+			CanCreatePayments: true,
+			CanEditPayments:   true,
 			CanViewSalaries:   true,
-			CanCreateSalaries: false,
-			CanEditSalaries:   false,
+			CanCreateSalaries: true,
+			CanEditSalaries:   true,
 			CanViewExpenses:   true,
-			CanCreateExpenses: false,
-			CanEditExpenses:   false,
+			CanCreateExpenses: true,
+			CanEditExpenses:   true,
 			CanDeleteExpenses: false,
 			CanViewReports:    true,
 			CanViewSettings:   false,
@@ -294,4 +338,24 @@ func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 		// Default to minimal permissions
 		return &models.Permission{}
 	}
+}
+
+// UserHasPermission reports whether userID holds the named permission flag
+// (e.g. "canViewStudents") using the same rules as PermissionChecker: admin
+// and branch_admin have everything, others need the flag (falling back to
+// role defaults when they have no permissions row). Unlike PermissionChecker
+// it has no HTTP side effects, so non-HTTP callers (gRPC) can share it.
+func UserHasPermission(ctx context.Context, userService *service.UserService, userID, permission string) (bool, error) {
+	user, err := userService.GetByID(ctx, userID)
+	if err != nil || user == nil {
+		return false, errors.New("user not found")
+	}
+	if user.Role == models.RoleAdmin || user.Role == models.RoleBranchAdmin {
+		return true, nil
+	}
+	perms := user.Permissions
+	if perms == nil {
+		perms = getDefaultPermissionsByRole(user.Role)
+	}
+	return checkPermission(perms, permission), nil
 }

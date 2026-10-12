@@ -15,7 +15,7 @@ import (
 // @Tags subscriptions
 // @Produce json
 // @Success 200 {array} models.SubscriptionPlan
-// @Failure 500 {object} gin.H
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/plans [get]
 func GetSubscriptionPlans(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -41,16 +41,7 @@ func GetSubscriptionPlans(subscriptionService *service.SubscriptionService) gin.
 	}
 }
 
-// GetUserSubscription retrieves the current user's subscription
-// @Summary Get user subscription
-// @Description Retrieve the active subscription for the current user
-// @Tags subscriptions
-// @Produce json
-// @Success 200 {object} models.SubscriptionResponse
-// @Failure 403 {object} gin.H
-// @Failure 404 {object} gin.H
-// @Failure 500 {object} gin.H
-// @Router /subscriptions/current [get]
+// GetUserSubscription retrieves the current user's subscription with plan details.
 func GetUserSubscription(subscriptionService *service.SubscriptionService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("user_id")
@@ -59,25 +50,77 @@ func GetUserSubscription(subscriptionService *service.SubscriptionService, userS
 			return
 		}
 
-		// Check permissions (allow if no permissions or if can view subscriptions)
-		permissions, err := userService.GetUserPermissions(c.Request.Context(), userID.(string))
-		if err == nil && permissions != nil && !permissions.CanViewSubscriptions {
-			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
-			return
-		}
-
-		subscription, err := subscriptionService.GetUserSubscription(c.Request.Context(), userID.(string))
+		sub, err := subscriptionService.GetUserSubscriptionWithPlan(c.Request.Context(), userID.(string))
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-
-		if subscription == nil {
+		if sub == nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "no active subscription found"})
 			return
 		}
+		c.JSON(http.StatusOK, sub)
+	}
+}
 
-		c.JSON(http.StatusOK, subscription)
+// GetSubscriptionPlanByID returns a single plan by ID (public endpoint).
+func GetSubscriptionPlanByID(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		planID := c.Param("id")
+		plan, err := subscriptionService.GetSubscriptionPlanByID(c.Request.Context(), planID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if plan == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "plan not found"})
+			return
+		}
+		c.JSON(http.StatusOK, plan)
+	}
+}
+
+// UpdateSubscriptionStatus allows the owner to pause/activate their own subscription.
+func UpdateSubscriptionStatus(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, _ := c.Get("user_id")
+		subscriptionID := c.Param("id")
+
+		var req struct {
+			Status string `json:"status" binding:"required,oneof=active paused"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Verify ownership
+		sub, err := subscriptionService.GetUserSubscriptionWithPlan(c.Request.Context(), userID.(string))
+		if err != nil || sub == nil || sub.ID != subscriptionID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "subscription not found or access denied"})
+			return
+		}
+
+		// This endpoint exists for self-service pause/resume only — it must
+		// not let a subscription that hasn't actually been paid for
+		// (pending_payment / past_due / expired / cancelled) be flipped
+		// straight to "active" with no payment involved. Only a genuine
+		// active<->paused toggle is a valid self-service transition; every
+		// other path to "active" goes through a real payment callback.
+		validTransition := (req.Status == "active" && sub.Status == "paused") ||
+			(req.Status == "paused" && sub.Status == "active")
+		if !validTransition {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "cannot change status from " + sub.Status + " to " + req.Status + " — pay for the subscription to activate it",
+			})
+			return
+		}
+
+		if err := subscriptionService.UpdateSubscriptionStatus(c.Request.Context(), subscriptionID, req.Status); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "subscription status updated"})
 	}
 }
 
@@ -89,9 +132,9 @@ func GetUserSubscription(subscriptionService *service.SubscriptionService, userS
 // @Produce json
 // @Param request body models.CreateSubscriptionRequest true "Create subscription request"
 // @Success 201 {object} models.Subscription
-// @Failure 400 {object} gin.H
-// @Failure 403 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions [post]
 func CreateSubscription(subscriptionService *service.SubscriptionService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -129,9 +172,28 @@ func CreateSubscription(subscriptionService *service.SubscriptionService, userSe
 
 		now := time.Now()
 		status := "active"
+		paymentMethod := req.PaymentMethod
 		// For paid plans, require payment first
 		if plan.Price > 0 {
 			status = "pending_payment"
+		} else {
+			// A $0 plan activates immediately with no payment step — that's
+			// fine for a one-time trial, but without this check a user
+			// could call this endpoint repeatedly for unlimited free
+			// months. payment_method is forced to "free_trial" here
+			// (not trusted from the request) so HasUsedTrial's check can't
+			// be evaded by sending some other payment_method string for a
+			// free plan.
+			usedTrial, err := subscriptionService.HasUsedTrial(c.Request.Context(), userID.(string))
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify trial eligibility"})
+				return
+			}
+			if usedTrial {
+				c.JSON(http.StatusForbidden, gin.H{"error": "free trial already used — choose a paid plan"})
+				return
+			}
+			paymentMethod = "free_trial"
 		}
 
 		subscription := &models.Subscription{
@@ -140,7 +202,7 @@ func CreateSubscription(subscriptionService *service.SubscriptionService, userSe
 			BranchID:      req.BranchID,
 			Status:        status,
 			StartDate:     now,
-			PaymentMethod: &req.PaymentMethod,
+			PaymentMethod: &paymentMethod,
 			Notes:         req.Notes,
 		}
 
@@ -168,10 +230,10 @@ func CreateSubscription(subscriptionService *service.SubscriptionService, userSe
 // @Description Cancel the current user's subscription
 // @Tags subscriptions
 // @Produce json
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 403 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/{id}/cancel [post]
 func CancelSubscription(subscriptionService *service.SubscriptionService, userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -194,6 +256,14 @@ func CancelSubscription(subscriptionService *service.SubscriptionService, userSe
 			return
 		}
 
+		if ok, err := subscriptionService.IsSubscriptionOwner(c.Request.Context(), subscriptionID, userID.(string)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying subscription access"})
+			return
+		} else if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
+			return
+		}
+
 		if err := subscriptionService.CancelSubscription(c.Request.Context(), subscriptionID, userID.(string)); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -210,13 +280,23 @@ func CancelSubscription(subscriptionService *service.SubscriptionService, userSe
 // @Produce json
 // @Param id path string true "Subscription ID"
 // @Success 200 {array} models.SubscriptionUsage
-// @Failure 500 {object} gin.H
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/{id}/usage [get]
 func GetSubscriptionUsage(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subscriptionID := c.Param("id")
 		if subscriptionID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "subscription_id is required"})
+			return
+		}
+
+		userID, _ := c.Get("user_id")
+		uid, _ := userID.(string)
+		if ok, err := subscriptionService.IsSubscriptionOwner(c.Request.Context(), subscriptionID, uid); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying subscription access"})
+			return
+		} else if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
 			return
 		}
 
@@ -241,13 +321,23 @@ func GetSubscriptionUsage(subscriptionService *service.SubscriptionService) gin.
 // @Produce json
 // @Param id path string true "Subscription ID"
 // @Success 200 {array} models.SubscriptionPayment
-// @Failure 500 {object} gin.H
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/{id}/payments [get]
 func GetSubscriptionPayments(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		subscriptionID := c.Param("id")
 		if subscriptionID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "subscription_id is required"})
+			return
+		}
+
+		userID, _ := c.Get("user_id")
+		uid, _ := userID.(string)
+		if ok, err := subscriptionService.IsSubscriptionOwner(c.Request.Context(), subscriptionID, uid); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error verifying subscription access"})
+			return
+		} else if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "subscription not found"})
 			return
 		}
 
@@ -265,12 +355,6 @@ func GetSubscriptionPayments(subscriptionService *service.SubscriptionService) g
 	}
 }
 
-// RegisterSubscriptionRoutes registers public subscription routes
-// Note: This should be called on the PUBLIC router, not protected
-func RegisterSubscriptionRoutes(router *gin.RouterGroup, subscriptionService *service.SubscriptionService) {
-	router.GET("/subscriptions/plans", GetSubscriptionPlans(subscriptionService))
-}
-
 // CreateSubscriptionPlan creates a new subscription plan (dev endpoint)
 // @Summary Create subscription plan
 // @Description Create a new subscription plan (dev/admin only)
@@ -279,9 +363,9 @@ func RegisterSubscriptionRoutes(router *gin.RouterGroup, subscriptionService *se
 // @Produce json
 // @Param request body models.SubscriptionPlan true "Create subscription plan request"
 // @Success 201 {object} models.SubscriptionPlan
-// @Failure 400 {object} gin.H
-// @Failure 403 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Failure 400 {object} map[string]interface{}
+// @Failure 403 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /dev/subscription-plans [post]
 func CreateSubscriptionPlanHandler(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -310,8 +394,8 @@ func CreateSubscriptionPlanHandler(subscriptionService *service.SubscriptionServ
 // @Param id path string true "Plan ID"
 // @Param request body models.SubscriptionPlan true "Update subscription plan request"
 // @Success 200 {object} models.SubscriptionPlan
-// @Failure 400 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Failure 400 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /dev/subscription-plans/{id} [put]
 func UpdateSubscriptionPlanHandler(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -321,19 +405,23 @@ func UpdateSubscriptionPlanHandler(subscriptionService *service.SubscriptionServ
 			return
 		}
 
-		var plan models.SubscriptionPlan
-		if err := c.ShouldBindJSON(&plan); err != nil {
+		var req models.UpdateSubscriptionPlanRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		plan.ID = planID
-		if err := subscriptionService.UpdateSubscriptionPlan(c.Request.Context(), &plan); err != nil {
+		updated, err := subscriptionService.UpdateSubscriptionPlan(c.Request.Context(), planID, &req)
+		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		if updated == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "plan not found"})
+			return
+		}
 
-		c.JSON(http.StatusOK, plan)
+		c.JSON(http.StatusOK, updated)
 	}
 }
 
@@ -343,9 +431,9 @@ func UpdateSubscriptionPlanHandler(subscriptionService *service.SubscriptionServ
 // @Tags subscriptions
 // @Produce json
 // @Param id path string true "Plan ID"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /dev/subscription-plans/{id} [delete]
 func DeleteSubscriptionPlanHandler(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -364,13 +452,57 @@ func DeleteSubscriptionPlanHandler(subscriptionService *service.SubscriptionServ
 	}
 }
 
-// RegisterSubscriptionProtectedRoutes registers protected subscription routes
-// Note: This should be called on the PROTECTED router with auth middleware
+// RegisterSubscriptionPlanDevRoutes registers developer-only plan management routes (CRUD).
+// Caller must have DevAuthMiddleware applied.
+func RegisterSubscriptionPlanDevRoutes(router *gin.RouterGroup, subscriptionService *service.SubscriptionService) {
+	router.POST("/dev/subscription-plans", CreateSubscriptionPlanHandler(subscriptionService))
+	router.PUT("/dev/subscription-plans/:id", UpdateSubscriptionPlanHandler(subscriptionService))
+	router.DELETE("/dev/subscription-plans/:id", DeleteSubscriptionPlanHandler(subscriptionService))
+}
+
+// AdminGrantTrialHandler grants a new free trial to any user (developer override).
+// POST /dev/subscriptions/:userId/grant-trial
+// Body: { "days": 14, "notes": "reason" }
+func AdminGrantTrialHandler(subscriptionService *service.SubscriptionService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID := c.Param("userId")
+		if userID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "userId required"})
+			return
+		}
+		var req struct {
+			Days  int    `json:"days"`
+			Notes string `json:"notes"`
+		}
+		_ = c.ShouldBindJSON(&req)
+		if req.Days <= 0 {
+			req.Days = 14
+		}
+		if req.Notes == "" {
+			req.Notes = "Developer-granted trial override"
+		}
+		sub, err := subscriptionService.AdminGrantTrial(c.Request.Context(), userID, req.Days, req.Notes)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, sub)
+	}
+}
+
+// RegisterSubscriptionRoutes registers public subscription routes on a PUBLIC router group.
+func RegisterSubscriptionRoutes(router *gin.RouterGroup, subscriptionService *service.SubscriptionService) {
+	router.GET("/subscriptions/plans", GetSubscriptionPlans(subscriptionService))
+	router.GET("/subscriptions/plans/:id", GetSubscriptionPlanByID(subscriptionService))
+}
+
+// RegisterSubscriptionProtectedRoutes registers protected subscription routes.
+// Must be called on a router group that already has AuthMiddleware applied.
 func RegisterSubscriptionProtectedRoutes(router *gin.RouterGroup, subscriptionService *service.SubscriptionService, userService *service.UserService) {
-	// Protected subscription routes
 	router.GET("/subscriptions/current", GetUserSubscription(subscriptionService, userService))
 	router.POST("/subscriptions", CreateSubscription(subscriptionService, userService))
 	router.POST("/subscriptions/:id/cancel", CancelSubscription(subscriptionService, userService))
+	router.PATCH("/subscriptions/:id/status", UpdateSubscriptionStatus(subscriptionService))
 	router.GET("/subscriptions/:id/usage", GetSubscriptionUsage(subscriptionService))
 	router.GET("/subscriptions/:id/payments", GetSubscriptionPayments(subscriptionService))
 }

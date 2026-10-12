@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,7 +24,6 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { classesDB, studentsDB } from "@/lib/storage";
 import { Class, Student, Teacher } from "@/types";
 import {
   Plus,
@@ -36,23 +36,45 @@ import {
   Loader2,
 } from "lucide-react";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
-import { useToast } from "@/hooks/use-toast";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { createClass, updateClass, deleteClass, listClasses, listTeachers, listStudents, updateStudent } from "@/lib/api";
-import { searchMatchesCrossScript } from "@/lib/transliterate";
 import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
+import { useBranch } from "@/context/BranchContext";
+import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { PageHeader } from "@/components/PageHeader";
+import { EmptyState } from "@/components/EmptyState";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { SchedulePanel } from "@/components/panels/SchedulePanel";
+import { Calendar } from "lucide-react";
 
 export default function ClassesPage() {
   const router = useRouter();
+  const qc = useQueryClient();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
+
+  // ?tab=schedule keeps old /schedule bookmarks (admin/manager only — the
+  // route itself still exists standalone for the teacher portal nav).
+  const [tab, setTab] = useState<"list" | "schedule">("list");
+  useEffect(() => {
+    if (router.query.tab === "schedule") setTab("schedule");
+  }, [router.query.tab]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [classes, setClasses] = useState<Class[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
+  const [studentsLoaded, setStudentsLoaded] = useState(false);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [searchTerm, setSearchTerm] = useState<string>(() =>
-    String(loadPageFilters("classes", { search: "" }).search)
-  );
+  const [searchTerm, setSearchTerm] = useState("");
+  useEffect(() => {
+    // Restore the last search for this page (client only, avoids SSR mismatch).
+    setSearchTerm(String(loadPageFilters("classes", { search: "" }).search));
+  }, []);
+  useEffect(() => {
+    savePageFilters("classes", { search: searchTerm });
+  }, [searchTerm]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<Class | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -79,7 +101,7 @@ export default function ClassesPage() {
     isLoading: false,
   });
   const language = useLanguage();
-  const { toast } = useToast();
+  const notify = useNotify();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -101,47 +123,59 @@ export default function ClassesPage() {
     }
 
     try {
-      const branchId = localStorage.getItem("selectedBranchId");
+      const branchId = currentBranch?.id;
       if (branchId) {
-        const classList = await listClasses(branchId);
+        const [classList, teachersList] = await Promise.all([
+          listClasses(branchId),
+          listTeachers(branchId),
+        ]);
         setClasses(classList);
-        const teachersList = await listTeachers(branchId);
+        qc.setQueryData(["classes", branchId], classList);
         setTeachers(teachersList);
-        const studentsResponse = await listStudents(branchId, 1, 10000);
-        setStudents(studentsResponse.data || []);
+        loadUnassignedStudents(branchId);
       } else {
         setStudents([]);
       }
     } catch (error) {
       console.error("Failed to load classes:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadClasses"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToLoadClasses"));
     } finally {
       setIsLoading(false);
     }
   };
 
+  const loadUnassignedStudents = async (branchId: string) => {
+    try {
+      const resp = await listStudents(branchId, 1, 500, { status: "active", classId: "unassigned" } as any);
+      setStudents(resp.data || []);
+      setStudentsLoaded(true);
+    } catch {
+      // ignore
+    }
+  };
+
+  // The sidebar already hides this link for anyone lacking canViewClasses
+  // (see Layout.tsx), but that alone doesn't stop someone from typing the
+  // URL directly — mirrors the same page-level guard settings.tsx uses for
+  // canViewSettings.
   useEffect(() => {
+    if (!hasPermission("canViewClasses")) {
+      router.push("/");
+    }
+  }, [router]);
+
+  useEffect(() => {
+    // See the comment on the equivalent guard in assignments.tsx: without
+    // the branchLoading check, a branch that never resolves left isLoading
+    // stuck at its initial `true` forever.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     loadData();
-  }, []);
-
-  useEffect(() => {
-    savePageFilters("classes", { search: searchTerm });
-  }, [searchTerm]);
-
-  useEffect(() => {
-    // Listen for branch changes
-    const handleBranchChange = () => {
-      loadData();
-    };
-
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
+  }, [currentBranch?.id, branchLoading]);
 
   // Refetch data when page regains focus
   useRefetchOnFocus(loadData);
@@ -153,17 +187,16 @@ export default function ClassesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    if (!canEditClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionEditClasses"),
-        variant: "destructive",
-      });
+    if (editingClass ? !canEditClasses : !canCreateClasses) {
+      notify.error(
+        t("permissionDenied"),
+        editingClass ? t("noPermissionEditClasses") : t("noPermissionCreateClasses")
+      );
       setIsSubmitting(false);
       return;
     }
 
-    const branchId = localStorage.getItem("selectedBranchId");
+    const branchId = currentBranch?.id;
     if (!branchId) {
       setIsSubmitting(false);
       return;
@@ -173,47 +206,33 @@ export default function ClassesPage() {
       if (editingClass) {
         await updateClass(editingClass.id, {
           name: formData.name,
-          teacherId: formData.teacherId || null,
+          teacherId: formData.teacherId || undefined,
         });
-        toast({
-          title: t("success"),
-          description: t("classUpdatedSuccess"),
-          variant: "success",
-        });
+        await qc.invalidateQueries({ queryKey: ["classes", branchId] });
+        notify.success(t("success"), t("classUpdatedSuccess"));
       } else {
         await createClass({
           name: formData.name,
           teacherId: formData.teacherId || undefined,
           branchId: branchId,
         });
-        toast({
-          title: t("success"),
-          description: t("classAddedSuccess"),
-          variant: "success",
-        });
+        await qc.invalidateQueries({ queryKey: ["classes", branchId] });
+        notify.success(t("success"), t("classAddedSuccess"));
       }
 
       resetForm();
       await loadData();
       setIsDialogOpen(false);
-      } catch (error) {
-      toast({
-        title: t("error"),
-        description: editingClass ? t("failedToUpdateClass") : t("failedToCreateClass"),
-        variant: "destructive",
-      });
-      } finally {
+    } catch (error) {
+      notify.error(t("error"), editingClass ? t("failedToUpdateClass") : t("failedToCreateClass"));
+    } finally {
       setIsSubmitting(false);
-      }
-      };
+    }
+  };
 
   const handleEdit = (classData: Class) => {
     if (!canEditClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionEditClasses"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionEditClasses"));
       return;
     }
 
@@ -227,11 +246,7 @@ export default function ClassesPage() {
 
   const handleDelete = (id: string) => {
     if (!canDeleteClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionDeleteClasses"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionDeleteClasses"));
       return;
     }
 
@@ -244,18 +259,15 @@ export default function ClassesPage() {
         setConfirmDialog(prev => ({ ...prev, isLoading: true }));
         try {
           await deleteClass(id);
+          if (currentBranch?.id) {
+            await qc.invalidateQueries({ queryKey: ["classes", currentBranch.id] });
+          } else {
+            await qc.invalidateQueries({ queryKey: ["classes"] });
+          }
           await loadData();
-          toast({
-            title: t("deleted"),
-            description: t("classDeletedSuccess"),
-            variant: "success",
-          });
+          notify.success(t("deleted"), t("classDeletedSuccess"));
         } catch (error) {
-          toast({
-            title: t("error"),
-            description: t("failedToDeleteClass"),
-            variant: "destructive",
-          });
+          notify.error(t("error"), t("failedToDeleteClass"));
         } finally {
           setConfirmDialog(prev => ({ ...prev, isOpen: false, isLoading: false }));
         }
@@ -268,11 +280,7 @@ export default function ClassesPage() {
 
   const handleBulkAddStudents = () => {
     if (!canEditClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionAssignStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionAssignStudents"));
       return;
     }
 
@@ -288,18 +296,10 @@ export default function ClassesPage() {
         setIsBulkAddOpen(false);
         setSelectedClassId("");
         setSelectedStudentIds([]);
-        toast({
-          title: t("success"),
-          description: `${selectedStudentIds.length} ${t("students")} ${t("added")} ${classes.find((c) => c.id === selectedClassId)?.name}`,
-          variant: "success",
-        });
+        notify.success(t("success"), `${selectedStudentIds.length} ${t("students")} ${t("added")} ${classes.find((c) => c.id === selectedClassId)?.name}`);
       })
       .catch((error) => {
-        toast({
-          title: t("error"),
-          description: error instanceof Error ? error.message : t("errorOccurred"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), error instanceof Error ? error.message : t("errorOccurred"));
       });
   };
 
@@ -332,11 +332,7 @@ export default function ClassesPage() {
 
   const removeStudentFromClass = (studentId: string) => {
     if (!canEditClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionRemoveStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionRemoveStudents"));
       return;
     }
 
@@ -344,14 +340,10 @@ export default function ClassesPage() {
       isOpen: true,
       title: t("removeStudent"),
       message: t("confirmRemoveStudent"),
-      onConfirm: () => {
-        studentsDB.update(studentId, { classId: undefined });
+      onConfirm: async () => {
+        await updateStudent(studentId, { classId: undefined });
         loadData();
-        toast({
-          title: t("updated"),
-          description: t("studentRemovedFromClass"),
-          variant: "success",
-        });
+        notify.success(t("updated"), t("studentRemovedFromClass"));
         setConfirmDialog({ ...confirmDialog, isOpen: false });
       },
       onCancel: () => {
@@ -412,11 +404,7 @@ export default function ClassesPage() {
     if (!draggedStudent || draggedStudentIds.length === 0) return;
 
     if (!canEditClasses) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionAssignStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionAssignStudents"));
       setDraggedStudent(null);
       setDraggedOverClass(null);
       setDraggedStudentIds([]);
@@ -454,22 +442,14 @@ export default function ClassesPage() {
              setDraggedStudentIds([]);
              setUnassignedSelection([]);
 
-             toast({
-               title: t("success"),
-               description: isMultiple
+             notify.success(t("success"), isMultiple
                  ? `${studentCount} ${t("students")} ${t("movedAndSigned")} ${className}`
-                 : `${studentName} ${t("movedAndSigned")} ${className}`,
-               variant: "success",
-             });
+                 : `${studentName} ${t("movedAndSigned")} ${className}`);
 
              setConfirmDialog({ ...confirmDialog, isOpen: false, isLoading: false });
            })
            .catch((error) => {
-             toast({
-               title: t("error"),
-               description: error instanceof Error ? error.message : t("errorOccurred"),
-               variant: "destructive",
-             });
+             notify.error(t("error"), error instanceof Error ? error.message : t("errorOccurred"));
              setConfirmDialog({ ...confirmDialog, isOpen: false, isLoading: false });
            });
       },
@@ -500,64 +480,23 @@ export default function ClassesPage() {
     (s) => !s.classId && s.status === "active"
   );
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        {/* Header Skeleton */}
-        <div className="space-y-2">
-          <Skeleton className="h-10 w-48" />
-          <Skeleton className="h-4 w-64" />
-        </div>
-
-        {/* Action Buttons Skeleton */}
-        <div className="flex gap-2">
-          <Skeleton className="h-10 w-40" />
-          <Skeleton className="h-10 w-40" />
-        </div>
-
-        {/* Search Skeleton */}
-        <Skeleton className="h-10 w-full sm:w-64" />
-
-        {/* Cards Skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-5 w-32" />
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-3/4" />
-                <div className="flex gap-2 pt-2">
-                  <Skeleton className="h-8 w-20" />
-                  <Skeleton className="h-8 w-20" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
+  // Title/buttons/search below are all static chrome (translated labels,
+  // dialog triggers, local `searchTerm` state) — none of it needs `classes`
+  // to render, so only the card grid further down still branches on
+  // `isLoading`. This used to gate the whole page behind one early return,
+  // hiding the header and "Add class" button until the fetch finished.
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-            {t("classes")}
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
-            {t("manageClasses")}
-          </p>
-        </div>
+        <PageHeader title={t("classes")} subtitle={t("manageClasses")} />
 
+        {tab === "list" && (
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           <Dialog open={isBulkAddOpen} onOpenChange={setIsBulkAddOpen}>
             <DialogTrigger asChild>
               <Button
                 variant="outline"
-                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 w-full sm:w-auto"
+                className="bg-brand hover:bg-brand-hover text-white border-0 w-full sm:w-auto"
                 disabled={unassignedStudents.length === 0}
               >
                 <UserPlus className="w-4 h-4 mr-2" />
@@ -576,10 +515,14 @@ export default function ClassesPage() {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="targetClass">{t("selectClass")} *</Label>
+                  {/* Radix's Select isn't a native <select> — a `required`
+                      prop here has no effect at all (no HTML5 validation to
+                      hook into). The actual requirement is enforced below:
+                      the submit button stays disabled and handleAddStudents
+                      bails out while selectedClassId is empty. */}
                   <Select
                     value={selectedClassId}
                     onValueChange={setSelectedClassId}
-                    required
                   >
                     <SelectTrigger>
                       <SelectValue placeholder={t("chooseClassPlaceholder")} />
@@ -587,8 +530,7 @@ export default function ClassesPage() {
                     <SelectContent>
                       {classes.map((classData) => (
                         <SelectItem key={classData.id} value={classData.id}>
-                          {classData.name} (
-                          {getClassStudents(classData.id).length} students)
+                          {classData.name} ({classData.studentCount || 0} students)
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -647,10 +589,10 @@ export default function ClassesPage() {
                 {selectedStudentIds.length > 0 && selectedClassId && (
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
                     <p className="font-semibold text-blue-900 dark:text-blue-100">
-                      {selectedStudentIds.length} {t("student")} selected
+                      {selectedStudentIds.length} {t("student")} {t("selected")}
                     </p>
                     <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
-                      {t("willBeAddedTo") || "Will be added to:"}{" "}
+                      {t("willBeAddedTo")}{" "}
                       {classes.find((c) => c.id === selectedClassId)?.name}
                     </p>
                   </div>
@@ -673,7 +615,7 @@ export default function ClassesPage() {
                     disabled={
                       !selectedClassId || selectedStudentIds.length === 0
                     }
-                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                    className="bg-brand hover:bg-brand-hover"
                   >
                     {t("add")} {selectedStudentIds.length} {t("student")}
                   </Button>
@@ -687,7 +629,7 @@ export default function ClassesPage() {
             onOpenChange={(open) => {
               setIsDialogOpen(open);
               if (open) {
-                const branchId = localStorage.getItem("selectedBranchId");
+                const branchId = currentBranch?.id;
                 if (branchId) {
                   listTeachers(branchId).then(setTeachers);
                 }
@@ -696,10 +638,10 @@ export default function ClassesPage() {
           >
             <DialogTrigger asChild>
               <Button
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 w-full sm:w-auto"
+                className="bg-brand hover:bg-brand-hover w-full sm:w-auto"
                 onClick={() => resetForm()}
                 disabled={!canCreateClasses}
-                title={!canCreateClasses ? t("noPermission") || "No permission to create classes" : ""}
+                title={!canCreateClasses ? t("noPermission") : ""}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 {t("addClass")}
@@ -721,14 +663,14 @@ export default function ClassesPage() {
                       setFormData({ ...formData, name: e.target.value })
                     }
                     placeholder={
-                      t("classNamePlaceholder") || "e.g., 7A, Grade 9B"
+                      t("classNamePlaceholder")
                     }
                     required
                   />
                 </div>
 
                 <div className="space-y-2">
-                   <Label htmlFor="teacherId">Class Teacher</Label>
+                   <Label htmlFor="teacherId">{t("classTeacher")}</Label>
                    <Select
                      value={formData.teacherId || "none"}
                      onValueChange={(value) =>
@@ -780,8 +722,22 @@ export default function ClassesPage() {
             </DialogContent>
           </Dialog>
         </div>
+        )}
       </div>
 
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "list" | "schedule")}>
+        <TabsList>
+          <TabsTrigger value="list" className="gap-1.5">
+            <BookOpen className="h-3.5 w-3.5" />
+            {t("classesListTab")}
+          </TabsTrigger>
+          <TabsTrigger value="schedule" className="gap-1.5">
+            <Calendar className="h-3.5 w-3.5" />
+            {t("timetable")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="list">
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-4">
@@ -794,33 +750,59 @@ export default function ClassesPage() {
                 className="pl-10"
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
-                <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">
-                  {filteredClasses.length} {t("classes")}
-                </span>
-                <span className="sm:hidden">
-                  {filteredClasses.length} {t("classes")}
-                </span>
-              </Badge>
-              <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
-                <Users className="w-3 h-3 sm:w-4 sm:h-4" />
-                <span className="hidden sm:inline">
-                  {students.filter((s) => filteredClasses.some((c) => c.id === s.classId)).length}{" "}
-                  {t("assignedStudents")}
-                </span>
-                <span className="sm:hidden">
-                  {students.filter((s) => filteredClasses.some((c) => c.id === s.classId)).length}
-                </span>
-              </Badge>
-            </div>
+            {isLoading ? (
+              <div className="flex gap-2">
+                <Skeleton className="h-6 w-20 rounded-full" />
+                <Skeleton className="h-6 w-28 rounded-full" />
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
+                  <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">
+                    {filteredClasses.length} {t("classes")}
+                  </span>
+                  <span className="sm:hidden">
+                    {filteredClasses.length} {t("classes")}
+                  </span>
+                </Badge>
+                <Badge variant="outline" className="gap-2 text-xs sm:text-sm">
+                  <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">
+                    {filteredClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0)}{" "}
+                    {t("assignedStudents")}
+                  </span>
+                  <span className="sm:hidden">
+                    {filteredClasses.reduce((sum, c) => sum + (c.studentCount || 0), 0)}
+                  </span>
+                </Badge>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+              {[...Array(6)].map((_, i) => (
+                <Card key={i}>
+                  <CardHeader>
+                    <Skeleton className="h-5 w-32" />
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-3/4" />
+                    <div className="flex gap-2 pt-2">
+                      <Skeleton className="h-8 w-20" />
+                      <Skeleton className="h-8 w-20" />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {filteredClasses.map((classData) => {
-              const classStudents = getClassStudents(classData.id);
               return (
                 <Card
                   key={classData.id}
@@ -835,15 +817,23 @@ export default function ClassesPage() {
                   }`}
                   onClick={() => openClassDetails(classData)}
                 >
-                  <CardHeader className="pb-3 p-3 sm:p-6">
+                  <CardHeader className="pb-2 p-3 sm:p-6">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                         <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center flex-shrink-0">
                           <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <CardTitle className="text-base sm:text-xl truncate">
+                          <CardTitle className="truncate flex items-center gap-2">
                             {classData.name}
+                            {classData.isActive === false && (
+                              <span
+                                title={t("inactiveDueToPlanTooltip")}
+                                className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400"
+                              >
+                                {t("inactiveBadge")}
+                              </span>
+                            )}
                           </CardTitle>
                           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 truncate">
                             {getTeacherName(classData.teacherId)}
@@ -859,7 +849,7 @@ export default function ClassesPage() {
                           variant="ghost"
                           onClick={() => handleEdit(classData)}
                           disabled={!canEditClasses}
-                          title={canEditClasses ? t("edit") : t("noPermission") || "No permission"}
+                          title={canEditClasses ? t("edit") : t("noPermission")}
                           className="h-8 w-8 sm:h-10 sm:w-10"
                         >
                           <Edit2 className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -869,7 +859,7 @@ export default function ClassesPage() {
                           variant="ghost"
                           onClick={() => handleDelete(classData.id)}
                           disabled={!canDeleteClasses}
-                          title={canDeleteClasses ? t("delete") : t("noPermission") || "No permission"}
+                          title={canDeleteClasses ? t("delete") : t("noPermission")}
                           className="h-8 w-8 sm:h-10 sm:w-10"
                         >
                           <Trash2 className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
@@ -883,7 +873,7 @@ export default function ClassesPage() {
                         {t("students")}
                       </span>
                       <Badge variant="secondary" className="text-xs">
-                        {classStudents.length}
+                        {classData.studentCount || 0}
                       </Badge>
                     </div>
                     {draggedStudent && draggedStudentIds.length > 0 && (
@@ -902,20 +892,21 @@ export default function ClassesPage() {
           </div>
 
           {filteredClasses.length === 0 && (
-            <div className="text-center py-12">
-              <BookOpen className="w-12 h-12 text-slate-300 dark:text-slate-700 mx-auto mb-4" />
-              <p className="text-slate-500 dark:text-slate-400">
-                {t("noClassesYet")}
-              </p>
-            </div>
+            <EmptyState
+              icon={BookOpen}
+              title={t("noClassesYet")}
+              action={canCreateClasses ? { label: t("addClass"), onClick: () => { resetForm(); setIsDialogOpen(true); } } : undefined}
+            />
+          )}
+            </>
           )}
         </CardContent>
       </Card>
 
-      {unassignedStudents.length > 0 && (
+      {studentsLoaded && unassignedStudents.length > 0 && (
         <Card className="border-orange-200 dark:border-orange-800">
           <CardHeader className="p-4 sm:p-6">
-            <CardTitle className="text-base sm:text-lg text-orange-600 dark:text-orange-400">
+            <CardTitle className="text-orange-600 dark:text-orange-400">
               {t("unassignedStudents")} ({unassignedStudents.length})
             </CardTitle>
           </CardHeader>
@@ -985,14 +976,14 @@ export default function ClassesPage() {
               {unassignedSelection.length > 0 && (
                 <div className="mt-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
                   <p className="text-sm font-medium text-orange-900 dark:text-orange-100 mb-3">
-                    {unassignedSelection.length} {t("student")} selected
+                    {unassignedSelection.length} {t("student")} {t("selected")}
                   </p>
                   <Button
                     onClick={() => {
                       setSelectedStudentIds(unassignedSelection);
                       setIsBulkAddOpen(true);
                     }}
-                    className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white"
+                    className="w-full bg-brand hover:bg-brand-hover text-white"
                   >
                     <UserPlus className="w-4 h-4 mr-2" />
                     {t("moveToClass")}
@@ -1036,20 +1027,26 @@ export default function ClassesPage() {
                 confirmDialog.onConfirm();
               }}
               disabled={confirmDialog.isLoading}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              className="bg-brand hover:bg-brand-hover"
             >
               {confirmDialog.isLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("deleting") || "Deleting..."}
+                  {t("deleting")}
                 </>
               ) : (
-                t("confirm") || "Confirm"
+                t("confirm")
               )}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </TabsContent>
+
+        <TabsContent value="schedule">
+          <SchedulePanel showHeader={false} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

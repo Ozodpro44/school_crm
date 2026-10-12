@@ -2,12 +2,17 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
 	"golang.org/x/crypto/bcrypt"
 )
+
+var ErrDeveloperSessionNotFound = errors.New("developer session not found")
 
 type DeveloperService struct {
 	database *db.Database
@@ -15,6 +20,95 @@ type DeveloperService struct {
 
 func NewDeveloperService(database *db.Database) *DeveloperService {
 	return &DeveloperService{database: database}
+}
+
+// DeveloperSession is one logged-in device/browser for a developer account.
+type DeveloperSession struct {
+	ID          string     `json:"id"`
+	DeveloperID string     `json:"developerId"`
+	IPAddress   string     `json:"ipAddress"`
+	UserAgent   string     `json:"userAgent"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	LastSeenAt  time.Time  `json:"lastSeenAt"`
+	RevokedAt   *time.Time `json:"revokedAt,omitempty"`
+}
+
+// CreateSession records a new developer login and returns the session ID to
+// embed in that login's JWT as the "sid" claim.
+func (s *DeveloperService) CreateSession(ctx context.Context, developerID, ip, userAgent string) (string, error) {
+	var id string
+	err := s.database.GetConn().QueryRowContext(ctx,
+		`INSERT INTO developer_sessions (developer_id, ip_address, user_agent) VALUES ($1, $2, $3) RETURNING id`,
+		developerID, ip, userAgent,
+	).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("create developer session: %w", err)
+	}
+	return id, nil
+}
+
+// ListSessions returns a developer's active (non-revoked) sessions, most
+// recently active first.
+func (s *DeveloperService) ListSessions(ctx context.Context, developerID string) ([]DeveloperSession, error) {
+	rows, err := s.database.GetConn().QueryContext(ctx,
+		`SELECT id, developer_id, COALESCE(ip_address, ''), COALESCE(user_agent, ''), created_at, last_seen_at, revoked_at
+		 FROM developer_sessions WHERE developer_id = $1 AND revoked_at IS NULL ORDER BY last_seen_at DESC`,
+		developerID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list developer sessions: %w", err)
+	}
+	defer rows.Close()
+
+	sessions := []DeveloperSession{}
+	for rows.Next() {
+		var sess DeveloperSession
+		if err := rows.Scan(&sess.ID, &sess.DeveloperID, &sess.IPAddress, &sess.UserAgent, &sess.CreatedAt, &sess.LastSeenAt, &sess.RevokedAt); err != nil {
+			continue
+		}
+		sessions = append(sessions, sess)
+	}
+	return sessions, rows.Err()
+}
+
+// RevokeSession marks a session revoked, scoped to the caller's own
+// developerID so one developer can never sign another one out.
+func (s *DeveloperService) RevokeSession(ctx context.Context, developerID, sessionID string) error {
+	res, err := s.database.GetConn().ExecContext(ctx,
+		`UPDATE developer_sessions SET revoked_at = NOW() WHERE id = $1 AND developer_id = $2 AND revoked_at IS NULL`,
+		sessionID, developerID,
+	)
+	if err != nil {
+		return fmt.Errorf("revoke developer session: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return ErrDeveloperSessionNotFound
+	}
+	return nil
+}
+
+// TouchSession bumps last_seen_at — called best-effort on every authenticated
+// dev request so ListSessions reflects actual recent activity per device.
+func (s *DeveloperService) TouchSession(ctx context.Context, sessionID string) {
+	_, _ = s.database.GetConn().ExecContext(ctx, `UPDATE developer_sessions SET last_seen_at = NOW() WHERE id = $1`, sessionID)
+}
+
+// IsSessionRevoked reports whether a session has been revoked or no longer
+// exists (a missing row — e.g. deleted alongside its developer — is treated
+// as revoked, since there's nothing valid left to authorize against).
+func (s *DeveloperService) IsSessionRevoked(ctx context.Context, sessionID string) (bool, error) {
+	var revokedAt sql.NullTime
+	err := s.database.GetConn().QueryRowContext(ctx,
+		`SELECT revoked_at FROM developer_sessions WHERE id = $1`, sessionID,
+	).Scan(&revokedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return revokedAt.Valid, nil
 }
 
 // GetDeveloperByEmail retrieves a developer by email
@@ -81,8 +175,15 @@ func (s *DeveloperService) AuthenticateDeveloper(ctx context.Context, email, pas
 	return dev, nil
 }
 
-// CreateDeveloper creates a new developer account
-func (s *DeveloperService) CreateDeveloper(ctx context.Context, email, password, fullName string) (*models.Developer, error) {
+// CreateDeveloper creates a new developer account with the given role
+// ("developer" or "admin"; empty defaults to "developer").
+func (s *DeveloperService) CreateDeveloper(ctx context.Context, email, password, fullName, role string) (*models.Developer, error) {
+	if role == "" {
+		role = "developer"
+	}
+	if role != "developer" && role != "admin" {
+		return nil, fmt.Errorf("invalid developer role %q", role)
+	}
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -97,7 +198,7 @@ func (s *DeveloperService) CreateDeveloper(ctx context.Context, email, password,
 
 	var dev models.Developer
 	err = s.database.GetConn().QueryRowContext(ctx, query,
-		email, string(hashedPassword), fullName, "developer",
+		email, string(hashedPassword), fullName, role,
 	).Scan(
 		&dev.ID, &dev.Email, &dev.Password, &dev.FullName, &dev.Role, &dev.IsActive, &dev.LastLogin, &dev.CreatedAt, &dev.UpdatedAt,
 	)
@@ -168,4 +269,34 @@ func (s *DeveloperService) UpdateDeveloperPassword(ctx context.Context, develope
 		return fmt.Errorf("failed to update password: %w", err)
 	}
 	return nil
+}
+
+// CountDevelopers returns the number of developer accounts.
+func (s *DeveloperService) CountDevelopers(ctx context.Context) (int, error) {
+	var n int
+	err := s.database.GetConn().QueryRowContext(ctx, `SELECT COUNT(*) FROM developers`).Scan(&n)
+	return n, err
+}
+
+// BootstrapAdmin creates the first developer (role "admin") when, and only
+// when, no developer exists yet. It is a no-op if email or password is empty.
+// Returns true if an account was created.
+func (s *DeveloperService) BootstrapAdmin(ctx context.Context, email, password string) (bool, error) {
+	if email == "" || password == "" {
+		return false, nil
+	}
+	if len(password) < 8 {
+		return false, fmt.Errorf("DEV_BOOTSTRAP_PASSWORD must be at least 8 characters")
+	}
+	n, err := s.CountDevelopers(ctx)
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return false, nil
+	}
+	if _, err := s.CreateDeveloper(ctx, email, password, "Developer Admin", "admin"); err != nil {
+		return false, err
+	}
+	return true, nil
 }

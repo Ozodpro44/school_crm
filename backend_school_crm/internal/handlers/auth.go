@@ -8,11 +8,36 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/platformsettings"
 	"github.com/school-crm/backend/internal/service"
 	"github.com/school-crm/backend/internal/utils"
 )
 
-func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
+// jwtExpiry reads the platform-wide token lifetime (developer portal
+// Settings page); <= 0 falls back to the default (24h).
+func jwtExpiry(settingsStore *platformsettings.Store) time.Duration {
+	hours := int(platformsettings.Defaults.JWTExpiryHours)
+	if settingsStore != nil {
+		if h := int(settingsStore.Get().JWTExpiryHours); h > 0 {
+			hours = h
+		}
+	}
+	return time.Duration(hours) * time.Hour
+}
+
+// Login authenticates a user and returns a JWT token.
+//
+//	@Summary      Login
+//	@Description  Authenticate with email + password. Returns a signed JWT valid for 24 h.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      service.LoginRequest   true  "Credentials"
+//	@Success      200   {object}  map[string]interface{} "token + user object"
+//	@Failure      400   {object}  map[string]string      "invalid request body"
+//	@Failure      401   {object}  map[string]string      "invalid credentials"
+//	@Router       /auth/login [post]
+func Login(userService *service.UserService, jwtSecret string, settingsStore *platformsettings.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.LoginRequest
 		
@@ -38,9 +63,10 @@ func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
 
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &middleware.CustomClaims{
 			UserID: user.ID,
+			Role:   string(user.Role),
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject:   user.ID,
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtExpiry(settingsStore))),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
 		})
@@ -61,47 +87,110 @@ func Login(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
 	}
 }
 
-func Register(userService *service.UserService, jwtSecret string) gin.HandlerFunc {
+// Register creates a new school-owner (admin) account and grants a 30-day trial.
+//
+//	@Summary      Register
+//	@Description  Public registration is restricted to the "admin" role. Returns a JWT on success.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      service.RegisterRequest  true  "Registration data"
+//	@Success      201   {object}  map[string]interface{}   "token + user object"
+//	@Failure      400   {object}  map[string]string        "invalid request body"
+//	@Failure      403   {object}  map[string]string        "only admin role allowed"
+//	@Failure      500   {object}  map[string]string        "internal error"
+//	@Router       /auth/register [post]
+func Register(userService *service.UserService, subscriptionService *service.SubscriptionService, jwtSecret string, settingsStore *platformsettings.Store) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.RegisterRequest
-		
+
 		log.Printf("[REGISTER] Incoming registration request from %s", c.ClientIP())
-		
+
 		if err := c.ShouldBindJSON(&req); err != nil {
 			log.Printf("[REGISTER ERROR] Failed to parse JSON: %v", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		log.Printf("[REGISTER] Attempting to register user: %s (Role: %s)", req.Email, req.Role)
-
-		user, err := userService.Register(c.Request.Context(), &req)
-		if err != nil {
-			log.Printf("[REGISTER ERROR] Registration failed for %s: %v", req.Email, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Public registration is restricted to school-owner (admin) accounts only.
+		// All other roles (branch_admin, manager, teacher, etc.) must be created
+		// by an authenticated admin through the user-management endpoints.
+		if req.Role != "admin" {
+			log.Printf("[REGISTER DENIED] Non-admin role attempted via public endpoint: %s (%s)", req.Email, req.Role)
+			c.JSON(http.StatusForbidden, gin.H{"error": "only admin accounts may register through this endpoint"})
 			return
 		}
 
-		log.Printf("[REGISTER SUCCESS] User %s (ID: %s) registered successfully", req.Email, user.ID)
+		log.Printf("[REGISTER] Starting email verification for: %s (Role: %s)", req.Email, req.Role)
 
-		// Generate JWT token for the newly registered user
+		// Nothing is persisted to Postgres yet — InitiateRegistration only
+		// stores the pending signup + OTP in Redis and emails the code.
+		// VerifyRegistrationOTP is what actually creates the account.
+		if err := userService.InitiateRegistration(c.Request.Context(), &req); err != nil {
+			log.Printf("[REGISTER ERROR] Failed to initiate registration for %s: %v", req.Email, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		log.Printf("[REGISTER] Verification OTP sent to %s", req.Email)
+
+		c.JSON(http.StatusOK, gin.H{
+			"emailVerificationRequired": true,
+			"email":                     req.Email,
+		})
+	}
+}
+
+// VerifyRegistrationOTP confirms the code InitiateRegistration emailed and,
+// only on success, actually creates the account: runs UserService.Register
+// (user + default branch + permissions + first financial month), grants
+// the 30-day trial, and issues a token — the same steps Register used to
+// do unconditionally before email verification gated any of it.
+func VerifyRegistrationOTP(userService *service.UserService, subscriptionService *service.SubscriptionService, jwtSecret string, settingsStore *platformsettings.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			Email string `json:"email" binding:"required,email"`
+			OTP   string `json:"otp"   binding:"required"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		user, err := userService.CompleteRegistration(c.Request.Context(), req.Email, req.OTP)
+		if err != nil {
+			log.Printf("[VERIFY-REGISTRATION-OTP ERROR] %s: %v", req.Email, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		log.Printf("[VERIFY-REGISTRATION-OTP SUCCESS] User %s (ID: %s) verified and created", req.Email, user.ID)
+
+		// Auto-grant a 30-day free trial so the new school owner (and their staff)
+		// can access the CRM immediately after verifying.
+		if _, err := subscriptionService.AdminGrantTrial(c.Request.Context(), user.ID, 30, "Auto-granted on registration"); err != nil {
+			log.Printf("[VERIFY-REGISTRATION-OTP WARNING] Failed to auto-grant trial for %s: %v", user.ID, err)
+			// Non-fatal — user is still created; they can subscribe manually.
+		} else {
+			log.Printf("[VERIFY-REGISTRATION-OTP] 30-day trial granted to %s", user.ID)
+		}
+
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, &middleware.CustomClaims{
 			UserID: user.ID,
+			Role:   string(user.Role),
 			RegisteredClaims: jwt.RegisteredClaims{
 				Subject:   user.ID,
-				ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+				ExpiresAt: jwt.NewNumericDate(time.Now().Add(jwtExpiry(settingsStore))),
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
 		})
 
 		tokenString, err := token.SignedString([]byte(jwtSecret))
 		if err != nil {
-			log.Printf("[REGISTER ERROR] Failed to generate token for %s: %v", req.Email, err)
+			log.Printf("[VERIFY-REGISTRATION-OTP ERROR] Failed to generate token for %s: %v", req.Email, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
 			return
 		}
-
-		log.Printf("[REGISTER] JWT token generated for user %s", req.Email)
 
 		c.JSON(http.StatusCreated, gin.H{
 			"token": tokenString,
@@ -111,6 +200,16 @@ func Register(userService *service.UserService, jwtSecret string) gin.HandlerFun
 }
 
 // ForgotPassword initiates password reset by sending OTP
+//
+//	@Summary      Forgot password
+//	@Description  Sends a 6-digit OTP to the given email address.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      object              true  "Email"
+//	@Success      200   {object}  map[string]string   "OTP sent"
+//	@Failure      400   {object}  map[string]string   "invalid email or user not found"
+//	@Router       /auth/forgot-password [post]
 func ForgotPassword(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -142,6 +241,16 @@ func ForgotPassword(userService *service.UserService) gin.HandlerFunc {
 }
 
 // VerifyOTP verifies the OTP and returns reset token
+//
+//	@Summary      Verify OTP
+//	@Description  Validates the 6-digit OTP and returns a short-lived reset token.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      object              true  "Email + OTP"
+//	@Success      200   {object}  map[string]string   "resetToken"
+//	@Failure      400   {object}  map[string]string   "invalid or expired OTP"
+//	@Router       /auth/verify-otp [post]
 func VerifyOTP(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -176,6 +285,16 @@ func VerifyOTP(userService *service.UserService) gin.HandlerFunc {
 }
 
 // ResendOTP resends OTP to the user's email
+//
+//	@Summary      Resend OTP
+//	@Description  Generates a new OTP and resends it to the given email.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      object              true  "Email"
+//	@Success      200   {object}  map[string]string   "OTP resent"
+//	@Failure      400   {object}  map[string]string   "error"
+//	@Router       /auth/resend-otp [post]
 func ResendOTP(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
@@ -199,12 +318,22 @@ func ResendOTP(userService *service.UserService) gin.HandlerFunc {
 }
 
 // ResetPassword resets the password using reset token
+//
+//	@Summary      Reset password
+//	@Description  Sets a new password using the reset token obtained from VerifyOTP.
+//	@Tags         auth
+//	@Accept       json
+//	@Produce      json
+//	@Param        body  body      object              true  "Email + resetToken + newPassword"
+//	@Success      200   {object}  map[string]string   "password reset successfully"
+//	@Failure      400   {object}  map[string]string   "invalid token or email"
+//	@Router       /auth/reset-password [post]
 func ResetPassword(userService *service.UserService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req struct {
 			Email       string `json:"email" binding:"required,email"`
 			ResetToken  string `json:"resetToken" binding:"required"`
-			NewPassword string `json:"newPassword" binding:"required,min=6"`
+			NewPassword string `json:"newPassword" binding:"required,min=8"`
 		}
 
 		log.Printf("[ResetPassword] Password reset request from %s", c.ClientIP())

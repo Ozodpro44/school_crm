@@ -16,10 +16,10 @@ import (
 // @Accept json
 // @Produce json
 // @Param id path string true "Subscription ID"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 401 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 401 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /subscriptions/{id}/pay-click [post]
 func InitiateClickUzPayment(clickUzService *service.ClickUzService, subscriptionService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -85,15 +85,16 @@ func InitiateClickUzPayment(clickUzService *service.ClickUzService, subscription
 // @Param amount query string true "Amount paid"
 // @Param sign_time query string true "Sign time"
 // @Param sign query string true "Signature"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 500 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 500 {object} map[string]interface{}
 // @Router /webhooks/click-callback [post]
 func ClickUzCallback(clickUzService *service.ClickUzService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		clickTxnID := c.Query("click_txn_id")
 		invoiceID := c.Query("invoice_id")
 		amountStr := c.Query("amount")
+		signTime := c.Query("sign_time")
 		sign := c.Query("sign")
 
 		if clickTxnID == "" || invoiceID == "" || amountStr == "" || sign == "" {
@@ -117,7 +118,7 @@ func ClickUzCallback(clickUzService *service.ClickUzService) gin.HandlerFunc {
 		}
 
 		// Verify signature
-		if !clickUzService.VerifyPaymentSignature(clickTxnID, invoiceID, amount, sign) {
+		if !clickUzService.VerifyPaymentSignature(clickTxnID, invoiceID, amount, signTime, sign) {
 			log.Printf("[ClickUzCallback] Invalid signature for transaction %s", clickTxnID)
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "invalid signature",
@@ -152,9 +153,9 @@ func ClickUzCallback(clickUzService *service.ClickUzService) gin.HandlerFunc {
 // @Tags payments
 // @Produce json
 // @Param payment_id query string true "Payment ID"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Failure 404 {object} gin.H
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]interface{}
+// @Failure 404 {object} map[string]interface{}
 // @Router /subscriptions/payment-status [get]
 func GetPaymentStatus(clickUzService *service.ClickUzService) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -164,7 +165,13 @@ func GetPaymentStatus(clickUzService *service.ClickUzService) gin.HandlerFunc {
 			return
 		}
 
-		status, err := clickUzService.GetPaymentStatus(c.Request.Context(), paymentID)
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		status, err := clickUzService.GetPaymentStatus(c.Request.Context(), paymentID, userID.(string))
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
 			return
@@ -184,41 +191,12 @@ func RegisterClickUzRoutes(router *gin.RouterGroup, clickUzService *service.Clic
 	router.GET("/subscriptions/payment-status", GetPaymentStatus(clickUzService))
 }
 
-// TestPaymentCallback completes payment for testing (dev endpoint)
-// @Summary Test payment completion
-// @Description Manually complete a payment for testing
-// @Tags payments
-// @Produce json
-// @Param invoice_id query string true "Invoice number"
-// @Success 200 {object} gin.H
-// @Failure 400 {object} gin.H
-// @Router /dev/test-payment [post]
-func TestPaymentCallback(clickUzService *service.ClickUzService) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		invoiceID := c.Query("invoice_id")
-		if invoiceID == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invoice_id is required"})
-			return
-		}
-
-		success, err := clickUzService.HandlePaymentCallback(c.Request.Context(), "test-txn-"+invoiceID, invoiceID, 0)
-		if err != nil || !success {
-			c.JSON(http.StatusOK, gin.H{
-				"error": "failed to process test payment",
-				"invoice_id": invoiceID,
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Test payment completed",
-			"invoice_id": invoiceID,
-		})
-	}
-}
-
 // RegisterClickUzWebhooks registers Click.uz webhook routes (public, no auth)
+// Nothing is registered when Click is not fully configured.
 func RegisterClickUzWebhooks(router *gin.RouterGroup, clickUzService *service.ClickUzService) {
+	if !clickUzService.Configured() {
+		log.Println("[Click.uz] not configured; webhook route not registered")
+		return
+	}
 	router.POST("/webhooks/click-callback", ClickUzCallback(clickUzService))
-	router.POST("/api/dev/test-payment", TestPaymentCallback(clickUzService))
 }

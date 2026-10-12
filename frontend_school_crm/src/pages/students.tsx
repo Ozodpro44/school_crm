@@ -1,11 +1,11 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
-import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -16,17 +16,14 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { FormDialog } from "@/components/FormDialog";
+import { Field } from "@/components/Field";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  studentsDB,
-  branchesDB,
-} from "@/lib/storage";
 import { Student, StudentStatus } from "@/types";
 import {
   Plus,
@@ -36,38 +33,43 @@ import {
   UserX,
   Upload,
   Download,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
+  Users,
 } from "lucide-react";
-import { getCurrentUser, hasPermission } from "@/lib/auth";
+import { hasPermission } from "@/lib/auth";
 import {
-  getStudentsConsolidatedData as apiGetStudentsConsolidatedData,
   createStudent as apiCreateStudent,
   updateStudent as apiUpdateStudent,
   deleteStudent as apiDeleteStudent,
   createClass as apiCreateClass,
-  getBranch,
 } from "@/lib/api";
-import { Branch } from "@/types";
-import type { Student as ApiStudent } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
+import {
+  useStudentsConsolidatedQuery,
+  useClassesQuery,
+  useBranchQuery,
+} from "@/hooks/queries";
+import { useBranch } from "@/context/BranchContext";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
-import { formatNumberWithSpaces, removeNumberFormatting, formatPhoneNumber, toTitleCase, formatDate } from "@/lib/utils";
+import { formatPhoneNumber, formatPhoneAsYouType, isValidUzbekPhone, toTitleCase, formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useSettings } from "@/hooks/use-settings";
-import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { PageHeader } from "@/components/PageHeader";
+import { DataTable, Column } from "@/components/DataTable";
+import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
+import { InitialsAvatar } from "@/components/InitialsAvatar";
+import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
 import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function StudentsPage() {
   const router = useRouter();
   const { settings } = useSettings();
-  const [isLoading, setIsLoading] = useState(true);
-  const [isListLoading, setIsListLoading] = useState(false);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [classes, setClasses] = useState<any[]>([]);
+  const { currentBranch } = useBranch();
+  const branchId = currentBranch?.id || null;
+  const qc = useQueryClient();
+
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -79,10 +81,9 @@ export default function StudentsPage() {
   const [importData, setImportData] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [branchData, setBranchData] = useState<Branch | null>(null);
   const [isBulkChangeClassOpen, setIsBulkChangeClassOpen] = useState(false);
   const [bulkChangeClassId, setBulkChangeClassId] = useState<string>("");
+  const [bulkChangeClassSearch, setBulkChangeClassSearch] = useState<string>("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteStudentId, setDeleteStudentId] = useState<string | null>(null);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
@@ -93,22 +94,49 @@ export default function StudentsPage() {
   const [isMarkLeftLoading, setIsMarkLeftLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [totalPages, setTotalPages] = useState(0);
-  const [total, setTotal] = useState(0);
-  const itemsPerPage = 10;
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const initialLoadDoneRef = useRef(false);
-  const currentLoadIdRef = useRef(0);
-  // Track if filter change is in progress to prevent duplicate API calls
-  const filterChangeInProgressRef = useRef(false);
-  const language = useLanguage();
-  const { toast } = useToast();
+
+  // Branch data for financial month
+  const { data: branchData } = useBranchQuery(branchId);
+  const currentMonth =
+    branchData?.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
+    String(new Date().getMonth() + 1).padStart(2, "0");
+  const currentYear = (branchData?.currentFinancialMonth?.year || new Date().getFullYear()).toString();
+
+  // Build filters object (stable reference when values don't change)
+  const queryFilters = useMemo(
+    () => ({
+      search: searchTerm || undefined,
+      classId: filterClass !== "all" ? filterClass : undefined,
+      status: filterStatus !== "all" ? filterStatus : undefined,
+      paymentStatus: filterPaymentStatus !== "all" ? filterPaymentStatus : undefined,
+      month: currentMonth,
+      year: currentYear,
+    }),
+    [searchTerm, filterClass, filterStatus, filterPaymentStatus, currentMonth, currentYear]
+  );
+
   const {
+    data: studentsData,
+    isLoading,
+  } = useStudentsConsolidatedQuery(branchId, page, limit, queryFilters, {
+    refetchOnWindowFocus: true,
+  });
+
+  const { data: classesData, refetch: refetchClasses } = useClassesQuery(branchId, {
+    refetchOnMount: "always",
+  });
+
+  const students = (studentsData?.items ?? []) as unknown as Student[];
+  const total: number = studentsData?.total ?? 0;
+  const classes = (classesData ?? studentsData?.classes ?? []) as Array<{ id: string; name: string }>;
+  const language = useLanguage();
+  const notify = useNotify();
+  const {
+    selectedIds,
     toggleSelect,
     toggleSelectAll,
     clearSelection,
-    isSelected,
-    getSelectedCount,
     getSelectedIds,
     areAllSelected,
     areSomeSelected,
@@ -122,6 +150,22 @@ export default function StudentsPage() {
     monthlyPayment: "",
     status: "active" as StudentStatus,
   });
+  // "Boshqa" toggle: monthlyPayment starts locked to the branch's own
+  // monthly payment (settings.monthlyPayment) and pre-filled with it: most
+  // students pay the standard rate, so this switch is only for the
+  // exception, not the default data-entry path.
+  const [useCustomPayment, setUseCustomPayment] = useState(false);
+  const [formErrors, setFormErrors] = useState<{
+    fullName?: string;
+    phone?: string;
+    parentPhone?: string;
+    monthlyPayment?: string;
+    classId?: string;
+  }>({});
+
+  const clearFieldError = (field: keyof typeof formErrors) => {
+    if (formErrors[field]) setFormErrors((e) => ({ ...e, [field]: undefined }));
+  };
 
   const t = (key: string) => getTranslation(key, language);
 
@@ -130,221 +174,82 @@ export default function StudentsPage() {
   const canEditStudents = useMemo(() => hasPermission("canEditStudents"), []);
   const canDeleteStudents = useMemo(() => hasPermission("canDeleteStudents"), []);
 
-  // Initialize state from URL params and load initial data (waits for router.isReady)
+  // The sidebar already hides this link for anyone lacking canViewStudents
+  // (see Layout.tsx), but that alone doesn't stop someone from typing the
+  // URL directly — mirrors the same page-level guard settings.tsx uses for
+  // canViewSettings.
+  useEffect(() => {
+    if (!hasPermission("canViewStudents")) {
+      router.push("/");
+    }
+  }, [router]);
+
+  // Initialize state from URL params (React Query auto-fires when state changes)
   useEffect(() => {
     if (!router.isReady) return;
-
     const { page: qPage, limit: qLimit, search: qSearch, status: qStatus, classId: qClassId, paymentStatus: qPaymentStatus } = router.query;
-
-    const saved = loadPageFilters("students", { search: "", status: "all", classId: "all", paymentStatus: "all", limit: 10 });
-
-    const initSearch = (qSearch as string) ?? String(saved.search);
-    const initStatus = (qStatus as string) ?? String(saved.status);
-    const initClassId = (qClassId as string) ?? String(saved.classId);
-    const initPaymentStatus = (qPaymentStatus as string) ?? String(saved.paymentStatus);
-
     if (qPage) setPage(parseInt(qPage as string) || 1);
-    const initLimit = qLimit ? (parseInt(qLimit as string) || 10) : Number(saved.limit) || 10;
-    setLimit(initLimit);
+    if (qLimit) setLimit(parseInt(qLimit as string) || 10);
+    // URL params win; otherwise fall back to the last filters used on this page.
+    // classId is deliberately not persisted: class ids belong to one branch.
+    const saved = loadPageFilters("students", { search: "", status: "all", paymentStatus: "all", limit: 10 });
+    const initSearch = (qSearch as string) ?? String(saved.search);
     setSearchTerm(initSearch);
     setSearchInput(initSearch);
-    setFilterStatus(initStatus);
-    setFilterClass(initClassId);
-    setFilterPaymentStatus(initPaymentStatus);
-
-    setIsLoading(true);
-    // Pass URL params directly as overrides to avoid stale closure issues
-    loadData(initSearch, initStatus, initClassId, initPaymentStatus).finally(() => {
-      setIsLoading(false);
-      initialLoadDoneRef.current = true;
-    });
+    setFilterStatus((qStatus as string) ?? String(saved.status));
+    setFilterClass((qClassId as string) || "all");
+    setFilterPaymentStatus((qPaymentStatus as string) ?? String(saved.paymentStatus));
+    if (!qLimit) setLimit(Number(saved.limit) || 10);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady]);
 
+  // Declared after the restore effect above so it never overwrites saved filters with defaults.
   useEffect(() => {
-    savePageFilters("students", { search: searchTerm, status: filterStatus, classId: filterClass, paymentStatus: filterPaymentStatus, limit });
-  }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, limit]);
+    // Skip until the saved filters have been restored, or defaults would overwrite them.
+    if (!router.isReady) return;
+    savePageFilters("students", { search: searchTerm, status: filterStatus, paymentStatus: filterPaymentStatus, limit });
+  }, [router.isReady, searchTerm, filterStatus, filterPaymentStatus, limit]);
 
-  const waitForSelectedBranchId = async () => {
-    let retries = 0;
-    const maxRetries = 20;
-    while (!localStorage.getItem("selectedBranchId") && retries < maxRetries) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      retries++;
-    }
-    return localStorage.getItem("selectedBranchId");
-  };
-
-  const loadData = async (
-    searchOverride?: string,
-    statusOverride?: string,
-    classOverride?: string,
-    paymentStatusOverride?: string,
-  ) => {
-    const user = getCurrentUser();
-    if (!user) {
-      setStudents([]);
-      setClasses([]);
-      setBranchData(null);
-      return;
-    }
-    const loadId = ++currentLoadIdRef.current;
-    const selectedBranchId = await waitForSelectedBranchId();
-    try {
-      if (selectedBranchId) {
-        const branch = await getBranch(selectedBranchId);
-        setBranchData(branch);
-        const currentMonth =
-          branch.currentFinancialMonth?.month?.toString().padStart(2, "0") ||
-          String(new Date().getMonth() + 1).padStart(2, "0");
-        const currentYear =
-          branch.currentFinancialMonth?.year || new Date().getFullYear();
-        const filters: any = {};
-        // Use override values first, then state, then URL params
-        const searchValue =
-          searchOverride !== undefined
-            ? searchOverride
-            : searchTerm || (router.query.search as string);
-        const statusValue =
-          statusOverride !== undefined
-            ? statusOverride
-            : filterStatus || (router.query.status as string) || "all";
-        const classValue =
-          classOverride !== undefined
-            ? classOverride
-            : filterClass || (router.query.classId as string) || "all";
-        const paymentStatusValue =
-          paymentStatusOverride !== undefined
-            ? paymentStatusOverride
-            : filterPaymentStatus || (router.query.paymentStatus as string) || "all";
-
-        if (searchValue) filters.search = searchValue;
-        if (statusValue !== "all") filters.status = statusValue;
-        if (classValue !== "all") filters.classId = classValue;
-        if (paymentStatusValue !== "all") filters.paymentStatus = paymentStatusValue;
-        filters.month = currentMonth;
-        filters.year = currentYear.toString();
-
-        const consolidated = await apiGetStudentsConsolidatedData(selectedBranchId, page, limit, filters);
-        if (loadId !== currentLoadIdRef.current) {
-          return;
-        }
-        const studentsList = consolidated?.items || consolidated?.data || [];
-        const classesList = consolidated?.classes || [];
-        const totalVal = consolidated?.total || 0;
-        const totalPagesVal = consolidated?.totalPages || consolidated?.total_pages || 0;
-
-        setStudents(studentsList);
-        setTotal(totalVal);
-        setTotalPages(Math.ceil(totalVal / limit));
-        setClasses(classesList);
-        setBranchData(branch);
-      }
-    } catch (error) {
-      console.error("Failed to load data:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadStudents"),
-        variant: "destructive",
-      });
-      setClasses([]);
-      setBranchData(null);
-    }
-  };
-
-  // Initial load is handled in the [router.isReady] effect above
-
-  // Reload data when filters change
+  // Branch switched: a class filter from the old branch matches nothing here.
+  const prevBranchIdRef = useRef<string | null>(null);
   useEffect(() => {
-    // Skip if this is the initial load (URL params are being set)
-    if (!initialLoadDoneRef.current) {
-      return;
-    }
-
-    // Mark filter change in progress to prevent duplicate API calls from page useEffect
-    filterChangeInProgressRef.current = true;
-    setPage(1); // Reset to first page on filter changes
-    setIsListLoading(true);
-    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
-    // Update URL with filters
-    const params = new URLSearchParams();
-    if (searchTerm) params.set('search', searchTerm);
-    if (filterStatus !== 'all') params.set('status', filterStatus);
-    if (filterClass !== 'all') params.set('classId', filterClass);
-    if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
-    params.set('page', '1');
-    params.set('limit', limit.toString());
-    router.push(`/students?${params.toString()}`, undefined, { shallow: true });
-  }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, limit]);
-
-  // Reload data when page changes
-  useEffect(() => {
-    // Skip if initial load hasn't completed yet
-    if (!initialLoadDoneRef.current) return;
-
-    // Skip if a filter change is in progress (filter useEffect handles the load)
-    if (filterChangeInProgressRef.current) {
-      filterChangeInProgressRef.current = false;
-      return;
-    }
-
-    setIsListLoading(true);
-    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
-    // Update URL with current page
-    const params = new URLSearchParams();
-    if (searchTerm) params.set('search', searchTerm);
-    if (filterStatus !== 'all') params.set('status', filterStatus);
-    if (filterClass !== 'all') params.set('classId', filterClass);
-    if (filterPaymentStatus !== 'all') params.set('paymentStatus', filterPaymentStatus);
-    params.set('page', page.toString());
-    params.set('limit', limit.toString());
-    router.push(`/students?${params.toString()}`, undefined, { shallow: true });
-  }, [page]);
-
-  // Reload data when branch is switched
-  useEffect(() => {
-    const handleBranchChange = async () => {
+    if (prevBranchIdRef.current && branchId && prevBranchIdRef.current !== branchId) {
+      setFilterClass("all");
+      setFilterStatus("all");
+      setFilterPaymentStatus("all");
+      setSearchInput("");
+      setSearchTerm("");
       setPage(1);
-      setIsListLoading(true);
-      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
-      setIsListLoading(false);
-    };
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
+    }
+    if (branchId) prevBranchIdRef.current = branchId;
+  }, [branchId]);
 
-  // Refetch data when page regains focus (preserves current filters)
-  const refetchData = useCallback(() => {
-    setIsListLoading(true);
-    loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus).finally(() => setIsListLoading(false));
+  // Sync URL params when filters/page change (shallow push, no data refetch needed)
+  useEffect(() => {
+    if (!router.isReady) return;
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("search", searchTerm);
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    if (filterClass !== "all") params.set("classId", filterClass);
+    if (filterPaymentStatus !== "all") params.set("paymentStatus", filterPaymentStatus);
+    params.set("page", page.toString());
+    params.set("limit", limit.toString());
+    router.push(`/students?${params.toString()}`, undefined, { shallow: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, page, limit]);
-  useRefetchOnFocus(refetchData);
-
-
-
-  const hasCurrentMonthPayment = (studentId: string): boolean => {
-    // Payment data not available with consolidated endpoint
-    return false;
-  };
-
-  const getCurrentMonthPaymentStatus = (studentId: string): string => {
-    // Payment data not available with consolidated endpoint
-    return "unpaid";
-  };
 
   const processCSVData = async (csvText: string) => {
     try {
       const lines = csvText.trim().split("\n");
-      const branchId = localStorage.getItem("selectedBranchId");
-      const branch = branchId ? branchesDB.getById(branchId) : null;
-      const defaultPayment =
-        branch?.monthlyPayment || settings?.monthlyPayment || 500000;
+      const defaultPayment = settings?.monthlyPayment || 0;
+      const knownClasses = [...classes];
 
       let importedCount = 0;
+      let createdClassCount = 0;
       const warnings: string[] = [];
 
       for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
+        const line = (lines[i] ?? "").trim();
         if (!line) continue;
 
         const parts = line.split(",").map((p) => p.trim());
@@ -356,7 +261,7 @@ export default function StudentsPage() {
             phoneOrParent,
             parentPhoneOrPayment,
             monthlyPaymentStr,
-          ] = parts;
+          ] = parts as [string, string, string, string | undefined, string | undefined];
 
           // Try to detect if second column is a class name or phone
           let className = "";
@@ -365,7 +270,7 @@ export default function StudentsPage() {
           let monthlyPayment = defaultPayment;
 
           // Check if second column looks like a class name:
-          // - Contains letters (Latin or Cyrillic) 
+          // - Contains letters (Latin or Cyrillic)
           // - OR doesn't look like a phone number (phone numbers are mostly digits)
           const hasLetters = /[a-zA-Zа-яА-ЯёЁ\u0400-\u04FF]/i.test(classNameOrPhone);
           const looksLikePhone = /^[\d\s\+\-\(\)]+$/.test(classNameOrPhone.replace(/\s/g, '')) && classNameOrPhone.replace(/\D/g, '').length >= 7;
@@ -392,7 +297,7 @@ export default function StudentsPage() {
 
           let classId = "";
           if (className) {
-            const classObj = classes.find(
+            const classObj = knownClasses.find(
               (c) => c.name.toLowerCase() === className.toLowerCase()
             );
 
@@ -405,7 +310,8 @@ export default function StudentsPage() {
                 });
                 classId = newClass.id;
                 // Add to classes list so future students in this import can use it
-                classes.push(newClass);
+                knownClasses.push(newClass);
+                createdClassCount++;
               } catch (classError) {
                 warnings.push(
                   `Row ${i + 1
@@ -432,44 +338,32 @@ export default function StudentsPage() {
             importedCount++;
           } catch (err) {
             warnings.push(
-              `Row ${i + 1}: Failed to import "${fullName}" - ${(err as any)?.message || "Unknown error"}`
+              t("csvRowImportFailed")
+                .replace("{row}", String(i + 1))
+                .replace("{name}", fullName)
+                .replace("{error}", (err as any)?.message || t("unknownError"))
             );
           }
         }
       }
 
       if (importedCount > 0) {
-        toast({
-          title: t("importComplete"),
-          description: `${t("successfullyImported")} ${importedCount} ${t(
-            "students"
-          )}`,
-          variant: "success",
-        });
+        notify.success(t("importComplete"), `${t("successfullyImported")} ${importedCount} ${t("students")}`);
       }
 
       if (warnings.length > 0) {
-        toast({
-          title: "Import Completed with Warnings",
-          description:
-            warnings.slice(0, 3).join("\n") +
-            (warnings.length > 3
-              ? `\n... and ${warnings.length - 3} more`
-              : ""),
-          variant: "default",
-        });
+        notify.warning(t("importCompletedWithWarnings"), warnings.slice(0, 3).join("\n") + (warnings.length > 3 ? `\n... and ${warnings.length - 3} more` : ""));
       }
 
       setImportData("");
       setIsImportDialogOpen(false);
-      setCurrentPage(1);
-      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
+      setPage(1);
+      void qc.invalidateQueries({ queryKey: ["students"] });
+      if (createdClassCount > 0) {
+        void qc.invalidateQueries({ queryKey: ["classes", branchId] });
+      }
     } catch (error) {
-      toast({
-        title: t("importError"),
-        description: t("errorCheckFormat"),
-        variant: "destructive",
-      });
+      notify.error(t("importError"), t("errorCheckFormat"));
       console.error(error);
     }
   };
@@ -490,11 +384,7 @@ export default function StudentsPage() {
         const csvText = e.target?.result as string;
         processCSVData(csvText);
       } catch (error) {
-        toast({
-          title: t("importError"),
-          description: t("failedToReadFile"),
-          variant: "destructive",
-        });
+        notify.error(t("importError"), t("failedToReadFile"));
         console.error(error);
       } finally {
         setIsImporting(false);
@@ -505,11 +395,7 @@ export default function StudentsPage() {
     };
 
     reader.onerror = () => {
-      toast({
-        title: t("importError"),
-        description: t("failedToReadFile"),
-        variant: "destructive",
-      });
+      notify.error(t("importError"), t("failedToReadFile"));
       setIsImporting(false);
     };
 
@@ -536,23 +422,48 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Inline validation
+    const errors: typeof formErrors = {};
+    if (!formData.fullName.trim()) errors.fullName = t("fieldRequired");
+    if (!formData.phone.trim()) {
+      errors.phone = t("fieldRequired");
+    } else if (!isValidUzbekPhone(formData.phone)) {
+      errors.phone = t("invalidPhone");
+    }
+    if (!formData.parentPhone.trim()) {
+      errors.parentPhone = t("fieldRequired");
+    } else if (!isValidUzbekPhone(formData.parentPhone)) {
+      errors.parentPhone = t("invalidPhone");
+    }
+    // classId is marked required (*) in the form below but was never
+    // actually checked here — a student could be created/edited with no
+    // class at all. monthlyPayment left blank still auto-fills from the
+    // branch default further down (that convenience is intentional and
+    // preserved), but an explicitly-entered value must be positive — a
+    // negative one (e.g. "-5000") previously passed straight through:
+    // parseInt("-5000") is truthy, so the `|| defaultMonthlyPayment`
+    // fallback never caught it.
+    if (!formData.classId) errors.classId = t("fieldRequired");
+    if (formData.monthlyPayment.trim() && !(parseInt(formData.monthlyPayment) > 0)) {
+      errors.monthlyPayment = t("mustBePositive");
+    }
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
     setIsSubmitting(true);
     if (!canEditStudents) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionToCreateOrEditStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionToCreateOrEditStudents"));
       setIsSubmitting(false);
       return;
     }
 
-    const branchId = localStorage.getItem("selectedBranchId");
-    const branch = branchId ? branchesDB.getById(branchId) : null;
-    const defaultMonthlyPayment =
-      branch?.monthlyPayment || settings?.monthlyPayment || 500000;
-    const monthlyPayment =
-      parseInt(formData.monthlyPayment) || defaultMonthlyPayment;
+    const defaultMonthlyPayment = settings?.monthlyPayment || 0;
+    const monthlyPayment = formData.monthlyPayment.trim()
+      ? parseInt(formData.monthlyPayment)
+      : defaultMonthlyPayment;
 
     try {
       if (editingStudent) {
@@ -578,20 +489,12 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       }
 
       resetForm();
-      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
+      qc.invalidateQueries({ queryKey: ["students"] });
       setIsDialogOpen(false);
-      toast({
-        title: editingStudent ? t("updated") : t("created"),
-        description: editingStudent ? t("studentUpdatedSuccessfully") : t("studentCreatedSuccessfully"),
-        variant: "success",
-      });
+      notify.success(editingStudent ? t("updated") : t("created"), editingStudent ? t("studentUpdatedSuccessfully") : t("studentCreatedSuccessfully"));
     } catch (error) {
       console.error("Failed to save student:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToSaveStudent"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToSaveStudent"));
     } finally {
       setIsSubmitting(false);
     }
@@ -599,15 +502,12 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleEdit = (student: Student) => {
     if (!canEditStudents) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionToEditStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionToEditStudents"));
       return;
     }
 
     setEditingStudent(student);
+    void refetchClasses();
     setFormData({
       fullName: student.fullName,
       classId: student.class?.id || student.classId || "",
@@ -616,16 +516,16 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       monthlyPayment: student.monthlyPayment.toString(),
       status: student.status,
     });
+    // Only unlock the field if this student's payment actually differs from
+    // the branch default — otherwise editing a standard-rate student would
+    // show the toggle on for no reason.
+    setUseCustomPayment(student.monthlyPayment !== settings?.monthlyPayment);
     setIsDialogOpen(true);
   };
 
   const handleDelete = (id: string) => {
     if (!canDeleteStudents) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionToDeleteStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionToDeleteStudents"));
       return;
     }
 
@@ -638,21 +538,13 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       setIsDeleteLoading(true);
       try {
         await apiDeleteStudent(deleteStudentId);
-        await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
-        toast({
-          title: t("deleted"),
-          description: t("successfullyDeleted"),
-          variant: "success",
-        });
+        qc.invalidateQueries({ queryKey: ["students"] });
+        notify.success(t("deleted"), t("successfullyDeleted"));
         setDeleteConfirmOpen(false);
         setDeleteStudentId(null);
       } catch (error) {
         console.error("Failed to delete student:", error);
-        toast({
-          title: t("error"),
-          description: t("failedToDeleteStudent"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("failedToDeleteStudent"));
       } finally {
         setIsDeleteLoading(false);
       }
@@ -661,41 +553,46 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleBulkDelete = () => {
     if (!canDeleteStudents) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionToDeleteStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionToDeleteStudents"));
       return;
     }
 
-    const selectedIds = getSelectedIds();
-    if (selectedIds.length === 0) return;
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
 
     setBulkDeleteConfirmOpen(true);
   };
 
   const confirmBulkDelete = async () => {
-    const selectedIds = getSelectedIds();
+    const ids = getSelectedIds();
     setIsBulkDeleteLoading(true);
     try {
-      await Promise.all(selectedIds.map((id) => apiDeleteStudent(id)));
+      // allSettled, not all: a single rejection in Promise.all jumps straight
+      // to catch without invalidating the query cache, so students that DID
+      // delete successfully (their requests already resolved independently)
+      // kept showing in the table until an unrelated refetch happened.
+      const results = await Promise.allSettled(ids.map((id) => apiDeleteStudent(id)));
+      const failedCount = results.filter((r) => r.status === "rejected").length;
+      const succeededCount = ids.length - failedCount;
+
       clearSelection();
-      await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
-      setCurrentPage(1);
-      toast({
-        title: t("deleted"),
-        description: `${selectedIds.length} ${t("students")} ${t("deletedSuccessfully")}`,
-        variant: "success",
-      });
-      setBulkDeleteConfirmOpen(false);
-    } catch (error) {
-      console.error("Failed to delete students:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToDeleteStudents"),
-        variant: "destructive",
-      });
+      if (succeededCount > 0) {
+        qc.invalidateQueries({ queryKey: ["students"] });
+        setPage(1);
+      }
+
+      if (failedCount === 0) {
+        notify.success(t("deleted"), `${ids.length} ${t("students")} ${t("deletedSuccessfully")}`);
+        setBulkDeleteConfirmOpen(false);
+      } else if (succeededCount === 0) {
+        notify.error(t("error"), t("failedToDeleteStudents"));
+      } else {
+        notify.error(
+          t("error"),
+          `${succeededCount}/${ids.length} ${t("deletedSuccessfully")} — ${failedCount} ${t("failedToDeleteStudents")}`
+        );
+        setBulkDeleteConfirmOpen(false);
+      }
     } finally {
       setIsBulkDeleteLoading(false);
     }
@@ -703,32 +600,45 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleBulkChangeClass = async () => {
     if (!canEditStudents) {
-      toast({
-        title: t("permissionDenied"),
-        description: t("noPermissionToEditStudents"),
-        variant: "destructive",
-      });
+      notify.error(t("permissionDenied"), t("noPermissionToEditStudents"));
       return;
     }
 
-    const selectedIds = getSelectedIds();
-    if (selectedIds.length === 0 || !bulkChangeClassId) return;
+    const ids = getSelectedIds();
+    if (ids.length === 0 || !bulkChangeClassId) return;
 
-    selectedIds.forEach((id) => {
-      studentsDB.update(id, { classId: bulkChangeClassId });
-    });
+    try {
+      const results = await Promise.allSettled(
+        ids.map((id) => apiUpdateStudent(id, { classId: bulkChangeClassId }))
+      );
+      const failedCount = results.filter((r) => r.status === "rejected").length;
+      const succeededCount = ids.length - failedCount;
 
-    clearSelection();
-    await loadData(searchTerm, filterStatus, filterClass, filterPaymentStatus);
-    setIsBulkChangeClassOpen(false);
-    setBulkChangeClassId("");
-    toast({
-      title: t("updated"),
-      description: `${selectedIds.length} ${t("students")} ${t("movedTo")} ${getClassName(
-        bulkChangeClassId
-      )}`,
-      variant: "success",
-    });
+      clearSelection();
+      if (succeededCount > 0) {
+        qc.invalidateQueries({ queryKey: ["students"] });
+      }
+      setIsBulkChangeClassOpen(false);
+      setBulkChangeClassId("");
+
+      if (failedCount === 0) {
+        notify.success(t("updated"), `${ids.length} ${t("students")} ${t("movedTo")} ${getClassName(
+            bulkChangeClassId
+          )}`);
+      } else {
+        notify.error(
+          t("error"),
+          `${succeededCount}/${ids.length} ${t("movedTo")} ${getClassName(bulkChangeClassId)}`
+        );
+      }
+    } catch (error) {
+      // Promise.allSettled never rejects — this only catches a bug elsewhere
+      // in this function, but previously there was no handler at all, so a
+      // rejection here surfaced as an unhandled promise rejection with the
+      // dialog stuck open and no feedback to the user.
+      console.error("Failed to change class for students:", error);
+      notify.error(t("error"), t("failedToUpdateStudentStatus"));
+    }
   };
 
   const handleMarkLeft = (id: string) => {
@@ -744,21 +654,13 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           status: "left",
           leftDate: new Date().toISOString(),
         });
-        await loadData();
-        toast({
-          title: t("updated"),
-          description: t("statusUpdated"),
-          variant: "success",
-        });
+        qc.invalidateQueries({ queryKey: ["students"] });
+        notify.success(t("updated"), t("statusUpdated"));
         setMarkLeftConfirmOpen(false);
         setMarkLeftStudentId(null);
       } catch (error) {
         console.error("Failed to mark student as left:", error);
-        toast({
-          title: t("error"),
-          description: t("failedToUpdateStudentStatus"),
-          variant: "destructive",
-        });
+        notify.error(t("error"), t("failedToUpdateStudentStatus"));
       } finally {
         setIsMarkLeftLoading(false);
       }
@@ -767,8 +669,22 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleOpenDialog = () => {
     resetForm();
+    void refetchClasses();
     setIsDialogOpen(true);
   };
+
+  // Covers the rare case where the dialog is opened for a NEW student before
+  // useSettings() has finished its first fetch (resetForm ran with
+  // settings still undefined) — once it resolves, back-fill the branch's
+  // real payment instead of leaving the field permanently blank/wrong.
+  useEffect(() => {
+    if (isDialogOpen && !editingStudent && !useCustomPayment && settings?.monthlyPayment) {
+      setFormData((prev) =>
+        prev.monthlyPayment ? prev : { ...prev, monthlyPayment: settings.monthlyPayment.toString() }
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDialogOpen, settings?.monthlyPayment]);
 
   const resetForm = () => {
     setFormData({
@@ -776,9 +692,11 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
       classId: "",
       phone: "",
       parentPhone: "",
-      monthlyPayment: "",
+      monthlyPayment: settings?.monthlyPayment ? settings.monthlyPayment.toString() : "",
       status: "active",
     });
+    setUseCustomPayment(false);
+    setFormErrors({});
     setEditingStudent(null);
   };
 
@@ -788,13 +706,8 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
   };
 
   const handleSearch = () => {
-    setPage(1); // Reset to first page on search
     setSearchTerm(searchInput);
-    setIsListLoading(true);
-    // Pass override values to loadData
-    loadData(searchInput, filterStatus, filterClass, filterPaymentStatus).finally(
-      () => setIsListLoading(false),
-    );
+    setPage(1);
   };
 
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -805,17 +718,9 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
 
   const handleClearSearch = () => {
     setSearchInput("");
-    setPage(1);
     setSearchTerm("");
-    setIsListLoading(true);
-    // Pass empty search as override
-    loadData("", filterStatus, filterClass, filterPaymentStatus).finally(() =>
-      setIsListLoading(false),
-    );
+    setPage(1);
   };
-
-  // Students are now filtered by backend including payment status
-  const paginatedStudents = students;
 
   const getStatusColor = (status: StudentStatus) => {
     switch (status) {
@@ -830,62 +735,235 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
     }
   };
 
-  if (isLoading) {
-    return (
-
-      <div className="space-y-6">
-        {/* Header Skeleton */}
-        <div className="space-y-2">
-          <Skeleton className="h-10 w-48" />
-          <Skeleton className="h-4 w-64" />
+  // ── Column definitions ──────────────────────────────────────────────────────
+  const columns: Column<Student>[] = [
+    {
+      key: "name",
+      header: t("fullName"),
+      render: (student) => (
+        <div
+          className="flex items-center gap-3 cursor-pointer group"
+          onClick={() => router.push(`/student-details?id=${student.id}&from=students`)}
+        >
+          <InitialsAvatar name={student.fullName} size="md" />
+          <div className="min-w-0">
+            <p className="font-medium text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:underline truncate">
+              {toTitleCase(student.fullName)}
+            </p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {formatPhoneNumber(student.phone)}
+            </p>
+          </div>
         </div>
-
-        {/* Action Buttons Skeleton */}
-        <div className="flex gap-4">
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-10 w-32" />
+      ),
+    },
+    {
+      key: "class",
+      header: t("class"),
+      hideOnMobile: true,
+      render: (student) => (
+        <span className="text-slate-900 dark:text-slate-100">
+          {student.class?.name || "—"}
+        </span>
+      ),
+    },
+    {
+      // Shows the PARENT's number: the student's own phone already appears
+      // under their name in the first column, so this column was rendering
+      // the identical value twice per row while parentPhone — which the form
+      // collects and validates, and which the school actually calls — was
+      // never shown in the table at all.
+      key: "parentPhone",
+      header: t("parentPhone"),
+      hideOnMobile: true,
+      render: (student) => (
+        <span className="text-slate-900 dark:text-slate-100">
+          {student.parentPhone ? formatPhoneNumber(student.parentPhone) : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "monthlyPayment",
+      header: t("monthlyPayment"),
+      hideOnMobile: true,
+      render: (student) => (
+        <span className="text-slate-900 dark:text-slate-100 tabular-nums">
+          {formatCurrency(student.monthlyPayment)}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: t("status"),
+      render: (student) => (
+        <Badge className={getStatusColor(student.status)}>
+          {t(student.status)}
+        </Badge>
+      ),
+    },
+    {
+      key: "payment",
+      header: t("payment"),
+      render: (student) => {
+        const paymentStatus = student.payment?.status || "unpaid";
+        return <PaymentStatusBadge status={paymentStatus} label={t(paymentStatus)} />;
+      },
+    },
+    {
+      key: "actions",
+      header: t("actions"),
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (student) => (
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label={t("edit")}
+            onClick={(e) => { e.stopPropagation(); handleEdit(student); }}
+            disabled={!canEditStudents}
+          >
+            <Edit2 className="w-4 h-4" />
+          </Button>
+          {student.status === "active" && (
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={t("markAsLeft")}
+              onClick={(e) => { e.stopPropagation(); canEditStudents && handleMarkLeft(student.id); }}
+              disabled={!canEditStudents}
+            >
+              <UserX className="w-4 h-4" />
+            </Button>
+          )}
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label={t("delete")}
+            onClick={(e) => { e.stopPropagation(); canDeleteStudents && handleDelete(student.id); }}
+            disabled={!canDeleteStudents}
+          >
+            <Trash2 className="w-4 h-4 text-red-500" />
+          </Button>
         </div>
+      ),
+    },
+  ];
 
-        {/* Filters Skeleton */}
-        <div className="flex gap-4">
-          <Skeleton className="h-10 w-full sm:w-64" />
-          <Skeleton className="h-10 w-full sm:w-40" />
-          <Skeleton className="h-10 w-full sm:w-40" />
-        </div>
+  const bulkActions = (
+    <>
+      <Dialog open={isBulkChangeClassOpen} onOpenChange={setIsBulkChangeClassOpen}>
+        <DialogTrigger asChild>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setBulkChangeClassId("");
+              void refetchClasses();
+            }}
+          >
+            {t("changeClass")}
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <DialogTitle className="text-base">{t("changeClass")}</DialogTitle>
+          </DialogHeader>
 
-        {/* Table Rows Skeleton */}
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-4 w-32" />
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center gap-4 py-4 border-b">
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-8 w-20" />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
+          <div className="p-4 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder={t("searchClasses")}
+                value={bulkChangeClassSearch}
+                onChange={(e) => setBulkChangeClassSearch(e.target.value)}
+                className="pl-9"
+                autoFocus
+              />
+            </div>
 
-    );
-  }
+            <div className="max-h-64 overflow-y-auto space-y-1 -mr-2 pr-2">
+              {(() => {
+                const term = bulkChangeClassSearch.toLowerCase();
+                const filtered = classes.filter((c: any) =>
+                  c.name.toLowerCase().includes(term)
+                );
+                if (filtered.length === 0) {
+                  return (
+                    <p className="text-sm text-slate-400 text-center py-6">
+                      {t("noClassesFound")}
+                    </p>
+                  );
+                }
+                return filtered.map((cls: any) => {
+                  const selected = bulkChangeClassId === cls.id;
+                  return (
+                    <button
+                      key={cls.id}
+                      type="button"
+                      onClick={() => setBulkChangeClassId(cls.id)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-md text-sm text-left transition-colors ${
+                        selected
+                          ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-medium"
+                          : "hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-700 dark:text-slate-300"
+                      }`}
+                    >
+                      <span>{cls.name}</span>
+                      {selected && (
+                        <span className="text-xs text-indigo-600 dark:text-indigo-400">✓</span>
+                      )}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+
+          <div className="px-6 py-3 bg-blue-50 dark:bg-blue-900/20 border-y border-blue-100 dark:border-blue-900/50">
+            <p className="text-sm text-blue-900 dark:text-blue-100">
+              <span className="font-semibold">{selectedIds.size}</span>{" "}
+              {t("studentsWillBeMoved")}
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 px-6 py-4 bg-slate-50/50 dark:bg-slate-900/50">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsBulkChangeClassOpen(false);
+                setBulkChangeClassId("");
+                setBulkChangeClassSearch("");
+              }}
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              onClick={handleBulkChangeClass}
+              disabled={!bulkChangeClassId}
+            >
+              {t("change")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Button
+        size="sm"
+        variant="destructive"
+        onClick={handleBulkDelete}
+      >
+        {t("deleteSelected")}
+      </Button>
+      <Button size="sm" variant="outline" onClick={clearSelection}>
+        {t("cancel")}
+      </Button>
+    </>
+  );
 
   return (
-
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100">
-            {t("students")}
-          </h1>
-          <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mt-1">
-            {t("manageStudents")}
-          </p>
-        </div>
+        <PageHeader title={t("students")} subtitle={t("manageStudents")} />
 
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Dialog
@@ -988,703 +1066,340 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
             </DialogContent>
           </Dialog>
 
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                className="w-full sm:w-auto bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-                onClick={handleOpenDialog}
-                disabled={!canCreateStudents}
-                title={!canCreateStudents ? t("noPermission") || "No permission to create students" : ""}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {t("addStudent")}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingStudent ? t("editStudent") : t("addNewStudent")}
-                </DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName">{t("fullName")} *</Label>
-                    <Input
-                      id="fullName"
-                      value={formData.fullName}
-                      onChange={(e) =>
-                        setFormData({ ...formData, fullName: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
+          <Button
+            className="w-full sm:w-auto bg-brand hover:bg-brand-hover"
+            onClick={handleOpenDialog}
+            disabled={!canCreateStudents}
+            title={!canCreateStudents ? t("noPermission") : ""}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            {t("addStudent")}
+          </Button>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="classId">{t("selectClass")} *</Label>
-                    <Select
-                      value={formData.classId}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, classId: value })
-                      }
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("selectClass")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {classes.map((cls) => (
-                          <SelectItem key={cls.id} value={cls.id}>
-                            {cls.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+          <FormDialog
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+            title={editingStudent ? t("editStudent") : t("addNewStudent")}
+            onSubmit={handleSubmit}
+            submitLabel={editingStudent ? t("update") : t("create")}
+            submittingLabel={editingStudent ? t("updating") : t("creating")}
+            cancelLabel={t("cancel")}
+            isPending={isSubmitting}
+            maxWidth="max-w-2xl"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field
+                id="fullName"
+                label={`${t("fullName")} *`}
+                value={formData.fullName}
+                error={formErrors.fullName}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, fullName: e.target.value });
+                  clearFieldError("fullName");
+                }}
+              />
 
-                  <div className="space-y-2">
-                    <Label htmlFor="phone">{t("phone")} *</Label>
-                    <Input
-                      id="phone"
-                      type="tel"
-                      value={formData.phone}
-                      onChange={(e) =>
-                        setFormData({ ...formData, phone: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="parentPhone">{t("parentPhone")} *</Label>
-                    <Input
-                      id="parentPhone"
-                      type="tel"
-                      value={formData.parentPhone}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          parentPhone: e.target.value,
-                        })
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="status">{t("status")} *</Label>
-                    <Select
-                      value={formData.status}
-                      onValueChange={(value: StudentStatus) =>
-                        setFormData({ ...formData, status: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">{t("active")}</SelectItem>
-                        <SelectItem value="suspended">
-                          {t("suspended")}
-                        </SelectItem>
-                        <SelectItem value="left">{t("left")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="monthlyPayment">{t("monthlyPayment")} *</Label>
-                    <Input
-                      id="monthlyPayment"
-                      type="number"
-                      min="0"
-                      step="500"
-                      value={formData.monthlyPayment}
-                      onChange={(e) =>
-                        setFormData({ ...formData, monthlyPayment: e.target.value })
-                      }
-                      placeholder="0"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                    disabled={isSubmitting}
-                  >
-                    {t("cancel")}
-                  </Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
-                        {editingStudent ? t("updating") : t("creating")}
-                      </>
-                    ) : (
-                      editingStudent ? t("update") : t("create")
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-3">
-            <div className="w-full">
-              <div className="flex gap-2">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <Input
-                    placeholder={t("searchStudents")}
-                    value={searchInput}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setSearchInput(value);
-                      // Auto-clear search when input is empty
-                      if (value === "") {
-                        setPage(1);
-                        setSearchTerm("");
-                      }
-                    }}
-                    onKeyPress={handleSearchKeyPress}
-                    className="pl-10 w-full"
-                  />
-                </div>
-                <Button
-                  onClick={handleSearch}
-                  className="bg-blue-600 hover:bg-blue-700"
-                  size="sm"
+              <div className="space-y-2">
+                <Label htmlFor="classId">{t("selectClass")} *</Label>
+                <Select
+                  value={formData.classId}
+                  onValueChange={(value) => {
+                    setFormData({ ...formData, classId: value });
+                    clearFieldError("classId");
+                  }}
+                  required
                 >
-                  {t("search") || "Search"}
-                </Button>
-                {searchInput && (
-                  <Button
-                    onClick={handleClearSearch}
-                    variant="outline"
-                    size="sm"
-                  >
-                    {t("clear") || "Clear"}
-                  </Button>
+                  <SelectTrigger className={formErrors.classId ? "border-red-500 focus:ring-red-500" : ""}>
+                    <SelectValue placeholder={t("selectClass")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {classes.map((cls) => (
+                      <SelectItem key={cls.id} value={cls.id}>
+                        {cls.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formErrors.classId && (
+                  <p className="text-xs text-red-500">{formErrors.classId}</p>
+                )}
+              </div>
+
+              <Field
+                id="phone"
+                label={`${t("phone")} *`}
+                type="tel"
+                value={formData.phone}
+                error={formErrors.phone}
+                placeholder="+998 (91) 123-45-68"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, phone: formatPhoneAsYouType(e.target.value) });
+                  clearFieldError("phone");
+                }}
+              />
+
+              <Field
+                id="parentPhone"
+                label={`${t("parentPhone")} *`}
+                type="tel"
+                value={formData.parentPhone}
+                error={formErrors.parentPhone}
+                placeholder="+998 (91) 123-45-68"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, parentPhone: formatPhoneAsYouType(e.target.value) });
+                  clearFieldError("parentPhone");
+                }}
+              />
+
+              <div className="space-y-2">
+                <Label htmlFor="status" className="h-5 flex items-center">{t("status")} *</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value: StudentStatus) =>
+                    setFormData({ ...formData, status: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">{t("active")}</SelectItem>
+                    <SelectItem value="suspended">
+                      {t("suspended")}
+                    </SelectItem>
+                    <SelectItem value="left">{t("left")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <div className="h-5 flex items-center justify-between">
+                  <Label htmlFor="monthlyPayment" className="text-sm font-medium">
+                    {t("monthlyPayment")}
+                    <span className="ml-0.5 text-red-500">*</span>
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="useCustomPayment" className="text-xs font-normal text-slate-500 dark:text-slate-400 cursor-pointer">
+                      {t("customAmount")}
+                    </Label>
+                    <Switch
+                      id="useCustomPayment"
+                      checked={useCustomPayment}
+                      onCheckedChange={(checked) => {
+                        setUseCustomPayment(checked);
+                        if (!checked) {
+                          setFormData((prev) => ({
+                            ...prev,
+                            monthlyPayment: settings?.monthlyPayment ? settings.monthlyPayment.toString() : "",
+                          }));
+                          clearFieldError("monthlyPayment");
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+                <Input
+                  id="monthlyPayment"
+                  type="text"
+                  inputMode="numeric"
+                  disabled={!useCustomPayment}
+                  aria-invalid={!!formErrors.monthlyPayment}
+                  className={formErrors.monthlyPayment ? "border-red-500 focus-visible:ring-red-500" : ""}
+                  value={formatNumberWithSpaces(formData.monthlyPayment)}
+                  placeholder="0"
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                    setFormData({ ...formData, monthlyPayment: removeNumberFormatting(e.target.value).replace(/[^\d]/g, "") });
+                    clearFieldError("monthlyPayment");
+                  }}
+                />
+                {formErrors.monthlyPayment && (
+                  <p className="text-xs text-red-500">{formErrors.monthlyPayment}</p>
                 )}
               </div>
             </div>
+          </FormDialog>
+        </div>
+      </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              <Select value={filterClass} onValueChange={setFilterClass}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("allClasses")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("allClasses")}</SelectItem>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls.id} value={cls.id}>
-                      {cls.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      {/* Filter bar */}
+      <FilterBar>
+        <FilterSearch
+          value={searchInput}
+          onChange={(v) => { setSearchInput(v); if (v === "") { setSearchTerm(""); setPage(1); } }}
+          onSearch={handleSearch}
+          placeholder={t("searchStudents")}
+        />
+        <Select value={filterClass} onValueChange={(v) => { setFilterClass(v); setPage(1); }}>
+          <SelectTrigger className={filterSelectClass("w-40")}>
+            <SelectValue placeholder={t("allClasses")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allClasses")}</SelectItem>
+            {classes.map((cls) => (
+              <SelectItem key={cls.id} value={cls.id}>{cls.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setPage(1); }}>
+          <SelectTrigger className={filterSelectClass("w-36")}>
+            <SelectValue placeholder={t("allStatus")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allStatus")}</SelectItem>
+            <SelectItem value="active">{t("active")}</SelectItem>
+            <SelectItem value="suspended">{t("suspended")}</SelectItem>
+            <SelectItem value="left">{t("left")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterPaymentStatus} onValueChange={(v) => { setFilterPaymentStatus(v); setPage(1); }}>
+          <SelectTrigger className={filterSelectClass("w-40")}>
+            <SelectValue placeholder={t("paymentStatus")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allPayments")}</SelectItem>
+            <SelectItem value="paid">{t("paid")}</SelectItem>
+            <SelectItem value="partial">{t("partial")}</SelectItem>
+            <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <FilterReset
+          onClick={handleClearSearch}
+          show={searchInput !== "" || filterClass !== "all" || filterStatus !== "all" || filterPaymentStatus !== "all"}
+          label={t("reset")}
+        />
+      </FilterBar>
 
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("allStatus")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("allStatus")}</SelectItem>
-                  <SelectItem value="active">{t("active")}</SelectItem>
-                  <SelectItem value="suspended">{t("suspended")}</SelectItem>
-                  <SelectItem value="left">{t("left")}</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={filterPaymentStatus}
-                onValueChange={setFilterPaymentStatus}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={t("paymentStatus")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("allPayments")}</SelectItem>
-                  <SelectItem value="paid">{t("paid")}</SelectItem>
-                  <SelectItem value="partial">{t("partial")}</SelectItem>
-                  <SelectItem value="unpaid">{t("unpaid")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardHeader>
-      </Card>
-
-      <Card className={`border-l-4 transition-all ${getSelectedCount() > 0
-          ? "border-l-blue-500 bg-blue-50 dark:bg-blue-900/20"
-          : "border-l-slate-300 dark:border-l-slate-600 bg-slate-50 dark:bg-slate-900/50 opacity-50"
-        }`}>
-        <CardContent className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium">
-              {getSelectedCount()} {t("itemsSelected") || "items selected"}
-            </p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <Dialog
-              open={isBulkChangeClassOpen}
-              onOpenChange={setIsBulkChangeClassOpen}
-            >
-              <DialogTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setBulkChangeClassId("")}
-                  disabled={getSelectedCount() === 0}
-                  className="w-full sm:w-auto"
-                >
-                  {t("changeClass") || "Change Class"}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>
-                    Change Class for Selected Students
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="bulkChangeClassId">
-                      {t("selectClass")} *
-                    </Label>
-                    <Select
-                      value={bulkChangeClassId}
-                      onValueChange={setBulkChangeClassId}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("selectClass")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {classes.map((cls) => (
-                          <SelectItem key={cls.id} value={cls.id}>
-                            {cls.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                    <p className="text-sm text-blue-900 dark:text-blue-100">
-                      {getSelectedCount()} students will be moved to the
-                      selected class
-                    </p>
-                  </div>
-                  <div className="flex justify-end gap-3 pt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setIsBulkChangeClassOpen(false);
-                        setBulkChangeClassId("");
-                      }}
-                    >
-                      {t("cancel")}
-                    </Button>
-                    <Button
-                      onClick={handleBulkChangeClass}
-                      disabled={!bulkChangeClassId}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      {t("change") || "Change Class"}
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={handleBulkDelete}
-              disabled={getSelectedCount() === 0}
-              className="w-full sm:w-auto"
-            >
-              {t("deleteSelected") || "Delete Selected"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={clearSelection}
-              disabled={getSelectedCount() === 0}
-              className="w-full sm:w-auto"
-            >
-              {t("cancel")}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
+      {/* Table */}
       <Card>
-        <CardContent>
-          {isListLoading ? (
-            <div className="space-y-4">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="flex items-center gap-4 py-4 border-b">
-                  <Skeleton className="h-4 w-4" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-8 w-20" />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <>
-              {/* Desktop Table */}
-              <div className="hidden md:overflow-x-auto md:block">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800">
-                      <th className="text-left py-3 px-4">
-                        <Checkbox
-                          checked={
-                            areAllSelected(paginatedStudents) ||
-                            areSomeSelected(paginatedStudents)
-                          }
-                          onCheckedChange={() =>
-                            toggleSelectAll(paginatedStudents)
-                          }
-                        />
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {t("fullName")}
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {t("class")}
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {t("phone")}
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {t("monthlyPayment")}
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {t("status")}
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {t("payment")}
-                      </th>
-                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {t("actions")}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedStudents.map((student) => {
-                      const paymentStatus = student.payment?.status || 'unpaid';
-                      const paymentStatusColor = paymentStatus === "paid"
-                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                        : paymentStatus === "partial"
-                          ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                          : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
-                      return (
-                        <tr
-                          key={student.id}
-                          className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 ${isSelected(student.id)
-                              ? "bg-blue-50 dark:bg-blue-900/20"
-                              : ""
-                            }`}
-                        >
-                          <td className="py-3 px-4">
-                            <Checkbox
-                              checked={isSelected(student.id)}
-                              onCheckedChange={() => toggleSelect(student.id)}
-                            />
-                          </td>
-                          <td className="py-3 px-4">
-                            <div
-                              className="cursor-pointer hover:opacity-70 transition-opacity"
-                              onClick={() =>
-                                router.push(
-                                  `/student-details?id=${student.id}&from=students`
-                                )
-                              }
-                            >
-                              <p className="font-medium text-slate-900 dark:text-slate-100 text-blue-600 dark:text-blue-400 hover:underline">
-                                {toTitleCase(student.fullName)}
-                              </p>
-                              <p className="text-sm text-slate-500 dark:text-slate-400">
-                                {formatPhoneNumber(student.parentPhone)}
-                              </p>
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                            {student.class?.name || "—"}
-                          </td>
-                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                            {formatPhoneNumber(student.phone)}
-                          </td>
-                          <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                            {formatCurrency(student.monthlyPayment)}
-                          </td>
-                          <td className="py-3 px-4">
-                            <Badge className={getStatusColor(student.status)}>
-                              {t(student.status)}
-                            </Badge>
-                          </td>
-                          <td className="py-3 px-4">
-                            <Badge className={paymentStatusColor}>
-                              {t(paymentStatus)}
-                            </Badge>
-                          </td>
-                          <td className="py-3 px-4">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() =>
-                                  canEditStudents && handleEdit(student)
-                                }
-                                disabled={!canEditStudents}
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </Button>
-                              {student.status === "active" && (
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() =>
-                                    canEditStudents && handleMarkLeft(student.id)
-                                  }
-                                  disabled={!canEditStudents}
-                                >
-                                  <UserX className="w-4 h-4" />
-                                </Button>
-                              )}
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() =>
-                                  canDeleteStudents && handleDelete(student.id)
-                                }
-                                disabled={!canDeleteStudents}
-                              >
-                                <Trash2 className="w-4 h-4 text-red-500" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile Card View */}
-              <div className="md:hidden space-y-4">
-                {paginatedStudents.map((student) => {
-                  const paymentStatus = student.payment?.status || 'unpaid';
-                  const paymentStatusColor = paymentStatus === "paid"
-                    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                    : paymentStatus === "partial"
-                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                      : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
-                  return (
+        <CardContent className="p-0">
+          <DataTable
+            columns={columns}
+            data={students}
+            loading={isLoading}
+            selectable
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onToggleSelectAll={() => toggleSelectAll(students)}
+            areAllSelected={areAllSelected(students)}
+            areSomeSelected={areSomeSelected(students)}
+            bulkActions={bulkActions}
+            pagination={{ page, limit, total }}
+            onPageChange={setPage}
+            onLimitChange={(newLimit) => { setLimit(newLimit); setPage(1); }}
+            limitOptions={[5, 10, 20, 50, 100]}
+            emptyIcon={Users}
+            emptyTitle={t("noStudentsYet")}
+            emptyDescription={t("addFirstStudent")}
+            emptyAction={canCreateStudents ? { label: t("addStudent"), onClick: handleOpenDialog } : undefined}
+            renderCard={(student, isSelected, onToggle) => {
+              const paymentStatus = student.payment?.status || "unpaid";
+              return (
+                <div
+                  key={student.id}
+                  className={`border rounded-lg p-4 transition-all ${
+                    isSelected
+                      ? "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700"
+                      : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
+                  }`}
+                >
+                  <div className="flex items-start gap-3 mb-3">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={onToggle}
+                      className="mt-1"
+                    />
                     <div
-                      key={student.id}
-                      className={`border rounded-lg p-4 transition-all ${isSelected(student.id)
-                          ? "bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700"
-                          : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
-                        }`}
+                      className="flex-1 cursor-pointer hover:opacity-70 transition-opacity"
+                      onClick={() =>
+                        router.push(`/student-details?id=${student.id}&from=students`)
+                      }
                     >
-                      <div className="flex items-start gap-3 mb-3">
-                        <Checkbox
-                          checked={isSelected(student.id)}
-                          onCheckedChange={() => toggleSelect(student.id)}
-                          className="mt-1"
-                        />
-                        <div
-                          className="flex-1 cursor-pointer hover:opacity-70 transition-opacity"
-                          onClick={() =>
-                            router.push(
-                              `/student-details?id=${student.id}&from=students`
-                            )
-                          }
-                        >
-                          <p className="font-semibold text-slate-900 dark:text-slate-100 text-blue-600 dark:text-blue-400 hover:underline">
-                            {toTitleCase(student.fullName)}
-                          </p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                      <p className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                        {toTitleCase(student.fullName)}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {formatPhoneNumber(student.parentPhone)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mb-3">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-slate-600 dark:text-slate-400">{t("class")}:</span>
+                      <span className="font-medium text-slate-900 dark:text-slate-100">
+                        {student.class?.name || "—"}
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-slate-600 dark:text-slate-400 text-sm">{t("phone")}:</span>
+                      <ul className="list-disc list-inside space-y-1">
+                        <li className="font-medium text-slate-900 dark:text-slate-100 text-sm">
+                          {formatPhoneNumber(student.phone)}
+                        </li>
+                        {student.parentPhone && (
+                          <li className="font-medium text-slate-900 dark:text-slate-100 text-sm">
                             {formatPhoneNumber(student.parentPhone)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2 mb-3">
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-600 dark:text-slate-400">{t("class")}:</span>
-                          <span className="font-medium text-slate-900 dark:text-slate-100">
-                            {student.class?.name || "—"}
-                          </span>
-                        </div>
-
-                        <div className="space-y-1">
-                          <span className="text-slate-600 dark:text-slate-400 text-sm">{t("phone")}:</span>
-                          <ul className="list-disc list-inside space-y-1">
-                            <li className="font-medium text-slate-900 dark:text-slate-100 text-sm">
-                              {formatPhoneNumber(student.phone)}
-                            </li>
-                            {student.parentPhone && (
-                              <li className="font-medium text-slate-900 dark:text-slate-100 text-sm">
-                                {formatPhoneNumber(student.parentPhone)}
-                              </li>
-                            )}
-                          </ul>
-                        </div>
-
-                        <div className="flex justify-between items-center text-sm">
-                          <span className="text-slate-600 dark:text-slate-400">{t("monthlyPayment")}:</span>
-                          <span className="font-medium text-slate-900 dark:text-slate-100">
-                            {formatCurrency(student.monthlyPayment)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm gap-2">
-                          <span className="text-slate-600 dark:text-slate-400">{t("status")}:</span>
-                          <Badge className={getStatusColor(student.status)}>
-                            {t(student.status)}
-                          </Badge>
-                        </div>
-                        <div className="flex justify-between items-center text-sm gap-2">
-                          <span className="text-slate-600 dark:text-slate-400">{t("payment")}:</span>
-                          <Badge className={paymentStatusColor}>
-                            {t(paymentStatus)}
-                          </Badge>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2 justify-start">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            canEditStudents && handleEdit(student)
-                          }
-                          disabled={!canEditStudents}
-                          className="flex-1"
-                        >
-                          <Edit2 className="w-4 h-4 mr-1" />
-                          {t("edit")}
-                        </Button>
-                        {student.status === "active" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              canEditStudents && handleMarkLeft(student.id)
-                            }
-                            disabled={!canEditStudents}
-                            className="flex-1"
-                          >
-                            <UserX className="w-4 h-4 mr-1" />
-                            {t("left")}
-                          </Button>
+                          </li>
                         )}
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() =>
-                            canDeleteStudents && handleDelete(student.id)
-                          }
-                          disabled={!canDeleteStudents}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
+                      </ul>
                     </div>
-                  );
-                })}
-              </div>
 
-              {paginatedStudents.length === 0 && (
-                <div className="text-center py-12">
-                  <p className="text-slate-500 dark:text-slate-400">
-                    {t("noStudentsYet")}
-                  </p>
-                </div>
-              )}
-
-              {total > 0 && (
-                <div className="flex flex-col sm:flex-row items-center justify-between mt-6 px-4 py-3 border-t border-slate-200 dark:border-slate-800 gap-4">
-                  <div className="flex items-center gap-4">
-                    <Label className="text-sm text-slate-600 dark:text-slate-400">
-                      {t("perPage") || "Per Page"}
-                    </Label>
-                    <Select value={limit.toString()} onValueChange={(val) => setLimit(parseInt(val))}>
-                      <SelectTrigger className="w-20">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="5">5</SelectItem>
-                        <SelectItem value="10">10</SelectItem>
-                        <SelectItem value="20">20</SelectItem>
-                        <SelectItem value="50">50</SelectItem>
-                        <SelectItem value="100">100</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <span className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-                      {t("showing") || "Ko'rsatilyotgan"} {(page - 1) * limit + 1} – {Math.min(page * limit, total)} {t("of") || "dan"} {total}
-                    </span>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-slate-600 dark:text-slate-400">{t("monthlyPayment")}:</span>
+                      <span className="font-medium text-slate-900 dark:text-slate-100 tabular-nums">
+                        {formatCurrency(student.monthlyPayment)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm gap-2">
+                      <span className="text-slate-600 dark:text-slate-400">{t("status")}:</span>
+                      <Badge className={getStatusColor(student.status)}>
+                        {t(student.status)}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between items-center text-sm gap-2">
+                      <span className="text-slate-600 dark:text-slate-400">{t("payment")}:</span>
+                      <PaymentStatusBadge status={paymentStatus} label={t(paymentStatus)} />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
+
+                  <div className="flex gap-2 justify-start">
                     <Button
-                      variant="outline"
                       size="sm"
-                      onClick={() => setPage(Math.max(1, page - 1))}
-                      disabled={page === 1}
-                      className="h-8"
+                      variant="outline"
+                      onClick={() => canEditStudents && handleEdit(student)}
+                      disabled={!canEditStudents}
+                      className="flex-1"
                     >
-                      <ChevronLeft className="w-4 h-4" />
-                      <span className="hidden sm:inline ml-1">{t("previous") || "Previous"}</span>
+                      <Edit2 className="w-4 h-4 mr-1" />
+                      {t("edit")}
                     </Button>
-                    <div className="flex items-center gap-2">
-                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                        const startPage = Math.max(1, page - 2);
-                        return startPage + i;
-                      })
-                        .filter((pageNum) => pageNum <= totalPages)
-                        .map((pageNum) => (
-                          <Button
-                            key={pageNum}
-                            variant={page === pageNum ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setPage(pageNum)}
-                            className="h-8 w-8 p-0"
-                          >
-                            {pageNum}
-                          </Button>
-                        ))}
-                    </div>
+                    {student.status === "active" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => canEditStudents && handleMarkLeft(student.id)}
+                        disabled={!canEditStudents}
+                        className="flex-1"
+                      >
+                        <UserX className="w-4 h-4 mr-1" />
+                        {t("left")}
+                      </Button>
+                    )}
                     <Button
-                      variant="outline"
                       size="sm"
-                      onClick={() => setPage(Math.min(totalPages, page + 1))}
-                      disabled={page === totalPages || totalPages === 0}
-                      className="h-8"
+                      variant="destructive"
+                      aria-label={t("delete")}
+                      onClick={() => canDeleteStudents && handleDelete(student.id)}
+                      disabled={!canDeleteStudents}
                     >
-                      <span className="hidden sm:inline mr-1">{t("next") || "Next"}</span>
-                      <ChevronRight className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>
-              )}
-            </>
-          )}
+              );
+            }}
+          />
         </CardContent>
       </Card>
 
@@ -1716,7 +1431,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               {isDeleteLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("deleting") || "Deleting..."}
+                  {t("deleting")}
                 </>
               ) : (
                 t("delete")
@@ -1740,7 +1455,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
           </p>
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
             <p className="text-sm text-amber-900 dark:text-amber-100">
-              {getSelectedCount()} {t("students")} {t("willBeDeleted")}
+              {selectedIds.size} {t("students")} {t("willBeDeleted")}
             </p>
           </div>
           <div className="flex justify-end gap-3 pt-4">
@@ -1759,7 +1474,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               {isBulkDeleteLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("deleting") || "Deleting..."}
+                  {t("deleting")}
                 </>
               ) : (
                 t("delete")
@@ -1804,7 +1519,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
               {isMarkLeftLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("updating") || "Updating..."}
+                  {t("updating")}
                 </>
               ) : (
                 t("confirm")
@@ -1814,6 +1529,5 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
         </DialogContent>
       </Dialog>
     </div>
-
   );
 }

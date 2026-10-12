@@ -11,59 +11,17 @@ import {
   SubscriptionResponse,
 } from "@/types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "https://incredible-love-production-0008.up.railway.app/api";
+import { apiRequest } from "./api";
+import { publicRequest } from "./apiBase";
 
-// Helper function for unauthenticated API requests
-async function makePublicRequest<T>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<T> {
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...options?.headers,
-  };
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `API request failed: ${response.statusText}`);
-  }
-
-  return response.json();
+// Unauthenticated requests (public plan listing etc.)
+async function makePublicRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  return publicRequest<T>(endpoint, options);
 }
 
-// Helper function for authenticated API requests
-async function makeRequest<T>(
-  endpoint: string,
-  options?: RequestInit
-): Promise<T> {
-  const token = localStorage.getItem("auth_token") || localStorage.getItem("token");
-  const headers: HeadersInit = {
-    "Content-Type": "application/json",
-    ...options?.headers,
-  };
-
-  if (token) {
-    (headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `API request failed: ${response.statusText}`);
-  }
-
-  return response.json();
+// Authenticated requests go through the shared helper (401 handling, branch header)
+async function makeRequest<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  return apiRequest<T>(endpoint, options);
 }
 
 // ============================================================================
@@ -75,6 +33,34 @@ async function makeRequest<T>(
  */
 export async function getSubscriptionPlans(): Promise<SubscriptionPlan[]> {
   return makeRequest<SubscriptionPlan[]>("/subscriptions/plans");
+}
+
+// ─── Payment types ──────────────────────────────────────────────────────────
+
+export interface ActivePaymentType {
+  id: string;
+  code: string;
+  displayName: string;
+  description?: string;
+  sortOrder: number;
+}
+
+/**
+ * Get active payment types from the backend (excludes free_trial).
+ * Falls back to the three built-in types if the endpoint is unavailable.
+ */
+export async function getActivePaymentTypes(): Promise<ActivePaymentType[]> {
+  try {
+    const res = await makePublicRequest<ActivePaymentType[]>("/payment-types");
+    if (Array.isArray(res) && res.length > 0) return res;
+  } catch {
+    // fallthrough to defaults
+  }
+  return [
+    { id: "click",    code: "click",    displayName: "Click.uz",      description: "Pay via Click.uz",          sortOrder: 1 },
+    { id: "telegram", code: "telegram", displayName: "Telegram",      description: "Pay via Telegram bot",      sortOrder: 2 },
+    { id: "manual",   code: "manual",   displayName: "Bank Transfer",  description: "Manual bank transfer",      sortOrder: 3 },
+  ];
 }
 
 /**
@@ -211,7 +197,7 @@ export async function getLatestPayment(
   subscriptionId: string
 ): Promise<SubscriptionPayment | null> {
   const payments = await getSubscriptionPayments(subscriptionId);
-  return payments.length > 0 ? payments[0] : null;
+  return payments.length > 0 ? payments[0]! : null;
 }
 
 /**
@@ -288,16 +274,16 @@ export async function initiateTelegramPayment(subscriptionId: string): Promise<{
  */
 export function isSubscriptionActive(subscription: Subscription | null): boolean {
   if (!subscription) return false;
-  return subscription.status === "active";
+  return subscription.status === "active" || subscription.status === "trial";
 }
 
 /**
  * Check if subscription will expire soon (within 7 days)
  */
 export function isExpiringsoon(subscription: Subscription | null): boolean {
-  if (!subscription || !subscription.endDate) return false;
+  if (!subscription || !subscription.end_date) return false;
 
-  const endDate = new Date(subscription.endDate);
+  const endDate = new Date(subscription.end_date);
   const today = new Date();
   const daysUntilExpiry = Math.ceil(
     (endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
@@ -307,12 +293,31 @@ export function isExpiringsoon(subscription: Subscription | null): boolean {
 }
 
 /**
+ * Get days until subscription end_date (negative if already past, Infinity if no end date)
+ */
+export function getDaysUntilExpiry(subscription: Subscription | null): number {
+  if (!subscription || !subscription.end_date) return Infinity;
+  const end = new Date(subscription.end_date).getTime();
+  const now = Date.now();
+  return Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Returns true if the subscription is a trial ending within 7 days (or already ended)
+ */
+export function isTrialEndingSoon(subscription: Subscription | null): boolean {
+  if (!subscription || subscription.status !== "trial") return false;
+  if (!subscription.end_date) return false;
+  return getDaysUntilExpiry(subscription) <= 7;
+}
+
+/**
  * Get days until subscription renewal
  */
 export function getDaysUntilRenewal(subscription: Subscription | null): number {
-  if (!subscription || !subscription.renewalDate) return -1;
+  if (!subscription || !subscription.renewal_date) return -1;
 
-  const renewalDate = new Date(subscription.renewalDate);
+  const renewalDate = new Date(subscription.renewal_date);
   const today = new Date();
   return Math.ceil(
     (renewalDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
@@ -322,13 +327,6 @@ export function getDaysUntilRenewal(subscription: Subscription | null): number {
 /**
  * Format price for display
  */
-export function formatPrice(price: number, currency: string = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-  }).format(price);
-}
-
 /**
  * Get plan badge color based on features
  */

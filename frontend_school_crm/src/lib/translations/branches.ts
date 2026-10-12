@@ -121,9 +121,69 @@ export const branchTranslations: Partial<Translation> = {
     "uz-latn": "Oylik to'lov 0 dan katta bo'lishi kerak",
     en: "Monthly payment must be greater than 0",
   },
-  managerBranchNote: {
-    "uz-cyrl": "Менежер фақат тайинланган филиалини бошқара олади",
-    "uz-latn": "Menejer faqat tayinlangan filialini boshqara oladi",
-    en: "Manager can only manage their assigned branch",
+  syncPaymentsDialogTitle: {
+    "uz-cyrl": "Ўқувчилар нархини янгилаш",
+    "uz-latn": "O'quvchilar narxini yangilash",
+    en: "Update students' monthly payment",
   },
+  syncPaymentsDialogDesc: {
+    "uz-cyrl": "Филиал нархи {from} дан {to} га ўзгартирилди. Мавжуд ўқувчиларнинг ойлик тўловини ҳам янгилайсизми?",
+    "uz-latn": "Filial narxi {from} dan {to} ga o'zgartirildi. Mavjud o'quvchilarning oylik to'lovini ham yangilaysizmi?",
+    en: "The branch price changed from {from} to {to}. Update existing students' monthly payment too?",
+  },
+  syncPaymentsAllLabel: {
+    "uz-cyrl": "Барча ўқувчиларга қўллаш",
+    "uz-latn": "Barcha o'quvchilarga qo'llash",
+    en: "Apply to all students",
+  },
+  syncPaymentsAllDescOn: {
+    "uz-cyrl": "Ёқилган: ҳамма ўқувчининг нархи янгиланади — индивидуал нархдагилар ҳам.",
+    "uz-latn": "Yoqilgan: hamma o'quvchining narxi yangilanadi — individual narxdagilar ham.",
+    en: "On: every student's price is updated — including custom-priced ones.",
+  },
+  syncPaymentsAllDescOff: {
+    "uz-cyrl": "Ўчиқ: фақат эски стандарт нархда турганлар янгиланади, индивидуал нархдагиларга тегилмайди.",
+    "uz-latn": "O'chiq: faqat eski standart narxda turganlar yangilanadi, individual narxdagilarga tegilmaydi.",
+    en: "Off: only students still on the old default price are updated; custom prices are left alone.",
+  },
+  syncPaymentsSkip: {
+    "uz-cyrl": "Ўтказиб юбориш",
+    "uz-latn": "O'tkazib yuborish",
+    en: "Skip",
+  },
+  syncPaymentsApply: {
+    "uz-cyrl": "Янгилаш",
+    "uz-latn": "Yangilash",
+    en: "Update",
+  },
+  studentPaymentsSynced: {
+    "uz-cyrl": "{count} та ўқувчининг ойлик тўлови янгиланди",
+    "uz-latn": "{count} ta o'quvchining oylik to'lovi yangilandi",
+    en: "{count} student(s) moved to the new price",
+  },
+  failedToSyncStudentPayments: {
+    "uz-cyrl": "Ўқувчилар нархини янгилашда хатолик",
+    "uz-latn": "O'quvchilar narxini yangilashda xatolik",
+    en: "Failed to update students' payment",
+  },
+
+  // Missing keys
+  failedToCreateAdmin: { "uz-cyrl": "Администратор яратишда хатолик", "uz-latn": "Administrator yaratishda xatolik", en: "Failed to create admin" },
+  managerBranchNote: { "uz-cyrl": "Менежер фақат ўзига тегишли филиал маълумотларини кўра олади", "uz-latn": "Menejer faqat o'ziga tegishli filial ma'lumotlarini ko'ra oladi", en: "Manager can only view their assigned branch data" },
+  failedToLoadData: { "uz-cyrl": "Маълумотларни юклашда хатолик", "uz-latn": "Ma'lumotlarni yuklashda xatolik", en: "Failed to load data" },
+
+  // Mandatory first-branch onboarding step (registration no longer
+  // auto-creates a placeholder branch — see auth_service's CompleteRegistration).
+  setUpFirstBranch: { "uz-cyrl": "Биринчи филиалингизни очинг", "uz-latn": "Birinchi filialingizni oching", en: "Set up your first branch" },
+  setUpFirstBranchSubtitle: {
+    "uz-cyrl": "Ишни бошлашдан олдин камида битта филиал қўшиш керак",
+    "uz-latn": "Ishni boshlashdan oldin kamida bitta filial qo'shish kerak",
+    en: "Add at least one branch before you can start using the system",
+  },
+  createBranchAndContinue: { "uz-cyrl": "Филиал очиш ва давом этиш", "uz-latn": "Filial ochish va davom etish", en: "Create branch and continue" },
+
+  // Tab labels on the merged Branches page (list + the former standalone
+  // /branches-overview page, now an "overview" tab here).
+  branchesListTab: { "uz-cyrl": "Рўйхат", "uz-latn": "Ro'yxat", en: "List" },
+  branchesOverviewTab: { "uz-cyrl": "Таҳлил", "uz-latn": "Tahlil", en: "Overview" },
 };

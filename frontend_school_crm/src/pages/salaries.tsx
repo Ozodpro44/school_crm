@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,49 +16,47 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { usersDB } from "@/lib/storage";
+import { FormDialog } from "@/components/FormDialog";
+import { Field } from "@/components/Field";
 import { Salary, PaymentStatus, Teacher, PaymentMethod, Branch } from "@/types";
-import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Plus, Search, Wallet, AlertCircle, CheckCircle, CreditCard, Banknote, Building2, Edit2, Trash2, Loader2 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import MonthYearSelector from "@/components/MonthYearSelector";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
-import { listSalaries, getBranch, createSalary, updateSalary, deleteSalary, listTeachers } from "@/lib/api";
-import { savePageFilters, loadPageFilters, urlHasFilters } from "@/lib/page-filters";
-import { useToast } from "@/hooks/use-toast";
+import { listSalaries, getBranch, listTeachers, createSalary, updateSalary, deleteSalary, getUser } from "@/lib/api";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { formatCurrency } from "@/lib/exportUtils";
 import { formatNumberWithSpaces, removeNumberFormatting } from "@/lib/utils";
-import { useSettings } from "@/hooks/use-settings";
 import { searchMatchesCrossScript } from "@/lib/transliterate";
+import { PageHeader } from "@/components/PageHeader";
+import { DataTable, Column } from "@/components/DataTable";
+import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
+import { useBranch } from "@/context/BranchContext";
+import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
 
 export default function SalariesPage() {
   const router = useRouter();
-  useSettings();
+  const { currentBranch, isLoading: branchLoading } = useBranch();
   const [isLoading, setIsLoading] = useState(true);
   const [salaries, setSalaries] = useState<Salary[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
-  const [searchTerm, setSearchTerm] = useState<string>(() =>
-    String(loadPageFilters("salaries", { search: "", status: "all", limit: 10 }).search)
-  );
-  const [filterStatus, setFilterStatus] = useState<string>(() =>
-    String(loadPageFilters("salaries", { search: "", status: "all", limit: 10 }).status)
-  );
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
+  const [editingSalaryOriginal, setEditingSalaryOriginal] = useState<Salary | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeleteLoading, setIsDeleteLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState<number>(() =>
-    Number(loadPageFilters("salaries", { search: "", status: "all", limit: 10 }).limit) || 10
-  );
+  const itemsPerPage = 10;
   const [branchData, setBranchData] = useState<Branch | null>(null);
+  const [userCache, setUserCache] = useState<{ [key: string]: string }>({});
   const language = useLanguage();
-  const { toast } = useToast();
   const canCreateSalaries = hasPermission("canCreateSalaries");
   const canEditSalaries = hasPermission("canEditSalaries");
   const canDeleteSalaries = hasPermission("canDeleteSalaries");
@@ -84,54 +81,101 @@ export default function SalariesPage() {
     amount: "",
     month: getDefaultMonth(),
     year: getDefaultYear(),
-    status: "partial" as PaymentStatus,
+    status: "paid" as PaymentStatus,
     paymentMethod: "bank" as PaymentMethod,
     notes: "",
   });
+  const [formErrors, setFormErrors] = useState<{ teacherId?: string; amount?: string }>({});
+
+  const firstBranchLoadRef = useRef(true);
+  // Set by the branch-change effect right before it resets selectedMonth to
+  // "" to force recomputing the new branch's default month — without this,
+  // that reset ALSO triggers the month-change effect below (selectedMonth
+  // is one of its dependencies), so a single branch switch fired loadData()
+  // twice, racing each other.
+  const skipNextMonthEffectRef = useRef(false);
+  // Guards against whichever of the two loadData() calls resolves last
+  // winning regardless of which one was actually requested most recently.
+  const loadRequestIdRef = useRef(0);
+  const financialMonthKey = currentBranch?.currentFinancialMonth
+    ? `${currentBranch.currentFinancialMonth.year}-${currentBranch.currentFinancialMonth.month}`
+    : undefined;
+
+  // The sidebar already hides this link for anyone lacking canViewSalaries
+  // (see Layout.tsx), but that alone doesn't stop someone from typing the
+  // URL directly — settings.tsx already guards its own page this way for
+  // canViewSettings, so this mirrors that pattern for consistency.
+  useEffect(() => {
+    if (!hasPermission("canViewSalaries")) {
+      router.push("/");
+    }
+  }, [router]);
 
   useEffect(() => {
     if (router.isReady) {
       const page = router.query.page ? parseInt(router.query.page as string, 10) : 1;
       setCurrentPage(Math.max(1, page));
-      if (urlHasFilters(router.query as Record<string, string | undefined>, ["search", "status"])) {
-        if (router.query.search) setSearchTerm(router.query.search as string);
-        if (router.query.status) setFilterStatus(router.query.status as string);
-      }
     }
+  }, [router.isReady, router.query.page]);
+
+  // Restore the last search/status filters once, on first client render.
+  const filtersRestoredRef = useRef(false);
+  useEffect(() => {
+    if (!router.isReady || filtersRestoredRef.current) return;
+    filtersRestoredRef.current = true;
+    const saved = loadPageFilters("salaries", { search: "", status: "all" });
+    setSearchTerm(String(saved.search));
+    setFilterStatus(String(saved.status));
   }, [router.isReady]);
+  useEffect(() => {
+    if (!filtersRestoredRef.current) return;
+    savePageFilters("salaries", { search: searchTerm, status: filterStatus });
+  }, [searchTerm, filterStatus]);
 
   useEffect(() => {
-    savePageFilters("salaries", { search: searchTerm, status: filterStatus, limit: itemsPerPage });
-  }, [searchTerm, filterStatus, itemsPerPage]);
-
-  useEffect(() => {
-    setIsLoading(true);
-    const timer = setTimeout(() => {
-      loadData();
+    // See the equivalent guard in assignments.tsx: without the branchLoading
+    // check, a branch that never resolves left isLoading stuck forever.
+    if (branchLoading) return;
+    if (!currentBranch?.id) {
       setIsLoading(false);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Reload data when branch changes
-  useEffect(() => {
-    const handleBranchChange = async () => {
-      setIsLoading(true);
+      return;
+    }
+    setIsLoading(true);
+    if (!firstBranchLoadRef.current) {
       setCurrentPage(1);
-      // Reset selectedMonth to force reload from new branch
+      skipNextMonthEffectRef.current = true;
       setSelectedMonth("");
-      loadData().finally(() => setIsLoading(false));
-    };
-    window.addEventListener("branchChange", handleBranchChange);
-    return () => window.removeEventListener("branchChange", handleBranchChange);
-  }, []);
+    }
+    firstBranchLoadRef.current = false;
+    const myId = ++loadRequestIdRef.current;
+    // Always use the branch's own default month here: selectedMonth in this
+    // closure still belongs to the previously selected branch.
+    loadData(undefined, undefined, true).finally(() => {
+      if (myId === loadRequestIdRef.current) setIsLoading(false);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentBranch?.id, financialMonthKey, branchLoading]);
 
-  // Reload data when month/year changes
+  // Reload data when the user picks a different month/year. Skipped once
+  // right after a branch switch — that reset already triggers its own fetch
+  // in the effect above (see skipNextMonthEffectRef), so without this guard
+  // a single branch switch fired loadData() twice, racing each other, and
+  // this effect never showed a loading state of its own (switching months
+  // used to flash the previous month's figures with no indicator).
   useEffect(() => {
-    loadData();
+    if (skipNextMonthEffectRef.current) {
+      skipNextMonthEffectRef.current = false;
+      return;
+    }
+    setIsLoading(true);
+    const myId = ++loadRequestIdRef.current;
+    loadData().finally(() => {
+      if (myId === loadRequestIdRef.current) setIsLoading(false);
+    });
   }, [selectedMonth, selectedYear]);
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   const handleMonthChange = (month: string, year: number) => {
     setSelectedMonth(month);
@@ -139,62 +183,107 @@ export default function SalariesPage() {
     setCurrentPage(1);
   };
 
-  const loadData = async (month?: string, year?: number) => {
+  const loadData = async (month?: string, year?: number, useBranchDefaults = false) => {
     try {
-      const branchId = localStorage.getItem("selectedBranchId") || "";
+      const branchId = currentBranch?.id || "";
 
-      // Load branch data to get current month
       if (branchId) {
         const branch = await getBranch(branchId);
         setBranchData(branch);
 
-        // Use financial month data if available, otherwise fall back to current date
         const currentMonth = branch.currentFinancialMonth?.month?.toString().padStart(2, '0') || String(new Date().getMonth() + 1).padStart(2, '0');
         const currentYear = branch.currentFinancialMonth?.year || new Date().getFullYear();
 
-        // Set selected month to branch's current month if not already set and not provided
-        const targetMonth = month || selectedMonth || currentMonth;
-        const targetYear = year || selectedYear || currentYear;
+        const targetMonth = month || (useBranchDefaults ? "" : selectedMonth) || currentMonth;
+        const targetYear = year || (useBranchDefaults ? 0 : selectedYear) || currentYear;
 
-        if (!selectedMonth) {
+        if (!selectedMonth || useBranchDefaults) {
           setSelectedMonth(currentMonth);
           setSelectedYear(currentYear);
         }
 
-        const [data, teachersList] = await Promise.all([
+        const [data, teacherList] = await Promise.all([
           listSalaries(branchId, targetMonth, targetYear),
           listTeachers(branchId),
         ]);
         setSalaries(data);
-        setTeachers(teachersList);
+        setTeachers(teacherList);
+
+        // teacher_service.Salary.createdBy is a raw X-User-ID UUID, never
+        // joined against the users table — resolve it to a display name the
+        // same way expenses.tsx does, otherwise the "Added by" column shows
+        // a bare UUID.
+        const creatorIds = [...new Set(data.map((s) => s.createdBy).filter(Boolean))] as string[];
+        for (const userId of creatorIds) {
+          await fetchAndCacheUserName(userId);
+        }
       }
     } catch (error) {
       console.error("Failed to load salaries:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToLoadSalaries"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), t("failedToLoadSalaries"));
+    }
+  };
+
+  const getUserName = (userId: string) => {
+    if (!userId) return "-";
+    return userCache[userId] || "-";
+  };
+
+  const fetchAndCacheUserName = async (userId: string) => {
+    if (!userId || userCache[userId]) return;
+    try {
+      const user = await getUser(userId);
+      setUserCache((prev) => ({ ...prev, [userId]: user.fullName }));
+    } catch {
+      setUserCache((prev) => ({ ...prev, [userId]: "Unknown" }));
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Previously unvalidated: teacherId could be submitted empty (creating
+    // a salary record with no teacher) and amount could be blank/negative/
+    // zero (parseFloat("") is NaN, sent straight to the API).
+    const errors: typeof formErrors = {};
+    if (!editingSalaryId && !formData.teacherId) errors.teacherId = t("fieldRequired");
+    if (!formData.amount.trim() || !(parseFloat(formData.amount) > 0)) {
+      errors.amount = formData.amount.trim() ? t("mustBePositive") : t("fieldRequired");
+    }
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      return;
+    }
+
     setIsSubmitting(true);
     const user = getCurrentUser();
     if (!user) { setIsSubmitting(false); return; }
-    const branchId = localStorage.getItem("selectedBranchId") || user.branchId || "";
 
+    const branchId = currentBranch?.id || user.branchId || "";
     try {
       if (editingSalaryId) {
+        // A salary already marked "paid" is a reconciled record — the
+        // backend now rejects changing its amount/paidDate while it stays
+        // paid. Only send those fields when they're actually changing (a
+        // fresh amount, or a genuine transition into "paid" for the first
+        // time), so editing e.g. just the notes on an already-paid salary
+        // doesn't get rejected for silently re-sending the old amount and
+        // today's date as if they were new values.
+        const wasAlreadyPaid = editingSalaryOriginal?.status === "paid";
+        const newAmount = parseFloat(formData.amount);
+        const amountChanged = !editingSalaryOriginal || newAmount !== editingSalaryOriginal.amount;
+        const transitioningToPaid = formData.status === "paid" && !wasAlreadyPaid;
         await updateSalary(editingSalaryId, {
-          amount: parseFloat(formData.amount),
+          ...(!wasAlreadyPaid || amountChanged ? { amount: newAmount } : {}),
           status: formData.status,
           paymentMethod: formData.paymentMethod,
           notes: formData.notes || undefined,
-          paidDate: formData.status === "paid" ? new Date().toISOString() : undefined,
+          ...(!wasAlreadyPaid || transitioningToPaid
+            ? { paidDate: formData.status === "paid" ? new Date().toISOString() : undefined }
+            : {}),
         });
         setEditingSalaryId(null);
+        setEditingSalaryOriginal(null);
       } else {
         await createSalary({
           teacherId: formData.teacherId,
@@ -211,13 +300,10 @@ export default function SalariesPage() {
       resetForm();
       await loadData();
       setIsDialogOpen(false);
+      notify.success(t("success"));
     } catch (error) {
       console.error("Failed to save salary:", error);
-      toast({
-        title: t("error"),
-        description: t("failedToSaveSalary"),
-        variant: "destructive",
-      });
+      notify.error(t("error"), error instanceof Error ? error.message : t("failedToSaveSalary"));
     } finally {
       setIsSubmitting(false);
     }
@@ -227,14 +313,15 @@ export default function SalariesPage() {
     try {
       await updateSalary(id, { status: "paid", paidDate: new Date().toISOString() });
       await loadData();
-      toast({ title: t("success") || "Success", description: "Salary marked as paid", variant: "success" });
-    } catch {
-      toast({ title: t("error"), description: "Failed to mark as paid", variant: "destructive" });
+      notify.success(t("success"), t("salaryMarkedPaid"));
+    } catch (error) {
+      notify.error(t("error"), error instanceof Error ? error.message : undefined);
     }
   };
 
   const handleEdit = (salary: Salary) => {
     setEditingSalaryId(salary.id);
+    setEditingSalaryOriginal(salary);
     setFormData({
       teacherId: salary.teacherId,
       amount: salary.amount.toString(),
@@ -257,9 +344,9 @@ export default function SalariesPage() {
       try {
         await deleteSalary(deleteConfirmId);
         await loadData();
-        toast({ title: t("deleted") || "Deleted", description: t("salaryRecordDeleted"), variant: "success" });
+        notify.success(t("deleted"), t("salaryRecordDeleted"));
       } catch (error) {
-        toast({ title: "Error", description: "Failed to delete salary", variant: "destructive" });
+        notify.error(t("error"), t("failedToDeleteSalary"));
       } finally {
         setIsDeleteLoading(false);
         setDeleteConfirmId(null);
@@ -268,7 +355,6 @@ export default function SalariesPage() {
   };
 
   const resetForm = () => {
-    // Use branch's current financial month, fallback to current date
     const defaultMonth = branchData?.currentFinancialMonth?.month?.toString().padStart(2, '0') || getDefaultMonth();
     const defaultYear = branchData?.currentFinancialMonth?.year?.toString() || getDefaultYear();
 
@@ -277,11 +363,13 @@ export default function SalariesPage() {
       amount: "",
       month: defaultMonth,
       year: defaultYear,
-      status: "partial",
+      status: "paid",
       paymentMethod: "bank",
       notes: "",
     });
     setEditingSalaryId(null);
+    setEditingSalaryOriginal(null);
+    setFormErrors({});
   };
 
   const getTeacherName = (teacherId: string) => {
@@ -289,22 +377,13 @@ export default function SalariesPage() {
     return teacher?.fullName || "Unknown";
   };
 
-  const getUserName = (userId: string) => {
-    const user = usersDB.getAll().find((u) => u.id === userId);
-    return user?.fullName || "-";
-  };
-
   const filteredSalaries = salaries.filter((salary) => {
     const teacherName = getTeacherName(salary.teacherId);
     const matchesSearch = searchMatchesCrossScript(teacherName, searchTerm);
-
-    const matchesStatus =
-      filterStatus === "all" || salary.status === filterStatus;
-
+    const matchesStatus = filterStatus === "all" || salary.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
-  const totalPages = Math.ceil(filteredSalaries.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedSalaries = filteredSalaries.slice(startIndex, startIndex + itemsPerPage);
 
@@ -313,9 +392,7 @@ export default function SalariesPage() {
       case "paid":
         return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
       case "partial":
-        return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
-      case "partial":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
+        return "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400";
       default:
         return "";
     }
@@ -347,9 +424,24 @@ export default function SalariesPage() {
     .filter((s) => s.status === "paid")
     .reduce((sum, s) => sum + s.amount, 0);
 
-  const totalPending = salaries
+  // Teachers who have no salary record for this month — their salary is still owed
+  const unpaidTeacherIds = new Set(salaries.map((s) => s.teacherId));
+  const unpaidTeacherTotal = teachers
+    .filter((t) => !unpaidTeacherIds.has(t.id))
+    .reduce((sum, t) => sum + (t.monthlySalary || 0), 0);
+
+  // Pending = outstanding balance on partial records + teachers with no record at all
+  const partialPendingTotal = salaries
     .filter((s) => s.status === "partial")
-    .reduce((sum, s) => sum + s.amount, 0);
+    .reduce((sum, s) => {
+      const teacher = teachers.find((t) => t.id === s.teacherId);
+      const owed = (teacher?.monthlySalary || 0) - s.amount;
+      return sum + (owed > 0 ? owed : 0);
+    }, 0);
+  const totalPending = partialPendingTotal + unpaidTeacherTotal;
+
+  // Count of teachers not yet paid (for the subtitle)
+  const unpaidTeacherCount = teachers.filter((t) => !unpaidTeacherIds.has(t.id)).length;
 
   const months = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"];
 
@@ -362,69 +454,124 @@ export default function SalariesPage() {
     return t(monthNames[index] ? monthNames[index].toLowerCase() : "unknown") || monthNames[index] || "Unknown";
   };
 
-  if (isLoading) {
-    return (
-
-      <div className="space-y-6">
-        {/* Header Skeleton */}
-        <div className="space-y-2">
-          <Skeleton className="h-10 w-48" />
-          <Skeleton className="h-4 w-64" />
+  // ── Column definitions ────────────────────────────────────────────────────────
+  const columns: Column<Salary>[] = [
+    {
+      key: "teacher",
+      header: t("teacher"),
+      render: (salary) => (
+        <p className="font-medium text-slate-900 dark:text-slate-100">
+          {getTeacherName(salary.teacherId)}
+        </p>
+      ),
+    },
+    {
+      key: "period",
+      header: t("period"),
+      hideOnMobile: true,
+      render: (salary) => (
+        <span className="text-slate-900 dark:text-slate-100">
+          {getMonthName(salary.month)} {salary.year}
+        </span>
+      ),
+    },
+    {
+      key: "amount",
+      header: t("amount"),
+      render: (salary) => (
+        <span className="text-slate-900 dark:text-slate-100 tabular-nums">
+          {formatCurrency(salary.amount)}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: t("status"),
+      render: (salary) => (
+        <Badge className={getStatusColor(salary.status)}>
+          {salary.status === "partial" ? t("partialPaid") : t(salary.status)}
+        </Badge>
+      ),
+    },
+    {
+      key: "paymentMethod",
+      header: t("paymentMethod"),
+      hideOnMobile: true,
+      render: (salary) => (
+        <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
+          {getPaymentMethodIcon(salary.paymentMethod)}
+          <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
+          <span className="ml-1 font-medium">{formatCurrency(salary.amount)}</span>
+        </Badge>
+      ),
+    },
+    {
+      key: "paidDate",
+      header: t("paidDate"),
+      hideOnMobile: true,
+      render: (salary) => (
+        <span className="text-slate-900 dark:text-slate-100">
+          {salary.paidDate
+            ? new Date(salary.paidDate).toLocaleDateString('en-GB').replace(/\//g, ".")
+            : "-"}
+        </span>
+      ),
+    },
+    {
+      key: "createdBy",
+      header: t("whoAddedSalaries"),
+      hideOnMobile: true,
+      render: (salary) => (
+        <span className="text-sm text-slate-900 dark:text-slate-100">
+          {salary.createdBy ? getUserName(salary.createdBy) : "-"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: t("actions"),
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (salary) => (
+        <div className="flex items-center justify-end gap-2">
+          {salary.status === "partial" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-green-600"
+              onClick={() => handleMarkPaid(salary.id)}
+            >
+              {t("markPaid")}
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleEdit(salary)}
+            disabled={!canEditSalaries}
+            title={canEditSalaries ? "" : "No permission"}
+          >
+            <Edit2 className="w-4 h-4" />
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => handleDelete(salary.id)}
+            disabled={!canDeleteSalaries}
+            title={canDeleteSalaries ? "" : "No permission"}
+          >
+            <Trash2 className="w-4 h-4 text-red-200" />
+          </Button>
         </div>
-
-        {/* Stats Cards Skeleton */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-3">
-                <Skeleton className="h-4 w-24" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-20 mb-2" />
-                <Skeleton className="h-3 w-32" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Action Button Skeleton */}
-        <Skeleton className="h-10 w-32" />
-
-        {/* Search and Filter Skeleton */}
-        <div className="flex gap-4 flex-col sm:flex-row">
-          <Skeleton className="h-10 w-full sm:flex-1" />
-          <Skeleton className="h-10 w-40" />
-        </div>
-
-        {/* Table Skeleton */}
-        <Card>
-          <CardContent className="space-y-4 pt-6">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="flex items-center gap-4 py-4 border-b">
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-4 flex-1" />
-                <Skeleton className="h-8 w-20" />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-    );
-  }
+      ),
+    },
+  ];
 
   return (
-
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div className="flex-1">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-            {t("salaries")}
-          </h1>
-          <p className="text-slate-600 dark:text-slate-400 mt-1">
-            {t("trackTeacherSalaries")}
-          </p>
+          <PageHeader title={t("salaries")} subtitle={t("trackTeacherSalaries")} />
         </div>
 
         {isAdmin && branchData && selectedMonth && (
@@ -440,421 +587,300 @@ export default function SalariesPage() {
         )}
 
         <div className="flex-1 flex justify-end">
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700"
-                onClick={() => resetForm()}
-                disabled={!canCreateSalaries}
-                title={!canCreateSalaries ? t("noPermission") || "No permission to create salaries" : ""}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {t("recordSalaryPayment")}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingSalaryId ? t("edit") || "Edit" : t("recordSalaryPayment")}
-                </DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="teacherId">{t("teacher")} *</Label>
-                    <Select
-                      value={formData.teacherId}
-                      onValueChange={(value) => {
-                        const teacher = teachers.find((t) => t.id === value);
-                        setFormData({
-                          ...formData,
-                          teacherId: value,
-                          amount: teacher?.monthlySalary.toString() || "",
-                        });
-                      }}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("selectTeacher")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {teachers.map((teacher) => (
-                          <SelectItem key={teacher.id} value={teacher.id}>
-                            {teacher.fullName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+          <Button
+            className="bg-brand hover:bg-brand-hover"
+            onClick={() => { resetForm(); setIsDialogOpen(true); }}
+            disabled={!canCreateSalaries}
+            title={!canCreateSalaries ? t("noPermission") : ""}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            {t("recordSalaryPayment")}
+          </Button>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="amount">{t("amount")} *</Label>
-                    <Input
-                      id="amount"
-                      type="text"
-                      value={formatNumberWithSpaces(formData.amount)}
-                      onChange={(e) =>
-                        setFormData({ ...formData, amount: removeNumberFormatting(e.target.value) })
-                      }
-                      required
-                      placeholder="0"
-                      step="500"
-                    />
-                  </div>
+          <FormDialog
+            open={isDialogOpen}
+            onOpenChange={setIsDialogOpen}
+            title={editingSalaryId ? t("edit") : t("recordSalaryPayment")}
+            onSubmit={handleSubmit}
+            submitLabel={editingSalaryId ? t("update") : t("recordSalaryPayment")}
+            submittingLabel={t("recording")}
+            cancelLabel={t("cancel")}
+            isPending={isSubmitting}
+            maxWidth="max-w-2xl"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="teacherId">{t("teacher")} *</Label>
+                <Select
+                  value={formData.teacherId}
+                  onValueChange={(value) => {
+                    const teacher = teachers.find((t) => t.id === value);
+                    setFormData({
+                      ...formData,
+                      teacherId: value,
+                      amount: teacher?.monthlySalary.toString() || "",
+                    });
+                    if (formErrors.teacherId) setFormErrors((e) => ({ ...e, teacherId: undefined }));
+                  }}
+                >
+                  <SelectTrigger className={formErrors.teacherId ? "border-red-500 focus:ring-red-500" : ""}>
+                    <SelectValue placeholder={t("selectTeacher")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teachers.map((teacher) => (
+                      <SelectItem key={teacher.id} value={teacher.id}>
+                        {teacher.fullName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {formErrors.teacherId && (
+                  <p className="text-xs text-red-500">{formErrors.teacherId}</p>
+                )}
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="status">{t("paymentStatusLabel")} *</Label>
-                    <Select
-                      value={formData.status}
-                      onValueChange={(value: PaymentStatus) =>
-                        setFormData({ ...formData, status: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="paid">{t("paid")}</SelectItem>
-                        <SelectItem value="partial">{t("partialPaid")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <Field
+                id="amount"
+                label={`${t("amount")} *`}
+                type="text"
+                value={formatNumberWithSpaces(formData.amount)}
+                error={formErrors.amount}
+                placeholder="0"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, amount: removeNumberFormatting(e.target.value) });
+                  if (formErrors.amount) setFormErrors((er) => ({ ...er, amount: undefined }));
+                }}
+              />
 
-                  <div className="space-y-2">
-                    <Label htmlFor="month">{t("month")} *</Label>
-                    <Select
-                      value={formData.month}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, month: value })
-                      }
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("selectMonth")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {months.map((month) => (
-                          <SelectItem key={month} value={month}>
-                            {getMonthName(month)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="status">{t("paymentStatusLabel")} *</Label>
+                <Select
+                  value={formData.status}
+                  onValueChange={(value: PaymentStatus) =>
+                    setFormData({ ...formData, status: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="paid">{t("paid")}</SelectItem>
+                    <SelectItem value="partial">{t("partialPaid")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="year">{t("year")} *</Label>
-                    <Input
-                      id="year"
-                      type="number"
-                      value={formData.year}
-                      onChange={(e) =>
-                        setFormData({ ...formData, year: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="month">{t("month")} *</Label>
+                <Select
+                  value={formData.month}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, month: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={t("selectMonth")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {months.map((month) => (
+                      <SelectItem key={month} value={month}>
+                        {getMonthName(month)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="paymentMethod">{t("paymentMethodLabel")} *</Label>
-                    <Select
-                      value={formData.paymentMethod}
-                      onValueChange={(value: PaymentMethod) =>
-                        setFormData({ ...formData, paymentMethod: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="card">{t("card")}</SelectItem>
-                        <SelectItem value="cash">{t("cash")}</SelectItem>
-                        <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+              <Field
+                id="year"
+                label={`${t("year")} *`}
+                type="number"
+                value={formData.year}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setFormData({ ...formData, year: e.target.value })
+                }
+              />
 
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="notes">{t("description")}</Label>
-                    <Textarea
-                      id="notes"
-                      value={formData.notes}
-                      onChange={(e) =>
-                        setFormData({ ...formData, notes: e.target.value })
-                      }
-                      placeholder={t("notesPlaceholder")}
-                    />
-                  </div>
-                </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="paymentMethod">{t("paymentMethodLabel")} *</Label>
+                <Select
+                  value={formData.paymentMethod}
+                  onValueChange={(value: PaymentMethod) =>
+                    setFormData({ ...formData, paymentMethod: value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="card">{t("card")}</SelectItem>
+                    <SelectItem value="cash">{t("cash")}</SelectItem>
+                    <SelectItem value="bank">{t("bankTransfer")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                    disabled={isSubmitting}
-                  >
-                    {t("cancel")}
-                  </Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
-                        {t("recording")}
-                      </>
-                    ) : (
-                      t("recordSalaryPayment")
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+              <Field
+                id="notes"
+                label={t("description")}
+                as="textarea"
+                value={formData.notes}
+                placeholder={t("notesPlaceholder")}
+                className="md:col-span-2"
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setFormData({ ...formData, notes: e.target.value })
+                }
+              />
+            </div>
+          </FormDialog>
         </div>
       </div>
 
+      {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="border-l-4 border-l-green-500">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <Wallet className="w-4 h-4" />
               {t("totalPaid")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {formatCurrency(totalPaid)}
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("salariesPaidOut")}
-            </p>
+            {isLoading ? <Skeleton className="h-9 w-36 mb-1" /> : (
+              <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">{formatCurrency(totalPaid)}</div>
+            )}
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("salariesPaidOut")}</p>
           </CardContent>
         </Card>
 
         <Card className="border-l-4 border-l-orange-500">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />
               {t("pendingLabel")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">
-              {formatCurrency(totalPending)}
-            </div>
+            {isLoading ? <Skeleton className="h-9 w-36 mb-1" /> : (
+              <div className="text-3xl font-bold text-orange-600 dark:text-orange-400">{formatCurrency(totalPending)}</div>
+            )}
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("unpaidSalariesLabel")}
+              {!isLoading && unpaidTeacherCount > 0
+                ? `${unpaidTeacherCount} ${t("teachersNotPaid")}`
+                : t("unpaidSalariesLabel")}
             </p>
           </CardContent>
         </Card>
 
         <Card className="border-l-4 border-l-blue-500">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-slate-600 dark:text-slate-400 flex items-center gap-2">
               <CheckCircle className="w-4 h-4" />
               {t("totalRecords")}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {salaries.length}
-            </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {t("salaryRecords")}
-            </p>
+            {isLoading ? <Skeleton className="h-9 w-16 mb-1" /> : (
+              <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">{salaries.length}</div>
+            )}
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t("salaryRecords")}</p>
           </CardContent>
         </Card>
       </div>
 
+      {/* Search and filter */}
+      <FilterBar>
+        <FilterSearch
+          value={searchTerm}
+          onChange={(v) => { setSearchTerm(v); setCurrentPage(1); }}
+          placeholder={t("searchSalaries")}
+        />
+        <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setCurrentPage(1); }}>
+          <SelectTrigger className={filterSelectClass("w-40")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allStatus")}</SelectItem>
+            <SelectItem value="paid">{t("paid")}</SelectItem>
+            <SelectItem value="partial">{t("partialPaid")}</SelectItem>
+          </SelectContent>
+        </Select>
+        <FilterReset onClick={() => { setSearchTerm(""); setFilterStatus("all"); setCurrentPage(1); }} show={searchTerm !== "" || filterStatus !== "all"} label={t("reset")} />
+      </FilterBar>
+
+      {/* Table */}
       <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-              <Input
-                placeholder={t("searchSalaries")}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setCurrentPage(1); }}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("allStatus")}</SelectItem>
-                <SelectItem value="paid">{t("paid")}</SelectItem>
-                <SelectItem value="partial">{t("partialPaid")}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={String(itemsPerPage)} onValueChange={(v) => { setItemsPerPage(Number(v)); setCurrentPage(1); }}>
-              <SelectTrigger className="w-full sm:w-[120px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="10">10</SelectItem>
-                <SelectItem value="25">25</SelectItem>
-                <SelectItem value="50">50</SelectItem>
-                <SelectItem value="100">100</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("teacher")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("period")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("amount")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("status")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("paymentMethod")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("paidDate")}
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("whoAddedSalaries")}
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {t("actions")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedSalaries.map((salary) => (
-                  <tr
-                    key={salary.id}
-                    className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50"
-                  >
-                    <td className="py-3 px-4">
-                      <p className="font-medium text-slate-900 dark:text-slate-100">
-                        {getTeacherName(salary.teacherId)}
-                      </p>
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
+        <CardContent className="p-0">
+          <DataTable
+            columns={columns}
+            data={paginatedSalaries}
+            loading={isLoading}
+            emptyIcon={Wallet}
+            emptyTitle={t("noSalaryRecordsFound")}
+            pagination={{
+              page: currentPage,
+              limit: itemsPerPage,
+              total: filteredSalaries.length,
+            }}
+            onPageChange={(page) => {
+              setCurrentPage(page);
+              router.push(`/salaries?page=${page}`, undefined, { shallow: true });
+            }}
+            renderCard={(salary) => (
+              <div
+                key={salary.id}
+                className="border border-slate-200 dark:border-slate-700 rounded-lg p-4 space-y-3"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-slate-900 dark:text-slate-100">
+                      {getTeacherName(salary.teacherId)}
+                    </p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
                       {getMonthName(salary.month)} {salary.year}
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      {formatCurrency(salary.amount)}
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge className={getStatusColor(salary.status)}>
-                        {salary.status === "partial" ? t("partialPaid") : t(salary.status)}
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4">
-                      <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
-                        {getPaymentMethodIcon(salary.paymentMethod)}
-                        <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
-                        <span className="ml-1 font-medium">{formatCurrency(salary.amount)}</span>
-                      </Badge>
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      {salary.paidDate
-                        ? new Date(salary.paidDate).toLocaleDateString('en-GB')
-                        : "-"}
-                    </td>
-                    <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                      <span className="text-sm">{salary.createdBy ? getUserName(salary.createdBy) : "-"}</span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center justify-end gap-2">
-                        {salary.status === "partial" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-green-600"
-                            onClick={() => handleMarkPaid(salary.id)}
-                          >
-                            {t("markPaid")}
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEdit(salary)}
-                          disabled={!canEditSalaries}
-                          title={canEditSalaries ? "" : "No permission"}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleDelete(salary.id)}
-                          disabled={!canDeleteSalaries}
-                          title={canDeleteSalaries ? "" : "No permission"}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-200" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {filteredSalaries.length === 0 && (
-              <div className="text-center py-12">
-                <p className="text-slate-500 dark:text-slate-400">
-                  {t("noSalaryRecordsFound")}
-                </p>
-              </div>
-            )}
-
-            {/* Pagination */}
-            {filteredSalaries.length > 0 && (
-              <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-800">
-                <div className="text-sm text-slate-600 dark:text-slate-400">
-                  {t("showing")} {startIndex + 1} – {Math.min(startIndex + itemsPerPage, filteredSalaries.length)} {t("of")} {filteredSalaries.length}
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.push(`/salaries?page=${Math.max(1, currentPage - 1)}`)}
-                    disabled={currentPage === 1}
-                  >
-                    <ChevronLeft className="w-4 h-4 mr-1" />
-                    {t("previous")}
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => router.push(`/salaries?page=${page}`)}
-                      >
-                        {page}
-                      </Button>
-                    ))}
+                    </p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.push(`/salaries?page=${Math.min(totalPages, currentPage + 1)}`)}
-                    disabled={currentPage === totalPages}
-                  >
-                    {t("next")}
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="font-semibold text-slate-900 dark:text-slate-100 tabular-nums">
+                      {formatCurrency(salary.amount)}
+                    </span>
+                    <Badge className={getStatusColor(salary.status)}>
+                      {salary.status === "partial" ? t("partialPaid") : t(salary.status)}
+                    </Badge>
+                  </div>
                 </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge className={`gap-1 ${getPaymentMethodColor(salary.paymentMethod)}`}>
+                      {getPaymentMethodIcon(salary.paymentMethod)}
+                      <span>{t(salary.paymentMethod === "bank" ? "bankTransfer" : salary.paymentMethod)}</span>
+                    </Badge>
+                    {salary.paidDate && (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        {new Date(salary.paidDate).toLocaleDateString("en-GB").replace(/\//g, ".")}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {salary.status === "partial" && (
+                      <Button size="sm" variant="outline" className="text-green-600 h-7 text-xs px-2" onClick={() => handleMarkPaid(salary.id)}>
+                        {t("markPaid")}
+                      </Button>
+                    )}
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(salary)} disabled={!canEditSalaries}>
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(salary.id)} disabled={!canDeleteSalaries}>
+                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    </Button>
+                  </div>
+                </div>
+                {salary.createdBy && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500">{t("whoAddedSalaries")}: {getUserName(salary.createdBy)}</p>
+                )}
               </div>
             )}
-          </div>
+          />
         </CardContent>
       </Card>
 
@@ -885,16 +911,15 @@ export default function SalariesPage() {
               {isDeleteLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {t("deleting") || "Deleting..."}
+                  {t("deleting")}
                 </>
               ) : (
-                t("delete") || "Delete"
+                t("delete")
               )}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
     </div>
-
   );
 }

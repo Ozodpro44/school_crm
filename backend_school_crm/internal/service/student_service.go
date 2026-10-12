@@ -6,21 +6,29 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
-	"github.com/school-crm/backend/internal/utils"
 )
 
 type StudentService struct {
-	db *db.Database
+	db     *db.Database
+	subSvc *SubscriptionService
+	cache  *cache.Client
 }
 
-func NewStudentService(database *db.Database) *StudentService {
-	return &StudentService{db: database}
+func NewStudentService(database *db.Database, subSvc *SubscriptionService) *StudentService {
+	return &StudentService{db: database, subSvc: subSvc}
 }
+
+// SetCache wires in the optional Redis cache client.
+func (s *StudentService) SetCache(c *cache.Client) { s.cache = c }
+
+const studentCacheTTL = 60 * time.Second
 
 type CreateStudentRequest struct {
 	FullName       string     `json:"fullName" binding:"required"`
@@ -33,7 +41,33 @@ type CreateStudentRequest struct {
 	EnrollmentDate *time.Time `json:"enrollmentDate"`
 }
 
+// StudentFilterInput replaces the long parameter list of GetByBranchIDWithFilters.
+type StudentFilterInput struct {
+	BranchID      string
+	Page          string
+	Limit         string
+	// Cursor is the full_name of the last item from the previous page (keyset pagination).
+	// When set, Page/offset is ignored and results start after this cursor value.
+	Cursor        string
+	Search        string
+	Status        string
+	ClassID       string
+	PaymentStatus string
+	Month         string
+	Year          string
+}
+
 func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) (*models.Student, error) {
+	// Guard: subscription student limit.
+	if s.subSvc != nil && req.BranchID != "" {
+		ownerID, err := s.subSvc.GetOwnerIDFromBranch(ctx, req.BranchID)
+		if err == nil && ownerID != "" {
+			if limitErr := s.subSvc.CheckResourceLimit(ctx, ownerID, "students"); limitErr != nil {
+				return nil, limitErr
+			}
+		}
+	}
+
 	var classID *string
 	if req.ClassID != nil && *req.ClassID != "" {
 		classID = req.ClassID
@@ -70,6 +104,9 @@ func (s *StudentService) Create(ctx context.Context, req *CreateStudentRequest) 
 
 	_, err := s.db.GetConn().ExecContext(ctx, query, student.ID, student.FullName, classID, phone, parentPhone,
 		student.MonthlyPayment, student.Status, student.BranchID, student.EnrollmentDate, student.CreatedAt, student.UpdatedAt)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:students:%s:", req.BranchID))
+	}
 
 	return student, err
 }
@@ -137,76 +174,105 @@ func (s *StudentService) GetByBranchID(ctx context.Context, branchID string, pag
 }
 
 func (s *StudentService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Student, error) {
-	updates = utils.ConvertKeysToSnakeCase(updates)
-	query := `UPDATE students SET `
-	args := []interface{}{}
-	argCount := 1
-
-	for key, value := range updates {
-		if argCount > 1 {
-			query += ", "
-		}
-		query += key + " = $" + strconv.Itoa(argCount)
-		args = append(args, value)
-		argCount++
+	setClause, args, err := buildUpdateSet(updates, studentUpdateRule, false, nil)
+	if err != nil {
+		return nil, err
 	}
-
-	query += " WHERE id = $" + strconv.Itoa(argCount)
+	query := `UPDATE students SET ` + setClause + " WHERE id = $" + strconv.Itoa(len(args)+1)
 	args = append(args, id)
 
-	_, err := s.db.GetConn().ExecContext(ctx, query, args...)
+	_, err = s.db.GetConn().ExecContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
 
-	return s.GetByID(ctx, id)
+	updated, err := s.GetByID(ctx, id)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:students:%s:", updated.BranchID))
+	}
+	return updated, err
 }
 
 func (s *StudentService) Delete(ctx context.Context, id string) error {
+	var branchID string
+	_ = s.db.GetConn().QueryRowContext(ctx, `SELECT branch_id FROM students WHERE id = $1`, id).Scan(&branchID)
+
 	query := `DELETE FROM students WHERE id = $1`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
+	if err == nil && s.cache != nil && branchID != "" {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:students:%s:", branchID))
+	}
 	return err
 }
 
-func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, classID, paymentStatus, month, year string) (*models.StudentListResponse, error) {
-	intPage, err := strconv.Atoi(page)
+func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, in StudentFilterInput) (*models.StudentListResponse, error) {
+	// Cache read-through
+	if s.cache != nil {
+		cacheKey := studentListCacheKey(in)
+		var cached models.StudentListResponse
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			return &cached, nil
+		}
+		result, err := s.getByBranchIDWithFiltersDB(ctx, in)
+		if err == nil && result != nil {
+			_ = s.cache.Set(ctx, cacheKey, result, studentCacheTTL)
+		}
+		return result, err
+	}
+	return s.getByBranchIDWithFiltersDB(ctx, in)
+}
+
+func (s *StudentService) getByBranchIDWithFiltersDB(ctx context.Context, in StudentFilterInput) (*models.StudentListResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	intPage, err := strconv.Atoi(in.Page)
 	if err != nil || intPage < 1 {
 		intPage = 1
 	}
 
-	intLimit, err := strconv.Atoi(limit)
+	intLimit, err := strconv.Atoi(in.Limit)
 	if err != nil || intLimit < 1 {
 		intLimit = 10
 	}
 
+	// Cursor pagination: when a cursor is supplied, ignore page/offset entirely.
+	// Cursor = full_name of the last item on the previous page (ordered ASC).
+	useCursor := in.Cursor != ""
 	offset := (intPage - 1) * intLimit
 
 	currentTime := time.Now()
 	currentMonth := currentTime.Format("01")
 	currentYear := currentTime.Year()
 
-	if month != "" {
-		currentMonth = month
+	if in.Month != "" {
+		currentMonth = in.Month
 	}
-	if year != "" {
-		if parsedYear, parseErr := strconv.Atoi(year); parseErr == nil {
+	if in.Year != "" {
+		if parsedYear, parseErr := strconv.Atoi(in.Year); parseErr == nil {
 			currentYear = parsedYear
 		}
 	}
 
+	branchID := in.BranchID
+	search := in.Search
+	status := in.Status
+	classID := in.ClassID
+	paymentStatus := in.PaymentStatus
+
 	// -------------------------
 	// dynamic filters
 	// -------------------------
-	where := `WHERE s.branch_id = $1`
+	where := `WHERE s.branch_id = $1 AND s.deleted_at IS NULL`
 	args := []interface{}{branchID}
 	argID := 2
 
 	if search != "" {
 		where += fmt.Sprintf(
-			" AND (LOWER(s.full_name) LIKE LOWER($%d) OR s.phone LIKE $%d)",
+			` AND (LOWER(s.full_name) LIKE LOWER($%d) ESCAPE '\' OR s.phone LIKE $%d ESCAPE '\')`,
 			argID, argID,
 		)
-		args = append(args, "%"+search+"%")
+		args = append(args, "%"+escapeLike(search)+"%")
 		argID++
 	}
 
@@ -245,6 +311,7 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 				END AS status
 			FROM payments
 			WHERE student_id = s.id
+			AND deleted_at IS NULL
 			AND month = $` + strconv.Itoa(argID) + `
 			AND year = $` + strconv.Itoa(argID+1) + `
 			AND status IN ('paid', 'partial')
@@ -254,6 +321,17 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 	argsCount := make([]interface{}, len(args))
 	copy(argsCount, args)
 	argsCount = append(argsCount, currentMonth, currentYear)
+
+	// Keyset predicate (full_name, id) applies to the page query only, so
+	// total does not shrink as the cursor advances.
+	var cursorName, cursorID string
+	if useCursor {
+		var ok bool
+		cursorName, cursorID, ok = decodeStudentCursor(in.Cursor)
+		if !ok {
+			return nil, fmt.Errorf("invalid cursor")
+		}
+	}
 
 	var total int
 	if err := s.db.GetConn().QueryRowContext(ctx, countQuery, argsCount...).Scan(&total); err != nil {
@@ -292,16 +370,27 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 				END AS status
 			FROM payments
 			WHERE student_id = s.id
+			AND deleted_at IS NULL
 			AND month = $` + strconv.Itoa(argID) + `
 			AND year = $` + strconv.Itoa(argID+1) + `
 			AND status IN ('paid', 'partial')
 		) p ON true
 		` + where + `
-		ORDER BY s.full_name ASC
-		LIMIT $` + strconv.Itoa(argID+2) + `
-		OFFSET $` + strconv.Itoa(argID+3)
+		ORDER BY s.full_name ASC, s.id ASC
+		LIMIT $` + strconv.Itoa(argID+2) + func() string {
+		if useCursor {
+			return ""
+		}
+		return ` OFFSET $` + strconv.Itoa(argID+3)
+	}()
 
-	args = append(args, currentMonth, currentYear, intLimit, offset)
+	if useCursor {
+		query = strings.Replace(query, "ORDER BY s.full_name ASC, s.id ASC",
+			fmt.Sprintf("AND (s.full_name, s.id) > ($%d, $%d::uuid) ORDER BY s.full_name ASC, s.id ASC", argID+3, argID+4), 1)
+		args = append(args, currentMonth, currentYear, intLimit, cursorName, cursorID)
+	} else {
+		args = append(args, currentMonth, currentYear, intLimit, offset)
+	}
 
 	// -------------------------
 	// scan
@@ -362,16 +451,13 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 		students = append(students, sItem)
 	}
 
-	// Fetch distinct classes for the filter (only id and name)
+	// Fetch all classes for this branch (not just ones with students).
+	// This ensures empty/new classes appear in the add-student modal and filter.
 	classQuery := `
-		SELECT DISTINCT c.id, c.name
-		FROM classes c
-		WHERE c.id IS NOT NULL
-		AND EXISTS (
-			SELECT 1 FROM students s
-			WHERE s.class_id = c.id AND s.branch_id = $1
-		)
-		ORDER BY c.name ASC
+		SELECT id, name
+		FROM classes
+		WHERE branch_id = $1 AND deleted_at IS NULL
+		ORDER BY name ASC
 	`
 	classRows, err := s.db.GetConn().QueryContext(ctx, classQuery, branchID)
 	if err != nil {
@@ -388,12 +474,20 @@ func (s *StudentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 		classes = append(classes, classItem)
 	}
 
+	// Build next cursor from the last item's full_name (keyset pagination)
+	var nextCursor string
+	if len(students) == intLimit {
+		last := students[len(students)-1]
+		nextCursor = encodeStudentCursor(last.FullName, last.ID)
+	}
+
 	return &models.StudentListResponse{
-		Items:   students,
-		Classes: classes,
-		Total:   total,
-		Page:    intPage,
-		Limit:   intLimit,
+		Items:      students,
+		Classes:    classes,
+		Total:      total,
+		Page:       intPage,
+		Limit:      intLimit,
+		NextCursor: nextCursor,
 	}, nil
 }
 

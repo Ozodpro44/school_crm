@@ -1,4 +1,5 @@
 import { Payment, Student, Class } from "@/types";
+import { escapeHtml as esc } from "./htmlEscape";
 
 interface InvoiceData {
   payment: Payment;
@@ -16,7 +17,7 @@ export const generateInvoicePDF = (data: InvoiceData) => {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Invoice ${payment.invoiceNumber}</title>
+      <title>Invoice ${esc(payment.invoiceNumber)}</title>
       <style>
         * {
           margin: 0;
@@ -236,7 +237,7 @@ export const generateInvoicePDF = (data: InvoiceData) => {
           <div class="invoice-info">
             <h2>INVOICE</h2>
             <div class="invoice-details">
-              <p><strong>Invoice Number:</strong><br>${payment.invoiceNumber}</p>
+              <p><strong>Invoice Number:</strong><br>${esc(payment.invoiceNumber)}</p>
               <p><strong>Issue Date:</strong><br>${new Date().toLocaleDateString()}</p>
               ${payment.paidDate ? `<p><strong>Payment Date:</strong><br>${new Date(payment.paidDate).toLocaleDateString()}</p>` : ''}
             </div>
@@ -246,17 +247,17 @@ export const generateInvoicePDF = (data: InvoiceData) => {
         <div class="details-section">
           <div class="detail-block">
             <h3>Student Information</h3>
-            <p><strong>${student.fullName}</strong></p>
-            <p>Class: ${className}</p>
-            <p>Phone: ${student.phone}</p>
-            <p>Parent Phone: ${student.parentPhone}</p>
+            <p><strong>${esc(student.fullName)}</strong></p>
+            <p>Class: ${esc(className)}</p>
+            <p>Phone: ${esc(student.phone)}</p>
+            <p>Parent Phone: ${esc(student.parentPhone)}</p>
           </div>
           
           <div class="detail-block">
             <h3>Payment Details</h3>
-            <p>Period: ${payment.month} ${payment.year}</p>
-            <p>Payment Method: <strong style="text-transform: capitalize;">${payment.paymentMethod}</strong></p>
-            <p>Status: <span class="status-badge status-${payment.status}">${payment.status}</span></p>
+            <p>Period: ${esc(payment.month)} ${esc(payment.year)}</p>
+            <p>Payment Method: <strong style="text-transform: capitalize;">${esc(payment.paymentMethod)}</strong></p>
+            <p>Status: <span class="status-badge status-${esc(payment.status)}">${esc(payment.status)}</span></p>
           </div>
         </div>
 
@@ -271,7 +272,7 @@ export const generateInvoicePDF = (data: InvoiceData) => {
           <tbody>
             <tr>
               <td>Monthly Student Fee</td>
-              <td>${payment.month} ${payment.year}</td>
+              <td>${esc(payment.month)} ${esc(payment.year)}</td>
               <td>${formatCurrencyForPDF(payment.amount)}</td>
             </tr>
           </tbody>
@@ -297,7 +298,7 @@ export const generateInvoicePDF = (data: InvoiceData) => {
         ${payment.notes ? `
           <div style="margin: 30px 0; padding: 15px; background-color: #f1f5f9; border-radius: 6px;">
             <p style="font-size: 12px; color: #64748b; margin: 0 0 5px 0; font-weight: 600;">Additional Notes:</p>
-            <p style="font-size: 13px; color: #475569; margin: 0;">${payment.notes}</p>
+            <p style="font-size: 13px; color: #475569; margin: 0;">${esc(payment.notes)}</p>
           </div>
         ` : ''}
 

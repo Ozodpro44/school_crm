@@ -1,0 +1,26 @@
+import { Translation } from "./types";
+
+export const logs: Translation = {
+  logViewer: { en: "Log Viewer", ru: "Просмотр логов", uz: "Loglar ko'rinishi" },
+  realTimeLogsFromBackend: { en: "Real-time application logs from the backend", ru: "Логи приложения с сервера в реальном времени", uz: "Backenddan real vaqt ilova loglari" },
+  downloadJson: { en: "Download JSON", ru: "Скачать JSON", uz: "JSON yuklab olish" },
+  clear: { en: "Clear", ru: "Очистить", uz: "Tozalash" },
+  allModules: { en: "All Modules", ru: "Все модули", uz: "Barcha modullar" },
+  module: { en: "Module", ru: "Модуль", uz: "Modul" },
+  entries: { en: "entries", ru: "записей", uz: "yozuv" },
+  searchMessageOrModule: { en: "Search message or module...", ru: "Поиск по сообщению или модулю...", uz: "Xabar yoki modul bo'yicha qidirish..." },
+  timestamp: { en: "Timestamp", ru: "Время", uz: "Vaqt" },
+  level: { en: "Level", ru: "Уровень", uz: "Daraja" },
+  message: { en: "Message", ru: "Сообщение", uz: "Xabar" },
+  loadingLogs: { en: "Loading logs...", ru: "Загрузка логов...", uz: "Loglar yuklanmoqda..." },
+  noLogEntriesYet: { en: "No log entries yet", ru: "Пока нет записей логов", uz: "Hozircha log yozuvlari yo'q" },
+  noLogsMatchFilters: { en: "No logs match your filters", ru: "Нет логов, соответствующих фильтрам", uz: "Filtrlaringizga mos log topilmadi" },
+  showingOfEntries: { en: "Showing {shown} of {total} entries", ru: "Показано {shown} из {total} записей", uz: "{total} tadan {shown} tasi ko'rsatilmoqda" },
+  clearAllLogs: { en: "Clear All Logs", ru: "Очистить все логи", uz: "Barcha loglarni tozalash" },
+  clearAllLogsConfirm: { en: "Permanently delete all log entries? This cannot be undone.", ru: "Безвозвратно удалить все записи логов? Это действие нельзя отменить.", uz: "Barcha log yozuvlari butunlay o'chirilsinmi? Bu amalni ortga qaytarib bo'lmaydi." },
+  copiedToClipboard: { en: "Copied to clipboard", ru: "Скопировано в буфер обмена", uz: "Vaqtinchalik xotiraga nusxalandi" },
+  downloadedLogsJson: { en: "Downloaded logs.json", ru: "Файл logs.json скачан", uz: "logs.json yuklab olindi" },
+  logsCleared: { en: "Logs cleared", ru: "Логи очищены", uz: "Loglar tozalandi" },
+  failedToClearLogs: { en: "Failed to clear logs", ru: "Не удалось очистить логи", uz: "Loglarni tozalab bo'lmadi" },
+  failedToFetchLogs: { en: "Failed to fetch logs", ru: "Не удалось получить логи", uz: "Loglarni olib bo'lmadi" },
+};

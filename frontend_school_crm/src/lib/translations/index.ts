@@ -13,7 +13,8 @@ import { settingsTranslations } from "./settings";
 import { helpTranslations } from "./help";
 import { authTranslations } from "./auth";
 import { miscTranslations } from "./misc";
-import { attendanceTranslations } from "./attendance";
+import { trashTranslations } from "./trash";
+import { hikvisionTranslations } from "./hikvision";
 
 // Combine all translations into one object
 export const translations: Translation = {
@@ -31,8 +32,9 @@ export const translations: Translation = {
   ...helpTranslations,
   ...authTranslations,
   ...miscTranslations,
-  ...attendanceTranslations
-};
+  ...trashTranslations,
+  ...hikvisionTranslations
+} as Translation;
 
 /**
  * Retrieves a translation string for a given key and language.

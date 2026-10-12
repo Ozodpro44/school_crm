@@ -5,7 +5,7 @@ export type StudentStatus = "active" | "left" | "suspended";
 export type PaymentStatus = "paid" | "partial";
 export type Language = "uz-cyrl" | "uz-latn" | "en";
 export type MonthStatus = "OPEN" | "CLOSED";
-export type SubscriptionStatus = "active" | "paused" | "cancelled" | "expired";
+export type SubscriptionStatus = "active" | "trial" | "paused" | "cancelled" | "expired" | "pending_payment" | "past_due";
 export type SubscriptionPaymentStatus = "pending" | "completed" | "failed" | "refunded";
 export type BillingPeriod = "monthly" | "yearly";
 
@@ -61,7 +61,9 @@ export interface Branch {
   phone: string;
   monthlyPayment: number;
   adminId?: string;
+  adminName?: string;
   managerIds: string[];
+  isActive: boolean;
   currentFinancialMonthId?: string;
   currentFinancialMonth?: FinancialMonth;
   createdAt: string;
@@ -77,21 +79,30 @@ export interface User {
   permissions?: Permission;
   branchId?: string;
   branchIds?: string[];
+  organizationName?: string;
   createdAt: string;
 }
 
 export interface Student {
   id: string;
   fullName: string;
-  classId: string;
+  // Optional on purpose: students.class_id is nullable (migration 000027
+  // dropped the NOT NULL so the FK's ON DELETE SET NULL could actually work),
+  // and student_service serialises it as `*string` with `omitempty` — so the
+  // key is ABSENT for a student whose class was deleted or who hasn't been
+  // assigned one yet. student_service even has a "no class" filter
+  // (WHERE class_id IS NULL) for exactly these rows. Declaring it as a plain
+  // `string` told TypeScript a value was always there and hid the unassigned
+  // case from every caller.
+  classId?: string;
   phone: string;
   parentPhone: string;
   monthlyPayment: number;
   status: StudentStatus;
   branchId: string;
   enrollmentDate?: string;
-  leftDate?: string;
-  classSignedDate?: string;
+  leftDate?: string | null;
+  classSignedDate?: string | null;
   classConfirmed?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -112,8 +123,9 @@ export interface Teacher {
   monthlySalary: number;
   phone: string;
   email: string;
-  assignedClasses: string[];
+  userId?: string;
   branchId: string;
+  isActive: boolean;
   joinedDate?: string;
   createdAt: string;
   updatedAt: string;
@@ -125,6 +137,8 @@ export interface Class {
   teacherId?: string;
   studentIds: string[];
   branchId: string;
+  studentCount: number;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -186,50 +200,16 @@ export interface Income {
 }
 
 export interface Settings {
+  // The CURRENT branch's own name (e.g. "Chilonzor filiali").
   name: string;
+  // The school's overall brand identity, resolved from the branch's admin —
+  // stays the same across every branch that admin owns. Optional: absent for
+  // a branch whose admin never set one (organization_name is nullable).
+  organizationName?: string;
   monthlyPayment: number;
   currency: string;
   updatedDate: string;
   createdDate: string;
-}
-
-// Hikvision face-recognition attendance integration (admin-only)
-export type AttendanceEventType = "check_in" | "check_out";
-
-export interface HikvisionDevice {
-  id: string;
-  branchId: string;
-  name: string;
-  host: string;
-  username: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface HikvisionEmployee {
-  id: string;
-  deviceId: string;
-  employeeNo: string;
-  fullName: string;
-  teacherId?: string | null;
-  photoUrl?: string; // temporary signed link to the photo in storage, when one has been uploaded
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AttendanceRecord {
-  id: string;
-  deviceId: string;
-  employeeId?: string | null;
-  employeeNo: string;
-  employeeName: string;
-  eventTime: string;
-  eventType: AttendanceEventType;
-  minorEvent?: number | null;
-  source: string;
-  createdAt: string;
 }
 
 export interface Translation {
@@ -249,29 +229,39 @@ export interface SubscriptionPlan {
   maxBranches?: number;
   maxStudents?: number;
   maxClasses?: number;
+  maxTeachers?: number;
   features: Record<string, boolean | string | number>;
+  isFeatured?: boolean;
   status: "active" | "inactive";
   createdAt: string;
   updatedAt: string;
 }
 
+// Field names match the wire format exactly (snake_case) — this is what
+// backend_school_crm's models.Subscription actually serializes to on
+// GET /subscriptions/current and POST /subscriptions (unlike every other
+// subscription-related model in this codebase, e.g. SubscriptionPlan below,
+// which is camelCase). Previously this interface declared camelCase names
+// that don't exist on the wire, so every read of endDate/renewalDate/etc.
+// silently returned undefined — e.g. "Time Remaining" always showed
+// Infinity and trial-ending warnings never fired.
 export interface Subscription {
   id: string;
-  userId: string;
-  planId: string;
-  branchId?: string;
+  user_id: string;
+  plan_id: string;
+  branch_id?: string;
   status: SubscriptionStatus;
-  startDate: string;
-  endDate?: string;
-  renewalDate?: string;
-  autoRenew: boolean;
-  paymentMethod?: string;
-  stripeSubscriptionId?: string;
+  start_date: string;
+  end_date?: string;
+  renewal_date?: string;
+  auto_renew: boolean;
+  payment_method?: string;
+  stripe_subscription_id?: string;
   notes?: string;
-  cancelledAt?: string;
-  cancelledBy?: string;
-  createdAt: string;
-  updatedAt: string;
+  cancelled_at?: string;
+  cancelled_by?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SubscriptionUsage {
@@ -301,4 +291,43 @@ export interface SubscriptionPayment {
 
 export interface SubscriptionResponse extends Subscription {
   plan?: SubscriptionPlan;
+}
+
+// ─── Hikvision Face ID attendance (staff) ───────────────────────────────────
+export type HikvisionEventType = "check_in" | "check_out";
+
+export interface HikvisionDevice {
+  id: string;
+  branchId: string;
+  name: string;
+  host: string;
+  username: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HikvisionEmployee {
+  id: string;
+  deviceId: string;
+  employeeNo: string;
+  fullName: string;
+  teacherId?: string | null;
+  photoUrl?: string; // temporary signed link to the photo in storage, when one has been uploaded
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HikvisionAttendanceRecord {
+  id: string;
+  deviceId: string;
+  employeeId?: string | null;
+  employeeNo: string;
+  employeeName: string;
+  eventTime: string;
+  eventType: HikvisionEventType;
+  minorEvent?: number | null;
+  source: string;
+  createdAt: string;
 }

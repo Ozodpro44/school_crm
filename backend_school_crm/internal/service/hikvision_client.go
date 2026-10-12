@@ -10,12 +10,73 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
+
+// Device hosts are entered by tenant admins and the server connects to them,
+// so without a guard any admin could point a "device" at the platform's own
+// private network (Railway's *.railway.internal services, the cloud metadata
+// endpoint, localhost) and use this server as a proxy into it. The check runs
+// in the dialer's Control hook — i.e. against the IP actually being connected
+// to, after DNS resolution — so hostnames that resolve to internal addresses
+// and DNS-rebinding tricks are caught too, not just literal IPs.
+//
+// Real terminals sit behind a public IP / port-forward. Self-hosted
+// deployments that reach terminals over a LAN can opt in to private ranges
+// with HIKVISION_ALLOW_PRIVATE_HOSTS=true; loopback and link-local stay
+// blocked regardless.
+func blockedDeviceIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast() || ip.IsUnspecified() {
+		return true
+	}
+	if os.Getenv("HIKVISION_ALLOW_PRIVATE_HOSTS") == "true" {
+		return false
+	}
+	if ip.IsPrivate() {
+		return true
+	}
+	// 100.64.0.0/10 (carrier-grade NAT) is not covered by IsPrivate.
+	if ip4 := ip.To4(); ip4 != nil && ip4[0] == 100 && ip4[1]&0xC0 == 64 {
+		return true
+	}
+	return false
+}
+
+func newDeviceHTTPClient(timeout time.Duration) *http.Client {
+	dialer := &net.Dialer{
+		Timeout: 10 * time.Second,
+		Control: func(network, address string, _ syscall.RawConn) error {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return err
+			}
+			ip := net.ParseIP(host)
+			if ip == nil || blockedDeviceIP(ip) {
+				return fmt.Errorf("hikvision: connecting to %s is not allowed", host)
+			}
+			return nil
+		},
+	}
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			DialContext:         dialer.DialContext,
+			TLSHandshakeTimeout: 10 * time.Second,
+		},
+		// Digest auth is a 401 challenge/response, not a redirect, so a
+		// device never legitimately needs one — refusing them closes the
+		// "public host redirects to an internal address" bypass.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
 
 // HikvisionClient talks to a single Hikvision ISAPI-compliant access control
 // terminal (tested against a DS-K1T343MWX) over its local HTTP interface.
@@ -52,7 +113,7 @@ func NewHikvisionClient(host, username, password string) *HikvisionClient {
 		baseURL:  strings.TrimRight(base, "/"),
 		username: username,
 		password: password,
-		http:     &http.Client{Timeout: 20 * time.Second},
+		http:     newDeviceHTTPClient(20 * time.Second),
 	}
 }
 

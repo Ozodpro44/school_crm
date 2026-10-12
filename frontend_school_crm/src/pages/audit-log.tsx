@@ -1,0 +1,324 @@
+import { useEffect, useState, useCallback, useRef } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { getAuditLogs, type AuditLogEntry } from "@/lib/api";
+import { useLanguage } from "@/hooks/use-language";
+import { getTranslation } from "@/lib/translations";
+import { Shield, Search, Filter, RotateCcw, Trash2 } from "lucide-react";
+import { DataTable, Column } from "@/components/DataTable";
+import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/components/FilterBar";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { TrashPanel } from "@/components/panels/TrashPanel";
+import { useRouter } from "next/router";
+
+const RESOURCES = [
+  "payment",
+  "student",
+  "teacher",
+  "salary",
+  "expense",
+  "class",
+  "branch",
+  "user",
+];
+
+const ACTION_COLORS: Record<string, string> = {
+  create: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+  update: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  delete: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+};
+
+const RESOURCE_COLORS: Record<string, string> = {
+  payment:  "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400",
+  student:  "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400",
+  teacher:  "bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-400",
+  salary:   "bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400",
+  expense:  "bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400",
+  class:    "bg-sky-50 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400",
+  branch:   "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400",
+  user:     "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+};
+
+const formatTime = (iso: string) => {
+  const d = new Date(iso);
+  return d.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+export default function AuditLogPage() {
+  const language = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
+  const router = useRouter();
+
+  // Former standalone /trash page is now the "trash" tab here — ?tab=trash
+  // keeps the old URL's bookmarks/links working via pages/trash.tsx's
+  // redirect.
+  const [tab, setTab] = useState<"log" | "trash">("log");
+  useEffect(() => {
+    if (router.query.tab === "trash") setTab("trash");
+  }, [router.query.tab]);
+
+  const [entries, setEntries] = useState<AuditLogEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+
+  // Filters
+  const [resource, setResource] = useState("all");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const LIMIT = 25;
+
+  const requestIdRef = useRef(0);
+
+  const load = useCallback(async () => {
+    const myId = ++requestIdRef.current;
+    setLoading(true);
+    try {
+      const res = await getAuditLogs({
+        resource: resource !== "all" ? resource : undefined,
+        from: from || undefined,
+        to: to || undefined,
+        page,
+        limit: LIMIT,
+      });
+      if (myId !== requestIdRef.current) return;
+      setEntries(res.data);
+      setTotal(res.total);
+      setTotalPages(res.totalPages);
+    } catch {
+      if (myId !== requestIdRef.current) return;
+      setEntries([]);
+    } finally {
+      if (myId === requestIdRef.current) setLoading(false);
+    }
+  }, [resource, from, to, page]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Filter changes reset the page in the same batch as the filter itself, so
+  // only one request fires (an effect-based reset caused a second fetch).
+
+  const filtered = search.trim()
+    ? entries.filter((e) =>
+        e.description.toLowerCase().includes(search.toLowerCase()) ||
+        e.userName.toLowerCase().includes(search.toLowerCase()) ||
+        e.resource.toLowerCase().includes(search.toLowerCase())
+      )
+    : entries;
+
+  const handleReset = () => {
+    setResource("all");
+    setFrom("");
+    setTo("");
+    setSearch("");
+    setPage(1);
+  };
+
+  const actionLabel = (a: string) => t(a as any) || a.charAt(0).toUpperCase() + a.slice(1);
+  const resourceLabel = (r: string) => t(r as any) || r.charAt(0).toUpperCase() + r.slice(1);
+
+  const columns: Column<AuditLogEntry>[] = [
+    {
+      key: "createdAt",
+      header: t("auditTime"),
+      cellClassName: "text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap w-40",
+      render: (entry) => formatTime(entry.createdAt),
+    },
+    {
+      key: "userName",
+      header: t("auditUser"),
+      render: (entry) => (
+        <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+          {entry.userName || <span className="text-slate-400 italic">{t("unknown")}</span>}
+        </span>
+      ),
+    },
+    {
+      key: "action",
+      header: t("action"),
+      cellClassName: "w-24",
+      render: (entry) => (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${ACTION_COLORS[entry.action] ?? ""}`}>
+          {actionLabel(entry.action)}
+        </span>
+      ),
+    },
+    {
+      key: "resource",
+      header: t("resource"),
+      cellClassName: "w-28",
+      render: (entry) => (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${RESOURCE_COLORS[entry.resource] ?? "bg-slate-100 text-slate-600"}`}>
+          {resourceLabel(entry.resource)}
+        </span>
+      ),
+    },
+    {
+      key: "description",
+      header: t("description"),
+      cellClassName: "text-sm text-slate-700 dark:text-slate-300 max-w-xs truncate",
+      render: (entry) => entry.description,
+    },
+    {
+      key: "resourceId",
+      header: t("resourceId"),
+      cellClassName: "w-40",
+      hideOnMobile: true,
+      render: (entry) =>
+        entry.resourceId ? (
+          <code className="text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded font-mono">
+            {entry.resourceId.slice(0, 8)}…
+          </code>
+        ) : (
+          <span className="text-slate-300 dark:text-slate-600">—</span>
+        ),
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-display text-brand-gradient flex items-center gap-3">
+          <Shield className="w-8 h-8 text-indigo-600" />
+          {t("auditLog")}
+        </h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">
+          {t("auditLogDesc")}
+        </p>
+      </div>
+
+      <Tabs value={tab} onValueChange={(v) => setTab(v as "log" | "trash")}>
+        <TabsList>
+          <TabsTrigger value="log" className="gap-1.5">
+            <Shield className="h-3.5 w-3.5" />
+            {t("auditLog")}
+          </TabsTrigger>
+          <TabsTrigger value="trash" className="gap-1.5">
+            <Trash2 className="h-3.5 w-3.5" />
+            {t("trash")}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="log" className="space-y-6">
+          {/* Filters */}
+          <FilterBar>
+            <FilterSearch
+              value={search}
+              onChange={setSearch}
+              placeholder={t("auditSearchPage")}
+            />
+            <Select value={resource} onValueChange={(v) => { setResource(v); setPage(1); }}>
+              <SelectTrigger className={filterSelectClass("w-44")}>
+                <SelectValue placeholder={t("resource")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("allResources")}</SelectItem>
+                {RESOURCES.map((r) => (
+                  <SelectItem key={r} value={r}>{resourceLabel(r)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-400 whitespace-nowrap">{t("from")}</span>
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => { setFrom(e.target.value); setPage(1); }}
+                className="h-9 w-36 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-slate-400 whitespace-nowrap">{t("to")}</span>
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => { setTo(e.target.value); setPage(1); }}
+                className="h-9 w-36 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-slate-700 dark:text-slate-200 outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+            </div>
+            <FilterReset onClick={handleReset} show={resource !== "all" || !!from || !!to || !!search} label={t("reset")} />
+          </FilterBar>
+
+          {/* Table */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle>
+                  {loading ? (
+                    <Skeleton className="h-4 w-32" />
+                  ) : (
+                    <span>
+                      {total.toLocaleString()} {total === 1 ? (t("entry")) : (t("entries"))}
+                    </span>
+                  )}
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <DataTable
+                columns={columns}
+                data={filtered}
+                loading={loading}
+                skeletonRows={8}
+                emptyIcon={Shield}
+                emptyTitle={t("noAuditEntries")}
+                pagination={{ page, limit: LIMIT, total }}
+                onPageChange={setPage}
+                renderCard={(entry) => (
+                  <div className="p-4 space-y-1.5 border-b border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${ACTION_COLORS[entry.action] ?? ""}`}>
+                        {actionLabel(entry.action)}
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {formatTime(entry.createdAt)}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                      {entry.description}
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${RESOURCE_COLORS[entry.resource] ?? ""}`}>
+                        {resourceLabel(entry.resource)}
+                      </span>
+                      {entry.userName && (
+                        <span className="text-xs text-slate-500">{entry.userName}</span>
+                      )}
+                      {entry.resourceId && (
+                        <code className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded font-mono">
+                          {entry.resourceId.slice(0, 8)}…
+                        </code>
+                      )}
+                    </div>
+                  </div>
+                )}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="trash">
+          <TrashPanel />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

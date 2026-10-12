@@ -5,8 +5,8 @@
 
 import { User, UserRole, Permission } from "@/types";
 import * as api from "./api";
-
-const AUTH_USER_KEY = "school_auth_user";
+import { clearAuthState, getStoredUser, setStoredUser } from "./storage";
+import { publicRequest } from "./apiBase";
 
 const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   admin: {
@@ -222,6 +222,14 @@ export async function login(email: string, password: string): Promise<User> {
   try {
     const response = await api.login({ email, password });
 
+    if (response.mfaRequired || !response.user) {
+      // This wrapper has no caller today (verified: only ForgotPasswordModal
+      // imports from this module, and not this function) and predates the
+      // MFA step — it isn't equipped to prompt for the OTP the way
+      // pages/login.tsx is, so fail loudly rather than silently.
+      throw new Error("MFA verification required — use the main login form");
+    }
+
     // Transform backend response to frontend User type
     const branchIds = (response.user as any).branchIds || [];
     const branchId = branchIds.length > 0 ? branchIds[0] : (response.user as any).branchId;
@@ -238,15 +246,11 @@ export async function login(email: string, password: string): Promise<User> {
       createdAt: new Date().toISOString(),
     };
 
-    // Store user in localStorage (without password)
-    if (typeof window !== "undefined") {
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
-      
-      // Set selectedBranchId if user has a branch assigned
-      if (user.branchId) {
-        localStorage.setItem("selectedBranchId", user.branchId);
-      }
-    }
+    // api.login already persisted token + user + branch via persistLogin
+    // and emitted AuthEvents.LOGIN. We refresh the stored user with the
+    // enriched record (permissions/branchIds) computed above so consumers
+    // see the merged shape.
+    setStoredUser(user as unknown as Parameters<typeof setStoredUser>[0]);
 
     return user;
   } catch (error) {
@@ -272,6 +276,10 @@ export async function register(
       role,
     });
 
+    if (!response.user) {
+      throw new Error("Registration did not return a user record");
+    }
+
     const user: User = {
       id: response.user.id,
       email: response.user.email,
@@ -282,9 +290,9 @@ export async function register(
       createdAt: new Date().toISOString(),
     };
 
-    if (typeof window !== "undefined") {
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
-    }
+    // api.register already persisted token + user + branch via persistLogin.
+    // Overwrite with the enriched record (permissions baked in).
+    setStoredUser(user as unknown as Parameters<typeof setStoredUser>[0]);
 
     return user;
   } catch (error) {
@@ -294,37 +302,25 @@ export async function register(
 }
 
 /**
- * Logout user
+ * Logout user — wipes all auth + branch state. The hard redirect is owned by
+ * @/lib/auth.logout(); callers wanting that flow should use it instead.
  */
 export function logout(): void {
-  api.logout();
-  if (typeof window !== "undefined") {
-    localStorage.removeItem(AUTH_USER_KEY);
-    localStorage.removeItem("school_auth_user");
-    localStorage.removeItem("current_user");
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("selectedBranchId");
-  }
+  clearAuthState();
 }
 
 /**
  * Get currently authenticated user
  */
 export function getCurrentUser(): User | null {
-  if (typeof window === "undefined") return null;
-
-  const userStr = localStorage.getItem(AUTH_USER_KEY);
-  if (!userStr) return null;
-
-  try {
-    const user = JSON.parse(userStr) as User;
-    if (!user.permissions) {
-      user.permissions = DEFAULT_PERMISSIONS[user.role as UserRole] || DEFAULT_PERMISSIONS.teacher;
-    }
-    return user;
-  } catch {
-    return null;
+  const raw = getStoredUser();
+  if (!raw) return null;
+  const user = raw as unknown as User;
+  if (!user.permissions) {
+    user.permissions =
+      DEFAULT_PERMISSIONS[user.role as UserRole] || DEFAULT_PERMISSIONS.teacher;
   }
+  return user;
 }
 
 /**
@@ -364,130 +360,38 @@ export function isAuthenticated(): boolean {
  * Request password reset - sends OTP to email
  */
 export async function forgotPassword(email: string): Promise<{ message: string; email: string }> {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/forgot-password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email }),
-    });
-
-    const responseText = await response.text();
-    
-    if (!response.ok) {
-      let errorMessage = `Error: ${response.status} ${response.statusText}`;
-      try {
-        const error = JSON.parse(responseText);
-        errorMessage = error.error || error.message || errorMessage;
-      } catch {
-        errorMessage = responseText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    return JSON.parse(responseText);
-  } catch (error) {
-    console.error('Forgot password failed:', error);
-    throw error;
-  }
+  return publicRequest("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
 }
 
 /**
  * Verify OTP and get reset token
  */
 export async function verifyOTP(email: string, otp: string): Promise<{ message: string; resetToken: string; email: string }> {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/verify-otp`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, otp }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = 'Failed to verify OTP';
-      try {
-        const error = JSON.parse(errorText);
-        errorMessage = error.error || error.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const responseText = await response.text();
-    return JSON.parse(responseText);
-  } catch (error) {
-    console.error('OTP verification failed:', error);
-    throw error;
-  }
+  return publicRequest("/auth/verify-otp", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
+  });
 }
 
 /**
  * Resend OTP to email
  */
 export async function resendOTP(email: string): Promise<{ message: string }> {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/resend-otp`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = 'Failed to resend OTP';
-      try {
-        const error = JSON.parse(errorText);
-        errorMessage = error.error || error.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const responseText = await response.text();
-    return JSON.parse(responseText);
-  } catch (error) {
-    console.error('Resend OTP failed:', error);
-    throw error;
-  }
+  return publicRequest("/auth/resend-otp", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
 }
 
 /**
  * Reset password with reset token
  */
 export async function resetPassword(email: string, resetToken: string, newPassword: string): Promise<{ message: string }> {
-  try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/reset-password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email, resetToken, newPassword }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      let errorMessage = 'Failed to reset password';
-      try {
-        const error = JSON.parse(errorText);
-        errorMessage = error.error || error.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
-      }
-      throw new Error(errorMessage);
-    }
-
-    const responseText = await response.text();
-    return JSON.parse(responseText);
-  } catch (error) {
-    console.error('Password reset failed:', error);
-    throw error;
-  }
+  return publicRequest("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ email, resetToken, newPassword }),
+  });
 }

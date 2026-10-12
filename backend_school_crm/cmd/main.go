@@ -1,3 +1,23 @@
+// @title           School CRM API
+// @version         1.0
+// @description     Residual monolith — auth, subscriptions, Click.uz/Telegram payments, messaging, reports, dev panel.
+// @termsOfService  http://swagger.io/terms/
+
+// @contact.name  School CRM Support
+// @contact.email support@school-crm.example
+
+// @license.name  Proprietary
+
+// @host      localhost:8080
+// @BasePath  /api/v1
+
+// @securityDefinitions.apikey BearerAuth
+// @in                         header
+// @name                       Authorization
+// @description                JWT token — prefix with "Bearer "
+
+// @externalDocs.description  OpenAPI spec
+// @externalDocs.url          http://localhost:8080/api/docs/doc.json
 package main
 
 import (
@@ -7,16 +27,25 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/config"
+	_ "github.com/school-crm/backend/docs"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/handlers"
+	"github.com/school-crm/backend/internal/jobs"
 	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/platformsettings"
 	"github.com/school-crm/backend/internal/service"
 	"github.com/school-crm/backend/internal/utils"
+	ginSwagger "github.com/swaggo/gin-swagger"
+	swaggerFiles "github.com/swaggo/files"
 )
 
 var startTime = time.Now()
@@ -35,138 +64,297 @@ func main() {
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
 		ResendFrom:   os.Getenv("RESEND_FROM"),
 		LogsToken:    os.Getenv("LOGS_TOKEN"),
+		SentryDSN:    os.Getenv("SENTRY_DSN"),
 	}
 
 	if cfg.Port == "" {
-		cfg.Port = "8080"
+		cfg.Port = "8082"
 	}
 	if cfg.Environment == "" {
 		cfg.Environment = "development"
 	}
-	if cfg.JWTSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is required")
-	}
+
+	// ── Startup config validation ──────────────────────────────────────────────
+	var startupErrors []string
+	var startupWarnings []string
+
 	if cfg.DatabaseURL == "" {
-		log.Fatal("DATABASE_URL environment variable is required")
+		startupErrors = append(startupErrors, "DATABASE_URL is required")
+	}
+	if cfg.JWTSecret == "" {
+		startupErrors = append(startupErrors, "JWT_SECRET is required")
+	} else if len(cfg.JWTSecret) < 32 {
+		startupErrors = append(startupErrors, fmt.Sprintf("JWT_SECRET is too short (%d chars); minimum 32 required", len(cfg.JWTSecret)))
+	} else if cfg.JWTSecret == config.PlaceholderJWTSecret {
+		if strings.EqualFold(cfg.Environment, "production") {
+			startupErrors = append(startupErrors, "JWT_SECRET is the placeholder value; set a unique secret")
+		} else {
+			startupWarnings = append(startupWarnings, "JWT_SECRET is the placeholder value (rejected in production)")
+		}
+	}
+	if cfg.LogsToken == "" {
+		startupWarnings = append(startupWarnings, "LOGS_TOKEN not set — log ingestion endpoint will reject requests")
+	}
+	if cfg.RedisURL == "" {
+		startupErrors = append(startupErrors, "REDIS_URL is required")
+	}
+	if cfg.ResendAPIKey == "" || cfg.ResendFrom == "" {
+		startupWarnings = append(startupWarnings, "RESEND_API_KEY / RESEND_FROM not set — password-reset emails will be disabled")
+	}
+	if os.Getenv("CLICK_MERCHANT_ID") == "" {
+		startupWarnings = append(startupWarnings, "CLICK_MERCHANT_ID / CLICK_SERVICE_ID / CLICK_SECRET_KEY not set — Click.uz webhooks disabled")
+	}
+	if os.Getenv("TELEGRAM_BOT_TOKEN") == "" {
+		startupWarnings = append(startupWarnings, "TELEGRAM_BOT_TOKEN not set — Telegram notifications/payments disabled")
 	}
 
-	// Initialize database
+	log.Println("──────────────────────────────────────────────")
+	log.Printf("  School CRM Monolith (residual)  [%s]", cfg.Environment)
+	log.Println("──────────────────────────────────────────────")
+	log.Printf("  Port         : %s", cfg.Port)
+	log.Printf("  Database     : %s", func() string {
+		if cfg.DatabaseURL != "" { return "✓ configured" }
+		return "✗ MISSING"
+	}())
+	log.Printf("  JWT secret   : %s", func() string {
+		if cfg.JWTSecret == "" { return "✗ MISSING" }
+		if len(cfg.JWTSecret) < 32 { return fmt.Sprintf("✗ too short (%d/32 chars)", len(cfg.JWTSecret)) }
+		return fmt.Sprintf("✓ OK (%d chars)", len(cfg.JWTSecret))
+	}())
+	log.Printf("  Redis        : %s", func() string {
+		if cfg.RedisURL != "" { return "✓ configured" }
+		return "✗ MISSING (required)"
+	}())
+	log.Printf("  Email (Resend): %s", func() string {
+		if cfg.ResendAPIKey != "" && cfg.ResendFrom != "" { return "✓ configured" }
+		return "⚠ not set (optional)"
+	}())
+	log.Printf("  Click.uz     : %s", func() string {
+		if os.Getenv("CLICK_MERCHANT_ID") != "" { return "✓ configured" }
+		return "⚠ not set (optional)"
+	}())
+	log.Printf("  Telegram bot : %s", func() string {
+		if os.Getenv("TELEGRAM_BOT_TOKEN") != "" { return "✓ configured" }
+		return "⚠ not set (optional)"
+	}())
+	log.Printf("  Sentry       : %s", func() string {
+		if cfg.SentryDSN != "" { return "✓ configured" }
+		return "⚠ not set (optional)"
+	}())
+
+	if len(startupWarnings) > 0 {
+		log.Println("──────────────────────────────────────────────")
+		for _, w := range startupWarnings {
+			log.Printf("  ⚠ WARNING: %s", w)
+		}
+	}
+	if len(startupErrors) > 0 {
+		log.Println("──────────────────────────────────────────────")
+		for _, e := range startupErrors {
+			log.Printf("  ✗ ERROR: %s", e)
+		}
+		log.Println("──────────────────────────────────────────────")
+		log.Fatal("Startup aborted due to configuration errors above")
+	}
+	log.Println("──────────────────────────────────────────────")
+
+	// ── Sentry (optional) ─────────────────────────────────────────────────────
+	if cfg.SentryDSN != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              cfg.SentryDSN,
+			Environment:      cfg.Environment,
+			TracesSampleRate: 0.2,
+			AttachStacktrace: true,
+		}); err != nil {
+			log.Printf("Warning: Sentry initialization failed: %v", err)
+		} else {
+			log.Println("Sentry initialized")
+			defer sentry.Flush(5 * time.Second)
+		}
+	}
+
+	// ── Database & Redis ───────────────────────────────────────────────────────
 	database, err := db.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 	defer database.Close()
 
-	// Run migrations
 	if err := database.RunMigrations(context.Background()); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Initialize Redis (optional but recommended for OTP)
-	var redisClient *utils.RedisClient
-	if cfg.RedisURL != "" {
-		rc, err := utils.NewRedisClient(cfg.RedisURL)
-		if err != nil {
-			log.Printf("Warning: Failed to connect to Redis: %v. OTP features will be disabled.", err)
-		} else {
-			redisClient = rc
-			defer redisClient.Close()
-		}
+	redisClient, err := utils.NewRedisClient(cfg.RedisURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
 	}
+	defer redisClient.Close()
 
-	// Initialize Email Sender (optional for password reset)
 	var emailSender *utils.EmailSender
 	if cfg.ResendAPIKey != "" && cfg.ResendFrom != "" {
 		emailSender = utils.NewEmailSender(cfg.ResendAPIKey, cfg.ResendFrom)
 	}
 
-	// Initialize services
+	// ── Services (residual monolith only) ─────────────────────────────────────
+	// auth + subscription + branch — core of the remaining monolith
 	userService := service.NewUserService(database)
-
-	// Set Redis and Email clients in UserService
-	if redisClient != nil {
-		userService.SetRedisClient(redisClient)
-	}
+	userService.SetRedisClient(redisClient)
 	if emailSender != nil {
 		userService.SetEmailSender(emailSender)
 	}
-	studentService := service.NewStudentService(database)
-	paymentService := service.NewPaymentService(database)
-	classService := service.NewClassService(database)
-	branchService := service.NewBranchService(database)
-	teacherService := service.NewTeacherService(database)
-	salaryService := service.NewSalaryService(database)
-	expenseService := service.NewExpenseService(database)
-	reportService := service.NewReportService(database)
 	subscriptionService := service.NewSubscriptionService(database)
+	branchService := service.NewBranchService(database, subscriptionService)
+
+	// Cache for hot-path auth/subscription lookups
+	cacheClient := cache.New(redisClient.GetClient())
+	subscriptionService.SetCache(cacheClient)
+
+	// Periodically flip lapsed subscriptions to "expired" — nothing else in
+	// the codebase called ExpireLapsedSubscriptions/CheckSubscriptionExpiry,
+	// so platform stats/admin listings kept reporting long-past subscriptions
+	// as active/trial forever (access itself was already correctly blocked
+	// elsewhere by a live end_date check; this is purely a status/reporting
+	// sweep, so an hourly cadence is more than sufficient).
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			n, err := subscriptionService.ExpireLapsedSubscriptions(context.Background())
+			if err != nil {
+				log.Printf("[subscription-expiry] sweep failed: %v", err)
+			} else if n > 0 {
+				log.Printf("[subscription-expiry] marked %d lapsed subscription(s) as expired", n)
+			}
+		}
+	}()
+
+	// Platform-wide operational settings (JWT expiry, rate limiting, login
+	// lockout, MFA, request timeout, log level, query logging) — surfaced on
+	// the developer portal's Settings page and shared with auth_service /
+	// api_gateway via Redis (see internal/platformsettings).
+	settingsStore := platformsettings.NewStore(redisClient.GetClient())
+
+	// Wire the platform-wide "Query Logging" toggle into the DB layer
+	// (internal/db/querylog.go) — checked every 5s so a save from any
+	// developer takes effect without a restart. LogQueryFunc writes into the
+	// same `logs` table the dev portal's Logs page already reads.
+	db.LogQueryFunc = func(query string, argCount int, duration time.Duration, qerr error) {
+		level := "DEBUG"
+		msg := fmt.Sprintf("query (%d args, %s): %s", argCount, duration.Round(time.Millisecond), query)
+		if qerr != nil {
+			level = "WARN"
+			msg = fmt.Sprintf("query failed (%d args, %s): %s — %v", argCount, duration.Round(time.Millisecond), query, qerr)
+		}
+		handlers.WriteLog(database, level, "database", msg, nil)
+	}
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			db.SetQueryLoggingEnabled(settingsStore.Get().QueryLoggingEnabled)
+			<-ticker.C
+		}
+	}()
+
+	rateLimiter := middleware.NewRateLimiter(redisClient.GetClient())
+	rateLimiter.SetEnabledFunc(func() bool { return settingsStore.Get().RateLimitingEnabled })
+	log.Println("Rate limiting enabled")
+
+	// Reports — still served from monolith (complex aggregation across tables)
+	reportService := service.NewReportService(database)
+
+	// Payment types — subscription billing UI needs the list
+	paymentTypeService := service.NewPaymentTypeService(database)
+
+	// Developer panel
 	developerService := service.NewDeveloperService(database)
 
-	// Storage bucket for employee face photos (optional — nil when no bucket
-	// credentials are found in the environment; see storage_service.go for
-	// the exact variable names it checks).
-	storageService := service.NewStorageServiceFromEnv()
-	attendanceService := service.NewAttendanceService(database, storageService)
+	// Teacher portal — thin read endpoint for teachers to see their own schedule/students
+	// (Will move to teacher_service in a future cleanup after portal usage is stable)
+	teacherService := service.NewTeacherService(database)
+	teacherService.SetCache(cacheClient)
+	teacherPortalService := service.NewTeacherPortalService(database, teacherService)
 
-	// Background poller for Hikvision terminals that can't push attendance
-	// events to us over the internet (e.g. Wonder Kids' terminal — only an
-	// inbound port-forward exists on its network, confirmed by testing both
-	// a direct HTTPS connection and a raw TCP proxy: neither ever reached
-	// our webhook). Since we CAN already reach such devices directly for
-	// CreateUser/UploadFace/ConfigurePush, polling their event log from
-	// right here works too and needs no separate machine on their LAN — see
-	// AttendanceService.RunEventPoller / PollAndRecordEvents. Runs
-	// alongside the HTTP server for the life of the process.
-	go attendanceService.RunEventPoller(context.Background(), 20*time.Second)
-
-	// Initialize Click.uz service (using environment variables or defaults)
-	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
-	if clickMerchantID == "" {
-		clickMerchantID = "398062629" // Test merchant ID
-	}
-	clickServiceID := os.Getenv("CLICK_SERVICE_ID")
-	if clickServiceID == "" {
-		clickServiceID = "999999999" // Test service ID
-	}
-	clickSecretKey := os.Getenv("CLICK_SECRET_KEY")
-	if clickSecretKey == "" {
-		clickSecretKey = "F91D8F69C042267444B74CC0B3C747757EB0E065" // Test secret key
-	}
-	clickUzService := service.NewClickUzService(database, clickMerchantID, clickServiceID, clickSecretKey)
-
-	// Initialize Telegram payment service
+	// Mass messaging (Telegram-backed)
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if telegramBotToken == "" {
-		telegramBotToken = "5996211575:AAHpj_Lp_UkUJfx2TYPkRcZuF6Y6La-LcCA" // Telegram bot token
+		log.Println("Warning: TELEGRAM_BOT_TOKEN not set. Telegram messaging will not work.")
 	}
-	telegramPaymentService := service.NewTelegramPaymentService(database, telegramBotToken)
+	if os.Getenv("TELEGRAM_WEBHOOK_SECRET") == "" {
+		log.Println("Warning: TELEGRAM_WEBHOOK_SECRET not set. Telegram payment webhook disabled.")
+	}
+	messagingService := service.NewMessagingService(database, telegramBotToken)
 
-	// Initialize router
+	// Hikvision face-recognition terminals (teacher attendance). Storage is
+	// optional — without a configured bucket, face photos only live on the
+	// device. The poller covers terminals that can't push events to us; it
+	// idles when no active devices exist.
+	hikvisionStorage := service.NewStorageServiceFromEnv()
+	hikvisionService := service.NewHikvisionService(database, hikvisionStorage)
+	go hikvisionService.RunEventPoller(context.Background(), 20*time.Second)
+
+	// Click.uz integration
+	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
+	clickServiceID := os.Getenv("CLICK_SERVICE_ID")
+	clickSecretKey := os.Getenv("CLICK_SECRET_KEY")
+	if clickMerchantID == "" || clickServiceID == "" || clickSecretKey == "" {
+		log.Println("Warning: CLICK_MERCHANT_ID/CLICK_SERVICE_ID/CLICK_SECRET_KEY not set. Click.uz disabled.")
+	}
+	// Env-guarded bootstrap: create the first admin developer only if none exist.
+	if be, bp := os.Getenv("DEV_BOOTSTRAP_EMAIL"), os.Getenv("DEV_BOOTSTRAP_PASSWORD"); be != "" && bp != "" {
+		if created, berr := developerService.BootstrapAdmin(context.Background(), be, bp); berr != nil {
+			log.Printf("WARNING: developer bootstrap failed: %v", berr)
+		} else if created {
+			log.Printf("Bootstrapped first admin developer %s (remove DEV_BOOTSTRAP_* env vars now)", be)
+		}
+	}
+	clickUzService := service.NewClickUzService(database, clickMerchantID, clickServiceID, clickSecretKey)
+	clickUzService.SetCache(cacheClient)
+
+	// Telegram payment service
+	telegramPaymentService := service.NewTelegramPaymentService(database, os.Getenv("TELEGRAM_WEBHOOK_SECRET"))
+	telegramPaymentService.SetCache(cacheClient)
+
+	// ── Router ────────────────────────────────────────────────────────────────
 	if cfg.Environment == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	router := gin.Default()
+	logger := middleware.NewLogger(cfg.Environment)
 
-	// Middleware
-	router.Use(middleware.CORSMiddleware())
+	// Background job queue (4 workers, DB-backed, survives restarts)
+	jobQueue := jobs.New(database, reportService, logger)
+
+	router := gin.New()
+	// Only trust X-Forwarded-For from explicitly configured proxies
+	// (TRUSTED_PROXIES, comma-separated CIDRs/IPs); default none so
+	// c.ClientIP() is the socket peer and can't be spoofed to dodge rate limits.
+	if err := router.SetTrustedProxies(middleware.ParseTrustedProxies(os.Getenv("TRUSTED_PROXIES"))); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES: %v", err)
+	}
+	router.Use(gin.Recovery())
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
+	router.Use(middleware.RequestID())
+	if cfg.SentryDSN != "" {
+		router.Use(middleware.SentryMiddleware())
+	}
+	router.Use(middleware.StructuredLogger(logger))
+	corsOrigins := middleware.ParseCORSOrigins(os.Getenv("CORS_ORIGINS"))
+	if len(corsOrigins) == 0 {
+		corsOrigins = []string{"http://localhost:3000", "http://localhost:3001"}
+		log.Printf("WARNING: CORS_ORIGINS not set; allowing only %v", corsOrigins)
+	}
+	router.Use(middleware.CORSMiddleware(corsOrigins))
 	router.Use(middleware.ErrorHandling())
-	router.Use(handlers.SafeRequestLogger(database)) // auto-log 4xx/5xx responses
+	router.Use(handlers.SafeRequestLogger(database, settingsStore))
+	router.Use(middleware.AuditMiddleware(database))
 
-	// Health check — returns real system stats
-	router.GET("/health", func(c *gin.Context) {
+	healthHandler := func(c *gin.Context) {
 		dbStats := database.GetConn().Stats()
-
-		redisStatus := "inactive"
-		redisConnected := false
-		if redisClient != nil {
-			redisStatus = "active"
-			redisConnected = true
-		}
-
 		uptimeSeconds := int64(math.Round(time.Since(startTime).Seconds()))
-
 		c.JSON(http.StatusOK, gin.H{
 			"status":         "healthy",
+			"service":        "monolith",
 			"environment":    cfg.Environment,
 			"uptime_seconds": uptimeSeconds,
 			"database": gin.H{
@@ -175,104 +363,143 @@ func main() {
 				"idle_connections":     dbStats.Idle,
 				"max_open_connections": dbStats.MaxOpenConnections,
 			},
-			"redis": gin.H{
-				"status":    redisStatus,
-				"connected": redisConnected,
-			},
 		})
-	})
+	}
+	router.GET("/health", healthHandler)
+	router.GET("/api/health", healthHandler)
 
-	// Public routes
-	router.POST("/api/auth/login", handlers.Login(userService, cfg.JWTSecret))
-	router.POST("/api/auth/register", handlers.Register(userService, cfg.JWTSecret))
-	router.POST("/api/auth/forgot-password", handlers.ForgotPassword(userService))
-	router.POST("/api/auth/verify-otp", handlers.VerifyOTP(userService))
-	router.POST("/api/auth/resend-otp", handlers.ResendOTP(userService))
-	router.POST("/api/auth/reset-password", handlers.ResetPassword(userService))
+	router.GET("/api/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	// Public subscription plans
-	// SUBSCRIPTIONS DISABLED
-	// router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
+	authRateLimit := rateLimiter.ByIP(10, time.Minute)
 
-	// Public developer auth routes
-	handlers.RegisterDeveloperAuthRoutes(router, developerService, cfg.JWTSecret)
+	// ── Public routes ─────────────────────────────────────────────────────────
+	// Auth — these are also served by auth_service via the gateway; kept here
+	// so the monolith can still validate tokens and serve as fallback.
+	router.POST("/api/v1/auth/login", authRateLimit, rateLimiter.ByAccount(5, time.Minute), handlers.Login(userService, cfg.JWTSecret, settingsStore))
+	router.POST("/api/v1/auth/register", authRateLimit, handlers.Register(userService, subscriptionService, cfg.JWTSecret, settingsStore))
+	router.POST("/api/v1/auth/verify-registration-otp", authRateLimit, handlers.VerifyRegistrationOTP(userService, subscriptionService, cfg.JWTSecret, settingsStore))
+	router.POST("/api/v1/auth/forgot-password", authRateLimit, handlers.ForgotPassword(userService))
+	router.POST("/api/v1/auth/verify-otp", authRateLimit, handlers.VerifyOTP(userService))
+	router.POST("/api/v1/auth/resend-otp", authRateLimit, handlers.ResendOTP(userService))
+	router.POST("/api/v1/auth/reset-password", authRateLimit, handlers.ResetPassword(userService))
 
-	// Public developer routes (dev endpoints)
-	publicDev := router.Group("/api")
+	// Subscription plans (public)
+	router.GET("/api/v1/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
+	router.GET("/api/subscriptions/plans", handlers.GetSubscriptionPlans(subscriptionService))
+
+	// Payment types
+	legacyPublicApi := router.Group("/api")
+	handlers.RegisterPaymentTypePublicRoutes(legacyPublicApi, paymentTypeService)
+	publicApi := router.Group("/api/v1")
+	handlers.RegisterPaymentTypePublicRoutes(publicApi, paymentTypeService)
+
+	// Developer auth & public dev panel
+	handlers.RegisterDeveloperAuthRoutes(router, developerService, cfg.JWTSecret, authRateLimit, rateLimiter.ByAccount(5, time.Minute))
+	publicDev := router.Group("/api/v1")
 	handlers.RegisterDeveloperRoutes(publicDev, database, subscriptionService)
 
-	// Authenticated developer routes (require developer JWT)
-	devProtected := router.Group("/api")
-	devProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret))
-	handlers.RegisterDevSettingsRoutes(devProtected, database)
-	handlers.RegisterDevLogsRoutes(devProtected, database)
-
-	// Log ingestion endpoint (LOGS_TOKEN bearer auth)
+	// Log ingestion
 	handlers.RegisterLogsIngestRoute(router, database, cfg.LogsToken)
-
-	// Log startup status
 	handlers.CheckLogsTable(database)
 
-	// Protected routes
-	protected := router.Group("/api")
-	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	// ── Dev-protected routes ──────────────────────────────────────────────────
+	devProtected := router.Group("/api/v1")
+	devProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret, developerService))
+	handlers.RegisterDevSettingsRoutes(devProtected, database, settingsStore)
+	handlers.RegisterDevLogsRoutes(devProtected, database)
+	handlers.RegisterDevCRMRoutes(devProtected, userService, branchService)
+	handlers.RegisterAdminSubscriptionRoutes(devProtected, subscriptionService)
+	handlers.RegisterAdminPlatformStatsRoute(devProtected, subscriptionService)
+	handlers.RegisterAdminPlansRoutes(devProtected, subscriptionService)
+	handlers.RegisterSubscriptionPlanDevRoutes(devProtected, subscriptionService)
+	handlers.RegisterPaymentTypeDevRoutes(devProtected, paymentTypeService)
+	handlers.RegisterDevUtilityRoutes(devProtected, database)
+	handlers.RegisterDeveloperSessionRoutes(devProtected, developerService)
+	// Creating developer accounts requires an existing admin developer token.
+	devProtected.POST("/dev/auth/register", middleware.RequireDeveloperRole("admin"), handlers.DeveloperRegister(developerService))
 
-	// Users
-	handlers.RegisterUserRoutes(protected, userService)
+	// ── Auth-only (login required, subscription not required) ─────────────────
+	authOnly := router.Group("/api/v1")
+	authOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret, redisClient.GetClient()))
+	authOnly.Use(middleware.RequestTimeout(func() time.Duration { return time.Duration(settingsStore.Get().RequestTimeoutSeconds) * time.Second }))
+	handlers.RegisterSubscriptionProtectedRoutes(authOnly, subscriptionService, userService)
+	handlers.RegisterClickUzRoutes(authOnly, clickUzService, subscriptionService)
+	handlers.RegisterTelegramPaymentRoutes(authOnly, telegramPaymentService, subscriptionService)
 
-	// Students
-	handlers.RegisterStudentRoutes(protected, studentService, classService, userService, paymentService)
+	// ── Protected routes (login + active subscription) ────────────────────────
+	protected := router.Group("/api/v1")
+	protected.Use(middleware.AuthMiddleware(cfg.JWTSecret, redisClient.GetClient()))
+	protected.Use(middleware.SubscriptionGate(userService, subscriptionService))
+	protected.Use(middleware.TenantBranchMiddleware(userService))
+	protected.Use(middleware.RequestTimeout(func() time.Duration { return time.Duration(settingsStore.Get().RequestTimeoutSeconds) * time.Second }))
+	protected.Use(rateLimiter.ByUser(300, time.Minute))
 
-	// Payments
-	handlers.RegisterPaymentRoutes(protected, paymentService, branchService, userService, studentService, classService)
+	// Reports (complex aggregation — still on monolith)
+	handlers.RegisterReportRoutes(protected, reportService, userService, branchService)
 
-	// Classes
-	handlers.RegisterClassRoutes(protected, classService, userService)
+	// Async report jobs
+	handlers.RegisterJobRoutes(protected, jobQueue, userService)
 
-	// Branches
-	handlers.RegisterBranchRoutes(protected, branchService, userService)
+	// Teacher portal (read-only teacher self-service view)
+	handlers.RegisterTeacherPortalRoutes(protected, teacherPortalService, userService)
 
-	// Teachers
-	handlers.RegisterTeacherRoutes(protected, teacherService, userService)
+	// Mass messaging
+	handlers.RegisterMessagingRoutes(protected, messagingService, userService)
 
-	// Salaries
-	handlers.RegisterSalaryRoutes(protected, salaryService, branchService, userService)
+	// Hikvision device/employee management + attendance reports (admin-only,
+	// applied inside RegisterHikvisionRoutes)
+	handlers.RegisterHikvisionRoutes(protected, hikvisionService, userService)
 
-	// Expenses
-	handlers.RegisterExpenseRoutes(protected, expenseService, branchService, userService)
+	// ── Payment webhooks (no auth — called by external payment providers) ─────
+	webhookGroup := router.Group("/api/v1")
+	webhookGroup.Use(rateLimiter.ByIP(100, time.Minute))
+	handlers.RegisterClickUzWebhooks(webhookGroup, clickUzService)
+	handlers.RegisterTelegramPaymentWebhooks(webhookGroup, telegramPaymentService)
 
-	// Reports
-	handlers.RegisterReportRoutes(protected, reportService, userService)
+	// Hikvision device webhooks — public, authenticated by the per-device
+	// token in the URL. Kept under /api (not /api/v1) because that's the path
+	// ConfigurePush writes into the terminal and already-enrolled devices use.
+	hikvisionWebhookGroup := router.Group("/api")
+	hikvisionWebhookGroup.Use(rateLimiter.ByIP(300, time.Minute))
+	handlers.RegisterHikvisionWebhookRoutes(hikvisionWebhookGroup, hikvisionService)
+	handlers.RegisterHikCentralWebhookRoutes(hikvisionWebhookGroup, hikvisionService)
 
-	// Settings
-	handlers.RegisterSettingsRoutes(protected, branchService, userService)
+	// ── Legacy /api/* aliases ─────────────────────────────────────────────────
+	router.POST("/api/dev/auth/login", authRateLimit, rateLimiter.ByAccount(5, time.Minute), handlers.DeveloperLogin(developerService, cfg.JWTSecret))
 
-	// Hikvision face-recognition attendance (device/employee management + reports)
-	// Admin-only: RegisterAttendanceRoutes applies its own RoleChecker(admin)
-	// middleware to the whole /hikvision group.
-	handlers.RegisterAttendanceRoutes(protected, attendanceService, userService)
+	router.POST("/api/auth/login", authRateLimit, rateLimiter.ByAccount(5, time.Minute), handlers.Login(userService, cfg.JWTSecret, settingsStore))
+	router.POST("/api/auth/register", authRateLimit, handlers.Register(userService, subscriptionService, cfg.JWTSecret, settingsStore))
+	router.POST("/api/auth/verify-registration-otp", authRateLimit, handlers.VerifyRegistrationOTP(userService, subscriptionService, cfg.JWTSecret, settingsStore))
+	router.POST("/api/auth/forgot-password", authRateLimit, handlers.ForgotPassword(userService))
+	router.POST("/api/auth/verify-otp", authRateLimit, handlers.VerifyOTP(userService))
+	router.POST("/api/auth/resend-otp", authRateLimit, handlers.ResendOTP(userService))
+	router.POST("/api/auth/reset-password", authRateLimit, handlers.ResetPassword(userService))
 
-	// SUBSCRIPTIONS DISABLED
-	// Subscriptions (protected routes only, plans is public)
-	// handlers.RegisterSubscriptionProtectedRoutes(protected, subscriptionService, userService)
-	// handlers.RegisterClickUzRoutes(protected, clickUzService, subscriptionService)
-	// handlers.RegisterTelegramPaymentRoutes(protected, telegramPaymentService, subscriptionService)
+	legacyPublicDev := router.Group("/api")
+	handlers.RegisterDeveloperRoutes(legacyPublicDev, database, subscriptionService)
 
-	// Payment webhooks (public, no auth required)
-	handlers.RegisterClickUzWebhooks(router.Group("/api"), clickUzService)
-	handlers.RegisterTelegramPaymentWebhooks(router.Group("/api"), telegramPaymentService)
+	legacyDevProtected := router.Group("/api")
+	legacyDevProtected.Use(middleware.DevAuthMiddleware(cfg.JWTSecret, developerService))
+	handlers.RegisterDevLogsRoutes(legacyDevProtected, database)
+	handlers.RegisterDevSettingsRoutes(legacyDevProtected, database, settingsStore)
+	handlers.RegisterDevCRMRoutes(legacyDevProtected, userService, branchService)
+	handlers.RegisterAdminSubscriptionRoutes(legacyDevProtected, subscriptionService)
+	handlers.RegisterAdminPlatformStatsRoute(legacyDevProtected, subscriptionService)
+	handlers.RegisterAdminPlansRoutes(legacyDevProtected, subscriptionService)
+	handlers.RegisterSubscriptionPlanDevRoutes(legacyDevProtected, subscriptionService)
+	handlers.RegisterPaymentTypeDevRoutes(legacyDevProtected, paymentTypeService)
+	handlers.RegisterDevUtilityRoutes(legacyDevProtected, database)
+	handlers.RegisterDeveloperSessionRoutes(legacyDevProtected, developerService)
+	legacyDevProtected.POST("/dev/auth/register", middleware.RequireDeveloperRole("admin"), handlers.DeveloperRegister(developerService))
 
-	// Hikvision device webhook (public, authenticated by a per-device token in the URL)
-	handlers.RegisterHikvisionWebhookRoutes(router.Group("/api"), attendanceService)
-
-	// HikCentral Professional's Open API event-subscription callback (public,
-	// same per-device token scheme) — see RegisterHikCentralWebhookRoutes for
-	// why this is a separate route rather than reusing the one above.
-	handlers.RegisterHikCentralWebhookRoutes(router.Group("/api"), attendanceService)
+	legacyAuthOnly := router.Group("/api")
+	legacyAuthOnly.Use(middleware.AuthMiddleware(cfg.JWTSecret, redisClient.GetClient()))
+	legacyAuthOnly.Use(middleware.RequestTimeout(func() time.Duration { return time.Duration(settingsStore.Get().RequestTimeoutSeconds) * time.Second }))
+	handlers.RegisterSubscriptionProtectedRoutes(legacyAuthOnly, subscriptionService, userService)
 
 	// Start server
 	addr := fmt.Sprintf(":%s", cfg.Port)
-	log.Printf("Starting server on %s", addr)
+	log.Printf("Starting residual monolith on %s", addr)
 	if err := router.Run(addr); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}

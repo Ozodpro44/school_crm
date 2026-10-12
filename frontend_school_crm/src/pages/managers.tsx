@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -17,19 +16,21 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import { FormDialog } from "@/components/FormDialog";
+import { Field } from "@/components/Field";
 import { Badge } from "@/components/ui/badge";
 import { getCurrentUser } from "@/lib/auth";
-import { listUsers, deleteUser as deleteUserAPI, listBranches, getAuthToken, updateUserPermissions } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
+import { listUsers, deleteUser as deleteUserAPI, listBranches, updateUserPermissions, apiRequest, changePassword } from "@/lib/api";
+import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { User, Permission, Branch } from "@/types";
 import { Plus, Edit2, Trash2, Shield, UserCog, Lock, Loader2 } from "lucide-react";
+import { PageHeader } from "@/components/PageHeader";
 import { getTranslation } from "@/lib/translations";
-import { updateUserPassword } from "@/lib/auth";
 import { useMultiSelect } from "@/hooks/use-multi-select";
 import { useBranch } from "@/context/BranchContext";
+import { DataTable, Column } from "@/components/DataTable";
 
 export default function ManagersPage() {
   const [isLoading, setIsLoading] = useState(true);
@@ -47,13 +48,12 @@ export default function ManagersPage() {
    const [deletingManagerId, setDeletingManagerId] = useState<string | null>(null);
    const [isBulkDeleteLoading, setIsBulkDeleteLoading] = useState(false);
    const language = useLanguage();
-     const { toast } = useToast();
      const { currentBranch } = useBranch();
      const {
+       selectedIds: selectedManagerIds,
        toggleSelect,
        toggleSelectAll,
        clearSelection,
-       isSelected,
        getSelectedCount,
        getSelectedIds,
        areAllSelected,
@@ -65,7 +65,9 @@ export default function ManagersPage() {
     email: "",
     password: "",
     branchId: "",
+    role: "manager" as "manager" | "branch_admin",
   });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const [permissions, setPermissions] = useState<Permission>({
     canViewStudents: true,
@@ -106,7 +108,7 @@ export default function ManagersPage() {
 
   const loadData = async () => {
      const user = getCurrentUser();
-     
+
      // If not authenticated, don't try to load data
      if (!user) {
        setManagers([]);
@@ -117,14 +119,14 @@ export default function ManagersPage() {
 
      try {
        const allBranches = await listBranches();
-       const branchId = currentBranch?.id || localStorage.getItem("selectedBranchId");
-       
+       const branchId = currentBranch?.id;
+
        // Transform API branches to include managerIds
        const transformedBranches = allBranches.map(branch => ({
          ...branch,
          managerIds: []
        }));
-       
+
        if (!branchId) {
          setManagers([]);
          setBranches(transformedBranches);
@@ -133,9 +135,9 @@ export default function ManagersPage() {
 
        // Fetch managers for the current branch from backend
        const branchManagers = await listUsers(branchId);
-       
+
        // Filter to get only managers and branch_admins
-       const filteredManagers = branchManagers.filter(u => 
+       const filteredManagers = branchManagers.filter(u =>
          u.role === "manager" || u.role === "branch_admin"
        ).map(u => ({
          ...u,
@@ -152,18 +154,14 @@ export default function ManagersPage() {
          setBranches(branch ? [branch] : []);
        }
      } catch (error) {
-       console.error("Failed to load managers:", error);
-       toast({
-         title: t("error"),
-         description: t("failedToLoadManagers"),
-         variant: "destructive",
-       });
+       notify.error(t("error"), t("failedToLoadManagers"));
      } finally {
        setIsLoading(false);
      }
    };
 
   const t = (key: string) => getTranslation(key, language);
+  const notify = useNotify();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,74 +176,57 @@ export default function ManagersPage() {
           permissionsPayload[key] = value;
         });
         await updateUserPermissions(editingManager.id, permissionsPayload);
-        toast({ title: t("permissionsUpdatedSuccess") || "Permissions updated successfully", variant: "success" });
+        notify.success(t("permissionsUpdatedSuccess"));
         await loadData();
       } catch (error) {
-        console.error("Failed to update permissions:", error);
-        toast({ title: "Error", description: "Failed to update permissions", variant: "destructive" });
+        notify.error(t("error"), t("failedToUpdatePermissions"));
       } finally {
         setIsSubmitting(false);
       }
     } else {
-      try {
-        if (!formData.fullName || !formData.email || !formData.password || !formData.branchId) {
-          toast({ title: "Error", description: "Please fill in all required fields including branch", variant: "destructive" });
-          setIsSubmitting(false);
-          return;
-        }
-        
-        // Create user with branchId
-        const userData = {
-          email: formData.email,
-          password: formData.password,
-          fullName: formData.fullName,
-          role: "manager",
-          branchId: formData.branchId,
-        };
-        
-        // Get auth token
-        const token = getAuthToken();
-        
-        if (!token) {
-          throw new Error('No authentication token found');
-        }
-        
-        // API call will handle adding to branch_managers table
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api'}/users`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify(userData),
-        });
-        
-        let responseData;
-        try {
-          responseData = await response.json();
-        } catch (e) {
-          console.error("Failed to parse response:", e);
-          throw new Error(`Server error: ${response.status} ${response.statusText}`);
-        }
-        
-        if (!response.ok) {
-          const errorMsg = responseData?.error || responseData?.message || `Server error: ${response.status}`;
-          console.error("Manager creation failed:", errorMsg, responseData);
-          throw new Error(errorMsg);
-        }
-        
-        toast({ title: t("success") || "Success", description: "Manager created successfully", variant: "success" });
-        await loadData();
-        } catch (error) {
-        console.error("Failed to create manager:", error);
-        toast({ title: "Error", description: "Failed to create manager", variant: "destructive" });
-        } finally {
-        setIsSubmitting(false);
-        }
-        }
+      // Inline validation
+      const errors: Record<string, string> = {};
+      if (!formData.fullName.trim()) errors.fullName = t("fullNameRequired");
+      if (!formData.email.trim()) {
+        errors.email = t("emailRequired");
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        errors.email = t("invalidEmail");
+      }
+      if (!formData.password) {
+        errors.password = t("passwordRequired");
+      } else if (formData.password.length < 6) {
+        errors.password = t("passwordTooShort");
+      }
+      if (!formData.branchId) errors.branchId = t("branchRequired");
 
+      if (Object.keys(errors).length > 0) {
+        setFormErrors(errors);
+        setIsSubmitting(false);
+        return;
+      }
+      setFormErrors({});
+
+      try {
+        await apiRequest("/users", {
+          method: "POST",
+          body: JSON.stringify({
+            full_name: formData.fullName,
+            email: formData.email,
+            password: formData.password,
+            role: formData.role,
+            branchId: formData.branchId,
+          }),
+        });
+        notify.success(t("success"), t("managerCreatedSuccess"));
+        await loadData();
         resetForm();
         setIsDialogOpen(false);
+      } catch (error) {
+        notify.error(t("error"), (error as Error).message || t("failedToCreateManager"));
+      } finally {
+        setIsSubmitting(false);
+      }
+    }
   };
 
   const handleEdit = (manager: User) => {
@@ -254,7 +235,8 @@ export default function ManagersPage() {
       fullName: manager.fullName,
       email: manager.email,
       password: "",
-      branchId: currentBranch?.id || localStorage.getItem("selectedBranchId") || "",
+      branchId: currentBranch?.id || "",
+      role: (manager.role as "manager" | "branch_admin") || "manager",
     });
     const perms = manager.permissions || getDefaultPermissions();
     setPermissions(perms);
@@ -263,16 +245,15 @@ export default function ManagersPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm(t("confirmDelete") || "Are you sure you want to delete this manager?")) {
+    if (confirm(t("confirmDelete"))) {
       setDeletingManagerId(id);
       setIsDeleteLoading(true);
       try {
         await deleteUserAPI(id);
         await loadData();
-        toast({ title: t("deleted") || "Deleted", description: t("managerDeleted") || "Manager deleted", variant: "success" });
+        notify.success(t("deleted"), t("managerDeleted"));
       } catch (error) {
-        console.error("Failed to delete manager:", error);
-        toast({ title: "Error", description: "Failed to delete manager", variant: "destructive" });
+        notify.error(t("error"), t("failedToDeleteManager"));
       } finally {
         setIsDeleteLoading(false);
         setDeletingManagerId(null);
@@ -284,20 +265,15 @@ export default function ManagersPage() {
     const selectedIds = getSelectedIds();
     if (selectedIds.length === 0) return;
 
-    if (confirm(`${t("confirmDelete") || "Are you sure?"} (${selectedIds.length} ${t("items")})`)) {
+    if (confirm(`${t("confirmDelete")} (${selectedIds.length} ${t("items")})`)) {
       setIsBulkDeleteLoading(true);
       try {
         await Promise.all(selectedIds.map((id) => deleteUserAPI(id)));
         clearSelection();
         await loadData();
-        toast({
-          title: t("deleted"),
-          description: `${selectedIds.length} ${t("managersDeleted") || "managers deleted"}`,
-          variant: "success",
-        });
+        notify.success(t("deleted"), `${selectedIds.length} ${t("managersDeleted")}`);
       } catch (error) {
-        console.error("Failed to delete managers:", error);
-        toast({ title: "Error", description: "Failed to delete managers", variant: "destructive" });
+        notify.error(t("error"), t("failedToDeleteManagers"));
       } finally {
         setIsBulkDeleteLoading(false);
       }
@@ -313,29 +289,32 @@ export default function ManagersPage() {
     setIsPasswordDialogOpen(true);
   };
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      toast({ title: t("error") || "Error", description: t("passwordsDoNotMatch") || "Passwords do not match", variant: "destructive" });
+      notify.error(t("error"), t("passwordsDoNotMatch"));
       return;
     }
 
-    if (passwordData.newPassword.length < 6) {
-      toast({ title: t("error") || "Error", description: t("passwordMinLengthError") || "Password must be at least 6 characters", variant: "destructive" });
+    if (passwordData.newPassword.length < 8) {
+      notify.error(t("error"), t("newPasswordMin8"));
       return;
     }
 
-    if (editingManager && updateUserPassword(editingManager.id, passwordData.newPassword)) {
-      toast({ title: t("success") || "Success", description: t("passwordUpdatedSuccess") || "Password updated successfully", variant: "success" });
+    if (!editingManager) return;
+
+    setIsSubmitting(true);
+    try {
+      await changePassword(editingManager.id, passwordData.newPassword);
+      notify.success(t("success"), t("passwordUpdatedSuccess"));
       setIsPasswordDialogOpen(false);
-      setPasswordData({
-        newPassword: "",
-        confirmPassword: "",
-      });
+      setPasswordData({ newPassword: "", confirmPassword: "" });
       setEditingManager(null);
-    } else {
-      toast({ title: t("error") || "Error", description: t("passwordUpdateError") || "Failed to update password", variant: "destructive" });
+    } catch (error) {
+      notify.error(t("error"), (error as Error).message || t("passwordUpdateError"));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -345,7 +324,9 @@ export default function ManagersPage() {
       email: "",
       password: "",
       branchId: currentBranch?.id || "",
+      role: "manager",
     });
+    setFormErrors({});
     setPermissions(getDefaultPermissions());
     setOriginalPermissions(null);
     setEditingManager(null);
@@ -390,19 +371,12 @@ export default function ManagersPage() {
     setPermissions(prev => ({ ...prev, [key]: value }));
   };
 
-  const getBranchName = (branchId?: string) => {
-    if (!branchId) return "N/A";
-    const branch = branches.find(b => b.id === branchId);
-    return branch?.name || "N/A";
-  };
-
   const getManagerBranches = (manager: User) => {
-    const branchIds = (manager as any).branchIds || [];
+    const branchIds = ((manager as any).branchIds || []) as string[];
     if (branchIds.length === 0) return "N/A";
-    const allBranches = branches;
     return branchIds
-      .map(id => allBranches.find(b => b.id === id)?.name || "")
-      .filter(name => name)
+      .map((id: string) => branches.find(b => b.id === id)?.name || "")
+      .filter((name: string) => name)
       .join(", ");
   };
 
@@ -411,7 +385,7 @@ export default function ManagersPage() {
       title: t("students"),
       permissions: [
         { key: "canViewStudents" as keyof Permission, label: t("canView") },
-        { key: "canCreateStudents" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreateStudents" as keyof Permission, label: t("canCreate") },
         { key: "canEditStudents" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteStudents" as keyof Permission, label: t("canDelete") },
       ],
@@ -420,7 +394,7 @@ export default function ManagersPage() {
       title: t("teachers"),
       permissions: [
         { key: "canViewTeachers" as keyof Permission, label: t("canView") },
-        { key: "canCreateTeachers" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreateTeachers" as keyof Permission, label: t("canCreate") },
         { key: "canEditTeachers" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteTeachers" as keyof Permission, label: t("canDelete") },
       ],
@@ -429,7 +403,7 @@ export default function ManagersPage() {
       title: t("classes"),
       permissions: [
         { key: "canViewClasses" as keyof Permission, label: t("canView") },
-        { key: "canCreateClasses" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreateClasses" as keyof Permission, label: t("canCreate") },
         { key: "canEditClasses" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteClasses" as keyof Permission, label: t("canDelete") },
       ],
@@ -438,7 +412,7 @@ export default function ManagersPage() {
       title: t("payments"),
       permissions: [
         { key: "canViewPayments" as keyof Permission, label: t("canView") },
-        { key: "canCreatePayments" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreatePayments" as keyof Permission, label: t("canCreate") },
         { key: "canEditPayments" as keyof Permission, label: t("canEdit") },
         { key: "canDeletePayments" as keyof Permission, label: t("canDelete") },
       ],
@@ -447,7 +421,7 @@ export default function ManagersPage() {
       title: t("salaries"),
       permissions: [
         { key: "canViewSalaries" as keyof Permission, label: t("canView") },
-        { key: "canCreateSalaries" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreateSalaries" as keyof Permission, label: t("canCreate") },
         { key: "canEditSalaries" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteSalaries" as keyof Permission, label: t("canDelete") },
       ],
@@ -456,7 +430,7 @@ export default function ManagersPage() {
       title: t("expenses"),
       permissions: [
         { key: "canViewExpenses" as keyof Permission, label: t("canView") },
-        { key: "canCreateExpenses" as keyof Permission, label: t("canCreate") || "Create" },
+        { key: "canCreateExpenses" as keyof Permission, label: t("canCreate") },
         { key: "canEditExpenses" as keyof Permission, label: t("canEdit") },
         { key: "canDeleteExpenses" as keyof Permission, label: t("canDelete") },
       ],
@@ -476,460 +450,323 @@ export default function ManagersPage() {
     },
   ];
 
-  if (isLoading) {
-    return (
-      
-        <div className="space-y-6">
-          {/* Header Skeleton */}
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-48" />
-            <Skeleton className="h-4 w-64" />
-          </div>
+  const columns: Column<User>[] = [
+    {
+      key: "fullName",
+      header: t("name"),
+      render: (manager) => (
+        <p className="font-medium text-slate-900 dark:text-slate-100">{manager.fullName}</p>
+      ),
+    },
+    {
+      key: "email",
+      header: t("email"),
+      render: (manager) => (
+        <span className="text-slate-900 dark:text-slate-100">{manager.email}</span>
+      ),
+    },
+    {
+      key: "branch",
+      header: t("branch"),
+      render: (manager) => (
+        <span className="text-slate-900 dark:text-slate-100">{getManagerBranches(manager)}</span>
+      ),
+    },
+    {
+      key: "role",
+      header: t("role"),
+      render: (manager) => (
+        <Badge className="capitalize">{manager.role.replace("_", " ")}</Badge>
+      ),
+    },
+    {
+      key: "actions",
+      header: t("actions"),
+      headerClassName: "text-right",
+      cellClassName: "text-right",
+      render: (manager) => (
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => handleEdit(manager)}
+            title={t("editPermissions")}
+          >
+            <Edit2 className="w-4 h-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => handleChangePassword(manager)}
+            title={t("changePassword")}
+          >
+            <Lock className="w-4 h-4" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={() => handleDelete(manager.id)}
+            title={t("delete")}
+            disabled={isDeleteLoading && deletingManagerId === manager.id}
+          >
+            {isDeleteLoading && deletingManagerId === manager.id ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4 text-red-500" />
+            )}
+          </Button>
+        </div>
+      ),
+    },
+  ];
 
-          {/* Action Button Skeleton */}
-          <Skeleton className="h-10 w-32" />
-
-          {/* Search Skeleton */}
-          <Skeleton className="h-10 w-full sm:w-64" />
-
-          {/* Table Skeleton */}
-          <Card>
-            <CardContent className="space-y-4 pt-6">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="flex items-center gap-4 py-4 border-b">
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-4 flex-1" />
-                  <Skeleton className="h-8 w-20" />
-                </div>
-              ))}
-            </CardContent>
-            </Card>
-
-            <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>{t("changePassword")}</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handlePasswordSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="newPassword">{t("newPassword")} *</Label>
-                  <Input
-                    id="newPassword"
-                    type="password"
-                    value={passwordData.newPassword}
-                    onChange={(e) =>
-                      setPasswordData({ ...passwordData, newPassword: e.target.value })
-                    }
-                    placeholder={t("enterNewPassword")}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">{t("confirmPassword")} *</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    value={passwordData.confirmPassword}
-                    onChange={(e) =>
-                      setPasswordData({ ...passwordData, confirmPassword: e.target.value })
-                    }
-                    placeholder={t("confirmNewPassword")}
-                    required
-                  />
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsPasswordDialogOpen(false)}
-                  >
-                    {t("cancel")}
-                  </Button>
-                  <Button type="submit">
-                    {t("updatePassword")}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-            </Dialog>
-            </div>
-            
-            );
-            }
+  const bulkActions = (
+    <>
+      <Button
+        size="sm"
+        variant="destructive"
+        onClick={handleBulkDelete}
+        disabled={isBulkDeleteLoading}
+      >
+        {isBulkDeleteLoading ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            {t("deleting")}
+          </>
+        ) : (
+          t("deleteSelected")
+        )}
+      </Button>
+      <Button size="sm" variant="outline" onClick={clearSelection}>
+        {t("cancel")}
+      </Button>
+    </>
+  );
 
   return (
-    
-      <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100">
-              {t("managers")}
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-1">
-              {t("manageManagersPermissions")}
-            </p>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <PageHeader title={t("managers")} subtitle={t("manageManagersPermissions")} />
+
+        <Button
+          className="bg-brand hover:bg-brand-hover"
+          onClick={() => { resetForm(); setIsDialogOpen(true); }}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          {t("addManager")}
+        </Button>
+
+        <FormDialog
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          title={editingManager ? t("editManager") : t("addNewManager")}
+          onSubmit={handleSubmit}
+          submitLabel={editingManager ? t("update") : t("create")}
+          submittingLabel={editingManager ? t("updating") : t("creating")}
+          cancelLabel={t("cancel")}
+          isPending={isSubmitting || !!(editingManager && !hasPermissionsChanged())}
+          maxWidth="max-w-4xl"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field
+              id="fullName"
+              label={`${t("fullName")} *`}
+              value={formData.fullName}
+              error={formErrors.fullName}
+              disabled={!!editingManager}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setFormData({ ...formData, fullName: e.target.value });
+                if (formErrors.fullName) setFormErrors(prev => ({ ...prev, fullName: "" }));
+              }}
+            />
+
+            <Field
+              id="email"
+              label={`${t("email")} *`}
+              type="email"
+              value={formData.email}
+              error={formErrors.email}
+              disabled={!!editingManager}
+              autoComplete="off"
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setFormData({ ...formData, email: e.target.value });
+                if (formErrors.email) setFormErrors(prev => ({ ...prev, email: "" }));
+              }}
+            />
+
+            {!editingManager && (
+              <Field
+                id="password"
+                label={`${t("password")} *`}
+                type="password"
+                value={formData.password}
+                error={formErrors.password}
+                autoComplete="new-password"
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setFormData({ ...formData, password: e.target.value });
+                  if (formErrors.password) setFormErrors(prev => ({ ...prev, password: "" }));
+                }}
+              />
+            )}
+
+            {!editingManager && (
+              <div className="space-y-1.5">
+                <Label htmlFor="role">{t("role")} *</Label>
+                <Select
+                  value={formData.role}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, role: value as "manager" | "branch_admin" })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manager">{t("manager")}</SelectItem>
+                    <SelectItem value="branch_admin">{t("branchAdmin")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="branchId">{t("branch")} *</Label>
+              <Select
+                value={formData.branchId}
+                onValueChange={(value) => {
+                  setFormData({ ...formData, branchId: value });
+                  if (formErrors.branchId) setFormErrors(prev => ({ ...prev, branchId: "" }));
+                }}
+                disabled={!!editingManager}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t("selectBranch")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {branches.map((branch) => (
+                    <SelectItem key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {formErrors.branchId && <p className="text-xs text-red-500">{formErrors.branchId}</p>}
+              {!editingManager && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t("managerBranchNote")}
+                </p>
+              )}
+            </div>
           </div>
 
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-                onClick={() => resetForm()}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {t("addManager")}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingManager ? t("editManager") : t("addNewManager")}
-                </DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName">{t("fullName")} *</Label>
-                    <Input
-                      id="fullName"
-                      value={formData.fullName}
-                      onChange={(e) =>
-                        setFormData({ ...formData, fullName: e.target.value })
-                      }
-                      required
-                      disabled={!!editingManager}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email">{t("email")} *</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={(e) =>
-                        setFormData({ ...formData, email: e.target.value })
-                      }
-                      required
-                      disabled={!!editingManager}
-                      autoComplete="off"
-                    />
-                  </div>
-
-                  {!editingManager && (
-                    <div className="space-y-2">
-                      <Label htmlFor="password">{t("password")} *</Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        value={formData.password}
-                        onChange={(e) =>
-                          setFormData({ ...formData, password: e.target.value })
-                        }
-                        required
-                        autoComplete="new-password"
-                      />
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="branchId">{t("branch")} *</Label>
-                    <Select
-                      value={formData.branchId}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, branchId: value })
-                      }
-                      required
-                      disabled={!!editingManager}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("selectBranch")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {branches.map((branch) => (
-                          <SelectItem key={branch.id} value={branch.id}>
-                            {branch.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {!editingManager && (
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {t("managerBranchNote") || "Menejer faqat tayinlangan filialini boshqara oladi"}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="border-t pt-4">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Shield className="w-5 h-5" />
-                    {t("permissions")}
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {permissionGroups.map((group) => (
-                      <div key={group.title} className="space-y-3">
-                        <h4 className="font-medium text-sm text-slate-700 dark:text-slate-300">
-                          {group.title}
-                        </h4>
-                        <div className="space-y-2 pl-4">
-                          {group.permissions.map((perm) => (
-                            <div key={perm.key} className="flex items-center space-x-2">
-                              <Checkbox
-                                id={perm.key}
-                                checked={Boolean(permissions[perm.key])}
-                                onCheckedChange={(checked) =>
-                                  updatePermission(perm.key, checked as boolean)
-                                }
-                              />
-                              <Label
-                                htmlFor={perm.key}
-                                className="text-sm cursor-pointer"
-                              >
-                                {perm.label}
-                              </Label>
-                            </div>
-                          ))}
-                        </div>
+          <div className="border-t pt-4">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Shield className="w-5 h-5" />
+              {t("permissions")}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {permissionGroups.map((group) => (
+                <div key={group.title} className="space-y-3">
+                  <h4 className="font-medium text-sm text-slate-700 dark:text-slate-300">
+                    {group.title}
+                  </h4>
+                  <div className="space-y-2 pl-4">
+                    {group.permissions.map((perm) => (
+                      <div key={perm.key} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={perm.key}
+                          checked={Boolean(permissions[perm.key])}
+                          onCheckedChange={(checked) =>
+                            updatePermission(perm.key, checked as boolean)
+                          }
+                        />
+                        <Label
+                          htmlFor={perm.key}
+                          className="text-sm cursor-pointer"
+                        >
+                          {perm.label}
+                        </Label>
                       </div>
                     ))}
                   </div>
                 </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                   <Button
-                     type="button"
-                     variant="outline"
-                     onClick={() => setIsDialogOpen(false)}
-                     disabled={isSubmitting}
-                   >
-                     {t("cancel")}
-                   </Button>
-                   <Button 
-                     type="submit"
-                     disabled={isSubmitting || (editingManager && !hasPermissionsChanged())}
-                   >
-                     {isSubmitting ? (
-                       <>
-                         <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin mr-2" />
-                         {editingManager ? t("updating") : t("creating")}
-                       </>
-                     ) : (
-                       editingManager ? t("update") : t("create")
-                     )}
-                   </Button>
-                 </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        <Card className={`border-l-4 transition-all ${
-          getSelectedCount() > 0
-            ? "border-l-blue-500 bg-blue-50 dark:bg-blue-900/20"
-            : "border-l-slate-300 dark:border-l-slate-600 bg-slate-50 dark:bg-slate-900/50 opacity-50"
-        }`}>
-          <CardContent className="py-4 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">
-                {getSelectedCount()} {t("itemsSelected") || "items selected"}
-              </p>
+              ))}
             </div>
-            <div className="flex gap-2">
+          </div>
+        </FormDialog>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <DataTable
+            columns={columns}
+            data={managers}
+            loading={isLoading}
+            skeletonRows={5}
+            selectable
+            selectedIds={selectedManagerIds}
+            onToggleSelect={(id) => toggleSelect(id)}
+            onToggleSelectAll={() => toggleSelectAll(managers)}
+            areAllSelected={areAllSelected(managers)}
+            areSomeSelected={areSomeSelected(managers)}
+            bulkActions={bulkActions}
+            emptyIcon={UserCog}
+            emptyTitle={t("noManagersYet")}
+            emptyDescription={t("noManagersDesc")}
+            emptyAction={{ label: t("addManager"), onClick: () => setIsDialogOpen(true) }}
+          />
+        </CardContent>
+      </Card>
+
+      <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("changePassword")}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handlePasswordSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">{t("newPassword")} *</Label>
+              <Input
+                id="newPassword"
+                type="password"
+                value={passwordData.newPassword}
+                onChange={(e) =>
+                  setPasswordData({ ...passwordData, newPassword: e.target.value })
+                }
+                placeholder={t("enterNewPassword")}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">{t("confirmPassword")} *</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={passwordData.confirmPassword}
+                onChange={(e) =>
+                  setPasswordData({ ...passwordData, confirmPassword: e.target.value })
+                }
+                placeholder={t("confirmNewPassword")}
+                required
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
               <Button
-                size="sm"
-                variant="destructive"
-                onClick={handleBulkDelete}
-                disabled={getSelectedCount() === 0 || isBulkDeleteLoading}
-              >
-                {isBulkDeleteLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    {t("deleting") || "Deleting..."}
-                  </>
-                ) : (
-                  t("deleteSelected") || "Delete Selected"
-                )}
-              </Button>
-              <Button
-                size="sm"
+                type="button"
                 variant="outline"
-                onClick={clearSelection}
-                disabled={getSelectedCount() === 0}
+                onClick={() => setIsPasswordDialogOpen(false)}
               >
                 {t("cancel")}
               </Button>
+              <Button type="submit">
+                {t("updatePassword")}
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <UserCog className="w-5 h-5" />
-              {t("managersList")}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800">
-                      <th className="text-left py-3 px-4">
-                        <Checkbox
-                          checked={areAllSelected(managers) || areSomeSelected(managers)}
-                          onCheckedChange={() => toggleSelectAll(managers)}
-                        />
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                        {t("name")}
-                      </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("email")}
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("branch")}
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("role")}
-                    </th>
-                    <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                      {t("actions")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {managers.map((manager) => (
-                    <tr
-                      key={manager.id}
-                      className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50 ${
-                        isSelected(manager.id) ? "bg-blue-50 dark:bg-blue-900/20" : ""
-                      }`}
-                    >
-                      <td className="py-3 px-4">
-                        <Checkbox
-                          checked={isSelected(manager.id)}
-                          onCheckedChange={() => toggleSelect(manager.id)}
-                        />
-                      </td>
-                      <td className="py-3 px-4">
-                        <p className="font-medium text-slate-900 dark:text-slate-100">
-                          {manager.fullName}
-                        </p>
-                      </td>
-                      <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                        {manager.email}
-                      </td>
-                      <td className="py-3 px-4 text-slate-900 dark:text-slate-100">
-                         {getManagerBranches(manager)}
-                       </td>
-                      <td className="py-3 px-4">
-                        <Badge className="capitalize">
-                          {manager.role.replace("_", " ")}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleEdit(manager)}
-                            title={t("editPermissions")}
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleChangePassword(manager)}
-                            title={t("changePassword")}
-                          >
-                            <Lock className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleDelete(manager.id)}
-                            title={t("delete")}
-                            disabled={isDeleteLoading && deletingManagerId === manager.id}
-                          >
-                            {isDeleteLoading && deletingManagerId === manager.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="w-4 h-4 text-red-500" />
-                            )}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {managers.length === 0 && (
-                <div className="text-center py-12">
-                  <UserCog className="w-12 h-12 mx-auto text-slate-400 mb-3" />
-                  <p className="text-slate-500 dark:text-slate-400">
-                    {t("noManagersYet")}
-                  </p>
-                </div>
-              )}
-            </div>
-            </CardContent>
-            </Card>
-
-            <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
-            <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>{t("changePassword")}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handlePasswordSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">{t("newPassword")} *</Label>
-                <Input
-                  id="newPassword"
-                  type="password"
-                  value={passwordData.newPassword}
-                  onChange={(e) =>
-                    setPasswordData({ ...passwordData, newPassword: e.target.value })
-                  }
-                  placeholder={t("enterNewPassword")}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">{t("confirmPassword")} *</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={passwordData.confirmPassword}
-                  onChange={(e) =>
-                    setPasswordData({ ...passwordData, confirmPassword: e.target.value })
-                  }
-                  placeholder={t("confirmNewPassword")}
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsPasswordDialogOpen(false)}
-                >
-                  {t("cancel")}
-                </Button>
-                <Button type="submit">
-                  {t("updatePassword")}
-                </Button>
-              </div>
-            </form>
-            </DialogContent>
-            </Dialog>
-            </div>
-            
-            );
-            }
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

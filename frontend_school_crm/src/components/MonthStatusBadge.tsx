@@ -17,9 +17,10 @@ export default function MonthStatusBadge({
 }: MonthStatusBadgeProps) {
   const isOpen = status === "OPEN";
   
+  // Was light-only, so in dark mode this rendered a pale pill on a dark card.
   const statusClass = isOpen
-    ? "bg-green-100 text-green-800 border border-green-300"
-    : "bg-gray-100 text-gray-800 border border-gray-300";
+    ? "bg-green-100 text-green-800 border border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800"
+    : "bg-slate-100 text-slate-700 border border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700";
   
   const statusLabel = isOpen ? "OPEN" : "CLOSED";
   const statusDot = isOpen ? "●" : "○";

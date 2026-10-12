@@ -1,7 +1,5 @@
-import { User, UserRole, Permission, Branch } from "@/types";
-import { branchesDB, usersDB } from "./storage";
-
-const AUTH_KEY = "school_auth_user";
+import { User, UserRole, Permission } from "@/types";
+import { clearAuthState, getStoredUser } from "@/lib/storage";
 
 const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   admin: {
@@ -59,8 +57,8 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canEditExpenses: true,
     canDeleteExpenses: true,
     canViewReports: true,
-    canViewSettings: false,
-    canEditSettings: false,
+    canViewSettings: true,
+    canEditSettings: true,
   },
   manager: {
     canViewStudents: true,
@@ -209,53 +207,24 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
   },
 };
 
-export function initializeDefaultUsers(): void {
-  // Default users initialization disabled - no example data
-}
-
-export function login(email: string, password: string): User | null {
-  const users = usersDB.getAll();
-  const user = users.find((u) => u.email === email && u.password === password);
-  
-  if (user) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password, ...userWithoutPassword } = user;
-    localStorage.setItem(AUTH_KEY, JSON.stringify(userWithoutPassword));
-    return userWithoutPassword as User;
-  }
-  
-  return null;
-}
 
 export function logout(): void {
-  localStorage.removeItem(AUTH_KEY);
-  localStorage.removeItem("school_auth_user");
-  localStorage.removeItem("current_user");
-  localStorage.removeItem("auth_token");
+  if (typeof window === "undefined") return;
+  clearAuthState();
+  // Hard navigation guarantees React Query caches and component state
+  // are dropped — preventing leakage of the previous user's data.
+  window.location.href = "/login";
 }
 
 export function getCurrentUser(): User | null {
-  if (typeof window === "undefined") return null;
-  
-  // Try API-saved user first (from @/lib/api login)
-  let userStr = localStorage.getItem("current_user");
-  
-  // Fall back to local auth user
-  if (!userStr) {
-    userStr = localStorage.getItem(AUTH_KEY);
+  const raw = getStoredUser();
+  if (!raw) return null;
+  const user = raw as unknown as User;
+  if (!user.permissions) {
+    user.permissions =
+      DEFAULT_PERMISSIONS[user.role as UserRole] || DEFAULT_PERMISSIONS.teacher;
   }
-  
-  if (!userStr) return null;
-  
-  try {
-    const user = JSON.parse(userStr);
-    if (!user.permissions) {
-      user.permissions = DEFAULT_PERMISSIONS[user.role as UserRole] || DEFAULT_PERMISSIONS.teacher;
-    }
-    return user;
-  } catch {
-    return null;
-  }
+  return user;
 }
 
 export function hasRole(requiredRole: UserRole | UserRole[]): boolean {
@@ -282,90 +251,3 @@ export function isAuthenticated(): boolean {
   return getCurrentUser() !== null;
 }
 
-export function deleteUser(userId: string): boolean {
-  return usersDB.delete(userId);
-}
-
-export function getUserBranches(): Branch[] {
-  const user = getCurrentUser();
-  if (!user) return [];
-  
-  // All users can see all branches for now
-  // Branch access control should be done on the backend
-  return branchesDB.getAll();
-}
-
-export function createUser(userData: Omit<User, "id" | "createdAt">): User {
-  const permissions = userData.permissions || DEFAULT_PERMISSIONS[userData.role];
-  
-  const newUser: User = {
-    ...userData,
-    permissions,
-    id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    createdAt: new Date().toISOString(),
-  };
-  
-  return usersDB.create(newUser);
-}
-
-export function updateUserPermissions(userId: string, permissions: Partial<Permission>): User | null {
-  const user = usersDB.getById(userId);
-  if (!user) return null;
-
-  const updatedPermissions = { ...user.permissions, ...permissions } as Permission;
-  const updatedUser = usersDB.update(userId, { permissions: updatedPermissions });
-
-  // If the updated user is the currently authenticated user, sync localStorage
-  if (typeof window !== "undefined") {
-    const currentStr = localStorage.getItem(AUTH_KEY);
-    if (currentStr) {
-      try {
-        const current = JSON.parse(currentStr);
-        if (current && current.id === userId) {
-          const merged = { ...current, permissions: updatedPermissions };
-          localStorage.setItem(AUTH_KEY, JSON.stringify(merged));
-        }
-      } catch (err) {
-        // ignore JSON parse errors
-      }
-    }
-  }
-
-  return updatedUser;
-}
-
-export function getAllUsers(): User[] {
-  return usersDB.getAll();
-}
-
-export function getUsersByBranch(branchId: string): User[] {
-  // User-branch relationship is managed by backend via branch_managers table
-  // This function returns all users for now - filtering should be done on backend
-  return usersDB.getAll();
-}
-
-export function updateUserPassword(userId: string, newPassword: string): boolean {
-  const user = usersDB.getById(userId);
-  if (!user) return false;
-
-  const updated = usersDB.update(userId, { password: newPassword });
-  if (!updated) return false;
-
-  // If updating the current user, update localStorage
-  if (typeof window !== "undefined") {
-    const currentStr = localStorage.getItem(AUTH_KEY);
-    if (currentStr) {
-      try {
-        const current = JSON.parse(currentStr);
-        if (current && current.id === userId) {
-          // Note: We don't store password in localStorage for security
-          localStorage.setItem(AUTH_KEY, JSON.stringify(current));
-        }
-      } catch (err) {
-        // ignore JSON parse errors
-      }
-    }
-  }
-
-  return true;
-}

@@ -1,33 +1,26 @@
+import { csvField } from "./htmlEscape";
 
-export function exportTableToCSV(data: unknown[], filename: string) {
+export function exportTableToCSV(data: Record<string, unknown>[], filename: string) {
   if (data.length === 0) return;
 
-  const headers = Object.keys(data[0]);
+  const first = data[0] as Record<string, unknown>;
+  const headers = Object.keys(first);
   const csvContent = [
-    headers.join(","),
-    ...data.map((row) =>
-      headers.map((header) => {
-        const value = row[header];
-        if (typeof value === "string" && value.includes(",")) {
-          return `"${value}"`;
-        }
-        return value;
-      }).join(",")
-    ),
-  ].join("\n");
+    headers.map(csvField).join(","),
+    ...data.map((row) => headers.map((header) => csvField((row as Record<string, unknown>)[header])).join(",")),
+  ].join("\r\n");
 
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
+  link.href = url;
   link.download = filename;
   link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-import { settingsDB } from "./storage";
-
 export function formatCurrency(amount: number, currency?: string): string {
-  const settings = typeof window !== "undefined" ? settingsDB.get() : undefined;
-  const cur = currency || settings?.currency || "USD";
+  const cur = currency || "UZS";
   let locale = "en-US";
   const lang = typeof window !== "undefined" ? localStorage.getItem("language") : null;
   
@@ -39,8 +32,12 @@ export function formatCurrency(amount: number, currency?: string): string {
     } else {
       locale = lang;
     }
-  } else if (typeof navigator !== "undefined") {
-    locale = navigator.language || "en-US";
+  } else {
+    // No stored preference yet: fall back to the app's own default language
+    // (LanguageContext starts at "uz-latn"), not the browser locale. Falling
+    // back to navigator.language meant a first-time visitor saw an Uzbek UI
+    // with en-US money formatting ("UZS 4,150,000" instead of "4 150 000").
+    locale = "uz-UZ";
   }
 
   try {

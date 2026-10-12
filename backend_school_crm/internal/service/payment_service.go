@@ -9,17 +9,46 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/school-crm/backend/internal/cache"
 	"github.com/school-crm/backend/internal/db"
 	"github.com/school-crm/backend/internal/models"
 	"github.com/school-crm/backend/internal/utils"
 )
 
+// ErrFinancialMonthLocked is returned when a Create or Update is attempted on
+// a record that belongs to a closed (past) financial month and the caller does
+// not have admin override rights.
+var ErrFinancialMonthLocked = errors.New("financial_month_locked: cannot modify records from a past financial month")
+
 type PaymentService struct {
-	db *db.Database
+	db        *db.Database
+	branchSvc *BranchService
+	cache     *cache.Client
 }
 
-func NewPaymentService(database *db.Database) *PaymentService {
-	return &PaymentService{db: database}
+func NewPaymentService(database *db.Database, branchSvc *BranchService) *PaymentService {
+	return &PaymentService{db: database, branchSvc: branchSvc}
+}
+
+// SetCache wires in the optional Redis cache client.
+func (s *PaymentService) SetCache(c *cache.Client) { s.cache = c }
+
+const paymentCacheTTL = 30 * time.Second
+
+// PaymentFilterInput replaces the long parameter list of GetByBranchIDWithFilters.
+type PaymentFilterInput struct {
+	BranchID      string
+	Page          string
+	Limit         string
+	// Cursor is the created_at timestamp (RFC3339) of the last item from the previous page.
+	// When set, Page/offset is ignored and results start strictly before this timestamp.
+	Cursor        string
+	Search        string
+	Status        string
+	PaymentMethod string
+	Month         string
+	Year          string
+	ClassID       string
 }
 
 type CreatePaymentRequest struct {
@@ -35,25 +64,18 @@ type CreatePaymentRequest struct {
 	BranchID      string     `json:"branchId" binding:"required"`
 }
 
-func (s *PaymentService) getStudentMonthlyPayment(ctx context.Context, studentID string) (float64, error) {
-	var monthlyPayment float64
-	err := s.db.GetConn().QueryRowContext(ctx,
-		`SELECT monthly_payment FROM students WHERE id = $1`, studentID,
-	).Scan(&monthlyPayment)
-	return monthlyPayment, err
-}
-
-func (s *PaymentService) getSumPaidForPeriod(ctx context.Context, studentID, month string, year int, excludeID string) (float64, error) {
-	var sum float64
-	err := s.db.GetConn().QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(amount), 0) FROM payments
-		 WHERE student_id = $1 AND month = $2 AND year = $3 AND id != $4`,
-		studentID, month, year, excludeID,
-	).Scan(&sum)
-	return sum, err
-}
-
 func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, createdBy string) (*models.Payment, error) {
+	// Guard: financial month lock — only allow payments for the branch's current month.
+	if s.branchSvc != nil && req.BranchID != "" {
+		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, req.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify financial month: %w", err)
+		}
+		if req.Month != currentMonth || req.Year != currentYear {
+			return nil, fmt.Errorf("%w: can only create payments for current month (%s/%d)", ErrFinancialMonthLocked, currentMonth, currentYear)
+		}
+	}
+
 	// Check if student already has a paid payment for this month/year
 	existingPayments, err := s.GetByStudentIDAndPeriod(ctx, req.StudentID, req.Month, req.Year)
 	if err != nil && err != sql.ErrNoRows {
@@ -65,23 +87,6 @@ func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, 
 		if p.Status == "paid" {
 			return nil, fmt.Errorf("student already has a paid payment for %s/%d", req.Month, req.Year)
 		}
-	}
-
-	// Check that total payments for the period do not exceed the student's monthly payment
-	monthlyPayment, err := s.getStudentMonthlyPayment(ctx, req.StudentID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get student monthly payment: %w", err)
-	}
-	alreadyPaid, err := s.getSumPaidForPeriod(ctx, req.StudentID, req.Month, req.Year, "")
-	if err != nil {
-		return nil, fmt.Errorf("failed to sum existing payments: %w", err)
-	}
-	if monthlyPayment > 0 && alreadyPaid+req.Amount > monthlyPayment {
-		remaining := monthlyPayment - alreadyPaid
-		if remaining < 0 {
-			remaining = 0
-		}
-		return nil, fmt.Errorf("amount exceeds remaining balance for %s/%d (remaining: %.2f)", req.Month, req.Year, remaining)
 	}
 
 	payment := &models.Payment{
@@ -105,6 +110,9 @@ func (s *PaymentService) Create(ctx context.Context, req *CreatePaymentRequest, 
 
 	_, err = s.db.GetConn().ExecContext(ctx, query, payment.ID, payment.StudentID, payment.Amount, payment.Month, payment.Year,
 		payment.PaymentMethod, payment.Status, payment.InvoiceNumber, payment.Notes, payment.PaidDate, payment.BranchID, payment.CreatedBy, payment.CreatedAt)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:payments:%s:", req.BranchID))
+	}
 
 	return payment, err
 }
@@ -114,7 +122,7 @@ func (s *PaymentService) GetByID(ctx context.Context, id string) (*models.Paymen
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.id = $1`
+	         WHERE p.id = $1 AND p.deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&payment.ID, &payment.StudentID, &payment.Amount, &payment.Month, &payment.Year,
@@ -132,7 +140,7 @@ func (s *PaymentService) GetByBranchID(ctx context.Context, branchID string) ([]
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.branch_id = $1 ORDER BY p.created_at DESC`
+	         WHERE p.branch_id = $1 AND p.deleted_at IS NULL ORDER BY p.created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
 	if err != nil {
@@ -158,7 +166,7 @@ func (s *PaymentService) GetByBranchIDAndPeriod(ctx context.Context, branchID, m
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 ORDER BY p.created_at DESC`
+	         WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 AND p.deleted_at IS NULL ORDER BY p.created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
 	if err != nil {
@@ -182,7 +190,7 @@ func (s *PaymentService) GetByBranchIDAndPeriod(ctx context.Context, branchID, m
 
 func (s *PaymentService) GetByBranchIDAndPeriodPaginated(ctx context.Context, branchID, month, year string, page, limit int) (map[string]interface{}, error) {
 	// Get total count
-	countQuery := `SELECT COUNT(*) FROM payments WHERE branch_id = $1 AND month = $2 AND year = $3`
+	countQuery := `SELECT COUNT(*) FROM payments WHERE branch_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL`
 	var total int64
 	err := s.db.GetConn().QueryRowContext(ctx, countQuery, branchID, month, year).Scan(&total)
 	if err != nil {
@@ -194,7 +202,7 @@ func (s *PaymentService) GetByBranchIDAndPeriodPaginated(ctx context.Context, br
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 ORDER BY p.created_at DESC LIMIT $4 OFFSET $5`
+	         WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 AND p.deleted_at IS NULL ORDER BY p.created_at DESC LIMIT $4 OFFSET $5`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year, limit, offset)
 	if err != nil {
@@ -230,7 +238,7 @@ func (s *PaymentService) GetByBranchIDAndPeriodPaginated(ctx context.Context, br
 
 func (s *PaymentService) GetByBranchIDAndPeriodPaginatedWithSearch(ctx context.Context, branchID, month, year, search, statusFilter string, page, limit int) (map[string]interface{}, error) {
 	// Build WHERE clause dynamically
-	whereClause := "WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3"
+	whereClause := "WHERE p.branch_id = $1 AND p.month = $2 AND p.year = $3 AND p.deleted_at IS NULL"
 	args := []interface{}{branchID, month, year}
 	argCount := 3
 
@@ -308,7 +316,7 @@ func (s *PaymentService) GetByStudentIDAndPeriod(ctx context.Context, studentID,
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.student_id = $1 AND p.month = $2 AND p.year = $3`
+	         WHERE p.student_id = $1 AND p.month = $2 AND p.year = $3 AND p.deleted_at IS NULL`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, studentID, month, year)
 	if err != nil {
@@ -329,32 +337,6 @@ func (s *PaymentService) GetByStudentIDAndPeriod(ctx context.Context, studentID,
 	return payments, rows.Err()
 }
 
-// GetAllByBranchAndPeriod fetches all payments for a branch in a given month/year in a single query.
-// Use this instead of per-student GetByStudentIDAndPeriod to avoid N+1 queries.
-func (s *PaymentService) GetAllByBranchAndPeriod(ctx context.Context, branchID, month string, year int) (map[string][]models.Payment, error) {
-	query := `SELECT id, student_id, amount, month, year, payment_method, status, invoice_number, notes, paid_date, branch_id, created_by, created_at
-	         FROM payments
-	         WHERE branch_id = $1 AND month = $2 AND year = $3`
-
-	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	result := make(map[string][]models.Payment)
-	for rows.Next() {
-		var p models.Payment
-		if err := rows.Scan(&p.ID, &p.StudentID, &p.Amount, &p.Month, &p.Year,
-			&p.PaymentMethod, &p.Status, &p.InvoiceNumber, &p.Notes, &p.PaidDate,
-			&p.BranchID, &p.CreatedBy, &p.CreatedAt); err != nil {
-			return nil, err
-		}
-		result[p.StudentID] = append(result[p.StudentID], p)
-	}
-	return result, rows.Err()
-}
-
 func (s *PaymentService) GetCurrentMonthYear() (string, string) {
 	now := time.Now().UTC()
 	month := fmt.Sprintf("%02d", now.Month())
@@ -362,60 +344,35 @@ func (s *PaymentService) GetCurrentMonthYear() (string, string) {
 	return month, year
 }
 
-func (s *PaymentService) Update(ctx context.Context, id string, updates map[string]interface{}) (*models.Payment, error) {
-	// Check if payment exists
+func (s *PaymentService) Update(ctx context.Context, id string, updates map[string]interface{}, isAdmin bool) (*models.Payment, error) {
+	// Check if payment exists and fetch for month-lock validation.
 	existing, err := s.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	updates = utils.ConvertKeysToSnakeCase(updates)
-
-	// Validate new amount against monthly payment limit
-	if rawAmount, ok := updates["amount"]; ok {
-		var newAmount float64
-		switch v := rawAmount.(type) {
-		case float64:
-			newAmount = v
-		case int:
-			newAmount = float64(v)
+	// Guard: financial month lock — non-admin users cannot edit past-month payments.
+	if s.branchSvc != nil {
+		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, existing.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify financial month: %w", err)
 		}
-		if newAmount > 0 {
-			monthlyPayment, err := s.getStudentMonthlyPayment(ctx, existing.StudentID)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get student monthly payment: %w", err)
-			}
-			otherPaid, err := s.getSumPaidForPeriod(ctx, existing.StudentID, existing.Month, existing.Year, id)
-			if err != nil {
-				return nil, fmt.Errorf("failed to sum existing payments: %w", err)
-			}
-			if monthlyPayment > 0 && otherPaid+newAmount > monthlyPayment {
-				remaining := monthlyPayment - otherPaid
-				if remaining < 0 {
-					remaining = 0
-				}
-				return nil, fmt.Errorf("amount exceeds remaining balance for %s/%d (remaining: %.2f)", existing.Month, existing.Year, remaining)
-			}
+		isPast := existing.Month != currentMonth || existing.Year != currentYear
+		if isPast && !isAdmin {
+			return nil, fmt.Errorf("%w: cannot modify payments from past months", ErrFinancialMonthLocked)
 		}
 	}
+
+	updates = utils.ConvertKeysToSnakeCase(updates)
 	if paymentMethodValue, ok := updates["payment_method"].(string); ok {
 		updates["payment_method"] = normalizeStudentPaymentMethod(paymentMethodValue)
 	}
 
-	query := `UPDATE payments SET `
-	args := []interface{}{}
-	argCount := 1
-
-	for key, value := range updates {
-		if argCount > 1 {
-			query += ", "
-		}
-		query += key + " = $" + fmt.Sprintf("%d", argCount)
-		args = append(args, value)
-		argCount++
+	setClause, args, err := buildUpdateSet(updates, paymentUpdateRule, isAdmin, nil)
+	if err != nil {
+		return nil, err
 	}
-
-	query += fmt.Sprintf(" WHERE id = $%d", argCount)
+	query := `UPDATE payments SET ` + setClause + fmt.Sprintf(" WHERE id = $%d", len(args)+1)
 	args = append(args, id)
 
 	_, err = s.db.GetConn().ExecContext(ctx, query, args...)
@@ -423,18 +380,25 @@ func (s *PaymentService) Update(ctx context.Context, id string, updates map[stri
 		return nil, err
 	}
 
-	return s.GetByID(ctx, id)
+	updated, err := s.GetByID(ctx, id)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:payments:%s:", existing.BranchID))
+	}
+	return updated, err
 }
 
 func (s *PaymentService) Delete(ctx context.Context, id string) error {
 	// Check if payment exists
-	_, err := s.GetByID(ctx, id)
+	existing, err := s.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
 
 	query := `DELETE FROM payments WHERE id = $1`
 	_, err = s.db.GetConn().ExecContext(ctx, query, id)
+	if err == nil && s.cache != nil {
+		_ = s.cache.DeleteByPrefix(ctx, fmt.Sprintf("crm:payments:%s:", existing.BranchID))
+	}
 	return err
 }
 
@@ -444,7 +408,7 @@ func (s *PaymentService) GetPaymentSummary(ctx context.Context, branchID string)
 		SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END) as total_paid,
 		SUM(CASE WHEN status = 'unpaid' THEN amount ELSE 0 END) as total_unpaid,
 		SUM(CASE WHEN status = 'partial' THEN amount ELSE 0 END) as total_partial
-	FROM payments WHERE branch_id = $1
+	FROM payments WHERE branch_id = $1 AND deleted_at IS NULL
 	`
 
 	var totalPaid, totalUnpaid, totalPartial sql.NullFloat64
@@ -458,7 +422,7 @@ func (s *PaymentService) GetPaymentSummary(ctx context.Context, branchID string)
 	methodRows, err := s.db.GetConn().QueryContext(ctx, `
 		SELECT payment_method, COALESCE(SUM(amount), 0)
 		FROM payments
-		WHERE branch_id = $1
+		WHERE branch_id = $1 AND deleted_at IS NULL
 		GROUP BY payment_method
 	`, branchID)
 	if err != nil {
@@ -492,7 +456,7 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 	paymentQuery := `
 	SELECT 
 		SUM(CASE WHEN status = 'paid' OR status = 'partial' THEN amount ELSE 0 END) as total_paid
-	FROM payments WHERE branch_id = $1 AND month = $2 AND year = $3
+	FROM payments WHERE branch_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL
 	`
 
 	var totalPaid sql.NullFloat64
@@ -531,7 +495,7 @@ func (s *PaymentService) GetPaymentSummaryForPeriod(ctx context.Context, branchI
 	methodRows, err := s.db.GetConn().QueryContext(ctx, `
 		SELECT payment_method, COALESCE(SUM(amount), 0)
 		FROM payments
-		WHERE branch_id = $1 AND month = $2 AND year = $3
+		WHERE branch_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL
 		GROUP BY payment_method
 	`, branchID, month, year)
 	if err != nil {
@@ -563,7 +527,7 @@ func (s *PaymentService) GetByStudentID(ctx context.Context, studentID string) (
 	query := `SELECT p.id, p.student_id, p.amount, p.month, p.year, p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date, p.branch_id, p.created_by, p.created_at, u.full_name
 	         FROM payments p
 	         LEFT JOIN users u ON p.created_by = u.id
-	         WHERE p.student_id = $1 ORDER BY p.year DESC, p.month DESC, p.created_at DESC`
+	         WHERE p.student_id = $1 AND p.deleted_at IS NULL ORDER BY p.year DESC, p.month DESC, p.created_at DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, studentID)
 	if err != nil {
@@ -644,23 +608,54 @@ func (s *PaymentService) ConsolidatePayments(payments []models.Payment) []models
 
 // GetByBranchIDWithFilters returns payments with pagination and dynamic filtering
 // Similar to StudentService.GetByBranchIDWithFilters
-func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID string, page, limit string, search, status, paymentMethod, month, year, classID string) (*models.PaymentListResponse, error) {
-	intPage, err := strconv.Atoi(page)
+func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, in PaymentFilterInput) (*models.PaymentListResponse, error) {
+	if s.cache != nil {
+		cacheKey := fmt.Sprintf("crm:payments:%s:%s:%s:%s:%s:%s:%s:%s:%s",
+			in.BranchID, in.Page, in.Limit, in.Search, in.Status, in.PaymentMethod, in.Month, in.Year, in.ClassID)
+		var cached models.PaymentListResponse
+		if hit, _ := s.cache.Get(ctx, cacheKey, &cached); hit {
+			return &cached, nil
+		}
+		result, err := s.getByBranchIDWithFiltersDB(ctx, in)
+		if err == nil && result != nil {
+			_ = s.cache.Set(ctx, cacheKey, result, paymentCacheTTL)
+		}
+		return result, err
+	}
+	return s.getByBranchIDWithFiltersDB(ctx, in)
+}
+
+func (s *PaymentService) getByBranchIDWithFiltersDB(ctx context.Context, in PaymentFilterInput) (*models.PaymentListResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+
+	intPage, err := strconv.Atoi(in.Page)
 	if err != nil || intPage < 1 {
 		intPage = 1
 	}
 
-	intLimit, err := strconv.Atoi(limit)
+	intLimit, err := strconv.Atoi(in.Limit)
 	if err != nil || intLimit < 1 {
 		intLimit = 10
 	}
 
+	// Cursor pagination: when a cursor is supplied, ignore page/offset entirely.
+	// Cursor = created_at timestamp of the last item (ordering is DESC, so we use <).
+	useCursor := in.Cursor != ""
 	offset := (intPage - 1) * intLimit
+
+	branchID := in.BranchID
+	search := in.Search
+	status := in.Status
+	paymentMethod := in.PaymentMethod
+	month := in.Month
+	year := in.Year
+	classID := in.ClassID
 
 	// -------------------------
 	// dynamic filters
 	// -------------------------
-	where := `WHERE p.branch_id = $1`
+	where := `WHERE p.branch_id = $1 AND p.deleted_at IS NULL`
 	args := []interface{}{branchID}
 	argID := 2
 
@@ -704,6 +699,13 @@ func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 		argID++
 	}
 
+	// Cursor: return only payments created before this timestamp (keyset, order DESC)
+	if useCursor {
+		where += fmt.Sprintf(" AND p.created_at < $%d", argID)
+		args = append(args, in.Cursor)
+		argID++
+	}
+
 	// -------------------------
 	// count query
 	// -------------------------
@@ -720,22 +722,38 @@ func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 	}
 
 	// -------------------------
-	// data query
+	// data query — also selects student info so the frontend can display
+	// student name, phone, class without a second round-trip.
 	// -------------------------
 	dataQuery := `
-		SELECT 
-			p.id, p.student_id, p.amount, p.month, p.year, 
+		SELECT
+			p.id, p.student_id, p.amount, p.month, p.year,
 			p.payment_method, p.status, p.invoice_number, p.notes, p.paid_date,
 			p.branch_id, p.created_by, p.financial_month_id, p.created_at,
-			u.full_name as created_by_name
+			u.full_name as created_by_name,
+			s.full_name  as student_full_name,
+			COALESCE(s.phone, '') as student_phone,
+			COALESCE(s.class_id::text, '') as student_class_id,
+			COALESCE(c.name, '') as student_class_name,
+			COALESCE(s.monthly_payment, 0) as student_monthly_payment
 		FROM payments p
 		JOIN students s ON s.id = p.student_id
 		LEFT JOIN users u ON u.id = p.created_by
+		LEFT JOIN classes c ON c.id = s.class_id
 		` + where + `
 		ORDER BY p.created_at DESC
-		LIMIT $` + strconv.Itoa(argID) + ` OFFSET $` + strconv.Itoa(argID+1)
+		LIMIT $` + strconv.Itoa(argID) + func() string {
+		if useCursor {
+			return ""
+		}
+		return ` OFFSET $` + strconv.Itoa(argID+1)
+	}()
 
-	args = append(args, intLimit, offset)
+	if useCursor {
+		args = append(args, intLimit)
+	} else {
+		args = append(args, intLimit, offset)
+	}
 
 	rows, err := s.db.GetConn().QueryContext(ctx, dataQuery, args...)
 	if err != nil {
@@ -744,14 +762,18 @@ func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 	defer rows.Close()
 
 	var payments []models.Payment
+	studentMap := make(map[string]models.StudentInfo)
 	for rows.Next() {
 		var p models.Payment
 		var createdByName sql.NullString
+		var stuName, stuPhone, stuClassID, stuClassName string
+		var stuMonthlyPayment float64
 		err := rows.Scan(
 			&p.ID, &p.StudentID, &p.Amount, &p.Month, &p.Year,
 			&p.PaymentMethod, &p.Status, &p.InvoiceNumber, &p.Notes, &p.PaidDate,
 			&p.BranchID, &p.CreatedBy, &p.FinancialMonthID, &p.CreatedAt,
 			&createdByName,
+			&stuName, &stuPhone, &stuClassID, &stuClassName, &stuMonthlyPayment,
 		)
 		if err != nil {
 			return nil, err
@@ -761,18 +783,100 @@ func (s *PaymentService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 		}
 		p.PaymentMethod = models.PaymentMethod(normalizeStudentPaymentMethod(string(p.PaymentMethod)))
 		payments = append(payments, p)
+
+		if _, seen := studentMap[p.StudentID]; !seen {
+			studentMap[p.StudentID] = models.StudentInfo{
+				ID:             p.StudentID,
+				FullName:       stuName,
+				Phone:          stuPhone,
+				ClassID:        stuClassID,
+				ClassName:      stuClassName,
+				MonthlyPayment: stuMonthlyPayment,
+			}
+		}
 	}
 
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
 
+	students := make([]models.StudentInfo, 0, len(studentMap))
+	for _, si := range studentMap {
+		students = append(students, si)
+	}
+
+	// Build next cursor from the last payment's created_at (keyset, order DESC)
+	var nextCursor string
+	if len(payments) == intLimit {
+		nextCursor = payments[len(payments)-1].CreatedAt.Format(time.RFC3339Nano)
+	}
+
 	return &models.PaymentListResponse{
-		Items: payments,
-		Total: total,
-		Page:  intPage,
-		Limit: intLimit,
+		Items:      payments,
+		Students:   students,
+		Total:      total,
+		Page:       intPage,
+		Limit:      intLimit,
+		NextCursor: nextCursor,
 	}, nil
+}
+
+// BulkCreateRequest is a single entry in a bulk payment request.
+type BulkCreateRequest struct {
+	StudentID     string  `json:"studentId"     binding:"required"`
+	Amount        float64 `json:"amount"        binding:"required,gt=0"`
+	PaymentMethod string  `json:"paymentMethod" binding:"required"`
+	Notes         *string `json:"notes"`
+}
+
+// BulkCreateResult is returned per-student from BulkCreate.
+type BulkCreateResult struct {
+	StudentID string          `json:"studentId"`
+	Payment   *models.Payment `json:"payment,omitempty"`
+	Error     string          `json:"error,omitempty"`
+}
+
+// BulkCreate creates payments for multiple students in the branch's current
+// financial month. Each student is processed independently so a failure on one
+// does not roll back the others. Returns per-student results.
+func (s *PaymentService) BulkCreate(ctx context.Context, branchID, paymentMethod string, entries []BulkCreateRequest, createdBy string) []BulkCreateResult {
+	currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, branchID)
+	if err != nil {
+		// Propagate as a universal error across all entries
+		results := make([]BulkCreateResult, len(entries))
+		for i, e := range entries {
+			results[i] = BulkCreateResult{StudentID: e.StudentID, Error: "could not determine current month"}
+		}
+		return results
+	}
+
+	results := make([]BulkCreateResult, 0, len(entries))
+	for _, e := range entries {
+		method := e.PaymentMethod
+		if method == "" {
+			method = paymentMethod
+		}
+		now := time.Now().UTC()
+		req := &CreatePaymentRequest{
+			StudentID:     e.StudentID,
+			Amount:        e.Amount,
+			Month:         currentMonth,
+			Year:          currentYear,
+			PaymentMethod: method,
+			Status:        "paid",
+			InvoiceNumber: fmt.Sprintf("QP-%d-%s", time.Now().UnixMilli(), uuid.New().String()[:8]),
+			Notes:         e.Notes,
+			PaidDate:      &now,
+			BranchID:      branchID,
+		}
+		p, err := s.Create(ctx, req, createdBy)
+		if err != nil {
+			results = append(results, BulkCreateResult{StudentID: e.StudentID, Error: err.Error()})
+		} else {
+			results = append(results, BulkCreateResult{StudentID: e.StudentID, Payment: p})
+		}
+	}
+	return results
 }
 
 // GetByStudentAndPeriod returns payments for a student in a specific month/year
@@ -783,7 +887,7 @@ func (s *PaymentService) GetByStudentAndPeriod(ctx context.Context, studentID, m
 			payment_method, status, invoice_number, notes, paid_date,
 			branch_id, created_by, financial_month_id, created_at
 		FROM payments
-		WHERE student_id = $1 AND month = $2 AND year = $3
+		WHERE student_id = $1 AND month = $2 AND year = $3 AND deleted_at IS NULL
 		ORDER BY created_at DESC
 	`
 

@@ -225,4 +225,8 @@ export const paymentTranslations: Partial<Translation> = {
     "uz-latn": "Qidirish uchun yozing",
     en: "Type to search for a student"
   },
+
+  // Tab label on the merged Payments page (list + the former standalone
+  // /quick-pay page, now a "quickPayment" tab here).
+  paymentsListTab: { "uz-cyrl": "Рўйхат", "uz-latn": "Ro'yxat", en: "List" },
 };

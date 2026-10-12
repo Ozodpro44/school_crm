@@ -124,11 +124,52 @@ type Teacher struct {
 	MonthlySalary   float64    `json:"monthlySalary" db:"monthly_salary"`
 	Phone           string     `json:"phone" db:"phone"`
 	Email           string     `json:"email" db:"email"`
+	UserID          *string    `json:"userId" db:"user_id"`
 	AssignedClasses []string   `json:"assignedClasses" db:"-"`
 	BranchID        string     `json:"branchId" db:"branch_id"`
 	JoinedDate      *time.Time `json:"joinedDate" db:"joined_date"`
 	CreatedAt       time.Time  `json:"createdAt" db:"created_at"`
 	UpdatedAt       time.Time  `json:"updatedAt" db:"updated_at"`
+}
+
+// ─── Teacher Portal ───────────────────────────────────────────────────────────
+
+// TeacherPortalClass is a class with enriched data for the portal.
+type TeacherPortalClass struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	BranchID     string `json:"branchId"`
+	StudentCount int    `json:"studentCount"`
+}
+
+// TeacherPortalStudent is a student shown in the teacher's portal.
+type TeacherPortalStudent struct {
+	ID             string  `json:"id"`
+	FullName       string  `json:"fullName"`
+	Phone          string  `json:"phone"`
+	ClassID        string  `json:"classId"`
+	ClassName      string  `json:"className"`
+	MonthlyPayment float64 `json:"monthlyPayment"`
+	PaymentStatus  string  `json:"paymentStatus"` // "paid", "partial", "unpaid"
+	PaidAmount     float64 `json:"paidAmount"`
+}
+
+// TeacherPortalSalary is the teacher's salary record for the current month.
+type TeacherPortalSalary struct {
+	ID            *string  `json:"id"`
+	Amount        float64  `json:"amount"`
+	Month         string   `json:"month"`
+	Year          int      `json:"year"`
+	Status        string   `json:"status"`
+	MonthlySalary float64  `json:"monthlySalary"`
+}
+
+// TeacherPortalResponse is the full response for GET /teacher-portal/me.
+type TeacherPortalResponse struct {
+	Teacher  *Teacher               `json:"teacher"`
+	Classes  []TeacherPortalClass   `json:"classes"`
+	Students []TeacherPortalStudent `json:"students"`
+	Salary   *TeacherPortalSalary   `json:"salary"`
 }
 
 type Salary struct {
@@ -249,11 +290,12 @@ type PaymentStudent struct {
 }
 
 type StudentListResponse struct {
-	Items   []StudentList  `json:"items"`
-	Classes []ClassStudent `json:"classes"`
-	Total   int            `json:"total"`
-	Page    int            `json:"page"`
-	Limit   int            `json:"limit"`
+	Items      []StudentList  `json:"items"`
+	Classes    []ClassStudent `json:"classes"`
+	Total      int            `json:"total"`
+	Page       int            `json:"page"`
+	Limit      int            `json:"limit"`
+	NextCursor string         `json:"nextCursor,omitempty"` // keyset pagination cursor
 }
 
 type StudentInfo struct {
@@ -273,6 +315,7 @@ type PaymentListResponse struct {
 	Total      int               `json:"total"`
 	Page       int               `json:"page"`
 	Limit      int               `json:"limit"`
+	NextCursor string            `json:"nextCursor,omitempty"` // keyset pagination cursor
 }
 
 type PaymentSummary struct {
@@ -304,3 +347,202 @@ type ExpenseFilterResult struct {
 	Page  int       `json:"page"`
 	Limit int       `json:"limit"`
 }
+
+// ─── Attendance ───────────────────────────────────────────────────────────────
+
+type AttendanceStatus string
+
+const (
+	AttendancePresent AttendanceStatus = "present"
+	AttendanceAbsent  AttendanceStatus = "absent"
+	AttendanceLate    AttendanceStatus = "late"
+)
+
+// Attendance is one per-student record for a given class session (date).
+type Attendance struct {
+	ID          string           `json:"id"`
+	BranchID    string           `json:"branchId"`
+	ClassID     string           `json:"classId"`
+	StudentID   string           `json:"studentId"`
+	Date        string           `json:"date"` // "YYYY-MM-DD"
+	Status      AttendanceStatus `json:"status"`
+	Note        *string          `json:"note"`
+	CreatedBy   *string          `json:"createdBy"`
+	CreatedAt   time.Time        `json:"createdAt"`
+	UpdatedAt   time.Time        `json:"updatedAt"`
+	StudentName string           `json:"studentName,omitempty"`
+}
+
+// AttendanceEntry is used in bulk-save requests.
+type AttendanceEntry struct {
+	StudentID string           `json:"studentId" binding:"required"`
+	Status    AttendanceStatus `json:"status"    binding:"required"`
+	Note      *string          `json:"note"`
+}
+
+// BulkAttendanceRequest is the payload for POST /attendance.
+type BulkAttendanceRequest struct {
+	BranchID string            `json:"branchId" binding:"required"`
+	ClassID  string            `json:"classId"  binding:"required"`
+	Date     string            `json:"date"     binding:"required"` // "YYYY-MM-DD"
+	Records  []AttendanceEntry `json:"records"  binding:"required"`
+}
+
+// AttendanceStudentSummary holds monthly attendance stats for one student.
+type AttendanceStudentSummary struct {
+	StudentID   string  `json:"studentId"`
+	StudentName string  `json:"studentName"`
+	Present     int     `json:"present"`
+	Absent      int     `json:"absent"`
+	Late        int     `json:"late"`
+	Total       int     `json:"total"`
+	PresentPct  float64 `json:"presentPct"`
+}
+
+// ─── Student Notes ────────────────────────────────────────────────────────────
+
+type StudentNote struct {
+	ID              string    `json:"id"`
+	BranchID        string    `json:"branchId"`
+	StudentID       string    `json:"studentId"`
+	Content         string    `json:"content"`
+	CreatedBy       *string   `json:"createdBy"`
+	CreatedByName   string    `json:"createdByName"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+type CreateStudentNoteRequest struct {
+	Content string `json:"content" binding:"required"`
+}
+
+// ─── Contact Log ──────────────────────────────────────────────────────────────
+
+type ContactLogEntry struct {
+	ID              string    `json:"id"`
+	BranchID        string    `json:"branchId"`
+	StudentID       string    `json:"studentId"`
+	ContactType     string    `json:"contactType"`
+	Outcome         string    `json:"outcome"`
+	Note            string    `json:"note"`
+	ContactedAt     time.Time `json:"contactedAt"`
+	CreatedBy       *string   `json:"createdBy"`
+	CreatedByName   string    `json:"createdByName"`
+	CreatedAt       time.Time `json:"createdAt"`
+}
+
+type CreateContactLogRequest struct {
+	ContactType string `json:"contactType"`
+	Outcome     string `json:"outcome"`
+	Note        string `json:"note"`
+	ContactedAt string `json:"contactedAt"` // "YYYY-MM-DDTHH:MM" or RFC3339
+}
+
+// ─── Class Schedule ───────────────────────────────────────────────────────────
+
+type ScheduleSlot struct {
+	ID          string    `json:"id"`
+	BranchID    string    `json:"branchId"`
+	ClassID     string    `json:"classId"`
+	TeacherID   *string   `json:"teacherId"`
+	TeacherName string    `json:"teacherName,omitempty"`
+	DayOfWeek   int       `json:"dayOfWeek"` // 1=Mon … 6=Sat
+	StartTime   string    `json:"startTime"` // "09:00"
+	EndTime     string    `json:"endTime"`   // "10:30"
+	Room        string    `json:"room"`
+	Subject     string    `json:"subject"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type UpsertScheduleSlotRequest struct {
+	BranchID  string  `json:"branchId"  binding:"required"`
+	ClassID   string  `json:"classId"   binding:"required"`
+	TeacherID *string `json:"teacherId"`
+	DayOfWeek int     `json:"dayOfWeek" binding:"required,min=1,max=6"`
+	StartTime string  `json:"startTime" binding:"required"`
+	EndTime   string  `json:"endTime"   binding:"required"`
+	Room      string  `json:"room"`
+	Subject   string  `json:"subject"`
+}
+
+// ─── Mass Messaging ───────────────────────────────────────────────────────────
+
+type MessageLog struct {
+	ID               string    `json:"id"`
+	BranchID         string    `json:"branchId"`
+	SentBy           *string   `json:"sentBy"`
+	Message          string    `json:"message"`
+	TemplateKey      string    `json:"templateKey"`
+	RecipientsCount  int       `json:"recipientsCount"`
+	DeliveredCount   int       `json:"deliveredCount"`
+	Filters          string    `json:"filters"`
+	CreatedAt        time.Time `json:"createdAt"`
+}
+
+type SendMessageRequest struct {
+	BranchID    string            `json:"branchId"  binding:"required"`
+	Message     string            `json:"message"   binding:"required"`
+	TemplateKey string            `json:"templateKey"`
+	Filters     MessageFilters    `json:"filters"`
+}
+
+type MessageFilters struct {
+	ClassIDs      []string `json:"classIds"`
+	PaymentStatus string   `json:"paymentStatus"` // "paid","unpaid","partial",""=all
+	EnrolledAfter string   `json:"enrolledAfter"` // YYYY-MM-DD
+	EnrolledBefore string  `json:"enrolledBefore"`
+	StudentIDs    []string `json:"studentIds"` // explicit list
+}
+
+// ─── Assignments ──────────────────────────────────────────────────────────────
+
+type Assignment struct {
+	ID           string    `json:"id"`
+	BranchID     string    `json:"branchId"`
+	ClassID      string    `json:"classId"`
+	ClassName    string    `json:"className,omitempty"`
+	TeacherID    *string   `json:"teacherId"`
+	Subject      string    `json:"subject"`
+	Title        string    `json:"title"`
+	Description  string    `json:"description"`
+	DueDate      string    `json:"dueDate"` // YYYY-MM-DD
+	CreatedBy    *string   `json:"createdBy"`
+	TotalStudents int      `json:"totalStudents,omitempty"`
+	SubmittedCount int     `json:"submittedCount,omitempty"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+type CreateAssignmentRequest struct {
+	BranchID    string  `json:"branchId"   binding:"required"`
+	ClassID     string  `json:"classId"    binding:"required"`
+	TeacherID   *string `json:"teacherId"`
+	Subject     string  `json:"subject"`
+	Title       string  `json:"title"      binding:"required"`
+	Description string  `json:"description"`
+	DueDate     string  `json:"dueDate"    binding:"required"`
+}
+
+type AssignmentSubmission struct {
+	ID           string     `json:"id"`
+	AssignmentID string     `json:"assignmentId"`
+	StudentID    string     `json:"studentId"`
+	StudentName  string     `json:"studentName,omitempty"`
+	Status       string     `json:"status"`
+	Grade        *float64   `json:"grade"`
+	Feedback     string     `json:"feedback"`
+	SubmittedAt  *time.Time `json:"submittedAt"`
+	GradedAt     *time.Time `json:"gradedAt"`
+	GradedBy     *string    `json:"gradedBy"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
+}
+
+type UpdateSubmissionRequest struct {
+	Status   string   `json:"status"`
+	Grade    *float64 `json:"grade"`
+	Feedback string   `json:"feedback"`
+}
+
+

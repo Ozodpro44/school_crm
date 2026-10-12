@@ -1,27 +1,5 @@
 {
   "framework": "nextjs",
-  "redirects": [
-    {
-      "source": "/old-path",
-      "destination": "/new-path",
-      "permanent": true
-    }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.softgen.ai https://cdn.softgen.dev; style-src 'self' 'unsafe-inline'; connect-src 'self' https://incredible-love-production-0008.up.railway.app https://*.railway.app; img-src 'self' data: https:; font-src 'self' data:"
-        }
-      ]
-    }
-  ],
   "cleanUrls": true,
   "trailingSlash": false
 }

@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package finance.v1;
+
+import "common/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/school-crm/protos/finance/v1;financev1";
+
+message FinancialSummary {
+  double total_income   = 1;
+  double total_expenses = 2;
+  double net_profit     = 3;
+  int32  month          = 4;
+  int32  year           = 5;
+  string branch_id      = 6;
+}
+
+message Expense {
+  string expense_id = 1;
+  string title      = 2;
+  string category   = 3;
+  double amount     = 4;
+  string branch_id  = 5;
+  google.protobuf.Timestamp expense_date = 6;
+  google.protobuf.Timestamp created_at   = 7;
+}
+
+message GetFinancialSummaryRequest {
+  string branch_id   = 1;
+  string start_date  = 2; // RFC3339
+  string end_date    = 3; // RFC3339
+}
+message GetFinancialSummaryResponse {
+  FinancialSummary summary = 1;
+}
+
+message ListExpensesRequest {
+  string branch_id  = 1;
+  string category   = 2;
+  string start_date = 3;
+  string end_date   = 4;
+  common.v1.PageRequest page = 5;
+}
+message ListExpensesResponse {
+  repeated Expense       expenses = 1;
+  common.v1.PageResponse page     = 2;
+}
+
+service FinanceService {
+  rpc GetFinancialSummary(GetFinancialSummaryRequest) returns (GetFinancialSummaryResponse);
+  rpc ListExpenses(ListExpensesRequest) returns (ListExpensesResponse);
+}

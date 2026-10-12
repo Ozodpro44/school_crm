@@ -1,0 +1,1118 @@
+package handler
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/school-crm/user-service/internal/service"
+)
+
+type Handler struct {
+	users       *service.UserService
+	branches    *service.BranchService
+	permissions *service.PermissionService
+	db          *sql.DB
+}
+
+func New(
+	users *service.UserService,
+	branches *service.BranchService,
+	permissions *service.PermissionService,
+	rawDB *sql.DB,
+) *Handler {
+	return &Handler{users: users, branches: branches, permissions: permissions, db: rawDB}
+}
+
+func (h *Handler) Register(r *gin.RouterGroup) {
+	// Users
+	r.GET("/users", h.ListUsers)
+	r.POST("/users", h.CreateUser)
+	r.GET("/users/:id", h.GetUser)
+	r.PUT("/users/:id", h.UpdateUser)
+	r.DELETE("/users/:id", h.DeleteUser)
+	r.PUT("/users/:id/password", h.ChangePassword)
+	r.POST("/users/:id/restore", h.RestoreUser)
+	r.GET("/trash/users", h.ListUserTrash)
+
+	// Branches
+	r.GET("/branches", h.ListBranches)
+	r.POST("/branches", h.CreateBranch)
+	r.GET("/branches/:id", h.GetBranch)
+	r.PUT("/branches/:id", h.UpdateBranch)
+	r.DELETE("/branches/:id", h.DeleteBranch)
+	r.POST("/branches/:id/restore", h.RestoreBranch)
+	r.GET("/trash/branches", h.ListBranchTrash)
+	r.POST("/branches/:id/switch-month", h.SwitchMonth)
+
+	// Permissions
+	r.GET("/permissions/:userId", h.GetPermissions)
+	r.PUT("/permissions/:userId", h.UpdatePermissions)
+
+	// Settings (thin wrapper around branches)
+	r.GET("/settings", h.GetSettings)
+	r.PUT("/settings", h.UpdateSettings)
+
+	// Audit logs
+	r.GET("/audit-logs", h.ListAuditLogs)
+}
+
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+// ListUsers previously let a caller omit branchId to get every user across
+// every branch — a cross-tenant data leak, and it also let a caller pass
+// any branchId at all, not just their own. Now a non-super caller is always
+// pinned to their own branch (from the verified JWT), and only a
+// platform-level role may request an explicit branchId or all branches.
+func (h *Handler) ListUsers(c *gin.Context) {
+	// Query param first, then X-Branch-ID (the frontend's currently-selected
+	// branch) — NOT X-User-Branch-ID, the JWT's own fixed home-branch claim,
+	// which never changes when the user switches branches client-side and is
+	// often empty outright for admin/developer accounts with no single home
+	// branch. Falling back to X-User-Branch-ID here previously made ListUsers
+	// 403 for exactly those accounts ("no branch associated with this
+	// account") even though the request carried a valid X-Branch-ID.
+	// HasBranchAccess is what actually authorizes it; the param alone is
+	// never trusted.
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	callerRole := c.GetHeader("X-User-Role")
+	if !isSuperRole(callerRole) {
+		if branchID == "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "no branch associated with this account"})
+			return
+		}
+		allowed, err := h.branches.HasBranchAccess(c.Request.Context(),
+			c.GetHeader("X-User-ID"), callerRole, branchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "no branch associated with this account"})
+			return
+		}
+	}
+	users, err := h.users.GetAll(c.Request.Context(), branchID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": users})
+}
+
+// createUserRequest matches the payload the Managers page actually sends
+// (frontend_school_crm/src/pages/managers.tsx) — full_name in snake_case,
+// the rest camelCase, mirroring the shape that page's ad-hoc apiRequest call
+// uses rather than the (differently-shaped, branchId-less) createUser()
+// helper in lib/api.ts.
+type createUserRequest struct {
+	FullName string `json:"full_name" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required,min=6"`
+	Role     string `json:"role" binding:"required"`
+	BranchID string `json:"branchId" binding:"required"`
+}
+
+// CreateUser creates a manager or branch_admin account and links it to
+// branchID via branch_managers. Only admin-tier and branch_admin callers may
+// create accounts; a branch_admin may only create plain "manager" accounts
+// (not other admins/branch_admins) and only within a branch they themselves
+// can access — mirrors the equivalent, now-unreachable check in the
+// deprecated monolith fallback (backend_school_crm/internal/handlers/user.go).
+func (h *Handler) CreateUser(c *gin.Context) {
+	callerRole := c.GetHeader("X-User-Role")
+	if callerRole != "admin" && callerRole != "branch_admin" && !isSuperRole(callerRole) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+
+	var req createUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if callerRole == "branch_admin" {
+		if req.Role != "manager" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "branch_admin can only create manager accounts"})
+			return
+		}
+		allowed, err := h.branches.HasBranchAccess(c.Request.Context(), c.GetHeader("X-User-ID"), callerRole, req.BranchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+			return
+		}
+	}
+
+	u, err := h.users.Create(c.Request.Context(), req.Email, req.Password, req.FullName, req.Role, req.BranchID)
+	if err != nil {
+		if err == service.ErrAlreadyExists {
+			c.JSON(http.StatusConflict, gin.H{"error": "a user with this email already exists"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, u)
+}
+
+// canAccessUser reports whether callerID/callerRole may read/modify target:
+// a platform-level role, anyone with branch access to the target's branch,
+// or the caller accessing their own record, can. Without this, any
+// authenticated caller could read/modify/delete any user in any branch by
+// GUID.
+// It used to compare target.BranchID against the caller's raw
+// X-User-Branch-ID header — a single equality check that ignores
+// branch_managers entirely. A manager granted a second branch only via
+// branch_managers (not their own home branch_id) could list that branch's
+// users fine (ListUsers correctly uses HasBranchAccess) but got 404 from
+// GetUser/UpdateUser/GetPermissions/UpdatePermissions for anyone in it —
+// under-restrictive rather than a security hole, but it broke exactly the
+// multi-branch-manager case this whole pattern exists for.
+func (h *Handler) canAccessUser(ctx context.Context, callerID, callerRole string, target *service.User) bool {
+	if callerID == target.ID {
+		return true
+	}
+	if isSuperRole(callerRole) {
+		return true
+	}
+	if target.BranchID == nil {
+		return false
+	}
+	allowed, _ := h.branches.HasBranchAccess(ctx, callerID, callerRole, *target.BranchID)
+	return allowed
+}
+
+func (h *Handler) GetUser(c *gin.Context) {
+	u, err := h.users.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.canAccessUser(c.Request.Context(), c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), u) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	c.JSON(http.StatusOK, u)
+}
+
+func (h *Handler) UpdateUser(c *gin.Context) {
+	existing, err := h.users.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.canAccessUser(c.Request.Context(), c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), existing) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+
+	var body map[string]interface{}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// role and branch_id control authorization and tenant scoping. Pull them
+	// out of the generic body before it reaches Update (which no longer
+	// accepts them at all) and route them through the privileged path below,
+	// gated on the caller's role — never let a client grant itself a role or
+	// hop branches through the plain profile-update body.
+	rawRole, wantsRole := body["role"]
+	rawBranch, wantsBranch := body["branch_id"]
+	delete(body, "role")
+	delete(body, "branch_id")
+
+	callerRole := c.GetHeader("X-User-Role")
+	if wantsRole && !canReassignRole(callerRole) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to change role"})
+		return
+	}
+	if wantsBranch && !canReassignBranch(callerRole) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to change branch_id"})
+		return
+	}
+	// organization_name is the tenant's brand identity, meaningful only on
+	// the admin who owns the branches — block anyone else from setting it on
+	// their own row (it would just be silently unused, but there's no reason
+	// to let a manager/teacher write to it at all).
+	if _, wantsOrgName := body["organization_name"]; wantsOrgName && callerRole != "admin" && !isSuperRole(callerRole) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to change organization_name"})
+		return
+	}
+
+	if len(body) > 0 {
+		if _, err := h.users.Update(c.Request.Context(), c.Param("id"), body); err != nil {
+			if err == service.ErrNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				return
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	if wantsRole || wantsBranch {
+		rolePtr, err := stringFieldPtr(rawRole, wantsRole)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "role must be a string"})
+			return
+		}
+		branchPtr, err := stringFieldPtr(rawBranch, wantsBranch)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "branch_id must be a string"})
+			return
+		}
+		// canReassignRole above only gates "is the caller admin-tier at
+		// all" — it never checked the role being GRANTED, so a plain
+		// tenant "admin" could set anyone's role to "developer" or
+		// "super_admin" (platform-level roles, with no ceiling).
+		if rolePtr != nil && !canGrantRole(callerRole, *rolePtr) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "cannot grant a platform-level role"})
+			return
+		}
+		if _, err := h.users.UpdateRoleBranch(c.Request.Context(), c.Param("id"), rolePtr, branchPtr); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	u, err := h.users.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, u)
+}
+
+// canReassignRole reports whether callerRole may change another user's role
+// through UpdateUser. "developer"/"super_admin" are platform-level roles
+// granted out-of-band, not through this codepath.
+func canReassignRole(callerRole string) bool {
+	switch callerRole {
+	case "admin", "developer", "super_admin":
+		return true
+	default:
+		return false
+	}
+}
+
+// canGrantRole reports whether callerRole may set a user's role to newRole.
+// A platform-level caller (developer/super_admin) may grant any role.
+// A tenant-level "admin" (already allowed past canReassignRole's coarser
+// gate) may grant any ordinary tenant role but not a platform-level one —
+// without this, a plain admin could hand out "developer"/"super_admin"
+// with nothing to stop them.
+func canGrantRole(callerRole, newRole string) bool {
+	if isSuperRole(callerRole) {
+		return true
+	}
+	return !isSuperRole(newRole)
+}
+
+// canReassignBranch is stricter than canReassignRole: moving a user across
+// branches crosses tenant boundaries, so it's restricted to platform-level
+// roles rather than a branch's own admin.
+func canReassignBranch(callerRole string) bool {
+	switch callerRole {
+	case "developer", "super_admin":
+		return true
+	default:
+		return false
+	}
+}
+
+// stringFieldPtr extracts v as a *string when present is true, returning an
+// error if the JSON value wasn't a string.
+func stringFieldPtr(v interface{}, present bool) (*string, error) {
+	if !present {
+		return nil, nil
+	}
+	s, ok := v.(string)
+	if !ok {
+		return nil, fmt.Errorf("expected string")
+	}
+	return &s, nil
+}
+
+// canResetOthersPassword reports whether a caller with this role may set
+// another user's password (still subject to canAccessUser).
+func canResetOthersPassword(role string) bool {
+	return role == "admin" || role == "branch_admin" || isSuperRole(role)
+}
+
+// passwordChangeStatus maps a service error to an HTTP status and message.
+func passwordChangeStatus(err error) (int, string) {
+	switch {
+	case errors.Is(err, service.ErrPasswordTooShort),
+		errors.Is(err, service.ErrPasswordTooLong),
+		errors.Is(err, service.ErrCurrentPassRequired):
+		return http.StatusBadRequest, err.Error()
+	case errors.Is(err, service.ErrInvalidCurrentPass):
+		return http.StatusForbidden, err.Error()
+	case errors.Is(err, service.ErrNotFound):
+		return http.StatusNotFound, "user not found"
+	default:
+		return http.StatusInternalServerError, "failed to change password"
+	}
+}
+
+// ChangePassword handles PUT /users/:id/password. Self-service requires the
+// current password; admin-level callers may reset another accessible user's
+// password without it. Existing sessions are not revoked here (session state
+// is owned by auth_service).
+func (h *Handler) ChangePassword(c *gin.Context) {
+	ctx := c.Request.Context()
+	target, err := h.users.GetByID(ctx, c.Param("id"))
+	if err != nil {
+		code, msg := passwordChangeStatus(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+	callerID, callerRole := c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role")
+	self := callerID != "" && callerID == target.ID
+	if !self {
+		if !canResetOthersPassword(callerRole) || !h.canAccessUser(ctx, callerID, callerRole, target) ||
+			(isSuperRole(target.Role) && !isSuperRole(callerRole)) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		Password        string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if err := h.users.ChangePassword(ctx, target.ID, req.CurrentPassword, req.Password, self); err != nil {
+		code, msg := passwordChangeStatus(err)
+		c.JSON(code, gin.H{"error": msg})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "password updated"})
+}
+
+func (h *Handler) DeleteUser(c *gin.Context) {
+	existing, err := h.users.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	// Deleting a user is more sensitive than reading/updating one — restrict
+	// it to platform-level roles rather than extending it to same-branch
+	// staff via canAccessUser (and never allow self-delete through this
+	// generic admin endpoint).
+	if !isSuperRole(c.GetHeader("X-User-Role")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete users"})
+		return
+	}
+	if err := h.users.Delete(c.Request.Context(), existing.ID, c.GetHeader("X-User-ID")); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "user deleted"})
+}
+
+// RestoreUser undoes a soft-delete — same authorization as DeleteUser.
+func (h *Handler) RestoreUser(c *gin.Context) {
+	if !isSuperRole(c.GetHeader("X-User-Role")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to restore users"})
+		return
+	}
+	if err := h.users.Restore(c.Request.Context(), c.Param("id")); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found in trash"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "user restored"})
+}
+
+// ListUserTrash returns soft-deleted users within the caller's window: 7
+// days scoped to the caller's own branch, 30 days platform-wide for
+// developer/super_admin. Same authorization as DeleteUser/RestoreUser
+// (platform-level roles only) since deleting a user was already
+// platform-only before this feature existed.
+func (h *Handler) ListUserTrash(c *gin.Context) {
+	if !isSuperRole(c.GetHeader("X-User-Role")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to view user trash"})
+		return
+	}
+	items, err := h.users.ListTrash(c.Request.Context(), "", 30)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedUser{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+// ── Branches ──────────────────────────────────────────────────────────────────
+
+// isSuperRole reports whether callerRole is a platform-level role that
+// operates across every branch/tenant, rather than being scoped to one.
+func isSuperRole(role string) bool {
+	return role == "developer" || role == "super_admin"
+}
+
+// canAccessBranch reports whether callerID/callerRole may read or modify
+// branch b: platform-level roles always can, and anyone with branch access
+// (owner admin or branch_managers) to b can.
+// It used to check only b.AdminID == callerID, missing
+// branch_managers the same way canAccessUser did — see its comment.
+func (h *Handler) canAccessBranch(ctx context.Context, callerID, callerRole string, b *service.Branch) bool {
+	if isSuperRole(callerRole) {
+		return true
+	}
+	allowed, _ := h.branches.HasBranchAccess(ctx, callerID, callerRole, b.ID)
+	return allowed
+}
+
+func (h *Handler) ListBranches(c *gin.Context) {
+	// X-User-ID is injected by the api_gateway after JWT validation.
+	// Always filter by the authenticated user so each admin only sees their own branches.
+	// X-User-Role == "developer" or "super_admin" bypass the filter (see all branches).
+	userID := c.GetHeader("X-User-ID")
+	userRole := c.GetHeader("X-User-Role")
+
+	var (
+		branches []service.Branch
+		err      error
+	)
+
+	if userID != "" && !isSuperRole(userRole) {
+		branches, err = h.branches.GetByAdminID(c.Request.Context(), userID)
+	} else {
+		branches, err = h.branches.GetAll(c.Request.Context())
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": branches})
+}
+
+// CreateBranch is restricted to platform-level roles: a branch is a tenant,
+// and letting any authenticated user create one (or assign an arbitrary
+// adminId) is a resource-exhaustion / tenant-spoofing vector. Ordinary
+// admin-onboarding creates its own branch — see auth_service.Register.
+func (h *Handler) CreateBranch(c *gin.Context) {
+	// Was isSuperRole-only (developer/super_admin) — but branches.tsx's own
+	// "Add Branch" button, and the sidebar link that leads to it
+	// (Layout.tsx: `show: user?.role === "admin"`), are both built for an
+	// ordinary tenant admin managing their own multi-branch school. Every
+	// real admin clicking "Add Branch" got a 403 here. branch_admin is
+	// deliberately still excluded — adding a sibling branch is a
+	// whole-organization decision, matching canReassignRole's boundary
+	// elsewhere in this file.
+	role := c.GetHeader("X-User-Role")
+	if !isSuperRole(role) && role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to create branches"})
+		return
+	}
+	var body struct {
+		Name           string  `json:"name"           binding:"required"`
+		Address        string  `json:"address"        binding:"required"`
+		Phone          string  `json:"phone"          binding:"required"`
+		MonthlyPayment float64 `json:"monthlyPayment" binding:"required,gt=0"`
+		AdminID        *string `json:"adminId"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	requesterID := c.GetHeader("X-User-ID")
+	b, err := h.branches.Create(c.Request.Context(), body.Name, body.Address, body.Phone, body.MonthlyPayment, body.AdminID, requesterID)
+	if err != nil {
+		if errors.Is(err, service.ErrBranchLimitReached) {
+			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, b)
+}
+
+func (h *Handler) GetBranch(c *gin.Context) {
+	b, err := h.branches.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.canAccessBranch(c.Request.Context(), c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), b) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+		return
+	}
+	c.JSON(http.StatusOK, b)
+}
+
+func (h *Handler) UpdateBranch(c *gin.Context) {
+	existing, err := h.branches.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.canAccessBranch(c.Request.Context(), c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), existing) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+		return
+	}
+	var body map[string]interface{}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	// admin_id reassignment changes who owns the tenant — restrict it the
+	// same way canReassignBranch does for users, rather than letting a
+	// branch's own admin hand it off (or take over another branch) via this
+	// generic field-map update.
+	if _, wantsAdmin := body["admin_id"]; wantsAdmin && !isSuperRole(c.GetHeader("X-User-Role")) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to change admin_id"})
+		return
+	}
+	b, err := h.branches.Update(c.Request.Context(), c.Param("id"), body)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, b)
+}
+
+func (h *Handler) SwitchMonth(c *gin.Context) {
+	existing, err := h.branches.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.canAccessBranch(c.Request.Context(), c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), existing) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+		return
+	}
+	b, err := h.branches.SwitchMonth(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, b)
+}
+
+// DeleteBranch is restricted to platform-level roles or the branch's own
+// owning admin (not a branch_manager — narrower than canAccessBranch).
+// Deleting a tenant used to be platform-only full stop, since a hard DELETE
+// here cascades into nearly every other table (classes, students, teachers,
+// payments, salaries, expenses, attendance, ...) and could wipe a school's
+// entire history in one click. Now that Delete is soft (recoverable via
+// Restore for 7-30 days), letting the owner delete their own branch is safe.
+func (h *Handler) DeleteBranch(c *gin.Context) {
+	callerRole := c.GetHeader("X-User-Role")
+	callerID := c.GetHeader("X-User-ID")
+
+	existing, err := h.branches.GetByID(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	isOwner := existing.AdminID != nil && *existing.AdminID == callerID
+	if !isSuperRole(callerRole) && !isOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete branches"})
+		return
+	}
+	if err := h.branches.Delete(c.Request.Context(), existing.ID, callerID); err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "branch deleted"})
+}
+
+// RestoreBranch undoes a soft-delete — same authorization as DeleteBranch
+// (platform roles, or the branch's own owning admin).
+func (h *Handler) RestoreBranch(c *gin.Context) {
+	callerRole := c.GetHeader("X-User-Role")
+	callerID := c.GetHeader("X-User-ID")
+	windowDays := 7
+	if isSuperRole(callerRole) {
+		windowDays = 30
+	}
+
+	trashed, err := h.branches.ListTrash(c.Request.Context(), "", windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var found *service.TrashedBranch
+	for i := range trashed {
+		if trashed[i].ID == c.Param("id") {
+			found = &trashed[i]
+			break
+		}
+	}
+	if found == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "branch not found in trash"})
+		return
+	}
+	isOwner := found.AdminID != nil && *found.AdminID == callerID
+	if !isSuperRole(callerRole) && !isOwner {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to restore this branch"})
+		return
+	}
+	if err := h.branches.Restore(c.Request.Context(), found.ID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "branch restored"})
+}
+
+// ListBranchTrash returns soft-deleted branches within the caller's window:
+// 7 days for a normal owning admin (their own branches only), 30 days and
+// platform-wide for developer/super_admin.
+func (h *Handler) ListBranchTrash(c *gin.Context) {
+	callerRole := c.GetHeader("X-User-Role")
+	callerID := c.GetHeader("X-User-ID")
+	windowDays := 7
+	adminID := callerID
+	if isSuperRole(callerRole) {
+		windowDays = 30
+		adminID = ""
+	}
+	items, err := h.branches.ListTrash(c.Request.Context(), adminID, windowDays)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if items == nil {
+		items = []service.TrashedBranch{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+// ── Permissions ───────────────────────────────────────────────────────────────
+
+// GetPermissions allows an admin-level caller to view anyone's permissions,
+// or any caller to view their own (self-service "what can I do" checks).
+// Without this, any authenticated caller could enumerate any user's
+// permission flags by userId.
+func (h *Handler) GetPermissions(c *gin.Context) {
+	targetID := c.Param("userId")
+	callerID := c.GetHeader("X-User-ID")
+	callerRole := c.GetHeader("X-User-Role")
+	if callerID != targetID {
+		if !canReassignRole(callerRole) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to view these permissions"})
+			return
+		}
+		// canReassignRole only checks the caller's role, not whether target
+		// is even in a branch the caller administers — without this, a
+		// branch-scoped admin could view (and, via UpdatePermissions, grant)
+		// permissions for a user in an entirely different branch.
+		target, err := h.users.GetByID(c.Request.Context(), targetID)
+		if err != nil {
+			if err == service.ErrNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !h.canAccessUser(c.Request.Context(), callerID, callerRole, target) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+	}
+	p, err := h.permissions.GetByUserID(c.Request.Context(), targetID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if p == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "no permissions found"})
+		return
+	}
+	c.JSON(http.StatusOK, p)
+}
+
+// UpdatePermissions is admin-only, including for a caller updating their own
+// permissions — self-granting is exactly the privilege-escalation path this
+// closes, matching canReassignRole's restriction on role changes.
+func (h *Handler) UpdatePermissions(c *gin.Context) {
+	callerRole := c.GetHeader("X-User-Role")
+	if !canReassignRole(callerRole) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to change permissions"})
+		return
+	}
+	targetID := c.Param("userId")
+	target, err := h.users.GetByID(c.Request.Context(), targetID)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	// See GetPermissions: canReassignRole alone doesn't confirm target is in
+	// a branch the caller administers.
+	if !h.canAccessUser(c.Request.Context(), c.GetHeader("X-User-ID"), callerRole, target) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	var body map[string]interface{}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	p, err := h.permissions.Upsert(c.Request.Context(), targetID, body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, p)
+}
+
+// ── Settings (branch-level config) ────────────────────────────────────────────
+
+type settingsResponse struct {
+	Name             string  `json:"name"`
+	// OrganizationName is the school's own brand identity, distinct from
+	// this specific branch's name — see organizationName on the admin's user
+	// row (added alongside email verification: the "school name" given at
+	// signup used to be written ONLY into the first branch's `name` column,
+	// so it vanished the moment a second branch was opened under its own
+	// name, e.g. a receipt printed there showed no parent-brand identity at
+	// all). Resolved from the branch's admin, so every branch under one
+	// owner reports the same organization name regardless of which branch
+	// is currently selected.
+	OrganizationName string  `json:"organizationName,omitempty"`
+	MonthlyPayment   float64 `json:"monthlyPayment"`
+	Currency         string  `json:"currency"`
+	UpdatedDate      string  `json:"updatedDate"`
+	CreatedDate      string  `json:"createdDate"`
+}
+
+// organizationNameForAdmin looks up the organization_name owned by a
+// branch's admin. Best-effort: a lookup failure degrades to an empty string
+// (falls back to the branch's own name on the frontend) rather than failing
+// the whole settings request over a cosmetic field.
+func (h *Handler) organizationNameForAdmin(ctx context.Context, adminID *string) string {
+	if adminID == nil || *adminID == "" || h.db == nil {
+		return ""
+	}
+	var orgName sql.NullString
+	if err := h.db.QueryRowContext(ctx, `SELECT organization_name FROM users WHERE id = $1`, *adminID).Scan(&orgName); err != nil {
+		return ""
+	}
+	return orgName.String
+}
+
+func (h *Handler) GetSettings(c *gin.Context) {
+	branchIDStr := c.Query("branchId")
+	if branchIDStr == "" {
+		branchIDStr = c.GetHeader("X-Branch-ID")
+	}
+	if branchIDStr == "" {
+		if v, ok := c.Get("branch_id"); ok {
+			branchIDStr, _ = v.(string)
+		}
+	}
+	// No branchId at app init (admin hasn't selected a branch yet) — return
+	// a default response so the frontend initializes without an error toast.
+	if branchIDStr == "" {
+		c.JSON(http.StatusOK, settingsResponse{Currency: "UZS"})
+		return
+	}
+	if !isSuperRole(c.GetHeader("X-User-Role")) {
+		allowed, err := h.branches.HasBranchAccess(c.Request.Context(),
+			c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), branchIDStr)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+			return
+		}
+	}
+	b, err := h.branches.GetByID(c.Request.Context(), branchIDStr)
+	if err != nil {
+		if err == service.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, settingsResponse{
+		Name:             b.Name,
+		OrganizationName: h.organizationNameForAdmin(c.Request.Context(), b.AdminID),
+		MonthlyPayment:   b.MonthlyPayment,
+		Currency:         b.Currency,
+		UpdatedDate:      b.UpdatedAt.Format("2006-01-02 15:04:05"),
+		CreatedDate:      b.CreatedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+func (h *Handler) UpdateSettings(c *gin.Context) {
+	branchIDStr := c.Query("branchId")
+	if branchIDStr == "" {
+		branchIDStr = c.GetHeader("X-Branch-ID")
+	}
+	if branchIDStr == "" {
+		if v, ok := c.Get("branch_id"); ok {
+			branchIDStr, _ = v.(string)
+		}
+	}
+	if branchIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "branchId required"})
+		return
+	}
+	if !isSuperRole(c.GetHeader("X-User-Role")) {
+		allowed, err := h.branches.HasBranchAccess(c.Request.Context(),
+			c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), branchIDStr)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusNotFound, gin.H{"error": "branch not found"})
+			return
+		}
+	}
+	var updates map[string]interface{}
+	if err := c.ShouldBindJSON(&updates); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// organizationName lives on the admin's user row, not this branch — pull
+	// it out before handing the rest of the map to branches.Update, which
+	// would otherwise try (and fail) to SET a column branches doesn't have.
+	orgNameUpdate, hasOrgNameUpdate := updates["organizationName"].(string)
+	delete(updates, "organizationName")
+
+	var b *service.Branch
+	var err error
+	if len(updates) > 0 {
+		b, err = h.branches.Update(c.Request.Context(), branchIDStr, updates)
+	} else {
+		b, err = h.branches.GetByID(c.Request.Context(), branchIDStr)
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if hasOrgNameUpdate && b.AdminID != nil && *b.AdminID != "" {
+		if _, err := h.db.ExecContext(c.Request.Context(),
+			`UPDATE users SET organization_name = $1, updated_at = NOW() WHERE id = $2`,
+			orgNameUpdate, *b.AdminID,
+		); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, settingsResponse{
+		Name:             b.Name,
+		OrganizationName: h.organizationNameForAdmin(c.Request.Context(), b.AdminID),
+		MonthlyPayment:   b.MonthlyPayment,
+		Currency:         b.Currency,
+		UpdatedDate:      b.UpdatedAt.Format("2006-01-02 15:04:05"),
+		CreatedDate:      b.CreatedAt.Format("2006-01-02 15:04:05"),
+	})
+}
+
+// ── Audit logs ────────────────────────────────────────────────────────────────
+
+type auditLogEntry struct {
+	ID          string    `json:"id"`
+	BranchID    *string   `json:"branchId"`
+	UserID      *string   `json:"userId"`
+	UserName    string    `json:"userName"`
+	Action      string    `json:"action"`
+	Resource    string    `json:"resource"`
+	ResourceID  *string   `json:"resourceId"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
+func (h *Handler) ListAuditLogs(c *gin.Context) {
+	branchID := c.Query("branchId")
+	if branchID == "" {
+		branchID = c.GetHeader("X-Branch-ID")
+	}
+	if branchID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "X-Branch-ID header or branchId query required"})
+		return
+	}
+	// This handler previously queried audit_logs for whatever branchId was
+	// passed with no authorization check at all — any authenticated caller
+	// of any role could read another branch's full audit trail (actions,
+	// user names, resource IDs, descriptions) by editing the query string.
+	if !isSuperRole(c.GetHeader("X-User-Role")) {
+		allowed, err := h.branches.HasBranchAccess(c.Request.Context(),
+			c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role"), branchID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if !allowed {
+			c.JSON(http.StatusForbidden, gin.H{"error": "not authorized for this branch"})
+			return
+		}
+	}
+
+	resource := c.Query("resource")
+	userID := c.Query("userId")
+	from := c.Query("from")
+	to := c.Query("to")
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "25"))
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 || limit > 100 {
+		limit = 25
+	}
+	offset := (page - 1) * limit
+
+	where := " WHERE al.branch_id = $1 "
+	args := []interface{}{branchID}
+	idx := 2
+
+	if resource != "" {
+		where += " AND al.resource = $" + strconv.Itoa(idx)
+		args = append(args, resource)
+		idx++
+	}
+	if userID != "" {
+		where += " AND al.user_id = $" + strconv.Itoa(idx)
+		args = append(args, userID)
+		idx++
+	}
+	if from != "" {
+		where += " AND al.created_at >= $" + strconv.Itoa(idx)
+		args = append(args, from)
+		idx++
+	}
+	if to != "" {
+		where += " AND al.created_at <= $" + strconv.Itoa(idx)
+		args = append(args, to+"T23:59:59Z")
+		idx++
+	}
+
+	var total int
+	if err := h.db.QueryRowContext(c.Request.Context(), "SELECT COUNT(*) FROM audit_logs al"+where, args...).Scan(&total); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	dataArgs := append([]interface{}{}, args...)
+	dataArgs = append(dataArgs, limit, offset)
+
+	rows, err := h.db.QueryContext(c.Request.Context(), `
+		SELECT al.id,
+		       al.branch_id::text,
+		       al.user_id::text,
+		       COALESCE(u.full_name, ''),
+		       al.action,
+		       al.resource,
+		       al.resource_id::text,
+		       al.description,
+		       al.created_at
+		FROM audit_logs al
+		LEFT JOIN users u ON u.id = al.user_id
+		`+where+`
+		ORDER BY al.created_at DESC
+		LIMIT $`+strconv.Itoa(idx)+` OFFSET $`+strconv.Itoa(idx+1),
+		dataArgs...,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	entries := []auditLogEntry{}
+	for rows.Next() {
+		var e auditLogEntry
+		var bid, uid, rid *string
+		if err := rows.Scan(&e.ID, &bid, &uid, &e.UserName,
+			&e.Action, &e.Resource, &rid, &e.Description, &e.CreatedAt); err != nil {
+			continue
+		}
+		e.BranchID = bid
+		e.UserID = uid
+		e.ResourceID = rid
+		entries = append(entries, e)
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"data":       entries,
+		"total":      total,
+		"page":       page,
+		"limit":      limit,
+		"totalPages": (total + limit - 1) / limit,
+	})
+}

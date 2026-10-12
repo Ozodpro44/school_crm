@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -8,22 +9,45 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
-func RegisterClassRoutes(router *gin.RouterGroup, classService *service.ClassService, userService *service.UserService) {
+// DEPRECATED (P4): Routed by api_gateway to student_service. Kept as fallback until P5.5.
+func RegisterClassRoutes(router *gin.RouterGroup, classService *service.ClassService, userService *service.UserService, subService *service.SubscriptionService) {
 	classes := router.Group("/classes")
 	// Authenticated users can view and edit
-	classes.POST("", middleware.PermissionChecker(userService, "canCreateClasses"), createClass(classService))
-	classes.GET("/:id", middleware.PermissionChecker(userService, "canViewClasses"), getClass(classService))
+	classes.POST("", middleware.PermissionChecker(userService, "canCreateClasses"), createClass(classService, subService))
+	classes.GET("/:id", middleware.PermissionChecker(userService, "canViewClasses"), middleware.RequireResourceBranchAccess(userService, "classes"), getClass(classService))
 	classes.GET("", middleware.PermissionChecker(userService, "canViewClasses"), listClasses(classService))
-	classes.PUT("/:id", middleware.PermissionChecker(userService, "canEditClasses"), updateClass(classService))
-	classes.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteClasses"), deleteClass(classService))
+	classes.PUT("/:id", middleware.PermissionChecker(userService, "canEditClasses"), middleware.RequireResourceBranchAccess(userService, "classes"), updateClass(classService))
+	classes.DELETE("/:id", middleware.PermissionChecker(userService, "canDeleteClasses"), middleware.RequireResourceBranchAccess(userService, "classes"), deleteClass(classService))
 }
 
-func createClass(classService *service.ClassService) gin.HandlerFunc {
+func createClass(classService *service.ClassService, subService *service.SubscriptionService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req service.CreateClassRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+
+		// Enforce subscription class limit before inserting. Unlike
+		// student/branch creation (which fail closed on any error from
+		// CheckResourceLimit, in their service layer), this only used to
+		// block on the specific limit-reached error and silently proceeded
+		// on any other error (e.g. a DB hiccup) — fail closed here too.
+		if req.BranchID != "" {
+			ownerID, err := subService.GetOwnerIDFromBranch(c.Request.Context(), req.BranchID)
+			if err == nil && ownerID != "" {
+				if limitErr := subService.CheckResourceLimit(c.Request.Context(), ownerID, "classes"); limitErr != nil {
+					if errors.Is(limitErr, service.ErrSubscriptionLimitReached) {
+						c.JSON(http.StatusPaymentRequired, gin.H{
+							"error":  "subscription_limit_reached",
+							"detail": limitErr.Error(),
+						})
+						return
+					}
+					c.JSON(http.StatusInternalServerError, gin.H{"error": limitErr.Error()})
+					return
+				}
+			}
 		}
 
 		class, err := classService.Create(c.Request.Context(), &req)
@@ -78,6 +102,10 @@ func updateClass(classService *service.ClassService) gin.HandlerFunc {
 
 		class, err := classService.Update(c.Request.Context(), id, updates)
 		if err != nil {
+			if errors.Is(err, service.ErrInvalidUpdate) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

@@ -249,3 +249,135 @@ All rights reserved © 2024 Wonderkids' CRM
 ---
 
 **Everything is connected and documented. Start building with Wonderkids' CRM!** 🎓
+
+
+You are a senior frontend engineer working directly in this repository. Your task is to fix both frontend apps completely and make them production-ready, consistent, and connected to the backend correctly.
+
+Project context:
+- Main user app: `frontend_school_crm` (Next.js + TypeScript)
+- Developer/admin app: `frontend_for_dev` (Vite + React + TypeScript)
+- Backend API: `backend_school_crm` (Go + Gin + PostgreSQL)
+
+Main goal:
+Fix both frontends end-to-end:
+1. remove errors
+2. fix broken logic
+3. fix API integration
+4. fix auth and permission flows
+5. fix subscription-related UX
+6. make pages and functions work correctly
+7. make both apps feel like a real production SaaS
+
+Important product roles:
+- `frontend_school_crm` is for school owners and their staff
+- `frontend_for_dev` is for me as the platform developer/admin
+- School owners must see only their own school data
+- Developer/admin must control plans, subscriptions, tenants, and system management from `frontend_for_dev`
+
+What to do first:
+1. Audit both frontend codebases completely
+2. Find:
+   - TypeScript errors
+   - build errors
+   - broken imports
+   - API route mismatches
+   - inconsistent response handling
+   - bad state management
+   - broken auth/token logic
+   - broken loading/error states
+   - duplicated API logic
+   - wrong env var usage
+   - placeholder/demo logic that breaks real flows
+3. Then create a step-by-step plan and implement the fixes
+
+Required frontend outcomes:
+
+A. `frontend_school_crm`
+- Fix all broken pages, forms, tables, filters, and navigation
+- Make login/register/auth flows work correctly with backend
+- Show subscription status clearly
+- Show current plan, branch usage, and upgrade prompts
+- Allow branch creation only when subscription permits it
+- If plan limit is reached, block branch creation and show a useful message
+- If subscription is inactive/expired/past_due/canceled, show correct restricted states
+- Ensure students, teachers, classes, payments, reports, and settings pages work correctly
+- Make API calls consistent and typed
+- Fix route guards and protected pages
+- Improve UX for non-technical school owners
+- Fix mobile and desktop responsiveness
+- Remove frontend assumptions that bypass backend rules
+
+B. `frontend_for_dev`
+- Fix all broken pages, components, and data loading
+- Make developer login/auth work correctly
+- Build/fix pages for:
+  - subscription plans
+  - tenants/schools
+  - subscriptions
+  - branch usage / limits
+  - user counts / student counts if available
+  - system health / logs if supported
+- I should be able to manage:
+  - plans
+  - tenant subscriptions
+  - activation/deactivation
+  - manual overrides
+  - viewing tenant summaries
+- Fix API clients and make response handling consistent
+- Remove fake fallback data unless explicitly required
+- Make tables, filters, dialogs, and forms actually work
+
+Technical requirements:
+- Standardize API clients across both frontends
+- Centralize base URL and auth token handling
+- Unify error handling and request helpers
+- Fix endpoint mismatches with the backend
+- Use strong TypeScript types
+- Refactor fragile page-level logic into reusable hooks/services where appropriate
+- Keep the existing design system unless a UI fix is needed
+- Do not do cosmetic-only edits; fix real logic and integration
+
+Files/areas to inspect carefully:
+- `frontend_school_crm/src/lib/api.ts`
+- `frontend_school_crm/src/lib/auth-api.ts`
+- `frontend_school_crm/src/pages/**`
+- `frontend_school_crm/src/components/**`
+- `frontend_for_dev/src/lib/api.ts`
+- `frontend_for_dev/src/lib/api-client.ts`
+- `frontend_for_dev/src/services/**`
+- `frontend_for_dev/src/pages/**`
+- `frontend_for_dev/src/components/**`
+- env var usage in both apps
+
+Implementation rules:
+- Preserve business intent, but fix broken implementation
+- Make frontend behavior match real backend responses
+- If backend contract is inconsistent, document it clearly and adapt frontend safely
+- Do not leave dead code or duplicate API logic behind
+- Prefer reusable hooks/utilities over repeated fetch logic
+- Add missing loading, empty, error, and permission states
+- Fix both apps fully, not just one screen
+
+Deliverables:
+1. Audit summary of the biggest frontend problems
+2. Implementation plan
+3. Actual code changes
+4. Summary of:
+   - auth fixes
+   - API fixes
+   - subscription UX fixes
+   - branch-limit UX fixes
+   - developer dashboard fixes
+5. Build/test results
+6. Remaining issues if any
+
+Acceptance criteria:
+- both frontends build successfully
+- no obvious TypeScript/runtime errors
+- auth works correctly
+- API integration works correctly
+- subscription-related UI logic works correctly
+- branch creation UI respects plan limits
+- developer dashboard controls key SaaS functions correctly
+- pages have proper loading/error/empty states
+- product feels stable and production-ready

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -8,6 +9,7 @@ import (
 	"github.com/school-crm/backend/internal/service"
 )
 
+// DEPRECATED (P5): Routed by api_gateway to teacher_service. Kept as fallback until P5.5.
 func RegisterTeacherRoutes(router *gin.RouterGroup, teacherService *service.TeacherService, userService *service.UserService) {
 	teachers := router.Group("/teachers")
 	// Authenticated users can view and edit
@@ -78,6 +80,10 @@ func updateTeacher(teacherService *service.TeacherService) gin.HandlerFunc {
 
 		teacher, err := teacherService.Update(c.Request.Context(), id, updates)
 		if err != nil {
+			if errors.Is(err, service.ErrInvalidUpdate) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

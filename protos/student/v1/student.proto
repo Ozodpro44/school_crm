@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package student.v1;
+
+import "common/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/school-crm/protos/student/v1;studentv1";
+
+// ── Messages ──────────────────────────────────────────────────────────────────
+
+message Student {
+  string student_id       = 1;
+  string full_name        = 2;
+  string phone            = 3;
+  string parent_phone     = 4;
+  string class_id         = 5;
+  string class_name       = 6;
+  double monthly_payment  = 7;
+  string status           = 8; // active | inactive | graduated
+  string branch_id        = 9;
+  google.protobuf.Timestamp enrollment_date = 10;
+  google.protobuf.Timestamp created_at      = 11;
+}
+
+message Class {
+  string class_id   = 1;
+  string name       = 2;
+  string branch_id  = 3;
+  string teacher_id = 4;
+  int32  student_count = 5;
+}
+
+// ── Requests / Responses ──────────────────────────────────────────────────────
+
+message GetStudentRequest {
+  string student_id = 1;
+}
+message GetStudentResponse {
+  Student student = 1;
+}
+
+message ListStudentsRequest {
+  string branch_id      = 1;
+  string class_id       = 2;
+  string status         = 3;
+  string search         = 4;
+  string payment_status = 5;
+  string month          = 6;
+  int32  year           = 7;
+  common.v1.PageRequest page = 8;
+}
+message ListStudentsResponse {
+  repeated Student         students = 1;
+  repeated Class           classes  = 2;
+  common.v1.PageResponse   page     = 3;
+}
+
+message GetActiveStudentCountRequest {
+  string branch_id = 1;
+}
+message GetActiveStudentCountResponse {
+  int32 count = 1;
+}
+
+// ── Service ───────────────────────────────────────────────────────────────────
+
+service StudentService {
+  rpc GetStudent(GetStudentRequest) returns (GetStudentResponse);
+  rpc ListStudents(ListStudentsRequest) returns (ListStudentsResponse);
+  rpc GetActiveStudentCount(GetActiveStudentCountRequest) returns (GetActiveStudentCountResponse);
+}

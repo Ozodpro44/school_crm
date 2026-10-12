@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -11,7 +13,25 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/school-crm/backend/internal/db"
+	"github.com/school-crm/backend/internal/middleware"
+	"github.com/school-crm/backend/internal/platformsettings"
 )
+
+// logLevelSeverity orders the four levels the dev portal's "Log Level"
+// setting understands. Unknown levels are treated as "info".
+var logLevelSeverity = map[string]int{"debug": 0, "info": 1, "warn": 2, "error": 3}
+
+func meetsLogLevel(entryLevel, threshold string) bool {
+	entrySev, ok := logLevelSeverity[strings.ToLower(entryLevel)]
+	if !ok {
+		entrySev = 1
+	}
+	thresholdSev, ok := logLevelSeverity[strings.ToLower(threshold)]
+	if !ok {
+		thresholdSev = 1
+	}
+	return entrySev >= thresholdSev
+}
 
 // LogEntry represents a stored log record.
 type LogEntry struct {
@@ -34,13 +54,17 @@ type IngestLogRequest struct {
 // RegisterDevLogsRoutes registers log-related endpoints that require a developer JWT.
 func RegisterDevLogsRoutes(router *gin.RouterGroup, database *db.Database) {
 	router.GET("/dev/logs", GetDevLogs(database))
-	router.DELETE("/dev/logs", ClearDevLogs(database))
+	router.DELETE("/dev/logs", middleware.RequireDeveloperRole("admin"), ClearDevLogs(database))
 }
 
 // RegisterLogsIngestRoute registers the public log ingestion endpoint.
 // It uses a separate LOGS_TOKEN bearer (not the user/dev JWT).
 func RegisterLogsIngestRoute(router gin.IRouter, database *db.Database, logsToken string) {
-	router.POST("/api/logs/ingest", IngestLog(database, logsToken))
+	if logsToken == "" {
+		log.Println("[ROUTES] LOGS_TOKEN not set — /api/v1/logs/ingest NOT mounted")
+		return
+	}
+	router.POST("/api/v1/logs/ingest", IngestLog(database, logsToken))
 }
 
 // GetDevLogs handles GET /api/dev/logs
@@ -110,12 +134,11 @@ func ClearDevLogs(database *db.Database) gin.HandlerFunc {
 func IngestLog(database *db.Database, logsToken string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Validate LOGS_TOKEN
-		if logsToken != "" {
-			auth := c.GetHeader("Authorization")
-			if !strings.HasPrefix(auth, "Bearer ") || strings.TrimPrefix(auth, "Bearer ") != logsToken {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid logs token"})
-				return
-			}
+		auth := c.GetHeader("Authorization")
+		if logsToken == "" || !strings.HasPrefix(auth, "Bearer ") ||
+			subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(auth, "Bearer ")), []byte(logsToken)) != 1 {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid logs token"})
+			return
 		}
 
 		var req IngestLogRequest
@@ -222,8 +245,13 @@ func WriteLog(database *db.Database, level, module, message string, meta map[str
 			metaJSON = string(b)
 		}
 	}
+	// WithSuppressedQueryLog is required here, not just tidiness: this INSERT
+	// runs on the same query-logged *sql.DB as everything else, so without
+	// it, enabling "Query Logging" would make WriteLog call itself for every
+	// query forever (this INSERT logged -> LogQueryFunc -> WriteLog -> this
+	// INSERT again...), hanging the process and starving the connection pool.
 	_, err := database.GetConn().ExecContext(
-		nil,
+		db.WithSuppressedQueryLog(context.Background()),
 		`INSERT INTO logs (level, module, message, metadata) VALUES ($1, $2, $3, $4)`,
 		strings.ToUpper(level), module, message, metaJSON,
 	)
@@ -245,7 +273,7 @@ func isLogsTableReady(database *db.Database) bool {
 }
 
 // SafeRequestLogger is like RequestLogger but skips if the logs table doesn't exist yet.
-func SafeRequestLogger(database *db.Database) gin.HandlerFunc {
+func SafeRequestLogger(database *db.Database, settingsStore *platformsettings.Store) gin.HandlerFunc {
 	ready := false
 	return func(c *gin.Context) {
 		c.Next()
@@ -286,6 +314,14 @@ func SafeRequestLogger(database *db.Database) gin.HandlerFunc {
 				module = parts[i+1]
 				break
 			}
+		}
+
+		threshold := platformsettings.Defaults.LogLevel
+		if settingsStore != nil {
+			threshold = settingsStore.Get().LogLevel
+		}
+		if !meetsLogLevel(level, threshold) {
+			return
 		}
 
 		meta, _ := json.Marshal(map[string]interface{}{

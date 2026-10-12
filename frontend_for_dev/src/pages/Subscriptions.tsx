@@ -1,736 +1,710 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import {
-  CreditCard,
-  Building2,
-  Calendar,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  AlertTriangle,
-  TrendingUp,
-  MoreVertical,
-  Eye,
-  Edit,
-  Trash2,
-  RefreshCw,
-  Receipt,
-  DollarSign,
+  CheckCircle2, Clock, XCircle, AlertTriangle, Search, Plus,
+  MoreVertical, Edit, Trash2, RefreshCw, Loader2, AlertCircle,
+  Gift, Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import {
-  getUserSubscriptions,
-  updateUserSubscription,
-  type UserSubscription as BackendSub,
-} from "@/services/subscription-api";
-import { apiClient } from "@/services/api-client";
+  listSubscriptions, createSubscription, updateSubscription, deleteSubscription,
+  grantTrial, listPlans, getPlatformStats,
+  type AdminSubscription, type SubscriptionPlan,
+} from "@/services/api-client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { getTranslation, tf } from "@/lib/i18n";
+import { UserPicker } from "@/components/UserPicker";
 
-type SubscriptionStatus = "active" | "trial" | "expired" | "cancelled";
-type SubscriptionPlan = "trial" | "monthly" | "yearly";
+// <input type="date"> gives "YYYY-MM-DD"; the backend's *time.Time fields
+// need full RFC3339 to unmarshal.
+const toRFC3339 = (d: string) => (d ? `${d}T00:00:00Z` : undefined);
 
-interface PaymentHistory {
-  date: string;
-  amount: number;
-  status: "success" | "failed" | "pending";
-  method: string;
-}
+// Must match the backend's actual enum exactly (subscriptions.status check
+// constraint) — "pending" here previously didn't exist server-side at all
+// (the real value is "pending_payment"), and "past_due" was missing.
+const STATUS_OPTIONS = ["active", "trial", "pending_payment", "past_due", "expired", "cancelled", "paused"];
 
-interface Subscription {
-  id: string;
-  branchName: string;
-  plan: SubscriptionPlan;
-  status: SubscriptionStatus;
-  startDate: string;
-  endDate: string;
-  amount: number;
-  autoRenew: boolean;
-  lastPayment?: string;
-  nextBilling?: string;
-  paymentHistory: PaymentHistory[];
-}
-
-function mapBackendSubscription(
-  sub: BackendSub,
-  branchMap: Record<string, string>
-): Subscription {
-  const statusMap: Record<string, SubscriptionStatus> = {
-    active: "active",
-    paused: "trial",
-    cancelled: "cancelled",
-    expired: "expired",
-  };
-  return {
-    id: sub.id,
-    branchName: branchMap[sub.branchId || ""] || sub.branchId || "Unknown Branch",
-    plan: "monthly",
-    status: statusMap[sub.status] ?? "active",
-    startDate: sub.startDate ? sub.startDate.split("T")[0] : "—",
-    endDate: sub.endDate ? sub.endDate.split("T")[0] : "—",
-    amount: 0,
-    autoRenew: sub.autoRenew,
-    nextBilling: sub.renewalDate ? sub.renewalDate.split("T")[0] : undefined,
-    paymentHistory: [],
-  };
-}
-
-const statusConfig: Record<SubscriptionStatus, { icon: typeof CheckCircle2; color: string; bgColor: string }> = {
-  active: { icon: CheckCircle2, color: "text-status-healthy", bgColor: "bg-status-healthy/15" },
-  trial: { icon: Clock, color: "text-status-info", bgColor: "bg-status-info/15" },
-  expired: { icon: XCircle, color: "text-status-critical", bgColor: "bg-status-critical/15" },
-  cancelled: { icon: AlertTriangle, color: "text-status-warning", bgColor: "bg-status-warning/15" },
+// Maps each raw status value to its translation key — the badges, filter
+// dropdown, and the two Status <Select>s previously rendered these raw
+// (e.g. "pending_payment") instead of going through the translation system,
+// even though the stat-filter buttons right above them already did.
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  active: "statActive",
+  trial: "statTrial",
+  pending_payment: "statPendingPayment",
+  past_due: "statPastDue",
+  expired: "statExpiredSub",
+  cancelled: "statCancelled",
+  paused: "statPaused",
 };
 
-const planLabels: Record<SubscriptionPlan, string> = {
-  trial: "14-Day Trial",
-  monthly: "Monthly",
-  yearly: "Yearly",
-};
+function statusBadgeClass(status: string) {
+  const s = status?.toLowerCase();
+  if (s === "active")    return "badge-active";
+  if (s === "trial")     return "badge-trial";
+  if (s === "expired")   return "badge-expired";
+  if (s === "pending_payment") return "badge-pending";
+  if (s === "past_due")  return "badge-pending";
+  if (s === "cancelled") return "badge-cancelled";
+  if (s === "paused")    return "badge-paused";
+  return "badge-cancelled";
+}
 
-const planPrices: Record<SubscriptionPlan, number> = {
-  trial: 0,
-  monthly: 25000,
-  yearly: 240000,
-};
+function statusIcon(status: string) {
+  const s = status?.toLowerCase();
+  if (s === "active") return CheckCircle2;
+  if (s === "trial")  return Clock;
+  if (s === "expired" || s === "cancelled") return XCircle;
+  return AlertTriangle;
+}
 
 export default function Subscriptions() {
-  const [selectedStatus, setSelectedStatus] = useState("all");
-  const [subscriptionData, setSubscriptionData] = useState<Subscription[]>([]);
+  const { user } = useAuth();
+  const { language } = useLanguage();
+  const t = (key: string) => getTranslation(key, language);
+  const statusLabel = (status: string) => t(STATUS_LABEL_KEYS[status?.toLowerCase()] ?? status);
+  // Grant Trial / Delete are gated server-side to RequireDeveloperRole("admin")
+  // (see backend_school_crm/internal/handlers/admin_subscription.go) — a
+  // "developer"-tier account always gets 403 "insufficient developer role"
+  // on these two. Disabling them here surfaces that upfront instead of a
+  // raw backend error toast after the click.
+  const isAdminDeveloper = user?.role === "admin";
+  const [subs, setSubs] = useState<AdminSubscription[]>([]);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [mrr, setMrr] = useState(0);
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const [branchesResult, subsResult] = await Promise.allSettled([
-          apiClient.getBranches(),
-          getUserSubscriptions(),
-        ]);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [planFilter, setPlanFilter] = useState("all");
 
-        const branchMap: Record<string, string> = {};
-        if (branchesResult.status === "fulfilled") {
-          for (const b of branchesResult.value) {
-            if (b.id) branchMap[b.id] = b.name;
-          }
-        }
+  // Dialogs
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [trialOpen, setTrialOpen] = useState(false);
+  const [selected, setSelected] = useState<AdminSubscription | null>(null);
+  const [saving, setSaving] = useState(false);
 
-        if (subsResult.status === "fulfilled" && subsResult.value.length > 0) {
-          setSubscriptionData(
-            subsResult.value.map((s) => mapBackendSubscription(s, branchMap))
-          );
-        }
-      } catch {
-        // No data from backend — page stays empty
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
-
-  // Modal states
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [isRenewDialogOpen, setIsRenewDialogOpen] = useState(false);
-  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
-  const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(null);
-  
-  // Form state
-  const [formData, setFormData] = useState({
-    plan: "monthly" as SubscriptionPlan,
-    autoRenew: true,
+  // Create form
+  const [createForm, setCreateForm] = useState({
+    userId: "", planId: "", status: "active", autoRenew: true, notes: "",
+    startDate: "", endDate: "",
   });
 
-  const filteredSubscriptions = subscriptionData.filter((sub) =>
-    selectedStatus === "all" || sub.status === selectedStatus
+  // Edit form
+  const [editForm, setEditForm] = useState({
+    status: "active", planId: "", endDate: "", renewalDate: "", notes: "", autoRenew: true,
+  });
+
+  // Trial form
+  const [trialDays, setTrialDays] = useState("14");
+  const [trialNotes, setTrialNotes] = useState("");
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [subsRes, plansRes, statsRes] = await Promise.allSettled([
+        listSubscriptions(), listPlans(), getPlatformStats(),
+      ]);
+      if (subsRes.status === "fulfilled") setSubs(subsRes.value);
+      else setError(subsRes.reason instanceof Error ? subsRes.reason.message : t("failedToLoadData"));
+      if (plansRes.status === "fulfilled") setPlans(plansRes.value);
+      if (statsRes.status === "fulfilled") setMrr(statsRes.value.mrr);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const filtered = subs.filter((s) => {
+    if (statusFilter !== "all" && s.status !== statusFilter) return false;
+    if (planFilter !== "all" && s.planId !== planFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!s.userEmail.toLowerCase().includes(q) && !s.userFullName.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  const countByStatus = (st: string) => subs.filter((s) => s.status === st).length;
+
+  const handleCreate = async () => {
+    if (!createForm.userId || !createForm.planId) {
+      toast.error(t("userIdPlanRequired"));
+      return;
+    }
+    if (createForm.startDate && createForm.endDate && createForm.endDate <= createForm.startDate) {
+      toast.error(t("endDateMustBeAfterStart"));
+      return;
+    }
+    setSaving(true);
+    try {
+      const created = await createSubscription({
+        userId: createForm.userId,
+        planId: createForm.planId,
+        status: createForm.status,
+        autoRenew: createForm.autoRenew,
+        notes: createForm.notes || undefined,
+        startDate: toRFC3339(createForm.startDate),
+        endDate: toRFC3339(createForm.endDate),
+      });
+      setSubs((prev) => [created, ...prev]);
+      setCreateOpen(false);
+      setCreateForm({ userId: "", planId: "", status: "active", autoRenew: true, notes: "", startDate: "", endDate: "" });
+      toast.success(t("subscriptionCreated"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("failedToCreateSubscription"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      // Omitting endDate/renewalDate/notes means "leave unchanged" — the
+      // backend can't tell that apart from an explicit clear via a plain
+      // JSON null, so an emptied notes field needs the explicit clearNotes
+      // flag instead. (endDate/renewalDate have no such escape hatch yet —
+      // leaving a date blank just leaves the stored date untouched.)
+      const notesWasCleared = (selected.notes ?? "") !== "" && editForm.notes.trim() === "";
+      // Only send a date if the developer actually edited it. The form
+      // pre-fills both dates from the current subscription, so re-sending
+      // them unchanged used to suppress AdminUpdateSubscription's own
+      // "activating with no explicit end_date and the old one is in the
+      // past → auto-extend by one billing period" logic on the backend —
+      // that path only fires when EndDate is nil in the request. Without
+      // this, ticking Status to "active" alone silently left a past
+      // end_date in place, so the subscription still read as expired.
+      const originalEndDate = selected.endDate ? selected.endDate.split("T")[0] : "";
+      const originalRenewalDate = selected.renewalDate ? selected.renewalDate.split("T")[0] : "";
+      const updated = await updateSubscription(selected.id, {
+        status: editForm.status,
+        planId: editForm.planId || undefined,
+        endDate: editForm.endDate !== originalEndDate ? toRFC3339(editForm.endDate) : undefined,
+        renewalDate: editForm.renewalDate !== originalRenewalDate ? toRFC3339(editForm.renewalDate) : undefined,
+        notes: editForm.notes || undefined,
+        clearNotes: notesWasCleared,
+        autoRenew: editForm.autoRenew,
+      });
+      setSubs((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+      setEditOpen(false);
+      toast.success(t("subscriptionUpdated"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("failedToUpdate"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      await deleteSubscription(selected.id);
+      setSubs((prev) => prev.filter((s) => s.id !== selected.id));
+      setDeleteOpen(false);
+      toast.success(t("subscriptionDeleted"));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("failedToDelete"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleGrantTrial = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      await grantTrial(selected.userId, Number(trialDays), trialNotes || undefined);
+      await loadData();
+      setTrialOpen(false);
+      toast.success(tf(t("trialGrantedForDays"), { days: trialDays }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("failedToGrantTrial"));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEdit = (sub: AdminSubscription) => {
+    setSelected(sub);
+    setEditForm({
+      status: sub.status,
+      planId: sub.planId,
+      endDate: sub.endDate ? sub.endDate.split("T")[0] : "",
+      renewalDate: sub.renewalDate ? sub.renewalDate.split("T")[0] : "",
+      notes: sub.notes ?? "",
+      autoRenew: sub.autoRenew,
+    });
+    setEditOpen(true);
+  };
+
+  const openTrial = (sub: AdminSubscription) => {
+    setSelected(sub);
+    setTrialDays("14");
+    setTrialNotes("");
+    setTrialOpen(true);
+  };
+
+  const openDelete = (sub: AdminSubscription) => {
+    setSelected(sub);
+    setDeleteOpen(true);
+  };
+
+  const uniquePlanIds = Array.from(new Set(subs.map((s) => s.planId)));
+  const plansByPlanId = Object.fromEntries(
+    plans.map((p) => [p.id, p])
   );
-
-  const toggleAutoRenew = (id: string) => {
-    setSubscriptionData((prev) =>
-      prev.map((sub) => {
-        if (sub.id !== id) return sub;
-        const newVal = !sub.autoRenew;
-        updateUserSubscription(id, { autoRenew: newVal }).catch(console.error);
-        return { ...sub, autoRenew: newVal };
-      })
-    );
-    toast.success("Auto-renew setting updated");
-  };
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("uz-UZ", {
-      style: "currency",
-      currency: "UZS",
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
-
-  const handleChangePlan = () => {
-    if (!selectedSubscription) return;
-    const now = new Date();
-    const endDate = formData.plan === "yearly" 
-      ? new Date(now.setFullYear(now.getFullYear() + 1))
-      : new Date(now.setMonth(now.getMonth() + 1));
-    
-    setSubscriptionData((prev) =>
-      prev.map((sub) =>
-        sub.id === selectedSubscription.id
-          ? { 
-              ...sub, 
-              plan: formData.plan,
-              amount: planPrices[formData.plan],
-              autoRenew: formData.autoRenew,
-              status: formData.plan === "trial" ? "trial" : "active",
-              endDate: endDate.toISOString().split("T")[0],
-            }
-          : sub
-      )
-    );
-    setIsEditModalOpen(false);
-    setSelectedSubscription(null);
-    toast.success("Subscription plan updated");
-  };
-
-  const handleRenewSubscription = () => {
-    if (!selectedSubscription) return;
-    const now = new Date();
-    const endDate = selectedSubscription.plan === "yearly"
-      ? new Date(now.setFullYear(now.getFullYear() + 1))
-      : new Date(now.setMonth(now.getMonth() + 1));
-
-    updateUserSubscription(selectedSubscription.id, { status: "active" }).catch(console.error);
-    setSubscriptionData((prev) =>
-      prev.map((sub) =>
-        sub.id === selectedSubscription.id
-          ? {
-              ...sub,
-              status: "active",
-              startDate: new Date().toISOString().split("T")[0],
-              endDate: endDate.toISOString().split("T")[0],
-              lastPayment: new Date().toISOString().split("T")[0],
-              nextBilling: endDate.toISOString().split("T")[0],
-              paymentHistory: [
-                { date: new Date().toISOString().split("T")[0], amount: sub.amount, status: "success", method: "Card" },
-                ...sub.paymentHistory,
-              ],
-            }
-          : sub
-      )
-    );
-    setIsRenewDialogOpen(false);
-    setSelectedSubscription(null);
-    toast.success("Subscription renewed successfully");
-  };
-
-  const handleCancelSubscription = () => {
-    if (!selectedSubscription) return;
-    updateUserSubscription(selectedSubscription.id, { status: "cancelled" }).catch(console.error);
-    setSubscriptionData((prev) =>
-      prev.map((sub) =>
-        sub.id === selectedSubscription.id
-          ? { ...sub, status: "cancelled", autoRenew: false }
-          : sub
-      )
-    );
-    setIsCancelDialogOpen(false);
-    setSelectedSubscription(null);
-    toast.success("Subscription cancelled");
-  };
-
-  const openViewModal = (sub: Subscription) => {
-    setSelectedSubscription(sub);
-    setIsViewModalOpen(true);
-  };
-
-  const openEditModal = (sub: Subscription) => {
-    setSelectedSubscription(sub);
-    setFormData({ plan: sub.plan, autoRenew: sub.autoRenew });
-    setIsEditModalOpen(true);
-  };
-
-  const openHistoryModal = (sub: Subscription) => {
-    setSelectedSubscription(sub);
-    setIsHistoryModalOpen(true);
-  };
-
-  const openRenewDialog = (sub: Subscription) => {
-    setSelectedSubscription(sub);
-    setIsRenewDialogOpen(true);
-  };
-
-  const openCancelDialog = (sub: Subscription) => {
-    setSelectedSubscription(sub);
-    setIsCancelDialogOpen(true);
-  };
-
-  const activeCount = subscriptionData.filter((s) => s.status === "active").length;
-  const trialCount = subscriptionData.filter((s) => s.status === "trial").length;
-  const expiredCount = subscriptionData.filter((s) => s.status === "expired").length;
-  const mrr = subscriptionData
-    .filter((s) => s.status === "active")
-    .reduce((sum, s) => sum + (s.plan === "yearly" ? s.amount / 12 : s.amount), 0);
 
   return (
     <DashboardLayout>
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Subscriptions & Billing</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage branch subscriptions and payment status
-          </p>
+          <h1 className="text-2xl font-bold text-foreground">{t("subscriptionsTitle")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">{t("manageTenantSubscriptions")}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" className="gap-2" onClick={loadData} disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+            {t("refresh")}
+          </Button>
+          <Button size="sm" className="gap-2" onClick={() => setCreateOpen(true)}>
+            <Plus className="w-4 h-4" />
+            {t("newSubscription")}
+          </Button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="metric-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-status-healthy/15 flex items-center justify-center">
-              <CheckCircle2 className="w-5 h-5 text-status-healthy" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{activeCount}</p>
-              <p className="text-sm text-muted-foreground">Active</p>
-            </div>
-          </div>
-        </div>
-        <div className="metric-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-status-info/15 flex items-center justify-center">
-              <Clock className="w-5 h-5 text-status-info" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{trialCount}</p>
-              <p className="text-sm text-muted-foreground">In Trial</p>
-            </div>
-          </div>
-        </div>
-        <div className="metric-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-status-critical/15 flex items-center justify-center">
-              <XCircle className="w-5 h-5 text-status-critical" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{expiredCount}</p>
-              <p className="text-sm text-muted-foreground">Expired</p>
-            </div>
-          </div>
-        </div>
-        <div className="metric-card">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-foreground">{formatCurrency(mrr)}</p>
-              <p className="text-sm text-muted-foreground">MRR</p>
-            </div>
-          </div>
+      {/* Stats Bar */}
+      <div className="flex flex-wrap gap-3 mb-5">
+        {[
+          { label: t("statActive"),        value: "active",          count: countByStatus("active"),          cls: "badge-active"    },
+          { label: t("statTrial"),         value: "trial",           count: countByStatus("trial"),            cls: "badge-trial"     },
+          { label: t("statPendingPayment"),value: "pending_payment", count: countByStatus("pending_payment"),  cls: "badge-pending"   },
+          { label: t("statPastDue"),       value: "past_due",        count: countByStatus("past_due"),         cls: "badge-pending"   },
+          { label: t("statExpiredSub"),    value: "expired",         count: countByStatus("expired"),          cls: "badge-expired"   },
+          { label: t("statCancelled"),     value: "cancelled",       count: countByStatus("cancelled"),        cls: "badge-cancelled" },
+        ].map(({ label, value, count, cls }) => (
+          <button
+            key={value}
+            onClick={() => setStatusFilter(statusFilter === value ? "all" : value)}
+            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-sm font-medium transition-colors hover:border-primary/40", cls)}
+          >
+            {label} <span className="font-mono">({count})</span>
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+          <span>MRR:</span>
+          <span className="font-mono font-semibold text-status-healthy">
+            ${mrr.toLocaleString()}
+          </span>
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="glass-card rounded-lg p-4 mb-6">
-        <div className="flex items-center gap-4">
-          <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-            <SelectTrigger className="w-48 bg-background">
-              <SelectValue placeholder="Filter by status" />
+      {error && (
+        <div className="flex items-center gap-3 p-4 mb-4 rounded-lg border border-status-critical/30 bg-status-critical/10 text-status-critical text-sm">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="glass-card rounded-lg p-3 mb-4">
+        <div className="flex flex-col md:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              placeholder={t("searchByNameOrEmail")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 bg-background text-sm"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full md:w-44 bg-background h-8 text-sm">
+              <SelectValue placeholder={t("allStatuses")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Subscriptions</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="trial">Trial</SelectItem>
-              <SelectItem value="expired">Expired</SelectItem>
-              <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="all">{t("allStatuses")}</SelectItem>
+              {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{statusLabel(s)}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={planFilter} onValueChange={setPlanFilter}>
+            <SelectTrigger className="w-full md:w-48 bg-background h-8 text-sm">
+              <SelectValue placeholder={t("allPlans")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("allPlans")}</SelectItem>
+              {uniquePlanIds.map((id) => (
+                <SelectItem key={id} value={id}>
+                  {plansByPlanId[id]?.name ?? id}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      {/* Subscriptions Table */}
+      {/* Table */}
       <div className="glass-card rounded-lg overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">Loading subscriptions...</div>
-        ) : filteredSubscriptions.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">
-            {subscriptionData.length === 0
-              ? "No subscription data available from backend"
-              : "No subscriptions match the selected filter"}
+          <div className="p-12 flex justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 flex flex-col items-center gap-3 text-muted-foreground">
+            <CheckCircle2 className="w-8 h-8 opacity-30" />
+            <span className="text-sm">{t("noSubscriptionsFound")}</span>
           </div>
         ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-xs text-muted-foreground border-b border-border">
-                <th className="text-left py-3 px-4 font-medium">Branch</th>
-                <th className="text-left py-3 px-4 font-medium">Plan</th>
-                <th className="text-left py-3 px-4 font-medium">Status</th>
-                <th className="text-left py-3 px-4 font-medium">Period</th>
-                <th className="text-right py-3 px-4 font-medium">Amount</th>
-                <th className="text-left py-3 px-4 font-medium">Next Billing</th>
-                <th className="text-center py-3 px-4 font-medium">Auto Renew</th>
-                <th className="text-right py-3 px-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSubscriptions.map((sub) => {
-                const StatusIcon = statusConfig[sub.status].icon;
-                return (
-                  <tr key={sub.id} className="data-table-row border-b border-border last:border-0">
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-                          <Building2 className="w-4 h-4 text-muted-foreground" />
-                        </div>
-                        <span className="font-medium text-foreground">{sub.branchName}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="badge-status bg-accent text-accent-foreground">
-                        {planLabels[sub.plan]}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={cn(
-                        "badge-status capitalize flex items-center gap-1 w-fit",
-                        statusConfig[sub.status].bgColor,
-                        statusConfig[sub.status].color
-                      )}>
-                        <StatusIcon className="w-3 h-3" />
-                        {sub.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="text-sm text-muted-foreground">
-                        <div>{sub.startDate}</div>
-                        <div>to {sub.endDate}</div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className="font-medium text-foreground">
-                        {sub.amount > 0 ? formatCurrency(sub.amount) : "Free"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {sub.nextBilling ? (
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Calendar className="w-3 h-3" />
-                          {sub.nextBilling}
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <Switch
-                        checked={sub.autoRenew}
-                        onCheckedChange={() => toggleAutoRenew(sub.id)}
-                        disabled={sub.status === "expired" || sub.status === "cancelled"}
-                      />
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openViewModal(sub)}>
-                            <Eye className="w-4 h-4 mr-2" />
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openEditModal(sub)}>
-                            <Edit className="w-4 h-4 mr-2" />
-                            Change Plan
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openHistoryModal(sub)}>
-                            <Receipt className="w-4 h-4 mr-2" />
-                            Payment History
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {(sub.status === "expired" || sub.status === "cancelled") && (
-                            <DropdownMenuItem onClick={() => openRenewDialog(sub)}>
-                              <RefreshCw className="w-4 h-4 mr-2" />
-                              Renew Subscription
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-muted-foreground border-b border-border">
+                  <th className="text-left px-4 py-3 font-medium">{t("user")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("plan")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("status")}</th>
+                  <th className="text-right px-4 py-3 font-medium">{t("price")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("start")}</th>
+                  <th className="text-left px-4 py-3 font-medium">{t("end")}</th>
+                  <th className="text-center px-4 py-3 font-medium">{t("autoRenewCol")}</th>
+                  <th className="text-right px-4 py-3 font-medium">{t("actions")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {filtered.map((sub) => {
+                  const StatusIcon = statusIcon(sub.status);
+                  return (
+                    <tr key={sub.id} className="hover:bg-accent/20 transition-colors">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-foreground">{sub.userFullName || sub.userEmail}</p>
+                        <p className="text-xs text-muted-foreground">{sub.userEmail}</p>
+                      </td>
+                      <td className="px-4 py-3 text-foreground">{sub.planName}</td>
+                      <td className="px-4 py-3">
+                        <span className={cn("inline-flex items-center gap-1", statusBadgeClass(sub.status))}>
+                          <StatusIcon className="w-2.5 h-2.5" />
+                          {statusLabel(sub.status)}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-foreground">
+                        {sub.planPrice > 0 ? `$${sub.planPrice}` : t("free")}
+                        <span className="text-xs text-muted-foreground">/{sub.billingPeriod}</span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                        {sub.startDate ? new Date(sub.startDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
+                        {sub.endDate ? new Date(sub.endDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Switch
+                          checked={sub.autoRenew}
+                          onCheckedChange={async (v) => {
+                            try {
+                              const updated = await updateSubscription(sub.id, { autoRenew: v });
+                              setSubs((prev) => prev.map((s) => s.id === updated.id ? updated : s));
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : t("failedToUpdate"));
+                            }
+                          }}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => openEdit(sub)}>
+                              <Edit className="w-4 h-4 mr-2" />
+                              {t("edit")}
                             </DropdownMenuItem>
-                          )}
-                          {sub.status === "active" && (
-                            <DropdownMenuItem 
-                              className="text-status-critical"
-                              onClick={() => openCancelDialog(sub)}
+                            <DropdownMenuItem
+                              onClick={() => openTrial(sub)}
+                              disabled={!isAdminDeveloper}
+                              title={isAdminDeveloper ? undefined : t("adminRoleRequired")}
                             >
-                              <XCircle className="w-4 h-4 mr-2" />
-                              Cancel Subscription
+                              <Gift className="w-4 h-4 mr-2" />
+                              {t("grantTrial")}
                             </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-status-critical"
+                              onClick={() => openDelete(sub)}
+                              disabled={!isAdminDeveloper}
+                              title={isAdminDeveloper ? undefined : t("adminRoleRequired")}
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              {t("delete")}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      {/* View Subscription Modal */}
-      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+      {/* Create Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Subscription Details</DialogTitle>
-            <DialogDescription>
-              Full subscription information for this branch.
-            </DialogDescription>
+            <DialogTitle>{t("newSubscription")}</DialogTitle>
+            <DialogDescription>{t("createSubscriptionFor")}</DialogDescription>
           </DialogHeader>
-          {selectedSubscription && (
-            <div className="space-y-4 py-4">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-lg bg-accent flex items-center justify-center">
-                  <Building2 className="w-6 h-6 text-muted-foreground" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">{selectedSubscription.branchName}</h3>
-                  <span className={cn(
-                    "badge-status capitalize",
-                    statusConfig[selectedSubscription.status].bgColor,
-                    statusConfig[selectedSubscription.status].color
-                  )}>
-                    {selectedSubscription.status}
-                  </span>
-                </div>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{t("userId")}</Label>
+              <UserPicker
+                value={createForm.userId}
+                onChange={(userId) => setCreateForm({ ...createForm, userId })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("plan")}</Label>
+              <Select value={createForm.planId} onValueChange={(v) => setCreateForm({ ...createForm, planId: v })}>
+                <SelectTrigger><SelectValue placeholder={t("selectPlan")} /></SelectTrigger>
+                <SelectContent>
+                  {plans.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} — ${p.price}/{p.billingPeriod}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("status")}</Label>
+              <Select value={createForm.status} onValueChange={(v) => setCreateForm({ ...createForm, status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{statusLabel(s)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{t("startDate")}</Label>
+                <Input
+                  type="date"
+                  value={createForm.startDate}
+                  onChange={(e) => setCreateForm({ ...createForm, startDate: e.target.value })}
+                  className="bg-background"
+                />
+                <p className="text-xs text-muted-foreground">{t("startDateAutoHint")}</p>
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Plan</p>
-                  <p className="font-medium text-foreground">{planLabels[selectedSubscription.plan]}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Amount</p>
-                  <p className="font-medium text-foreground">
-                    {selectedSubscription.amount > 0 ? formatCurrency(selectedSubscription.amount) : "Free"}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Start Date</p>
-                  <p className="font-medium text-foreground">{selectedSubscription.startDate}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">End Date</p>
-                  <p className="font-medium text-foreground">{selectedSubscription.endDate}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Last Payment</p>
-                  <p className="font-medium text-foreground">{selectedSubscription.lastPayment || "—"}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Next Billing</p>
-                  <p className="font-medium text-foreground">{selectedSubscription.nextBilling || "—"}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Auto Renew</p>
-                  <p className="font-medium text-foreground">{selectedSubscription.autoRenew ? "Yes" : "No"}</p>
-                </div>
+              <div className="space-y-2">
+                <Label>{t("endDate")}</Label>
+                <Input
+                  type="date"
+                  value={createForm.endDate}
+                  onChange={(e) => setCreateForm({ ...createForm, endDate: e.target.value })}
+                  className="bg-background"
+                />
+                <p className="text-xs text-muted-foreground">{t("endDateAutoHint")}</p>
               </div>
             </div>
-          )}
+            <div className="space-y-2">
+              <Label>{t("notes")}</Label>
+              <Input
+                placeholder={t("optionalNotes")}
+                value={createForm.notes}
+                onChange={(e) => setCreateForm({ ...createForm, notes: e.target.value })}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">{t("autoRenewLabel")}</p>
+                <p className="text-xs text-muted-foreground">{t("autoRenewDesc")}</p>
+              </div>
+              <Switch
+                checked={createForm.autoRenew}
+                onCheckedChange={(v) => setCreateForm({ ...createForm, autoRenew: v })}
+              />
+            </div>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
-              Close
-            </Button>
-            <Button onClick={() => {
-              setIsViewModalOpen(false);
-              if (selectedSubscription) openEditModal(selectedSubscription);
-            }}>
-              Change Plan
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
+            <Button onClick={handleCreate} disabled={saving}>
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {t("create")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Edit/Change Plan Modal */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Change Subscription Plan</DialogTitle>
+            <DialogTitle>{t("editSubscription")}</DialogTitle>
+            <DialogDescription>{tf(t("updateSubscriptionFor"), { name: selected?.userFullName || selected?.userEmail || "" })}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{t("status")}</Label>
+              <Select value={editForm.status} onValueChange={(v) => setEditForm({ ...editForm, status: v })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{statusLabel(s)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("plan")}</Label>
+              <Select value={editForm.planId} onValueChange={(v) => setEditForm({ ...editForm, planId: v })}>
+                <SelectTrigger><SelectValue placeholder={t("keepCurrentPlan")} /></SelectTrigger>
+                <SelectContent>
+                  {plans.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name} — ${p.price}/{p.billingPeriod}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{t("endDate")}</Label>
+                <Input
+                  type="date"
+                  value={editForm.endDate}
+                  onChange={(e) => setEditForm({ ...editForm, endDate: e.target.value })}
+                  className="bg-background"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("renewalDate")}</Label>
+                <Input
+                  type="date"
+                  value={editForm.renewalDate}
+                  onChange={(e) => setEditForm({ ...editForm, renewalDate: e.target.value })}
+                  className="bg-background"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("notes")}</Label>
+              <Input
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                placeholder={t("optionalNotes")}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-foreground">{t("autoRenewLabel")}</p>
+              <Switch
+                checked={editForm.autoRenew}
+                onCheckedChange={(v) => setEditForm({ ...editForm, autoRenew: v })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>{t("cancel")}</Button>
+            <Button onClick={handleEdit} disabled={saving}>
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {t("saveChanges")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Grant Trial Dialog */}
+      <Dialog open={trialOpen} onOpenChange={setTrialOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("grantTrial")}</DialogTitle>
             <DialogDescription>
-              Update the subscription plan for {selectedSubscription?.branchName}.
+              {tf(t("grantTrialFor"), { name: selected?.userFullName || selected?.userEmail || "" })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="plan">Subscription Plan</Label>
-              <Select 
-                value={formData.plan} 
-                onValueChange={(val) => setFormData({ ...formData, plan: val as SubscriptionPlan })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select plan" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="trial">14-Day Trial (Free)</SelectItem>
-                  <SelectItem value="monthly">Monthly ({formatCurrency(25000)}/month)</SelectItem>
-                  <SelectItem value="yearly">Yearly ({formatCurrency(240000)}/year)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-foreground">Auto Renew</p>
-                <p className="text-sm text-muted-foreground">Automatically renew subscription</p>
+              <Label>{t("trialDays")}</Label>
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-muted-foreground" />
+                <Input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={trialDays}
+                  onChange={(e) => setTrialDays(e.target.value)}
+                  className="w-24 bg-background font-mono"
+                />
+                <span className="text-sm text-muted-foreground">{t("days")}</span>
               </div>
-              <Switch
-                checked={formData.autoRenew}
-                onCheckedChange={(checked) => setFormData({ ...formData, autoRenew: checked })}
+            </div>
+            <div className="space-y-2">
+              <Label>{t("notes")} ({t("optional")})</Label>
+              <Input
+                value={trialNotes}
+                onChange={(e) => setTrialNotes(e.target.value)}
+                placeholder={t("reasonForTrial")}
               />
             </div>
-            {formData.plan !== "trial" && (
-              <div className="p-3 bg-accent/30 rounded-lg">
-                <p className="text-sm text-foreground">
-                  New billing amount: <span className="font-semibold">{formatCurrency(planPrices[formData.plan])}</span>
-                  {formData.plan === "yearly" && (
-                    <span className="text-status-healthy ml-2">(Save 20%)</span>
-                  )}
-                </p>
-              </div>
-            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleChangePlan}>
-              Update Plan
+            <Button variant="outline" onClick={() => setTrialOpen(false)}>{t("cancel")}</Button>
+            <Button onClick={handleGrantTrial} disabled={saving}>
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              <Gift className="w-4 h-4 mr-2" />
+              {t("grantTrial")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Payment History Modal */}
-      <Dialog open={isHistoryModalOpen} onOpenChange={setIsHistoryModalOpen}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Payment History</DialogTitle>
-            <DialogDescription>
-              Payment records for {selectedSubscription?.branchName}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-4 max-h-80 overflow-y-auto">
-            {selectedSubscription?.paymentHistory.length === 0 ? (
-              <p className="text-center text-muted-foreground py-4">No payment history</p>
-            ) : (
-              selectedSubscription?.paymentHistory.map((payment, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 bg-accent/30 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      "w-8 h-8 rounded-lg flex items-center justify-center",
-                      payment.status === "success" && "bg-status-healthy/15",
-                      payment.status === "failed" && "bg-status-critical/15",
-                      payment.status === "pending" && "bg-status-warning/15"
-                    )}>
-                      {payment.status === "success" && <CheckCircle2 className="w-4 h-4 text-status-healthy" />}
-                      {payment.status === "failed" && <XCircle className="w-4 h-4 text-status-critical" />}
-                      {payment.status === "pending" && <Clock className="w-4 h-4 text-status-warning" />}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{formatCurrency(payment.amount)}</p>
-                      <p className="text-xs text-muted-foreground">{payment.date} • {payment.method}</p>
-                    </div>
-                  </div>
-                  <span className={cn(
-                    "badge-status capitalize",
-                    payment.status === "success" && "badge-healthy",
-                    payment.status === "failed" && "badge-critical",
-                    payment.status === "pending" && "badge-warning"
-                  )}>
-                    {payment.status}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsHistoryModalOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Renew Subscription Dialog */}
-      <AlertDialog open={isRenewDialogOpen} onOpenChange={setIsRenewDialogOpen}>
+      {/* Delete Confirm */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Renew Subscription</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteSubscription")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Renew the subscription for {selectedSubscription?.branchName}? 
-              This will charge {selectedSubscription && formatCurrency(selectedSubscription.amount)} for the {selectedSubscription?.plan} plan.
+              {tf(t("permanentlyDeleteSubscriptionFor"), { name: selected?.userFullName || selected?.userEmail || "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRenewSubscription}>
-              Renew Now
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Cancel Subscription Dialog */}
-      <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel Subscription</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to cancel the subscription for {selectedSubscription?.branchName}? 
-              The branch will lose access to premium features at the end of the billing period.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep Subscription</AlertDialogCancel>
-            <AlertDialogAction onClick={handleCancelSubscription} className="bg-status-critical hover:bg-status-critical/90">
-              Cancel Subscription
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={saving}
+              className="bg-status-critical hover:bg-status-critical/90"
+            >
+              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {t("delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

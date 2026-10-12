@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
+import { setOnUnauthorized, setToken, clearToken } from "@/services/api-client";
 
 export interface AuthUser {
   id: string;
@@ -18,36 +19,41 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    const savedToken = localStorage.getItem("auth_token");
-    const savedUser = localStorage.getItem("user");
-    if (savedToken && savedUser) {
-      try {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-      } catch {
-        localStorage.removeItem("auth_token");
-        localStorage.removeItem("user");
-      }
+  const [token, setTokenState] = useState<string | null>(
+    () => localStorage.getItem("auth_token")
+  );
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    try {
+      const saved = localStorage.getItem("user");
+      return saved ? (JSON.parse(saved) as AuthUser) : null;
+    } catch {
+      return null;
     }
-  }, []);
+  });
 
-  const login = (token: string, user: AuthUser) => {
-    setToken(token);
-    setUser(user);
-    localStorage.setItem("auth_token", token);
-    localStorage.setItem("user", JSON.stringify(user));
-  };
+  const logoutRef = useRef<() => void>(() => {});
 
   const logout = () => {
-    setToken(null);
+    setTokenState(null);
     setUser(null);
-    localStorage.removeItem("auth_token");
+    clearToken();
     localStorage.removeItem("user");
-    localStorage.removeItem("token");
+  };
+
+  logoutRef.current = logout;
+
+  useEffect(() => {
+    setOnUnauthorized(() => {
+      logoutRef.current();
+      window.location.href = "/login";
+    });
+  }, []);
+
+  const login = (tok: string, usr: AuthUser) => {
+    setTokenState(tok);
+    setUser(usr);
+    setToken(tok);
+    localStorage.setItem("user", JSON.stringify(usr));
   };
 
   return (

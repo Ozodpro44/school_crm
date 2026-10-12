@@ -14,11 +14,24 @@ import (
 )
 
 type ExpenseService struct {
-	db *db.Database
+	db        *db.Database
+	branchSvc *BranchService
 }
 
-func NewExpenseService(database *db.Database) *ExpenseService {
-	return &ExpenseService{db: database}
+func NewExpenseService(database *db.Database, branchSvc *BranchService) *ExpenseService {
+	return &ExpenseService{db: database, branchSvc: branchSvc}
+}
+
+// ExpenseFilterInput replaces the long parameter list of GetByBranchIDWithFilters.
+type ExpenseFilterInput struct {
+	BranchID      string
+	Page          string
+	Limit         string
+	Search        string
+	Category      string
+	PaymentMethod string
+	Month         string
+	Year          string
 }
 
 type CreateExpenseRequest struct {
@@ -43,6 +56,20 @@ type UpdateExpenseRequest struct {
 }
 
 func (s *ExpenseService) Create(ctx context.Context, req *CreateExpenseRequest, createdBy string) (*models.Expense, error) {
+	// Guard: financial month lock — expense date must fall in the branch's current month.
+	if s.branchSvc != nil && req.BranchID != "" {
+		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, req.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify financial month: %w", err)
+		}
+		expMonth := int(req.Date.Month())
+		expYear := req.Date.Year()
+		currentMonthInt, _ := strconv.Atoi(currentMonth)
+		if expMonth != currentMonthInt || expYear != currentYear {
+			return nil, fmt.Errorf("%w: can only create expenses for the branch's current month", ErrFinancialMonthLocked)
+		}
+	}
+
 	expense := &models.Expense{
 		ID:            uuid.New().String(),
 		Title:         req.Title,
@@ -69,7 +96,7 @@ func (s *ExpenseService) Create(ctx context.Context, req *CreateExpenseRequest, 
 func (s *ExpenseService) GetByID(ctx context.Context, id string) (*models.Expense, error) {
 	expense := &models.Expense{}
 	query := `SELECT id, title, description, amount, category, payment_method, date, branch_id, created_by, notes, created_at
-	         FROM expenses WHERE id = $1`
+	         FROM expenses WHERE id = $1 AND deleted_at IS NULL`
 
 	err := s.db.GetConn().QueryRowContext(ctx, query, id).Scan(
 		&expense.ID, &expense.Title, &expense.Description, &expense.Amount, &expense.Category,
@@ -84,7 +111,7 @@ func (s *ExpenseService) GetByID(ctx context.Context, id string) (*models.Expens
 
 func (s *ExpenseService) GetByBranchID(ctx context.Context, branchID string) ([]models.Expense, error) {
 	query := `SELECT id, title, description, amount, category, payment_method, date, branch_id, created_by, notes, created_at
-	         FROM expenses WHERE branch_id = $1 ORDER BY date DESC`
+	         FROM expenses WHERE branch_id = $1 AND deleted_at IS NULL ORDER BY date DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID)
 	if err != nil {
@@ -105,11 +132,26 @@ func (s *ExpenseService) GetByBranchID(ctx context.Context, branchID string) ([]
 	return expenses, rows.Err()
 }
 
-func (s *ExpenseService) Update(ctx context.Context, id string, req *UpdateExpenseRequest) (*models.Expense, error) {
+func (s *ExpenseService) Update(ctx context.Context, id string, req *UpdateExpenseRequest, isAdmin bool) (*models.Expense, error) {
 	// Get existing expense
 	expense, err := s.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	// Guard: financial month lock — non-admin users cannot edit past-month expenses.
+	if s.branchSvc != nil {
+		currentMonth, currentYear, err := s.branchSvc.GetCurrentMonth(ctx, expense.BranchID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify financial month: %w", err)
+		}
+		expMonth := int(expense.Date.Month())
+		expYear := expense.Date.Year()
+		currentMonthInt, _ := strconv.Atoi(currentMonth)
+		isPast := expMonth != currentMonthInt || expYear != currentYear
+		if isPast && !isAdmin {
+			return nil, fmt.Errorf("%w: cannot modify expenses from past months", ErrFinancialMonthLocked)
+		}
 	}
 
 	// Update fields if provided
@@ -149,7 +191,7 @@ func (s *ExpenseService) Update(ctx context.Context, id string, req *UpdateExpen
 }
 
 func (s *ExpenseService) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM expenses WHERE id = $1`
+	query := `DELETE FROM expenses WHERE id = $1 AND deleted_at IS NULL`
 	_, err := s.db.GetConn().ExecContext(ctx, query, id)
 	return err
 }
@@ -160,6 +202,7 @@ func (s *ExpenseService) GetByBranchIDAndPeriod(ctx context.Context, branchID st
 	         WHERE branch_id = $1 
 	         AND EXTRACT(MONTH FROM date) = $2 
 	         AND EXTRACT(YEAR FROM date) = $3 
+	         AND deleted_at IS NULL
 	         ORDER BY date DESC`
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, branchID, month, year)
@@ -182,9 +225,9 @@ func (s *ExpenseService) GetByBranchIDAndPeriod(ctx context.Context, branchID st
 }
 
 // GetByBranchIDWithFilters retrieves expenses with search, filters, and pagination
-func (s *ExpenseService) GetByBranchIDWithFilters(ctx context.Context, branchID string, pageStr string, limitStr string, search string, category string, paymentMethod string, month string, year string) (*models.ExpenseFilterResult, error) {
-	page, _ := strconv.Atoi(pageStr)
-	limit, _ := strconv.Atoi(limitStr)
+func (s *ExpenseService) GetByBranchIDWithFilters(ctx context.Context, in ExpenseFilterInput) (*models.ExpenseFilterResult, error) {
+	page, _ := strconv.Atoi(in.Page)
+	limit, _ := strconv.Atoi(in.Limit)
 	if page < 1 {
 		page = 1
 	}
@@ -193,8 +236,15 @@ func (s *ExpenseService) GetByBranchIDWithFilters(ctx context.Context, branchID 
 	}
 	offset := (page - 1) * limit
 
+	branchID := in.BranchID
+	search := in.Search
+	category := in.Category
+	paymentMethod := in.PaymentMethod
+	month := in.Month
+	year := in.Year
+
 	// Build the WHERE clause dynamically
-	whereClause := "WHERE branch_id = $1"
+	whereClause := "WHERE branch_id = $1 AND deleted_at IS NULL"
 	args := []interface{}{branchID}
 	argCount := 1
 
@@ -293,7 +343,7 @@ func (s *ExpenseService) GetExpenseSummaryForPeriod(ctx context.Context, branchI
 
 	// Get total amount
 	totalQuery := `SELECT COALESCE(SUM(amount), 0) FROM expenses 
-		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3`
+		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3 AND deleted_at IS NULL`
 	err := s.db.GetConn().QueryRowContext(ctx, totalQuery, branchID, monthInt, year).Scan(&summary.TotalAmount)
 	if err != nil {
 		return summary, err
@@ -301,7 +351,7 @@ func (s *ExpenseService) GetExpenseSummaryForPeriod(ctx context.Context, branchI
 
 	// Get by category
 	categoryQuery := `SELECT category, COALESCE(SUM(amount), 0) as total FROM expenses 
-		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3
+		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3 AND deleted_at IS NULL
 		GROUP BY category`
 	rows, err := s.db.GetConn().QueryContext(ctx, categoryQuery, branchID, monthInt, year)
 	if err != nil {
@@ -320,7 +370,7 @@ func (s *ExpenseService) GetExpenseSummaryForPeriod(ctx context.Context, branchI
 
 	// Get by payment method
 	methodQuery := `SELECT payment_method, COALESCE(SUM(amount), 0) as total FROM expenses 
-		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3
+		WHERE branch_id = $1 AND EXTRACT(MONTH FROM date) = $2 AND EXTRACT(YEAR FROM date) = $3 AND deleted_at IS NULL
 		GROUP BY payment_method`
 	methodRows, err := s.db.GetConn().QueryContext(ctx, methodQuery, branchID, monthInt, year)
 	if err != nil {

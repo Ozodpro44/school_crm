@@ -4,60 +4,123 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Print styles ─────────────────────────────────────────────── */
+@media print {
+  /* Hide everything except the print target */
+  body > *:not(#print-root) { display: none !important; }
+  #print-root { display: block !important; }
+
+  /* Hide nav, sidebars, buttons */
+  nav, aside, header, footer,
+  [data-no-print], .no-print { display: none !important; }
+
+  /* Clean table rendering */
+  table { border-collapse: collapse; width: 100%; font-size: 10pt; }
+  th, td { border: 1px solid #cbd5e1; padding: 5pt 7pt; }
+  thead { background: #f1f5f9 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  tr:nth-child(even) td { background: #f8fafc !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  @page { margin: 15mm 12mm; size: A4 landscape; }
+}
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* Page ground is a touch cooler than pure white so `--card` (white) reads
+       as a raised surface. Previously both were #fff, which — together with
+       Card's `shadow-xs` (a Tailwind v4 class that compiles to nothing on the
+       v3 in use here) — left cards defined by a 1px border alone and made the
+       whole UI look flat. */
+    /* Indigo + Slate palette. Each token below is annotated with the exact
+       hex it was requested as, so a future change can find its source of
+       truth instead of reverse-engineering the HSL. */
+    --background: 210 40% 98%;       /* #F8FAFC */
+    --foreground: 222.2 47.4% 11.2%; /* #0F172A */
+    --card: 0 0% 100%;                /* #FFFFFF */
+    --card-foreground: 222.2 47.4% 11.2%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --primary: 243 75% 59%;           /* #4F46E5 */
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted-foreground: 215.4 16.3% 46.9%; /* #64748B */
     --accent: 210 40% 96.1%;
     --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    /* Semantic status colors — used by Badge, banner, chart accents. */
+    --success: 142 71% 45%;          /* green-500 */
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;           /* amber-500 */
+    --warning-foreground: 0 0% 100%;
+    --info: 217 91% 60%;             /* blue-500 */
+    --info-foreground: 0 0% 100%;
+    --border: 214 32% 91%;           /* #E2E8F0 */
+    --input: 214 32% 91%;
+    --ring: 239 84% 67%;              /* #6366F1 */
     --radius: 0.5rem;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    /* Chart series: 1 = income/positive, 2 = expense/negative, then neutral
+       accents. Kept in the same hue family as the dark palette below so a
+       series keeps its identity across themes. */
+    --chart-1: 142 71% 40%;
+    --chart-2: 0 72% 51%;
+    --chart-3: 217 83% 53%;
+    --chart-4: 38 92% 45%;
+    --chart-5: 265 60% 55%;
+    --sidebar: 0 0% 100%;             /* #FFFFFF */
+    --sidebar-foreground: 222.2 47.4% 11.2%;
+    --sidebar-primary: 243 75% 59%;
+    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-accent: 210 40% 96.1%;
+    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 239 84% 67%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
+    --background: 222.2 47.4% 11.2%; /* #0F172A */
+    --foreground: 210 40% 98%;        /* #F8FAFC */
+    --card: 217.2 32.6% 17.5%;        /* #1E293B */
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
+    --popover: 217.2 32.6% 17.5%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
+    --primary: 234 89% 74%;            /* #818CF8 */
     --primary-foreground: 222.2 47.4% 11.2%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted-foreground: 215 20.2% 65.1%; /* #94A3B8 */
     --accent: 217.2 32.6% 17.5%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --success: 142 71% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 45%;
+    --warning-foreground: 0 0% 100%;
+    --info: 217 91% 55%;
+    --info-foreground: 0 0% 100%;
+    --border: 215.3 25% 26.7%;         /* #334155 */
+    --input: 215.3 25% 26.7%;
+    --ring: 239 84% 67%;               /* #6366F1 — same accent ring as light, for consistent focus styling across themes */
+    /* Same hue family as the light palette, only lightened for a dark ground.
+       Previously dark used an entirely different hue set, so chart series 1
+       was terracotta in light and blue in dark — the series changed identity
+       when the theme changed. */
+    --chart-1: 142 65% 50%;
+    --chart-2: 0 75% 63%;
+    --chart-3: 217 85% 65%;
+    --chart-4: 38 90% 58%;
+    --chart-5: 265 70% 68%;
+    --sidebar: 220.9 39.3% 11%;        /* #111827 */
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 234 89% 74%;
+    --sidebar-primary-foreground: 222.2 47.4% 11.2%;
+    --sidebar-accent: 217.2 32.6% 17.5%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 215.3 25% 26.7%;
+    --sidebar-ring: 239 84% 67%;
   }
 }
 
@@ -72,7 +135,6 @@
   }
   
   html {
-    scroll-behavior: smooth;
     -webkit-tap-highlight-color: transparent;
   }
   
@@ -98,27 +160,105 @@
   * {
     -webkit-overflow-scrolling: touch;
   }
+
+  /* Respect the OS "reduce motion" setting. The app animates fades and uses
+     smooth scrolling globally; without this, users with vestibular
+     sensitivity get all of it. */
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer utilities {
+  /* ─── Brand gradient utilities ───────────────────────────────────────── */
+  /* Single source of truth for the brand mark — Indigo + Slate palette
+     (#4F46E5 base → #818CF8 accent), no purple. Replaces the repeated
+     `bg-gradient-to-r from-indigo-600 to-purple-600 hover:…` chains. */
+  .bg-brand {
+    background-image: linear-gradient(to right, rgb(79 70 229), rgb(129 140 248));
+  }
+  .hover\:bg-brand-hover:hover {
+    background-color: rgb(99 102 241);
+    background-image: none;
+  }
+  /* Diagonal variant — used for app logo / icon tiles. */
+  .bg-brand-square {
+    background-image: linear-gradient(to bottom right, rgb(79 70 229), rgb(129 140 248));
+  }
+
+  /* ─── Typography scale ─────────────────────────────────────────────────
+     Semantic type ramps that wrap the most common Tailwind classes used
+     across the app. Use these instead of inline `text-3xl font-bold …`
+     so design changes stay in one place.
+     ───────────────────────────────────────────────────────────────────── */
+  .text-display {
+    font-size: 1.875rem;          /* text-3xl */
+    line-height: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+  }
+  @media (min-width: 768px) {
+    .text-display {
+      font-size: 2.25rem;          /* md:text-4xl */
+      line-height: 2.5rem;
+    }
+  }
+  .text-heading {
+    font-size: 1.125rem;          /* text-lg */
+    line-height: 1.5rem;
+    font-weight: 600;
+  }
+  .text-body {
+    font-size: 0.875rem;          /* text-sm */
+    line-height: 1.25rem;
+  }
+  .text-caption {
+    font-size: 0.75rem;           /* text-xs */
+    line-height: 1rem;
+    font-weight: 500;
+  }
+  /* Uppercase micro-label, e.g. card-section eyebrows. */
+  .text-overline {
+    font-size: 0.625rem;          /* 10px */
+    line-height: 0.875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  /* `color: transparent` alone means the heading disappears entirely wherever
+     background-clip:text doesn't apply — printing, forced-colors mode, older
+     engines. The solid colour below is the fallback; the gradient only
+     replaces it where the browser actually supports clipping to text. */
+  .text-brand-gradient {
+    color: rgb(79 70 229);
+  }
+  @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    @media not print {
+      .text-brand-gradient {
+        background-image: linear-gradient(to right, rgb(79 70 229), rgb(129 140 248));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+    }
+  }
+
+  /* `both` keeps the element at the keyframe's starting opacity during any
+     animation-delay. Without it a delayed fade-in painted at full opacity
+     first, snapped to invisible when the delay elapsed, then faded back in —
+     a visible flash on every delayed block. */
   .animate-fade-in {
-    animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .animate-slide-up {
-    animation: slideUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .animate-slide-in {
-    animation: slideIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .animate-scale-in {
-    animation: scaleIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .animate-bounce-subtle {
-    animation: bounceSubtle 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: fadeIn 0.5s cubic-bezier(0.4, 0, 0.2, 1) both;
   }
 
   @keyframes fadeIn {
@@ -127,48 +267,6 @@
     }
     to {
       opacity: 1;
-    }
-  }
-
-  @keyframes slideUp {
-    from {
-      transform: translateY(30px);
-      opacity: 0;
-    }
-    to {
-      transform: translateY(0);
-      opacity: 1;
-    }
-  }
-
-  @keyframes slideIn {
-    from {
-      transform: translateX(-30px);
-      opacity: 0;
-    }
-    to {
-      transform: translateX(0);
-      opacity: 1;
-    }
-  }
-
-  @keyframes scaleIn {
-    from {
-      transform: scale(0.95);
-      opacity: 0;
-    }
-    to {
-      transform: scale(1);
-      opacity: 1;
-    }
-  }
-
-  @keyframes bounceSubtle {
-    0%, 100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-10px);
     }
   }
 
@@ -183,7 +281,7 @@
 
   .gradient-border {
     position: relative;
-    background: linear-gradient(to right, #4f46e5, #9333ea);
+    background: linear-gradient(to right, #4f46e5, #6366f1);
     padding: 2px;
     border-radius: 0.5rem;
   }

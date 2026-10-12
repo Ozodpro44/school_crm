@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -27,22 +29,42 @@ func (s *FinancialMonthService) GetOrCreateCurrentMonth(ctx context.Context, bra
 	month := int(now.Month())
 
 	// Try to get existing month
+	// An existing row is returned as-is, even when it is CLOSED: a closed
+	// month must never be silently reopened.
 	month_obj, err := s.GetByBranchAndYearMonth(ctx, branchID, year, month)
 	if err == nil && month_obj != nil {
 		return month_obj, nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
 	}
 
 	// Create new month if it doesn't exist
 	return s.Create(ctx, branchID, year, month)
 }
 
-// Create creates a new financial month
+// monthQuerier is the subset of *sql.DB / *sql.Tx needed to create a month.
+type monthQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// Create creates a new financial month (or returns the existing one).
 func (s *FinancialMonthService) Create(ctx context.Context, branchID string, year, month int) (*models.FinancialMonth, error) {
+	return s.CreateWith(ctx, s.db.GetConn(), branchID, year, month)
+}
+
+// CreateWith is Create on a caller-supplied connection or transaction, so a
+// caller (e.g. BranchService.Create) can make it atomic with its own writes.
+//
+// On conflict the existing row is returned UNCHANGED - in particular a CLOSED
+// month stays closed. (The previous ON CONFLICT DO UPDATE overwrote status
+// with 'OPEN', silently reopening a reconciled month.)
+func (s *FinancialMonthService) CreateWith(ctx context.Context, q monthQuerier, branchID string, year, month int) (*models.FinancialMonth, error) {
 	id := uuid.New().String()
 
 	// Get branch's monthly payment
 	var paymentAmount float64
-	err := s.db.GetConn().QueryRowContext(ctx, "SELECT monthly_payment FROM branches WHERE id = $1", branchID).Scan(&paymentAmount)
+	err := q.QueryRowContext(ctx, "SELECT monthly_payment FROM branches WHERE id = $1", branchID).Scan(&paymentAmount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get branch payment amount: %w", err)
 	}
@@ -51,12 +73,12 @@ func (s *FinancialMonthService) Create(ctx context.Context, branchID string, yea
 		INSERT INTO financial_months (id, branch_id, year, month, status, payment_amount, opened_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (branch_id, year, month) DO UPDATE
-		SET status = EXCLUDED.status, payment_amount = EXCLUDED.payment_amount
+		SET updated_at = financial_months.updated_at
 		RETURNING id, branch_id, year, month, status, payment_amount, opened_at, closed_at, created_at, updated_at
 	`
 
 	fm := &models.FinancialMonth{}
-	err = s.db.GetConn().QueryRowContext(ctx, query, id, branchID, year, month, models.MonthStatusOpen, paymentAmount, time.Now()).
+	err = q.QueryRowContext(ctx, query, id, branchID, year, month, models.MonthStatusOpen, paymentAmount, time.Now()).
 		Scan(&fm.ID, &fm.BranchID, &fm.Year, &fm.Month, &fm.Status, &fm.PaymentAmount, &fm.OpenedAt, &fm.ClosedAt, &fm.CreatedAt, &fm.UpdatedAt)
 
 	if err != nil {
@@ -185,12 +207,25 @@ func (s *FinancialMonthService) CloseMonth(ctx context.Context, branchID string)
 		return nil, fmt.Errorf("failed to get branch payment: %w", err)
 	}
 
+	// ON CONFLICT DO NOTHING: the next month may already exist (e.g. created
+	// ahead of time). Never overwrite it; resolve the surviving row's id and
+	// make sure it is OPEN only if it was not already closed earlier.
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO financial_months (id, branch_id, year, month, status, payment_amount, opened_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (branch_id, year, month) DO NOTHING
 	`, nextID, branchID, nextYear, nextMonth, models.MonthStatusOpen, paymentAmount, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create next month: %w", err)
+	}
+	var nextStatus string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT id, status FROM financial_months WHERE branch_id = $1 AND year = $2 AND month = $3
+	`, branchID, nextYear, nextMonth).Scan(&nextID, &nextStatus); err != nil {
+		return nil, fmt.Errorf("failed to load next month: %w", err)
+	}
+	if nextStatus == string(models.MonthStatusClosed) {
+		return nil, fmt.Errorf("next financial month %02d/%d is already closed", nextMonth, nextYear)
 	}
 
 	// Update branch's current_financial_month_id
@@ -215,6 +250,9 @@ func (s *FinancialMonthService) CloseMonth(ctx context.Context, branchID string)
 		FROM financial_months
 		WHERE id = $1
 	`, nextID).Scan(&fm.ID, &fm.BranchID, &fm.Year, &fm.Month, &fm.Status, &fm.PaymentAmount, &fm.OpenedAt, &fm.ClosedAt, &fm.CreatedAt, &fm.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("month closed but failed to load the new month: %w", err)
+	}
 
 	return fm, nil
 }

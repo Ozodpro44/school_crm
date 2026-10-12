@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"github.com/school-crm/backend/internal/models"
 	"log"
 	"net/http"
 
@@ -86,8 +88,12 @@ func updateSettings(branchService *service.BranchService) gin.HandlerFunc {
 			return
 		}
 
-		branch, err := branchService.Update(c.Request.Context(), branchIDStr, updates)
+		branch, err := branchService.Update(c.Request.Context(), branchIDStr, updates, c.GetString("role") == string(models.RoleAdmin))
 		if err != nil {
+			if errors.Is(err, service.ErrInvalidUpdate) {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			log.Printf("[SETTINGS HANDLER ERROR] Failed to update settings: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS uq_subscription_payments_invoice_number;

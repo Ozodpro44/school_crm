@@ -106,8 +106,13 @@ func (s *PermissionService) CreateForUser(ctx context.Context, userID string) (*
 func (s *PermissionService) Update(ctx context.Context, userID string, updates map[string]interface{}) (*models.Permission, error) {
 	log.Printf("[PermissionService.Update] Updating permissions for user %s with updates: %v", userID, updates)
 
+	setClause, args, err := buildUpdateSet(updates, permissionUpdateRule, true, nil)
+	if err != nil {
+		return nil, err
+	}
+
 	// First check if permissions exist
-	_, err := s.GetByUserID(ctx, userID)
+	_, err = s.GetByUserID(ctx, userID)
 	if err != nil && err.Error() == "permissions not found" {
 		// Create default permissions if they don't exist
 		log.Printf("[PermissionService.Update] Permissions not found for user %s, creating defaults", userID)
@@ -121,20 +126,7 @@ func (s *PermissionService) Update(ctx context.Context, userID string, updates m
 	}
 
 	// Now update the permissions
-	query := `UPDATE permissions SET `
-	args := []interface{}{}
-	argCount := 1
-
-	for key, value := range updates {
-		if argCount > 1 {
-			query += ", "
-		}
-		query += key + " = $" + fmt.Sprintf("%d", argCount)
-		args = append(args, value)
-		argCount++
-	}
-
-	query += fmt.Sprintf(" WHERE user_id = $%d", argCount)
+	query := `UPDATE permissions SET ` + setClause + fmt.Sprintf(" WHERE user_id = $%d", len(args)+1)
 	args = append(args, userID)
 
 	_, err = s.db.GetConn().ExecContext(ctx, query, args...)
@@ -241,8 +233,8 @@ func (s *PermissionService) getDefaultPermissions(role string) *models.Permissio
 			CanEditExpenses:   true,
 			CanDeleteExpenses: true,
 			CanViewReports:    true,
-			CanViewSettings:   false,
-			CanEditSettings:   false,
+			CanViewSettings:   true,
+			CanEditSettings:   true,
 		}
 	case "manager":
 		return &models.Permission{

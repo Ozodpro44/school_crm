@@ -1,0 +1,291 @@
+syntax = "proto3";
+
+package schoolcrm.v1;
+
+option go_package = "github.com/school-crm/backend/internal/grpc/pb;pb";
+
+import "google/protobuf/timestamp.proto";
+
+// ──────────────────────────────────────────────
+// Shared / scalar types
+// ──────────────────────────────────────────────
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status          = 1; // "healthy" | "degraded" | "unhealthy"
+  string environment     = 2;
+  int64  uptime_seconds  = 3;
+  DatabaseStatus database = 4;
+  RedisStatus    redis    = 5;
+}
+
+message DatabaseStatus {
+  string status               = 1;
+  int32  open_connections     = 2;
+  int32  idle_connections     = 3;
+  int32  max_open_connections = 4;
+}
+
+message RedisStatus {
+  string status    = 1;
+  bool   connected = 2;
+}
+
+// ──────────────────────────────────────────────
+// Student domain
+// ──────────────────────────────────────────────
+
+message Student {
+  string id               = 1;
+  string full_name        = 2;
+  string class_id         = 3;
+  string phone            = 4;
+  string parent_phone     = 5;
+  double monthly_payment  = 6;
+  string status           = 7; // active | left | suspended
+  string branch_id        = 8;
+  google.protobuf.Timestamp enrollment_date  = 9;
+  google.protobuf.Timestamp left_date        = 10;
+  google.protobuf.Timestamp created_at       = 11;
+  google.protobuf.Timestamp updated_at       = 12;
+}
+
+message ListStudentsRequest {
+  string branch_id      = 1;
+  int32  page           = 2;
+  int32  limit          = 3;
+  string search         = 4;
+  string class_id       = 5;
+  string status_filter  = 6;
+}
+
+message ListStudentsResponse {
+  repeated Student items = 1;
+  int64 total            = 2;
+  int32 page             = 3;
+  int32 limit            = 4;
+}
+
+message GetStudentRequest {
+  string id = 1;
+}
+
+message CreateStudentRequest {
+  string full_name        = 1;
+  string class_id         = 2;
+  string phone            = 3;
+  string parent_phone     = 4;
+  double monthly_payment  = 5;
+  string status           = 6;
+  string branch_id        = 7;
+}
+
+message UpdateStudentRequest {
+  string id               = 1;
+  string full_name        = 2;
+  string class_id         = 3;
+  string phone            = 4;
+  string parent_phone     = 5;
+  double monthly_payment  = 6;
+  string status           = 7;
+}
+
+message DeleteStudentRequest {
+  string id = 1;
+}
+
+message DeleteStudentResponse {
+  bool success = 1;
+}
+
+// ──────────────────────────────────────────────
+// Payment domain
+// ──────────────────────────────────────────────
+
+message Payment {
+  string id               = 1;
+  string student_id       = 2;
+  double amount           = 3;
+  string month            = 4;
+  int32  year             = 5;
+  string payment_method   = 6; // cash | card | bank
+  string status           = 7; // paid | partial
+  string invoice_number   = 8;
+  string notes            = 9;
+  string branch_id        = 10;
+  string created_by       = 11;
+  google.protobuf.Timestamp paid_date  = 12;
+  google.protobuf.Timestamp created_at = 13;
+}
+
+message ListPaymentsRequest {
+  string branch_id  = 1;
+  string month      = 2;
+  int32  year       = 3;
+  string search     = 4;
+  string status     = 5;
+  int32  page       = 6;
+  int32  limit      = 7;
+}
+
+message ListPaymentsResponse {
+  repeated Payment items    = 1;
+  int64            total    = 2;
+  int32            page     = 3;
+  int32            limit    = 4;
+  PaymentSummary   summary  = 5;
+}
+
+message PaymentSummary {
+  double             total_paid   = 1;
+  double             total_unpaid = 2;
+  map<string,double> by_method    = 3;
+}
+
+message GetPaymentRequest {
+  string id = 1;
+}
+
+message CreatePaymentRequest {
+  string student_id      = 1;
+  double amount          = 2;
+  string month           = 3;
+  int32  year            = 4;
+  string payment_method  = 5;
+  string status          = 6;
+  string invoice_number  = 7;
+  string notes           = 8;
+  string branch_id       = 9;
+}
+
+message DeletePaymentRequest {
+  string id = 1;
+}
+
+message DeletePaymentResponse {
+  bool success = 1;
+}
+
+// ──────────────────────────────────────────────
+// Branch domain
+// ──────────────────────────────────────────────
+
+message Branch {
+  string id               = 1;
+  string name             = 2;
+  string address          = 3;
+  string phone            = 4;
+  double monthly_payment  = 5;
+  string currency         = 6;
+  string admin_id         = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message ListBranchesRequest {
+  int32 page  = 1;
+  int32 limit = 2;
+}
+
+message ListBranchesResponse {
+  repeated Branch items = 1;
+  int64 total           = 2;
+}
+
+message GetBranchRequest {
+  string id = 1;
+}
+
+message CreateBranchRequest {
+  string name             = 1;
+  string address          = 2;
+  string phone            = 3;
+  double monthly_payment  = 4;
+  string admin_id         = 5;
+}
+
+message DeleteBranchRequest {
+  string id = 1;
+}
+
+message DeleteBranchResponse {
+  bool success = 1;
+}
+
+// ──────────────────────────────────────────────
+// Class domain
+// ──────────────────────────────────────────────
+
+message Class {
+  string id         = 1;
+  string name       = 2;
+  string teacher_id = 3;
+  string branch_id  = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message ListClassesRequest {
+  string branch_id = 1;
+}
+
+message ListClassesResponse {
+  repeated Class items = 1;
+  int64 total          = 2;
+}
+
+message GetClassRequest {
+  string id = 1;
+}
+
+message CreateClassRequest {
+  string name       = 1;
+  string teacher_id = 2;
+  string branch_id  = 3;
+}
+
+message DeleteClassRequest {
+  string id = 1;
+}
+
+message DeleteClassResponse {
+  bool success = 1;
+}
+
+// ──────────────────────────────────────────────
+// Service definitions
+// ──────────────────────────────────────────────
+
+service HealthService {
+  rpc Check (HealthRequest) returns (HealthResponse);
+}
+
+service StudentService {
+  rpc ListStudents   (ListStudentsRequest)  returns (ListStudentsResponse);
+  rpc GetStudent     (GetStudentRequest)    returns (Student);
+  rpc CreateStudent  (CreateStudentRequest) returns (Student);
+  rpc UpdateStudent  (UpdateStudentRequest) returns (Student);
+  rpc DeleteStudent  (DeleteStudentRequest) returns (DeleteStudentResponse);
+}
+
+service PaymentService {
+  rpc ListPayments  (ListPaymentsRequest)  returns (ListPaymentsResponse);
+  rpc GetPayment    (GetPaymentRequest)    returns (Payment);
+  rpc CreatePayment (CreatePaymentRequest) returns (Payment);
+  rpc DeletePayment (DeletePaymentRequest) returns (DeletePaymentResponse);
+}
+
+service BranchService {
+  rpc ListBranches  (ListBranchesRequest)  returns (ListBranchesResponse);
+  rpc GetBranch     (GetBranchRequest)     returns (Branch);
+  rpc CreateBranch  (CreateBranchRequest)  returns (Branch);
+  rpc DeleteBranch  (DeleteBranchRequest)  returns (DeleteBranchResponse);
+}
+
+service ClassService {
+  rpc ListClasses  (ListClassesRequest)  returns (ListClassesResponse);
+  rpc GetClass     (GetClassRequest)     returns (Class);
+  rpc CreateClass  (CreateClassRequest)  returns (Class);
+  rpc DeleteClass  (DeleteClassRequest)  returns (DeleteClassResponse);
+}
