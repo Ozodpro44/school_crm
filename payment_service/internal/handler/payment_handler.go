@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -67,6 +68,18 @@ func isSuperRole(role string) bool {
 	return role == "developer" || role == "super_admin"
 }
 
+// statusForServiceErr maps domain errors to HTTP statuses: locked / future
+// period and double-paid are conflicts (409), everything else a bad request.
+func statusForServiceErr(err error) int {
+	switch {
+	case errors.Is(err, service.ErrMonthLocked), errors.Is(err, service.ErrFuturePeriod),
+		errors.Is(err, service.ErrAlreadyPaid):
+		return http.StatusConflict
+	default:
+		return http.StatusBadRequest
+	}
+}
+
 func (h *PaymentHandler) Register(r *gin.RouterGroup) {
 	r.GET("/payments", h.List)
 	r.POST("/payments", h.Create)
@@ -131,9 +144,9 @@ func (h *PaymentHandler) Create(c *gin.Context) {
 	}
 
 	createdBy := c.GetHeader("X-User-ID")
-	payment, err := h.svc.Create(c.Request.Context(), &req, createdBy)
+	payment, err := h.svc.Create(c.Request.Context(), &req, createdBy, c.GetHeader("X-User-Role"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(statusForServiceErr(err), gin.H{"error": err.Error()})
 		return
 	}
 	h.svc.Audit(c.Request.Context(), req.BranchID, createdBy, "create", "payment", payment.ID,
@@ -198,17 +211,13 @@ func (h *PaymentHandler) Update(c *gin.Context) {
 		return
 	}
 
-	payment, err := h.svc.Update(c.Request.Context(), id, &req)
+	payment, err := h.svc.Update(c.Request.Context(), id, &req, c.GetHeader("X-User-Role"))
 	if err != nil {
-		if err == service.ErrNotFound {
+		if errors.Is(err, service.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
 			return
 		}
-		if err == service.ErrMonthLocked {
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(statusForServiceErr(err), gin.H{"error": err.Error()})
 		return
 	}
 	h.svc.Audit(c.Request.Context(), payment.BranchID, c.GetHeader("X-User-ID"), "update", "payment", payment.ID,
@@ -223,6 +232,7 @@ func (h *PaymentHandler) Delete(c *gin.Context) {
 		return
 	}
 	id := c.Param("id")
+	role := c.GetHeader("X-User-Role")
 	p, err := h.svc.GetByID(c.Request.Context(), id)
 	if err != nil {
 		if err == service.ErrNotFound {
@@ -242,12 +252,12 @@ func (h *PaymentHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
 		return
 	}
-	if err := h.svc.Delete(c.Request.Context(), id, c.GetHeader("X-User-ID")); err != nil {
-		if err == service.ErrNotFound {
+	if err := h.svc.Delete(c.Request.Context(), id, c.GetHeader("X-User-ID"), role); err != nil {
+		if errors.Is(err, service.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found"})
 			return
 		}
-		if err == service.ErrMonthLocked {
+		if errors.Is(err, service.ErrMonthLocked) || errors.Is(err, service.ErrFuturePeriod) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return
 		}
@@ -301,8 +311,16 @@ func (h *PaymentHandler) Restore(c *gin.Context) {
 			return
 		}
 	}
-	if err := h.svc.Restore(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := h.svc.Restore(c.Request.Context(), id, role); err != nil {
+		if errors.Is(err, service.ErrNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "payment not found in trash"})
+			return
+		}
+		status := statusForServiceErr(err)
+		if status == http.StatusBadRequest {
+			status = http.StatusInternalServerError
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "payment restored"})
@@ -363,7 +381,7 @@ func (h *PaymentHandler) BulkCreate(c *gin.Context) {
 	}
 
 	createdBy := c.GetHeader("X-User-ID")
-	results := h.svc.BulkCreate(c.Request.Context(), body.BranchID, body.DefaultMethod, body.Entries, createdBy)
+	results := h.svc.BulkCreate(c.Request.Context(), body.BranchID, body.DefaultMethod, body.Entries, createdBy, c.GetHeader("X-User-Role"))
 	c.JSON(http.StatusOK, gin.H{"results": results})
 }
 
