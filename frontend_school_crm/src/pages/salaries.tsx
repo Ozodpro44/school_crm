@@ -133,7 +133,9 @@ export default function SalariesPage() {
     }
     firstBranchLoadRef.current = false;
     const myId = ++loadRequestIdRef.current;
-    loadData().finally(() => {
+    // Always use the branch's own default month here: selectedMonth in this
+    // closure still belongs to the previously selected branch.
+    loadData(undefined, undefined, true).finally(() => {
       if (myId === loadRequestIdRef.current) setIsLoading(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -166,7 +168,7 @@ export default function SalariesPage() {
     setCurrentPage(1);
   };
 
-  const loadData = async (month?: string, year?: number) => {
+  const loadData = async (month?: string, year?: number, useBranchDefaults = false) => {
     try {
       const branchId = currentBranch?.id || "";
 
@@ -177,10 +179,10 @@ export default function SalariesPage() {
         const currentMonth = branch.currentFinancialMonth?.month?.toString().padStart(2, '0') || String(new Date().getMonth() + 1).padStart(2, '0');
         const currentYear = branch.currentFinancialMonth?.year || new Date().getFullYear();
 
-        const targetMonth = month || selectedMonth || currentMonth;
-        const targetYear = year || selectedYear || currentYear;
+        const targetMonth = month || (useBranchDefaults ? "" : selectedMonth) || currentMonth;
+        const targetYear = year || (useBranchDefaults ? 0 : selectedYear) || currentYear;
 
-        if (!selectedMonth) {
+        if (!selectedMonth || useBranchDefaults) {
           setSelectedMonth(currentMonth);
           setSelectedYear(currentYear);
         }

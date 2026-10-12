@@ -199,16 +199,29 @@ export default function ExpensesPage() {
     }
 
     if (initialLoadDoneRef.current) {
-      // Branch switched or financial month changed — reset filters and reload
+      // Branch switched or financial month changed — reset filters and reload.
+      // loadData runs in "branch defaults" mode so it never reads the
+      // previous branch's month/filters out of this render's stale closure.
       setCurrentPage(1);
       setSelectedMonth("");
+      setFilterCategory("all");
+      setFilterPaymentMethod("all");
+      setSearchTerm("");
+      setSearchInput("");
       setIsLoading(true);
-      loadData().finally(() => setIsLoading(false));
+      loadData(undefined, undefined, "", "all", "all", 1, true).finally(() => setIsLoading(false));
       return;
     }
 
     // Initial load — read URL params first
     const { page, limit, search, category, paymentMethod, month, year } = router.query;
+    const urlMonth = typeof month === "string" && /^(0[1-9]|1[0-2])$/.test(month) ? month : undefined;
+    const urlYear = typeof year === "string" ? parseInt(year, 10) || undefined : undefined;
+    const urlSearch = typeof search === "string" ? search : "";
+    const urlCategory = typeof category === "string" ? category : "all";
+    const urlPaymentMethod = typeof paymentMethod === "string" ? paymentMethod : "all";
+    const urlPage = typeof page === "string" ? parseInt(page, 10) || 1 : 1;
+    const urlLimit = typeof limit === "string" ? parseInt(limit, 10) || 10 : 10;
     if (page) setCurrentPage(parseInt(page as string) || 1);
     if (limit) setItemsPerPage(parseInt(limit as string) || 10);
     if (search) {
@@ -217,15 +230,17 @@ export default function ExpensesPage() {
     }
     if (category) setFilterCategory(category as string);
     if (paymentMethod) setFilterPaymentMethod(paymentMethod as string);
-    if (month) setSelectedMonth(month as string);
-    if (year) setSelectedYear(parseInt(year as string) || new Date().getFullYear());
+    if (urlMonth) setSelectedMonth(urlMonth);
+    if (urlYear) setSelectedYear(urlYear);
 
     setIsLoading(true);
-    loadData().finally(() => {
+    // Pass URL values explicitly: state set above is not visible to loadData
+    // in this render, so relying on it dropped the URL month/filters.
+    loadData(urlMonth, urlYear, urlSearch, urlCategory, urlPaymentMethod, urlPage, false, urlLimit).finally(() => {
       setIsLoading(false);
       initialLoadDoneRef.current = true;
     });
-    loadBudgets(month as string | undefined, year ? parseInt(year as string) : undefined);
+    loadBudgets(urlMonth, urlYear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.isReady, currentBranch?.id, financialMonthKey, branchLoading]);
 
@@ -296,6 +311,8 @@ export default function ExpensesPage() {
     categoryOverride?: string,
     paymentMethodOverride?: string,
     pageOverride?: number,
+    useBranchDefaults = false,
+    limitOverride?: number,
   ) => {
     try {
       const loadId = ++currentLoadIdRef.current;
@@ -317,14 +334,22 @@ export default function ExpensesPage() {
         branch.currentFinancialMonth?.year || new Date().getFullYear();
 
       // Set selected month to branch's current month if not already set
-      if (!selectedMonth) {
+      const stateMonth = useBranchDefaults ? "" : selectedMonth;
+      const stateYear = useBranchDefaults ? 0 : selectedYear;
+      if (useBranchDefaults || (!monthOverride && !selectedMonth)) {
         setSelectedMonth(currentMonth);
         setSelectedYear(currentYear);
+      } else if (monthOverride && !selectedMonth) {
+        setSelectedMonth(monthOverride);
+        setSelectedYear(yearOverride || currentYear);
+      }
+      if (useBranchDefaults) {
+        void loadBudgets(currentMonth, currentYear);
       }
 
-      // Use override values first, then state, then URL params
-      const queryMonth = monthOverride || selectedMonth || currentMonth;
-      const queryYear = yearOverride || selectedYear || currentYear;
+      // Use override values first, then state (unless resetting), then branch default
+      const queryMonth = monthOverride || stateMonth || currentMonth;
+      const queryYear = yearOverride || stateYear || currentYear;
       const querySearch = searchOverride !== undefined ? searchOverride : searchTerm;
       const queryCategory = categoryOverride !== undefined ? categoryOverride : filterCategory;
       const queryPaymentMethod = paymentMethodOverride !== undefined ? paymentMethodOverride : filterPaymentMethod;
@@ -340,7 +365,7 @@ export default function ExpensesPage() {
       if (queryPaymentMethod !== "all") filters.paymentMethod = queryPaymentMethod;
 
       // Call consolidated API
-      const result = await getExpensesConsolidatedData(branchId, queryPage, itemsPerPage, filters);
+      const result = await getExpensesConsolidatedData(branchId, queryPage, limitOverride ?? itemsPerPage, filters);
       if (loadId !== currentLoadIdRef.current) {
         return;
       }
@@ -377,6 +402,11 @@ export default function ExpensesPage() {
   const handleSaveBudget = async () => {
     const branchId = currentBranch?.id;
     if (!branchId || !budgetEditCategory || !budgetEditAmount) return;
+    const budgetValue = parseFloat(budgetEditAmount);
+    if (!Number.isFinite(budgetValue) || budgetValue <= 0) {
+      notify.error(t("error"), t("mustBePositive"));
+      return;
+    }
     setIsSavingBudget(true);
     try {
       await upsertExpenseBudget({
@@ -384,7 +414,7 @@ export default function ExpensesPage() {
         category: budgetEditCategory,
         month: selectedMonth,
         year: selectedYear,
-        amount: parseFloat(budgetEditAmount),
+        amount: budgetValue,
       });
       await loadBudgets();
       setBudgetEditCategory("");
@@ -1130,7 +1160,7 @@ export default function ExpensesPage() {
             </Button>
             <Button
               onClick={handleSaveBudget}
-              disabled={!budgetEditCategory || !budgetEditAmount || isSavingBudget}
+              disabled={!budgetEditCategory || !(parseFloat(budgetEditAmount) > 0) || isSavingBudget}
             >
               {isSavingBudget && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {t("save")}
