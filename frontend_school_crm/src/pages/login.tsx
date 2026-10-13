@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { GraduationCap, AlertCircle, Loader2, Eye, EyeOff, ShieldCheck, BookOpen, KeyRound } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { login as apiLogin, verifyLoginOtp } from "@/lib/api";
-import { refreshDeletePermissions } from "@/lib/auth";
+import { refreshPermissions } from "@/lib/auth";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
@@ -70,8 +70,7 @@ export default function LoginPage() {
         // `apiLogin` (via @/lib/storage's persistLogin) already wrote the
         // token, the user blob, and any branchId from the response, then
         // emitted AuthEvents.LOGIN so BranchContext can reload. No polling.
-        await refreshDeletePermissions();
-        try { sessionStorage.setItem("permsSynced", "1"); } catch { /* ignore */ }
+        await refreshPermissions();
         if (response.user.role === "teacher") {
           router.push("/teacher-portal");
         } else {
@@ -108,8 +107,7 @@ export default function LoginPage() {
     try {
       const response = await verifyLoginOtp(mfaEmail, otp);
       if (response.user && response.token) {
-        await refreshDeletePermissions();
-        try { sessionStorage.setItem("permsSynced", "1"); } catch { /* ignore */ }
+        await refreshPermissions();
         router.push(response.user.role === "teacher" ? "/teacher-portal" : "/");
       } else {
         setError(t("invalidEmailOrPassword"));

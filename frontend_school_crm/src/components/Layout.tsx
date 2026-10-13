@@ -1,4 +1,4 @@
-import { ReactNode, useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, ReactNode, useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { Button } from "@/components/ui/button";
@@ -85,7 +85,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { getCurrentUser, logout, hasPermission, refreshDeletePermissions } from "@/lib/auth";
+import { getCurrentUser, logout, hasPermission, refreshPermissions } from "@/lib/auth";
 import { getStoredBranchId, getAuthToken } from "@/lib/storage";
 import { isTokenExpired } from "@/lib/jwt";
 import { User } from "@/types";
@@ -724,18 +724,34 @@ export function Layout({ children }: LayoutProps) {
     return () => clearInterval(timer);
   }, [router.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A session restored from storage may predate a permission change an admin
-  // made; re-sync the delete flags once per tab session and reload if they
-  // changed (pages read their permission flags once, at mount).
+  // Permission changes made by an admin should apply without logging out:
+  // re-sync on load, whenever the tab regains focus, and every 45s while it is
+  // visible. When something changed, update the user (sidebar re-renders) and
+  // bump permVersion so the current page remounts and re-reads its flags
+  // (several pages compute them once, at mount).
+  const [permVersion, setPermVersion] = useState(0);
   useEffect(() => {
     if (router.pathname === "/login") return;
-    let done = false;
-    try { done = sessionStorage.getItem("permsSynced") === "1"; } catch { /* storage blocked */ }
-    if (done) return;
-    refreshDeletePermissions().then((changed) => {
-      try { sessionStorage.setItem("permsSynced", "1"); } catch { /* ignore */ }
-      if (changed) window.location.reload();
-    });
+    let cancelled = false;
+    const sync = async () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const changed = await refreshPermissions();
+      if (changed && !cancelled) {
+        setUser(getCurrentUser());
+        setPermVersion((v) => v + 1);
+      }
+    };
+    sync();
+    const timer = setInterval(sync, 45000);
+    const onVisible = () => { if (document.visibilityState === "visible") sync(); };
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [router.pathname]);
 
   useEffect(() => {
@@ -1264,7 +1280,7 @@ export function Layout({ children }: LayoutProps) {
           {/* Page content — pt-14 on mobile offsets the fixed header */}
           <div className="flex-1 w-full pt-14 md:pt-0 overflow-x-hidden">
             <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 pb-20 md:pb-8">
-              {children}
+              <Fragment key={permVersion}>{children}</Fragment>
             </div>
           </div>
 
