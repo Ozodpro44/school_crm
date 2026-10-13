@@ -1,437 +1,312 @@
-import { useState, useEffect, useCallback } from "react";
+import { useMemo, useState } from "react";
+import { Building2, Loader2, MapPin, Pencil, Phone, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import {
-  Building2, Search, Plus, MoreVertical, Edit, Trash2,
-  MapPin, Phone, CreditCard, Loader2, AlertCircle, RefreshCw,
-  DollarSign,
-} from "lucide-react";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { Stat } from "@/components/kit/Stat";
+import { DataTable, type Column } from "@/components/kit/DataTable";
+import { EmptyState, ErrorNotice } from "@/components/kit/States";
+import { FilterBar, RefreshButton, SearchField } from "@/components/kit/Toolbar";
+import { RowActions } from "@/components/kit/RowActions";
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { Field } from "@/components/kit/Field";
+import { Pager, usePaging } from "@/components/kit/Pager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { toast } from "sonner";
-import {
-  listBranches, createBranch, updateBranch, deleteBranch,
-  type CRMBranch,
-} from "@/services/api-client";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { UserPicker } from "@/components/UserPicker";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation, tf } from "@/lib/i18n";
-import { UserPicker } from "@/components/UserPicker";
+import { useResource } from "@/hooks/useResource";
+import { orEmpty } from "@/lib/empty";
+import { formatDate, formatMoney, formatNumber } from "@/lib/format";
+import { createBranch, deleteBranch, listBranches, listUsers, updateBranch, type CRMBranch, type CRMUser } from "@/services/api-client";
 
-const emptyForm = { name: "", address: "", phone: "", monthlyPayment: 0, adminId: "" };
+interface Bundle { branches: CRMBranch[]; users: CRMUser[] }
 
-function fmt(n?: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency", currency: "USD", maximumFractionDigits: 0,
-  }).format(n || 0);
-}
+const PAGE_SIZE = 25;
 
 export default function Branches() {
   const { language } = useLanguage();
   const t = (key: string) => getTranslation(key, language);
-  const [branches, setBranches] = useState<CRMBranch[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  const res = useResource<Bundle>(async () => {
+    const [branches, users] = await Promise.allSettled([listBranches(), listUsers()]);
+    if (branches.status === "rejected") throw branches.reason;
+    // Users only resolve admin names; the table still works without them.
+    return { branches: branches.value, users: users.status === "fulfilled" ? users.value : [] };
+  }, t("failedToLoadBranches"));
+
+  const branches = orEmpty(res.data?.branches);
+  const usersById = useMemo(() => new Map((res.data?.users ?? []).map((u) => [u.id, u])), [res.data?.users]);
+
   const [search, setSearch] = useState("");
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selected, setSelected] = useState<CRMBranch | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [dialog, setDialog] = useState<{ kind: "form"; branch: CRMBranch | null } | { kind: "delete"; branch: CRMBranch } | null>(null);
+  const [seq, setSeq] = useState(0);
+  const open = (d: NonNullable<typeof dialog>) => { setSeq((n) => n + 1); setDialog(d); };
+  const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listBranches();
-      setBranches(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("failedToLoadBranches"));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return branches;
+    return branches.filter((b) => b.name.toLowerCase().includes(q) || (b.address ?? "").toLowerCase().includes(q));
+  }, [branches, search]);
+  const paging = usePaging(filtered, PAGE_SIZE, search);
 
-  useEffect(() => { load(); }, [load]);
+  // Branches may in principle carry different currencies; never add UZS to USD.
+  const totals = useMemo(() => {
+    const byCurrency = new Map<string, number>();
+    for (const b of branches) byCurrency.set(b.currency || "UZS", (byCurrency.get(b.currency || "UZS") ?? 0) + (b.monthlyPayment || 0));
+    return Array.from(byCurrency.entries());
+  }, [branches]);
 
-  const filtered = branches.filter((b) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return b.name.toLowerCase().includes(q) || (b.address || "").toLowerCase().includes(q);
-  });
-
-  const totalRevenue = branches.reduce((sum, b) => sum + (b.monthlyPayment || 0), 0);
-
-  // The backend requires monthlyPayment > 0 (CreateBranchRequest binding:
-  // "required,gt=0"). The old `Number(form.monthlyPayment) || undefined`
-  // pattern silently dropped a real `0` (falsy) from the request instead of
-  // rejecting it, and let a negative value through unvalidated to fail with
-  // a confusing backend error.
-  const validateBranchForm = (): string | null => {
-    if (!form.name.trim()) return t("branchNameRequired");
-    if (!form.address.trim()) return t("addressRequired");
-    if (!form.phone.trim()) return t("phoneRequired");
-    if (!Number.isFinite(form.monthlyPayment) || form.monthlyPayment <= 0) {
-      return t("monthlyPaymentMustBePositive");
-    }
-    return null;
-  };
-
-  const handleCreate = async () => {
-    const validationError = validateBranchForm();
-    if (validationError) { toast.error(validationError); return; }
-    setSaving(true);
-    try {
-      const created = await createBranch({
-        name: form.name,
-        address: form.address || undefined,
-        phone: form.phone || undefined,
-        monthlyPayment: form.monthlyPayment,
-        adminId: form.adminId || undefined,
-      });
-      setBranches((prev) => [...prev, created]);
-      setCreateOpen(false);
-      setForm(emptyForm);
-      toast.success(t("branchCreated"));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("failedToCreateBranch"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleEdit = async () => {
-    if (!selected) return;
-    const validationError = validateBranchForm();
-    if (validationError) { toast.error(validationError); return; }
-    setSaving(true);
-    try {
-      const updated = await updateBranch(selected.id, {
-        name: form.name,
-        address: form.address || undefined,
-        phone: form.phone || undefined,
-        monthlyPayment: form.monthlyPayment,
-        adminId: form.adminId || undefined,
-      });
-      setBranches((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
-      setEditOpen(false);
-      toast.success(t("branchUpdated"));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("failedToUpdateBranch"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!selected) return;
-    setSaving(true);
-    try {
-      await deleteBranch(selected.id);
-      setBranches((prev) => prev.filter((b) => b.id !== selected.id));
-      setDeleteOpen(false);
-      toast.success(t("branchDeleted"));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("failedToDeleteBranch"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openEdit = (branch: CRMBranch) => {
-    setSelected(branch);
-    setForm({
-      name: branch.name,
-      address: branch.address ?? "",
-      phone: branch.phone ?? "",
-      monthlyPayment: branch.monthlyPayment ?? 0,
-      adminId: branch.adminId ?? "",
+  const upsert = (b: CRMBranch) =>
+    res.setData((d) => {
+      if (!d) return d;
+      const exists = d.branches.some((x) => x.id === b.id);
+      return { ...d, branches: exists ? d.branches.map((x) => (x.id === b.id ? { ...x, ...b } : x)) : [...d.branches, b] };
     });
-    setEditOpen(true);
-  };
 
-  const BranchForm = () => (
-    <div className="space-y-4 py-4">
-      <div className="space-y-2">
-        <Label>{t("branchNameLabel")}</Label>
-        <Input
-          placeholder="e.g. Downtown Campus"
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
+  const columns: Column<CRMBranch>[] = [
+    {
+      key: "name",
+      header: t("name"),
+      cell: (b) => (
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <Building2 className="h-4 w-4" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{b.name}</p>
+            {b.address && (
+              <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                <MapPin className="h-3 w-3 shrink-0" />
+                <span className="truncate">{b.address}</span>
+              </p>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "phone",
+      header: t("phone"),
+      showFrom: "md",
+      cell: (b) =>
+        b.phone ? (
+          <span className="flex items-center gap-1.5 text-muted-foreground"><Phone className="h-3 w-3" />{b.phone}</span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: "payment",
+      header: t("monthlyPayment"),
+      align: "right",
+      cell: (b) => <span className="tnum whitespace-nowrap font-medium">{formatMoney(b.monthlyPayment, b.currency || "UZS", language)}</span>,
+    },
+    {
+      key: "admin",
+      header: t("adminLabel"),
+      showFrom: "lg",
+      cell: (b) => {
+        if (!b.adminId) return <span className="text-muted-foreground">{t("noAdmin")}</span>;
+        const u = usersById.get(b.adminId);
+        return u ? (
+          <div className="min-w-0">
+            <p className="truncate text-foreground">{u.fullName || u.email}</p>
+            <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+          </div>
+        ) : (
+          <span className="font-mono text-xs text-muted-foreground" title={b.adminId}>{t("unknownUser")}</span>
+        );
+      },
+    },
+    { key: "created", header: t("created"), showFrom: "xl", cell: (b) => <span className="tnum text-muted-foreground">{formatDate(b.createdAt, language)}</span> },
+    {
+      key: "actions",
+      header: <span className="sr-only">{t("actions")}</span>,
+      align: "right",
+      className: "w-12",
+      cell: (b) => (
+        <RowActions
+          actions={[
+            { label: t("editBranch"), icon: Pencil, onSelect: () => open({ kind: "form", branch: b }) },
+            { label: t("deleteBranch"), icon: Trash2, destructive: true, separated: true, onSelect: () => open({ kind: "delete", branch: b }) },
+          ]}
         />
-      </div>
-      <div className="space-y-2">
-        <Label>{t("address")} *</Label>
-        <Input
-          placeholder="Street address"
-          value={form.address}
-          onChange={(e) => setForm({ ...form, address: e.target.value })}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>{t("phone")} *</Label>
-        <Input
-          placeholder="+1 555 000 0000"
-          value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>{t("monthlyPaymentUsdLabel")}</Label>
-        <Input
-          type="number"
-          min="0.01"
-          step="0.01"
-          placeholder="0"
-          value={form.monthlyPayment || ""}
-          onChange={(e) => setForm({ ...form, monthlyPayment: Number(e.target.value) })}
-          className="font-mono"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>{t("adminUserId")}</Label>
-        <UserPicker
-          value={form.adminId}
-          onChange={(adminId) => setForm({ ...form, adminId })}
-        />
-      </div>
-    </div>
-  );
+      ),
+    },
+  ];
 
   return (
     <DashboardLayout>
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("branchesTitle")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("manageSchoolBranches")}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-2" onClick={load} disabled={loading}>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            {t("refresh")}
-          </Button>
-          <Button size="sm" className="gap-2" onClick={() => { setForm(emptyForm); setCreateOpen(true); }}>
-            <Plus className="w-4 h-4" />
-            {t("addBranch")}
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats Row */}
-      <div className="flex flex-wrap gap-4 mb-5">
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border bg-card">
-          <Building2 className="w-4 h-4 text-primary" />
-          <span className="font-mono font-bold text-foreground">{branches.length}</span>
-          <span className="text-sm text-muted-foreground">{t("totalBranches")}</span>
-        </div>
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg border border-border bg-card">
-          <DollarSign className="w-4 h-4 text-status-healthy" />
-          <span className="font-mono font-bold text-status-healthy">{fmt(totalRevenue)}</span>
-          <span className="text-sm text-muted-foreground">{t("monthlyRevenue")}</span>
-        </div>
-      </div>
-
-      {error && (
-        <div className="flex items-center gap-3 p-4 mb-4 rounded-lg border border-status-critical/30 bg-status-critical/10 text-status-critical text-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
-          <Button variant="ghost" size="sm" onClick={load} className="ml-auto">
-            {t("retry")}
-          </Button>
-        </div>
-      )}
-
-      {/* Search */}
-      <div className="glass-card rounded-lg p-3 mb-4">
-        <div className="relative max-w-md">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <Input
-            placeholder={t("searchBranchesPlaceholder")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 bg-background text-sm"
-          />
-        </div>
-      </div>
-
-      {/* Table */}
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="w-5 h-5 animate-spin text-primary" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="glass-card rounded-lg p-14 flex flex-col items-center gap-3 text-muted-foreground">
-          <Building2 className="w-9 h-9 opacity-30" />
-          <p className="text-sm">{search ? t("noBranchesMatchSearch") : t("noBranchesYet")}</p>
-          {!search && (
-            <Button size="sm" onClick={() => { setForm(emptyForm); setCreateOpen(true); }}>
-              <Plus className="w-4 h-4 mr-2" />
+      <PageHeader
+        title={t("branchesTitle")}
+        description={t("manageSchoolBranches")}
+        actions={
+          <>
+            <RefreshButton onClick={() => void res.reload()} busy={res.fetching} />
+            <Button className="gap-2" onClick={() => open({ kind: "form", branch: null })}>
+              <Plus className="h-4 w-4" />
               {t("addBranch")}
             </Button>
-          )}
-        </div>
-      ) : (
-        <div className="glass-card rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-muted-foreground border-b border-border">
-                  <th className="text-left px-4 py-3 font-medium">{t("name")}</th>
-                  <th className="text-left px-4 py-3 font-medium">{t("address")}</th>
-                  <th className="text-left px-4 py-3 font-medium">{t("phone")}</th>
-                  <th className="text-right px-4 py-3 font-medium">{t("monthlyPayment")}</th>
-                  <th className="text-left px-4 py-3 font-medium">{t("adminId")}</th>
-                  <th className="text-left px-4 py-3 font-medium">{t("created")}</th>
-                  <th className="text-right px-4 py-3 font-medium">{t("actions")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filtered.map((branch) => (
-                  <tr key={branch.id} className="hover:bg-accent/20 transition-colors">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-status-healthy/15 flex items-center justify-center flex-shrink-0">
-                          <Building2 className="w-4 h-4 text-status-healthy" />
-                        </div>
-                        <span className="font-medium text-foreground">{branch.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {branch.address ? (
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <MapPin className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate max-w-[160px]">{branch.address}</span>
-                        </div>
-                      ) : <span className="opacity-40 text-xs">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {branch.phone ? (
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <Phone className="w-3 h-3 flex-shrink-0" />
-                          {branch.phone}
-                        </div>
-                      ) : <span className="opacity-40 text-xs">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1 text-status-healthy text-sm font-mono font-semibold">
-                        <CreditCard className="w-3.5 h-3.5" />
-                        {fmt(branch.monthlyPayment)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {branch.adminId ? (
-                        <code className="text-xs font-mono text-muted-foreground">
-                          {branch.adminId.slice(0, 8)}…
-                        </code>
-                      ) : <span className="text-xs opacity-40">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
-                      {branch.createdAt
-                        ? new Date(branch.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7">
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEdit(branch)}>
-                            <Edit className="w-4 h-4 mr-2" />
-                            {t("editBranch")}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-status-critical"
-                            onClick={() => { setSelected(branch); setDeleteOpen(true); }}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            {t("deleteBranch")}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+          </>
+        }
+      />
 
-      {/* Create Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("addNewBranch")}</DialogTitle>
-            <DialogDescription>{t("createNewSchoolBranch")}</DialogDescription>
-          </DialogHeader>
-          <BranchForm />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>{t("cancel")}</Button>
-            <Button onClick={handleCreate} disabled={saving}>
-              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {t("createBranch")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Stat label={t("totalBranches")} value={formatNumber(branches.length, language)} icon={Building2} loading={res.loading} />
+        {(totals.length ? totals : [["UZS", 0] as [string, number]]).map(([cur, sum]) => (
+          <Stat key={cur} label={t("monthlyRevenue")} value={formatMoney(sum, cur, language)} loading={res.loading} />
+        ))}
+      </div>
 
-      {/* Edit Dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t("editBranch")}</DialogTitle>
-            <DialogDescription>{t("updateBranchInfo")}</DialogDescription>
-          </DialogHeader>
-          <BranchForm />
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>{t("cancel")}</Button>
-            <Button onClick={handleEdit} disabled={saving}>
-              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {t("saveChanges")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {res.error && <ErrorNotice message={res.error} onRetry={() => void res.reload()} />}
 
-      {/* Delete Confirm */}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("deleteBranch")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {tf(t("deleteBranchConfirm"), { name: selected?.name || "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={saving}
-              className="bg-status-critical hover:bg-status-critical/90"
-            >
-              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {t("deleteBranch")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <FilterBar>
+        <SearchField value={search} onChange={setSearch} placeholder={t("searchBranchesPlaceholder")} className="max-w-md" />
+      </FilterBar>
+
+      <DataTable
+        columns={columns}
+        rows={paging.slice}
+        rowKey={(b) => b.id}
+        loading={res.loading}
+        empty={
+          <EmptyState
+            icon={Building2}
+            title={search ? t("noBranchesMatchSearch") : t("noBranchesYet")}
+            action={!search && <Button onClick={() => open({ kind: "form", branch: null })}><Plus className="h-4 w-4" />{t("addBranch")}</Button>}
+          />
+        }
+        footer={<Pager page={paging.page} pages={paging.pages} total={filtered.length} onPage={paging.setPage} />}
+      />
+
+      <BranchFormDialog
+        key={`branch-${seq}`}
+        open={dialog?.kind === "form"}
+        branch={dialog?.kind === "form" ? dialog.branch : null}
+        busy={busy}
+        t={t}
+        onClose={() => setDialog(null)}
+        onSubmit={async (v) => {
+          const editing = dialog?.kind === "form" ? dialog.branch : null;
+          setBusy(true);
+          try {
+            if (editing) {
+              upsert(await updateBranch(editing.id, {
+                name: v.name, address: v.address, phone: v.phone, monthlyPayment: v.monthlyPayment,
+                ...(v.adminId && v.adminId !== editing.adminId ? { adminId: v.adminId } : {}),
+              }));
+              toast.success(t("branchUpdated"));
+            } else {
+              upsert(await createBranch({
+                name: v.name, address: v.address, phone: v.phone, monthlyPayment: v.monthlyPayment, adminId: v.adminId || undefined,
+              }));
+              toast.success(t("branchCreated"));
+            }
+            setDialog(null);
+          } catch (e) {
+            toast.error(e instanceof Error && e.message ? e.message : t(editing ? "failedToUpdateBranch" : "failedToCreateBranch"));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={dialog?.kind === "delete"}
+        onOpenChange={(o) => !o && setDialog(null)}
+        title={t("deleteBranch")}
+        description={tf(t("deleteBranchConfirm"), { name: dialog?.kind === "delete" ? dialog.branch.name : "" })}
+        confirmLabel={t("deleteBranch")}
+        busy={busy}
+        onConfirm={async () => {
+          if (dialog?.kind !== "delete") return;
+          setBusy(true);
+          try {
+            await deleteBranch(dialog.branch.id);
+            res.setData((d) => (d ? { ...d, branches: d.branches.filter((x) => x.id !== dialog.branch.id) } : d));
+            toast.success(t("branchDeleted"));
+            setDialog(null);
+          } catch (e) {
+            toast.error(e instanceof Error && e.message ? e.message : t("failedToDeleteBranch"));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
     </DashboardLayout>
+  );
+}
+
+interface BranchValues { name: string; address: string; phone: string; monthlyPayment: number; adminId: string }
+
+function BranchFormDialog({
+  open, branch, busy, t, onClose, onSubmit,
+}: {
+  open: boolean; branch: CRMBranch | null; busy: boolean; t: (k: string) => string;
+  onClose: () => void; onSubmit: (v: BranchValues) => void;
+}) {
+  const [v, setV] = useState({
+    name: branch?.name ?? "",
+    address: branch?.address ?? "",
+    phone: branch?.phone ?? "",
+    monthlyPayment: branch?.monthlyPayment ? String(branch.monthlyPayment) : "",
+    adminId: branch?.adminId ?? "",
+  });
+
+  const submit = () => {
+    const payment = Number(v.monthlyPayment);
+    // Mirrors the backend binding (name/address/phone required, payment > 0).
+    if (!v.name.trim()) return void toast.error(t("branchNameRequired"));
+    if (!v.address.trim()) return void toast.error(t("addressRequired"));
+    if (!v.phone.trim()) return void toast.error(t("phoneRequired"));
+    if (!Number.isFinite(payment) || payment <= 0) return void toast.error(t("monthlyPaymentMustBePositive"));
+    onSubmit({ name: v.name.trim(), address: v.address.trim(), phone: v.phone.trim(), monthlyPayment: payment, adminId: v.adminId });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{branch ? t("editBranch") : t("addNewBranch")}</DialogTitle>
+          <DialogDescription>{branch ? t("updateBranchInfo") : t("createNewSchoolBranch")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <Field label={t("branchNameLabel")}>
+            <Input value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} autoFocus />
+          </Field>
+          <Field label={`${t("address")} *`}>
+            <Input value={v.address} onChange={(e) => setV({ ...v, address: e.target.value })} />
+          </Field>
+          <Field label={`${t("phone")} *`}>
+            <Input value={v.phone} onChange={(e) => setV({ ...v, phone: e.target.value })} placeholder="+998 90 000 00 00" inputMode="tel" />
+          </Field>
+          <Field label={t("monthlyPaymentUsdLabel")}>
+            <Input
+              type="number"
+              min={0}
+              step="1000"
+              value={v.monthlyPayment}
+              onChange={(e) => setV({ ...v, monthlyPayment: e.target.value })}
+              className="font-mono"
+              placeholder="0"
+            />
+          </Field>
+          <Field label={t("adminUserId")}>
+            <UserPicker value={v.adminId} onChange={(adminId) => setV({ ...v, adminId })} />
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>{t("cancel")}</Button>
+          <Button onClick={submit} disabled={busy}>
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            {branch ? t("saveChanges") : t("createBranch")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

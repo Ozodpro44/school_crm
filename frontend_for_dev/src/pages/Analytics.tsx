@@ -1,392 +1,275 @@
-import { useState, useEffect, useCallback } from "react";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { useMemo } from "react";
+import { Activity, Clock, Gauge, ShieldAlert } from "lucide-react";
 import {
-  Activity, Clock, AlertTriangle, RefreshCw, Loader2, Zap,
-  AlertCircle, ArrowUpRight, ArrowDownRight,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
-import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  PieChart, Pie, Cell, BarChart, Bar,
+  Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { getLogs, getHealth, type LogEntry, type HealthStatus } from "@/services/api-client";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { Stat } from "@/components/kit/Stat";
+import { StatusPill } from "@/components/kit/StatusPill";
+import { EmptyState, ErrorNotice } from "@/components/kit/States";
+import { RefreshButton } from "@/components/kit/Toolbar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation, tf } from "@/lib/i18n";
+import { useResource } from "@/hooks/useResource";
+import { orEmpty } from "@/lib/empty";
+import { formatDateTime, formatUptime, localeOf } from "@/lib/format";
+import { getHealth, getLogs, type HealthStatus, type LogEntry } from "@/services/api-client";
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+interface Snapshot { logs: LogEntry[]; health: HealthStatus | null; failed: boolean }
 
-function buildHourlyBuckets(logs: LogEntry[]) {
-  const now = new Date();
-  const buckets: Record<string, { hour: string; errors: number; warnings: number; total: number }> = {};
-  for (let i = 23; i >= 0; i--) {
-    const h = new Date(now);
-    h.setHours(now.getHours() - i, 0, 0, 0);
-    const label = `${String(h.getHours()).padStart(2, "0")}:00`;
-    buckets[label] = { hour: label, errors: 0, warnings: 0, total: 0 };
-  }
-  logs.forEach((log) => {
-    const ts = new Date(log.timestamp);
-    const diffH = Math.floor((now.getTime() - ts.getTime()) / 3_600_000);
-    if (diffH >= 0 && diffH < 24) {
-      const label = `${String(ts.getHours()).padStart(2, "0")}:00`;
-      if (buckets[label]) {
-        buckets[label].total++;
-        if (log.level === "ERROR") buckets[label].errors++;
-        if (log.level === "WARN")  buckets[label].warnings++;
-      }
-    }
-  });
-  return Object.values(buckets);
-}
-
-function buildLevelPie(logs: LogEntry[]) {
-  const counts = { DEBUG: 0, INFO: 0, WARN: 0, ERROR: 0 };
-  logs.forEach((l) => { if (l.level in counts) counts[l.level as keyof typeof counts]++; });
-  return [
-    { name: "DEBUG", value: counts.DEBUG, color: "hsl(215,20%,55%)"    },
-    { name: "INFO",  value: counts.INFO,  color: "hsl(212,90%,58%)"    },
-    { name: "WARN",  value: counts.WARN,  color: "hsl(38,90%,50%)"     },
-    { name: "ERROR", value: counts.ERROR, color: "hsl(0,68%,50%)"      },
-  ].filter((d) => d.value > 0);
-}
-
-function buildModuleActivity(logs: LogEntry[]) {
-  const counts: Record<string, number> = {};
-  logs.forEach((l) => {
-    const m = l.module || "unknown";
-    counts[m] = (counts[m] || 0) + 1;
-  });
-  return Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([module, count]) => ({ module, count }));
-}
-
-const CHART_STYLE = {
-  backgroundColor: "hsl(220,20%,8%)",
-  border: "1px solid hsl(220,18%,14%)",
-  borderRadius: "8px",
-  fontSize: "11px",
-  color: "hsl(210,18%,90%)",
+const SAMPLE = 500;
+const C = {
+  error: "hsl(var(--status-critical))",
+  warn: "hsl(var(--status-warning))",
+  info: "hsl(var(--status-info))",
+  debug: "hsl(var(--muted-foreground))",
+  primary: "hsl(var(--chart-1))",
+  grid: "hsl(var(--chart-grid))",
+  axis: "hsl(var(--muted-foreground))",
 };
+
+const tooltipStyle = {
+  backgroundColor: "hsl(var(--popover))",
+  border: "1px solid hsl(var(--border))",
+  borderRadius: 8,
+  fontSize: 12,
+  color: "hsl(var(--popover-foreground))",
+};
+
+function hourlyBuckets(logs: LogEntry[]) {
+  const now = new Date();
+  const start = new Date(now);
+  start.setMinutes(0, 0, 0);
+  // Index buckets by absolute hour so a log from 24h ago can't land in the current hour's bucket.
+  const buckets = Array.from({ length: 24 }, (_, i) => {
+    const d = new Date(start.getTime() - (23 - i) * 3_600_000);
+    return { key: d.getTime(), hour: `${String(d.getHours()).padStart(2, "0")}:00`, errors: 0, warnings: 0 };
+  });
+  for (const log of logs) {
+    const ts = new Date(log.timestamp);
+    ts.setMinutes(0, 0, 0);
+    const b = buckets.find((x) => x.key === ts.getTime());
+    if (!b) continue;
+    if (log.level === "ERROR") b.errors++;
+    else if (log.level === "WARN") b.warnings++;
+  }
+  return buckets;
+}
 
 export default function Analytics() {
   const { language } = useLanguage();
   const t = (key: string) => getTranslation(key, language);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [lastRefresh, setLastRefresh] = useState(new Date());
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [healthRes, logsRes] = await Promise.allSettled([
-        getHealth(),
-        getLogs({ limit: 500 }),
-      ]);
-      if (healthRes.status === "fulfilled") setHealth(healthRes.value);
-      if (logsRes.status === "fulfilled")  setLogs(logsRes.value);
-      setLastRefresh(new Date());
-    } catch {
-      toast.error(t("failedToLoadAnalytics"));
-    } finally {
-      setLoading(false);
+  const res = useResource<Snapshot>(async () => {
+    const [health, logs] = await Promise.allSettled([getHealth(), getLogs({ limit: SAMPLE })]);
+    if (logs.status === "rejected" && health.status === "rejected") throw logs.reason;
+    return {
+      logs: logs.status === "fulfilled" ? logs.value : [],
+      health: health.status === "fulfilled" ? health.value : null,
+      failed: logs.status === "rejected",
+    };
+  }, t("failedToLoadAnalytics"));
+
+  const logs = orEmpty(res.data?.logs);
+  const health = res.data?.health ?? null;
+  const loading = res.loading;
+
+  const derived = useMemo(() => {
+    const errors = logs.filter((l) => l.level === "ERROR");
+    const counts = { DEBUG: 0, INFO: 0, WARN: 0, ERROR: 0 };
+    const modules = new Map<string, number>();
+    for (const l of logs) {
+      counts[l.level]++;
+      const m = l.module || "unknown";
+      modules.set(m, (modules.get(m) ?? 0) + 1);
     }
-  }, []);
+    return {
+      errors,
+      errorRate: logs.length ? (errors.length / logs.length) * 100 : 0,
+      hourly: hourlyBuckets(logs),
+      pie: [
+        { name: "DEBUG", value: counts.DEBUG, color: C.debug },
+        { name: "INFO", value: counts.INFO, color: C.info },
+        { name: "WARN", value: counts.WARN, color: C.warn },
+        { name: "ERROR", value: counts.ERROR, color: C.error },
+      ].filter((d) => d.value > 0),
+      modules: Array.from(modules.entries()).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([module, count]) => ({ module, count })),
+      // The API returns newest first — the latest errors are the head of the list.
+      latestErrors: errors.slice(0, 10),
+    };
+  }, [logs]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  // Derived
-  const errorLogs  = logs.filter((l) => l.level === "ERROR");
-  const warnLogs   = logs.filter((l) => l.level === "WARN");
-  const totalLogs  = logs.length;
-  const errorRate  = totalLogs > 0 ? ((errorLogs.length / totalLogs) * 100).toFixed(1) : "0.0";
-
-  const hourlyData    = buildHourlyBuckets(logs);
-  const levelPieData  = buildLevelPie(logs);
-  const moduleData    = buildModuleActivity(logs);
-  const maxModule     = moduleData[0]?.count || 1;
-
-  const lastErrors = [...errorLogs].reverse().slice(0, 10);
-
-  const healthOk = health && (health.status === "ok" || health.status === "healthy" || health.status === "up");
+  const healthy = !!health && ["ok", "healthy", "up"].includes((health.status || "").toLowerCase());
+  const rt = health?.responseTime;
+  const rtTone = rt == null ? "neutral" : rt < 200 ? "healthy" : rt < 500 ? "warning" : "critical";
+  const rateHigh = derived.errorRate > 5;
 
   return (
     <DashboardLayout>
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("analyticsTitle")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("apiPerformanceAndLogAnalytics")}</p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2"
-          onClick={fetchData}
-          disabled={loading}
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          {loading ? t("loading") : tf(t("refreshedAt"), { time: lastRefresh.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) })}
-        </Button>
+      <PageHeader
+        title={t("analyticsTitle")}
+        description={logs.length ? tf(t("basedOnLatestEntries"), { n: logs.length }) : t("apiPerformanceAndLogAnalytics")}
+        actions={<RefreshButton onClick={() => void res.reload()} busy={res.fetching} />}
+      />
+
+      {res.error && <ErrorNotice message={res.error} onRetry={() => void res.reload()} />}
+      {!res.error && res.data?.failed && <ErrorNotice message={t("failedToFetchLogs")} onRetry={() => void res.reload()} />}
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label={t("logEntries")} value={logs.length.toLocaleString(localeOf(language))} icon={Activity} loading={loading} />
+        <Stat label={t("responseTimeLabel")} value={rt != null ? `${rt} ms` : "—"} icon={Clock} tone={rtTone} hint="/health" loading={loading} />
+        <Stat
+          label={t("errorRateLabel")}
+          value={`${derived.errorRate.toFixed(1)}%`}
+          icon={ShieldAlert}
+          tone={logs.length === 0 ? "neutral" : rateHigh ? "critical" : "healthy"}
+          hint={logs.length === 0 ? undefined : rateHigh ? t("high") : t("low")}
+          loading={loading}
+        />
+        <Stat
+          label={t("uptimeLabel")}
+          value={health?.uptime_seconds != null ? formatUptime(health.uptime_seconds) : "—"}
+          icon={Gauge}
+          hint={health ? <StatusPill tone={healthy ? "healthy" : "critical"}>{health.status}</StatusPill> : undefined}
+          loading={loading}
+        />
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="stat-card">
-          <div className="flex items-center justify-between">
-            <Activity className="w-5 h-5 text-primary" />
-            <span className="text-xs text-status-healthy flex items-center gap-0.5">
-              <ArrowUpRight className="w-3 h-3" /> {t("live")}
-            </span>
-          </div>
-          <p className="text-2xl font-bold text-foreground font-mono">{loading ? "—" : totalLogs.toLocaleString()}</p>
-          <p className="text-xs text-muted-foreground">{t("logEntries")}</p>
-        </div>
-        <div className="stat-card">
-          <div className="flex items-center justify-between">
-            <Clock className="w-5 h-5 text-primary" />
-            <span className="text-xs text-muted-foreground">/health</span>
-          </div>
-          <p className={cn(
-            "text-2xl font-bold font-mono",
-            !health ? "text-foreground" :
-            health.responseTime < 200 ? "text-status-healthy" :
-            health.responseTime < 500 ? "text-status-warning" : "text-status-critical"
-          )}>
-            {loading ? "—" : health ? `${health.responseTime}ms` : "—"}
-          </p>
-          <p className="text-xs text-muted-foreground">{t("responseTimeLabel")}</p>
-        </div>
-        <div className="stat-card">
-          <div className="flex items-center justify-between">
-            <AlertTriangle className="w-5 h-5 text-status-warning" />
-            {!loading && (
-              parseFloat(errorRate) > 5
-                ? <span className="text-xs text-status-critical flex items-center gap-0.5"><ArrowUpRight className="w-3 h-3" />{t("high")}</span>
-                : <span className="text-xs text-status-healthy flex items-center gap-0.5"><ArrowDownRight className="w-3 h-3" />{t("low")}</span>
-            )}
-          </div>
-          <p className={cn(
-            "text-2xl font-bold font-mono",
-            parseFloat(errorRate) > 5 ? "text-status-critical" : "text-status-healthy"
-          )}>
-            {loading ? "—" : `${errorRate}%`}
-          </p>
-          <p className="text-xs text-muted-foreground">{t("errorRateLabel")}</p>
-        </div>
-        <div className="stat-card">
-          <div className="flex items-center justify-between">
-            <Zap className="w-5 h-5 text-status-healthy" />
-            <span className={cn(
-              "text-[10px] font-bold uppercase px-2 py-0.5 rounded-full",
-              healthOk
-                ? "bg-status-healthy/15 text-status-healthy"
-                : "bg-status-critical/15 text-status-critical"
-            )}>
-              {loading ? "…" : health?.status || "—"}
-            </span>
-          </div>
-          <p className="text-2xl font-bold text-foreground font-mono">
-            {loading
-              ? "—"
-              : health?.uptime_seconds != null
-                ? `${Math.floor(health.uptime_seconds / 3600)}h ${Math.floor((health.uptime_seconds % 3600) / 60)}m`
-                : healthOk ? t("active") : "degraded"}
-          </p>
-          <p className="text-xs text-muted-foreground">{t("uptimeLabel")}</p>
-        </div>
-      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-3">
+        <ChartCard title={t("errorsByHour")} className="xl:col-span-2" loading={loading} height="h-60">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={derived.hourly} margin={{ left: -16, right: 8, top: 4 }}>
+              <defs>
+                <linearGradient id="gErr" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={C.error} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={C.error} stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gWarn" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={C.warn} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={C.warn} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} vertical={false} />
+              <XAxis dataKey="hour" stroke={C.axis} fontSize={11} tickLine={false} axisLine={false} interval={3} />
+              <YAxis stroke={C.axis} fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ stroke: C.grid }} />
+              <Area isAnimationActive={false} type="monotone" dataKey="errors" name="ERROR" stroke={C.error} strokeWidth={2} fill="url(#gErr)" />
+              <Area isAnimationActive={false} type="monotone" dataKey="warnings" name="WARN" stroke={C.warn} strokeWidth={2} fill="url(#gWarn)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </ChartCard>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-        {/* Error Rate Chart */}
-        <div className="xl:col-span-2 glass-card rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-4">{t("errorsByHour")}</h3>
-          {loading ? (
-            <div className="h-56 flex items-center justify-center text-muted-foreground text-sm">
-              <Loader2 className="w-4 h-4 animate-spin mr-2" /> {t("loading")}
-            </div>
+        <ChartCard title={t("logLevelDistribution")} loading={loading} height="h-60">
+          {derived.pie.length === 0 ? (
+            <EmptyState icon={Activity} title={t("noLogData")} className="py-6" />
           ) : (
-            <div className="h-56">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={hourlyData}>
-                  <defs>
-                    <linearGradient id="errGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="hsl(0,68%,50%)"  stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="hsl(0,68%,50%)"  stopOpacity={0}   />
-                    </linearGradient>
-                    <linearGradient id="warnGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="hsl(38,90%,50%)" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(38,90%,50%)" stopOpacity={0}   />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,18%,14%)" />
-                  <XAxis dataKey="hour" stroke="hsl(215,14%,46%)" fontSize={10} tickLine={false} />
-                  <YAxis stroke="hsl(215,14%,46%)" fontSize={10} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={CHART_STYLE} />
-                  <Area type="monotone" dataKey="errors"   name="Errors"   stroke="hsl(0,68%,50%)"  strokeWidth={2} fill="url(#errGrad)"  />
-                  <Area type="monotone" dataKey="warnings" name="Warnings" stroke="hsl(38,90%,50%)" strokeWidth={2} fill="url(#warnGrad)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-
-        {/* Level Distribution Pie */}
-        <div className="glass-card rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-4">{t("logLevelDistribution")}</h3>
-          {loading ? (
-            <div className="h-44 flex items-center justify-center text-muted-foreground text-sm">
-              <Loader2 className="w-4 h-4 animate-spin mr-2" /> {t("loading")}
-            </div>
-          ) : levelPieData.length === 0 ? (
-            <div className="h-44 flex flex-col items-center justify-center gap-2 text-muted-foreground">
-              <Zap className="w-8 h-8 opacity-30" />
-              <p className="text-xs">{t("noLogData")}</p>
-            </div>
-          ) : (
-            <>
-              <div className="h-44">
+            <div className="flex h-full flex-col">
+              <div className="min-h-0 flex-1">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={levelPieData} cx="50%" cy="50%" innerRadius={45} outerRadius={65} paddingAngle={3} dataKey="value">
-                      {levelPieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
+                    <Pie isAnimationActive={false} data={derived.pie} dataKey="value" innerRadius={42} outerRadius={64} paddingAngle={3} stroke="none">
+                      {derived.pie.map((e) => <Cell key={e.name} fill={e.color} />)}
                     </Pie>
-                    <Tooltip contentStyle={CHART_STYLE} />
+                    <Tooltip contentStyle={tooltipStyle} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <div className="mt-2 space-y-1.5">
-                {levelPieData.map((item) => (
-                  <div key={item.name} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-muted-foreground">{item.name}</span>
-                    </div>
-                    <span className="font-mono font-semibold text-foreground">{item.value}</span>
-                  </div>
+              <ul className="mt-2 space-y-1.5 text-xs">
+                {derived.pie.map((d) => (
+                  <li key={d.name} className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: d.color }} />
+                      {d.name}
+                    </span>
+                    <span className="tnum font-mono font-medium text-foreground">{d.value}</span>
+                  </li>
                 ))}
-              </div>
-            </>
+              </ul>
+            </div>
           )}
-        </div>
-      </div>
+        </ChartCard>
 
-      {/* Module Activity + Health + Recent Errors */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Top Modules Bar Chart */}
-        <div className="xl:col-span-2 glass-card rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-4">{t("moduleActivityTop10")}</h3>
-          {loading ? (
-            <div className="h-64 flex items-center justify-center text-muted-foreground text-sm">
-              <Loader2 className="w-4 h-4 animate-spin mr-2" /> {t("loading")}
-            </div>
-          ) : moduleData.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center gap-2 text-muted-foreground">
-              <Activity className="w-8 h-8 opacity-30" />
-              <p className="text-xs">{t("noModuleData")}</p>
-            </div>
+        <ChartCard title={t("moduleActivityTop10")} className="xl:col-span-2" loading={loading} height="h-72">
+          {derived.modules.length === 0 ? (
+            <EmptyState icon={Activity} title={t("noModuleData")} className="py-6" />
           ) : (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={moduleData} layout="vertical" margin={{ left: 8, right: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(220,18%,14%)" horizontal={false} />
-                  <XAxis type="number" stroke="hsl(215,14%,46%)" fontSize={10} tickLine={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="module"
-                    stroke="hsl(215,14%,46%)"
-                    fontSize={10}
-                    tickLine={false}
-                    width={80}
-                    tick={{ fontFamily: "JetBrains Mono, monospace" }}
-                  />
-                  <Tooltip contentStyle={CHART_STYLE} />
-                  <Bar dataKey="count" name="Log Count" fill="hsl(152,76%,48%)" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={derived.modules} layout="vertical" margin={{ left: 4, right: 12 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
+                <XAxis type="number" stroke={C.axis} fontSize={11} tickLine={false} axisLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="module" stroke={C.axis} fontSize={11} tickLine={false} axisLine={false} width={96} tick={{ fontFamily: "JetBrains Mono, monospace" }} />
+                <Tooltip contentStyle={tooltipStyle} cursor={{ fill: "hsl(var(--muted) / 0.5)" }} />
+                <Bar isAnimationActive={false} dataKey="count" name="Logs" fill={C.primary} radius={[0, 4, 4, 0]} barSize={14} />
+              </BarChart>
+            </ResponsiveContainer>
           )}
-        </div>
+        </ChartCard>
 
-        {/* Health + Recent Errors */}
-        <div className="space-y-4">
-          {/* Health Metrics */}
-          <div className="glass-card rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-foreground mb-3">{t("healthMetrics")}</h3>
-            {health ? (
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{t("status")}</span>
-                  <span className={cn("font-semibold font-mono", healthOk ? "text-status-healthy" : "text-status-critical")}>
-                    {health.status}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{t("response").replace(":", "")}</span>
-                  <span className={cn(
-                    "font-mono",
-                    health.responseTime < 200 ? "text-status-healthy" :
-                    health.responseTime < 500 ? "text-status-warning" : "text-status-critical"
-                  )}>
-                    {health.responseTime}ms
-                  </span>
-                </div>
-                {health.uptime_seconds != null && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("uptimeLabel")}</span>
-                    <span className="font-mono text-foreground">
-                      {Math.floor(health.uptime_seconds / 3600)}h {Math.floor((health.uptime_seconds % 3600) / 60)}m
-                    </span>
-                  </div>
-                )}
+        <section className="space-y-6">
+          <div className="rounded-xl border bg-card p-4">
+            <h3 className="mb-3 text-sm font-semibold text-foreground">{t("healthMetrics")}</h3>
+            {loading ? (
+              <Skeleton className="h-20" />
+            ) : !health ? (
+              <p className="text-sm text-muted-foreground">{t("healthDataUnavailable")}</p>
+            ) : (
+              <dl className="space-y-2 text-sm">
+                <Line label={t("status")}><StatusPill tone={healthy ? "healthy" : "critical"}>{health.status}</StatusPill></Line>
+                <Line label={t("response")}><span className="tnum font-mono">{health.responseTime} ms</span></Line>
                 {health.database && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t("database").replace(":", "")}</span>
-                    <span className="font-mono text-foreground">
-                      {health.database.status} ({health.database.open_connections}/{health.database.max_open_connections})
-                    </span>
-                  </div>
+                  <Line label={t("database")}>
+                    <span className="tnum font-mono">{health.database.open_connections}/{health.database.max_open_connections}</span>
+                  </Line>
                 )}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">{t("healthDataUnavailable")}</p>
+              </dl>
             )}
           </div>
 
-          {/* Recent Errors */}
-          <div className="glass-card rounded-lg overflow-hidden">
-            <div className="p-3 border-b border-border flex items-center gap-2">
-              <AlertCircle className="w-3.5 h-3.5 text-status-critical" />
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <div className="flex items-center justify-between border-b px-4 py-3">
               <h3 className="text-sm font-semibold text-foreground">{t("recentErrors")}</h3>
-              <span className="ml-auto text-xs text-muted-foreground">{tf(t("totalCount"), { count: errorLogs.length })}</span>
+              <span className="text-xs text-muted-foreground">{tf(t("totalCount"), { count: derived.errors.length })}</span>
             </div>
-            {lastErrors.length === 0 ? (
-              <div className="p-6 text-center text-xs text-muted-foreground">{t("noErrorsFound")}</div>
+            {derived.latestErrors.length === 0 ? (
+              <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t("noErrorsFound")}</p>
             ) : (
-              <div className="divide-y divide-border max-h-64 overflow-y-auto scrollbar-thin">
-                {lastErrors.map((log) => (
-                  <div key={log.id} className="px-3 py-2">
-                    <div className="flex items-center gap-1.5 mb-0.5">
-                      <code className="text-[10px] font-mono text-primary">{log.module}</code>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {new Date(log.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    </div>
-                    <p className="text-xs text-foreground line-clamp-2">{log.message}</p>
-                  </div>
+              <ul className="max-h-64 divide-y overflow-y-auto scrollbar-thin">
+                {derived.latestErrors.map((l) => (
+                  <li key={l.id} className="px-4 py-2.5">
+                    <p className="mb-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <code className="font-mono text-foreground">{l.module}</code>
+                      <span className="tnum">{formatDateTime(l.timestamp, language)}</span>
+                    </p>
+                    <p className="line-clamp-2 text-xs text-foreground">{l.message}</p>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
-        </div>
+        </section>
       </div>
     </DashboardLayout>
+  );
+}
+
+function ChartCard({
+  title, children, loading, height, className,
+}: { title: string; children: React.ReactNode; loading: boolean; height: string; className?: string }) {
+  return (
+    <section className={`rounded-xl border bg-card p-4 ${className ?? ""}`}>
+      <h3 className="mb-4 text-sm font-semibold text-foreground">{title}</h3>
+      <div className={height}>{loading ? <Skeleton className="h-full w-full" /> : children}</div>
+    </section>
+  );
+}
+
+function Line({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="text-foreground">{children}</dd>
+    </div>
   );
 }

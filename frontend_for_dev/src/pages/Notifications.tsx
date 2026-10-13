@@ -1,123 +1,67 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { AlertTriangle, Bell, CreditCard, Info, Loader2, Save, Server, Shield } from "lucide-react";
+import { toast } from "sonner";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import {
-  Bell, AlertTriangle, Shield, CreditCard, Server,
-  Save, Loader2, Info, Clock,
-} from "lucide-react";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { StatusPill, type Tone } from "@/components/kit/StatusPill";
+import { EmptyState, ErrorNotice } from "@/components/kit/States";
+import { SwitchRow } from "@/components/kit/Field";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
-import { toast } from "sonner";
-import {
-  getNotificationPreferences, updateNotificationPreferences,
-  getRecentNotifications, type RecentNotification,
-} from "@/services/api-client";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation } from "@/lib/i18n";
+import { useResource } from "@/hooks/useResource";
+import { formatDateTime } from "@/lib/format";
+import {
+  getNotificationPreferences, getRecentNotifications, updateNotificationPreferences,
+} from "@/services/api-client";
 
-interface NotifPrefs {
-  errors: boolean;
-  deployments: boolean;
-  security: boolean;
-  weeklyReport: boolean;
-}
+interface Prefs { errors: boolean; deployments: boolean; security: boolean; weeklyReport: boolean }
 
-const DEFAULTS: NotifPrefs = {
-  errors: true,
-  deployments: true,
-  security: true,
-  weeklyReport: false,
-};
+const DEFAULTS: Prefs = { errors: true, deployments: true, security: true, weeklyReport: false };
 
-const TOGGLES: {
-  key: keyof NotifPrefs;
-  labelKey: string;
-  descKey: string;
-  icon: React.ElementType;
-  iconCls: string;
-}[] = [
-  {
-    key: "errors",
-    labelKey: "errorAlerts",
-    descKey: "errorAlertsDesc",
-    icon: AlertTriangle,
-    iconCls: "text-status-critical bg-status-critical/15",
-  },
-  {
-    key: "deployments",
-    labelKey: "deploymentAlerts",
-    descKey: "deploymentAlertsDesc",
-    icon: Server,
-    iconCls: "text-status-info bg-status-info/15",
-  },
-  {
-    key: "security",
-    labelKey: "securityAlerts",
-    descKey: "securityAlertsDesc",
-    icon: Shield,
-    iconCls: "text-status-warning bg-status-warning/15",
-  },
-  {
-    key: "weeklyReport",
-    labelKey: "weeklyReport",
-    descKey: "weeklyReportDesc",
-    icon: CreditCard,
-    iconCls: "text-primary bg-primary/15",
-  },
+const TOGGLES: { key: keyof Prefs; labelKey: string; descKey: string; icon: React.ElementType }[] = [
+  { key: "errors", labelKey: "errorAlerts", descKey: "errorAlertsDesc", icon: AlertTriangle },
+  { key: "deployments", labelKey: "deploymentAlerts", descKey: "deploymentAlertsDesc", icon: Server },
+  { key: "security", labelKey: "securityAlerts", descKey: "securityAlertsDesc", icon: Shield },
+  { key: "weeklyReport", labelKey: "weeklyReport", descKey: "weeklyReportDesc", icon: CreditCard },
 ];
+
+const levelTone = (level: string): Tone => (["error", "critical"].includes(level.toLowerCase()) ? "critical" : "warning");
 
 export default function Notifications() {
   const { language } = useLanguage();
   const t = (key: string) => getTranslation(key, language);
-  const [prefs, setPrefs] = useState<NotifPrefs>(DEFAULTS);
-  const [loading, setLoading] = useState(true);
+
+  // An empty object from the server means "never saved" → defaults. A *failed* load is
+  // different: saving then would overwrite real preferences with defaults, so it's blocked.
+  const prefsRes = useResource<Prefs>(async () => {
+    const raw = await getNotificationPreferences();
+    return raw && typeof raw === "object" ? { ...DEFAULTS, ...(raw as Partial<Prefs>) } : DEFAULTS;
+  }, t("failedToSavePreferences"));
+  const recentRes = useResource(getRecentNotifications, t("failedToLoadData"));
+
+  const [draft, setDraft] = useState<Prefs | null>(null);
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [recent, setRecent] = useState<RecentNotification[]>([]);
-  const [recentLoading, setRecentLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const raw = await getNotificationPreferences();
-      if (raw && typeof raw === "object" && Object.keys(raw).length > 0) {
-        setPrefs({ ...DEFAULTS, ...(raw as Partial<NotifPrefs>) });
-      }
-    } catch {
-      // Graceful fallback — notifications are optional
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const prefs = draft ?? prefsRes.data ?? DEFAULTS;
+  const dirty = draft !== null;
+  const loadFailed = !!prefsRes.error && !prefsRes.data;
 
-  const loadRecent = useCallback(async () => {
-    setRecentLoading(true);
-    try {
-      setRecent(await getRecentNotifications());
-    } catch {
-      setRecent([]);
-    } finally {
-      setRecentLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(); loadRecent(); }, [load, loadRecent]);
-
-  const toggle = (key: keyof NotifPrefs) => {
-    setPrefs((prev) => ({ ...prev, [key]: !prev[key] }));
-    setDirty(true);
-  };
+  const toggle = (key: keyof Prefs) => setDraft({ ...prefs, [key]: !prefs[key] });
 
   const save = async () => {
+    if (!draft) return;
     setSaving(true);
     try {
-      // This endpoint replaces the stored preferences wholesale (not a
-      // merge), so the full prefs object is sent every time.
-      await updateNotificationPreferences(prefs as unknown as Record<string, unknown>);
-      setDirty(false);
+      // The endpoint replaces the stored preferences wholesale, so send the full object.
+      await updateNotificationPreferences(draft as unknown as Record<string, unknown>);
+      prefsRes.setData(draft);
+      setDraft(null);
       toast.success(t("notificationPreferencesSaved"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("failedToSavePreferences"));
+      toast.error(e instanceof Error && e.message ? e.message : t("failedToSavePreferences"));
     } finally {
       setSaving(false);
     }
@@ -125,130 +69,74 @@ export default function Notifications() {
 
   return (
     <DashboardLayout>
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("notificationsTitle")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("configureAlertPreferences")}</p>
-        </div>
-        <Button
-          size="sm"
-          className="gap-2"
-          onClick={save}
-          disabled={saving || !dirty}
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-          {saving ? t("saving") : t("savePreferences")}
-        </Button>
-      </div>
+      <PageHeader
+        title={t("notificationsTitle")}
+        description={t("configureAlertPreferences")}
+        actions={
+          <Button className="gap-2" onClick={() => void save()} disabled={saving || !dirty || loadFailed}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {saving ? t("saving") : t("savePreferences")}
+          </Button>
+        }
+      />
 
-      {loading ? (
-        <div className="flex items-center justify-center py-20 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mr-2" /> {t("loading")}
-        </div>
-      ) : (
-        <div className="max-w-2xl space-y-4">
-          {/* Info Banner */}
-          <div className="flex items-start gap-3 p-4 rounded-lg border border-status-info/25 bg-status-info/10 text-status-info">
-            <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
-            <p className="text-sm">
-              {t("displayPreferencesNotice")}
-            </p>
-          </div>
+      {loadFailed && <ErrorNotice message={t("prefsLoadFailed")} onRetry={() => void prefsRes.reload()} />}
 
-          {/* Recent Activity */}
-          <div className="glass-card rounded-lg overflow-hidden">
-            <div className="p-4 border-b border-border flex items-center gap-2">
-              <Clock className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">{t("recentActivity")}</h2>
-            </div>
-            <div className="divide-y divide-border">
-              {recentLoading ? (
-                <div className="p-6 flex justify-center">
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                </div>
-              ) : recent.length === 0 ? (
-                <p className="p-4 text-sm text-muted-foreground">{t("noRecentAlerts")}</p>
-              ) : (
-                recent.map((n) => (
-                  <div key={n.id} className="flex items-start gap-3 p-3">
-                    <span className={cn(
-                      "text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5",
-                      n.level.toLowerCase() === "error" || n.level.toLowerCase() === "critical"
-                        ? "bg-status-critical/15 text-status-critical"
-                        : "bg-status-warning/15 text-status-warning"
-                    )}>
-                      {n.level}
+      <div className="max-w-2xl space-y-6">
+        <div className="flex items-start gap-3 rounded-lg border border-status-info/25 bg-status-info/10 p-4 text-status-info">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" />
+          <p className="text-sm">{t("displayPreferencesNotice")}</p>
+        </div>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-foreground">{t("alertTypes")}</h2>
+          <div className="divide-y rounded-xl border bg-card">
+            {prefsRes.loading
+              ? [0, 1, 2, 3].map((i) => <div key={i} className="p-4"><Skeleton className="h-10 w-full" /></div>)
+              : TOGGLES.map(({ key, labelKey, descKey, icon: Icon }) => (
+                  <div key={key} className="flex items-center gap-3 p-4">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                      <Icon className="h-4 w-4" />
                     </span>
+                    <div className="min-w-0 flex-1">
+                      <SwitchRow label={t(labelKey)} description={t(descKey)}>
+                        <Switch checked={prefs[key]} disabled={loadFailed} onCheckedChange={() => toggle(key)} aria-label={t(labelKey)} />
+                      </SwitchRow>
+                    </div>
+                  </div>
+                ))}
+          </div>
+          {dirty && <p className="mt-2 text-xs text-muted-foreground">{t("unsavedChangesNotice")}</p>}
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm font-semibold text-foreground">{t("recentActivity")}</h2>
+          <div className="overflow-hidden rounded-xl border bg-card">
+            {recentRes.loading ? (
+              <div className="space-y-3 p-4"><Skeleton className="h-9" /><Skeleton className="h-9" /></div>
+            ) : recentRes.error ? (
+              <div className="p-4"><ErrorNotice className="mb-0" message={recentRes.error} onRetry={() => void recentRes.reload()} /></div>
+            ) : (recentRes.data ?? []).length === 0 ? (
+              <EmptyState icon={Bell} title={t("noRecentAlerts")} className="py-10" />
+            ) : (
+              <ul className="divide-y">
+                {(recentRes.data ?? []).map((n) => (
+                  <li key={n.id} className="flex items-start gap-3 p-3.5">
+                    <StatusPill tone={levelTone(n.level)} dot={false} className="mt-0.5 shrink-0">{n.level}</StatusPill>
                     <div className="min-w-0">
-                      <p className="text-sm text-foreground truncate">{n.message}</p>
+                      <p className="truncate text-sm text-foreground">{n.message}</p>
                       <p className="text-xs text-muted-foreground">
-                        {n.module ? `${n.module} · ` : ""}{new Date(n.createdAt).toLocaleString()}
+                        {n.module ? `${n.module} · ` : ""}
+                        {formatDateTime(n.createdAt, language)}
                       </p>
                     </div>
-                  </div>
-                ))
-              )}
-            </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-
-          {/* Alert Type Toggles */}
-          <div className="glass-card rounded-lg overflow-hidden">
-            <div className="p-4 border-b border-border flex items-center gap-2">
-              <Bell className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-semibold text-foreground">{t("alertTypes")}</h2>
-            </div>
-            <div className="divide-y divide-border">
-              {TOGGLES.map(({ key, labelKey, descKey, icon: Icon, iconCls }) => (
-                <div key={key} className="flex items-center justify-between p-4 gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0", iconCls)}>
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{t(labelKey)}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{t(descKey)}</p>
-                    </div>
-                  </div>
-                  <Switch
-                    checked={prefs[key]}
-                    onCheckedChange={() => toggle(key)}
-                    className="flex-shrink-0"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Current State Summary */}
-          <div className="glass-card rounded-lg p-4">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{t("currentConfiguration")}</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {TOGGLES.map(({ key, labelKey }) => (
-                <div key={key} className="flex items-center gap-2 text-sm">
-                  <div className={cn(
-                    "w-2 h-2 rounded-full flex-shrink-0",
-                    prefs[key] ? "bg-status-healthy" : "bg-muted-foreground/40"
-                  )} />
-                  <span className="text-muted-foreground">{t(labelKey)}</span>
-                  <span className={cn(
-                    "ml-auto text-xs font-semibold",
-                    prefs[key] ? "text-status-healthy" : "text-muted-foreground"
-                  )}>
-                    {prefs[key] ? t("on") : t("off")}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {dirty && (
-            <p className="text-xs text-center text-muted-foreground">
-              {t("unsavedChangesNotice")}
-            </p>
-          )}
-        </div>
-      )}
+        </section>
+      </div>
     </DashboardLayout>
   );
 }

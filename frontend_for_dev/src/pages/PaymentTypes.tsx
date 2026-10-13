@@ -1,367 +1,267 @@
-import { useState, useEffect, useCallback } from "react";
+import { useMemo, useState } from "react";
+import { Loader2, Pencil, Plus, Trash2, Wallet } from "lucide-react";
+import { toast } from "sonner";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import {
-  Plus, Pencil, Trash2, RefreshCw, Loader2, AlertCircle, CreditCard,
-} from "lucide-react";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { StatusPill } from "@/components/kit/StatusPill";
+import { DataTable, type Column } from "@/components/kit/DataTable";
+import { EmptyState, ErrorNotice } from "@/components/kit/States";
+import { RefreshButton } from "@/components/kit/Toolbar";
+import { RowActions } from "@/components/kit/RowActions";
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { Field, SwitchRow } from "@/components/kit/Field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-import { toast } from "sonner";
-import {
-  listPaymentTypes, createPaymentType, updatePaymentType,
-  togglePaymentType, deletePaymentType,
-  type PaymentType,
-} from "@/services/api-client";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation, tf } from "@/lib/i18n";
+import { useResource } from "@/hooks/useResource";
+import {
+  createPaymentType, deletePaymentType, listPaymentTypes, togglePaymentType, updatePaymentType,
+  type PaymentType,
+} from "@/services/api-client";
 
-const emptyForm = { code: "", displayName: "", description: "", isActive: true, sortOrder: 0 };
+const bySort = (a: PaymentType, b: PaymentType) => a.sortOrder - b.sortOrder;
 
 export default function PaymentTypes() {
   const { language } = useLanguage();
   const t = (key: string) => getTranslation(key, language);
-  const [types, setTypes] = useState<PaymentType[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<PaymentType | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<PaymentType | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const res = useResource(async () => (await listPaymentTypes()).sort(bySort), t("failedToLoadPaymentTypes"));
+  const types = res.data ?? [];
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listPaymentTypes();
-      setTypes(data.sort((a, b) => a.sortOrder - b.sortOrder));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("failedToLoadPaymentTypes"));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [dialog, setDialog] = useState<{ kind: "form"; type: PaymentType | null } | { kind: "delete"; type: PaymentType } | null>(null);
+  const [seq, setSeq] = useState(0);
+  const open = (d: NonNullable<typeof dialog>) => { setSeq((n) => n + 1); setDialog(d); };
+  const [busy, setBusy] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  useEffect(() => { load(); }, [load]);
-
-  const openCreate = () => {
-    setEditTarget(null);
-    setForm(emptyForm);
-    setModalOpen(true);
-  };
-
-  const openEdit = (pt: PaymentType) => {
-    setEditTarget(pt);
-    setForm({
-      code: pt.code,
-      displayName: pt.displayName,
-      description: pt.description ?? "",
-      isActive: pt.isActive,
-      sortOrder: pt.sortOrder,
+  const upsert = (pt: PaymentType) =>
+    res.setData((d) => {
+      const list = d ?? [];
+      return (list.some((x) => x.id === pt.id) ? list.map((x) => (x.id === pt.id ? pt : x)) : [...list, pt]).sort(bySort);
     });
-    setModalOpen(true);
-  };
 
-  const handleSave = async () => {
-    if (!form.code.trim() || !form.displayName.trim()) {
-      toast.error(t("codeDisplayNameRequired"));
-      return;
-    }
-    setSaving(true);
-    try {
-      if (editTarget) {
-        const updated = await updatePaymentType(editTarget.id, {
-          displayName: form.displayName,
-          description: form.description || undefined,
-          isActive: form.isActive,
-          sortOrder: form.sortOrder,
-        });
-        setTypes((prev) => prev.map((pt) => (pt.id === updated.id ? updated : pt)));
-        toast.success(t("paymentTypeUpdated"));
-      } else {
-        const created = await createPaymentType({
-          code: form.code,
-          displayName: form.displayName,
-          description: form.description || undefined,
-          isActive: form.isActive,
-          sortOrder: form.sortOrder,
-        });
-        setTypes((prev) => [...prev, created].sort((a, b) => a.sortOrder - b.sortOrder));
-        toast.success(t("paymentTypeCreated"));
-      }
-      setModalOpen(false);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("saveFailed"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleToggle = async (pt: PaymentType) => {
+  const toggle = async (pt: PaymentType) => {
+    setTogglingId(pt.id);
     try {
       const updated = await togglePaymentType(pt.id);
-      setTypes((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+      upsert(updated);
       toast.success(tf(updated.isActive ? t("typeActivated") : t("typeDeactivated"), { name: updated.displayName }));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("toggleFailed"));
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setSaving(true);
-    try {
-      await deletePaymentType(deleteTarget.id);
-      setTypes((prev) => prev.filter((pt) => pt.id !== deleteTarget.id));
-      setDeleteOpen(false);
-      setDeleteTarget(null);
-      toast.success(t("paymentTypeDeleted"));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("deleteFailed"));
+      toast.error(e instanceof Error && e.message ? e.message : t("toggleFailed"));
     } finally {
-      setSaving(false);
+      setTogglingId(null);
     }
   };
 
-  const activeCount = types.filter((t) => t.isActive).length;
-  const systemCount = types.filter((t) => t.isSystem).length;
+  const activeCount = types.filter((x) => x.isActive).length;
+  const systemCount = types.filter((x) => x.isSystem).length;
+
+  const columns: Column<PaymentType>[] = useMemo(() => [
+    {
+      key: "code",
+      header: t("code"),
+      cell: (pt: PaymentType) => <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs font-medium text-foreground">{pt.code}</code>,
+    },
+    { key: "name", header: t("displayName"), cell: (pt: PaymentType) => <span className="font-medium text-foreground">{pt.displayName}</span> },
+    {
+      key: "desc",
+      header: t("description"),
+      wrap: true,
+      showFrom: "md" as const,
+      cell: (pt: PaymentType) => <span className="line-clamp-1 max-w-xs text-muted-foreground">{pt.description || "—"}</span>,
+    },
+    { key: "order", header: t("order"), align: "center" as const, showFrom: "sm" as const, cell: (pt: PaymentType) => <span className="tnum font-mono text-muted-foreground">{pt.sortOrder}</span> },
+    {
+      key: "active",
+      header: t("active"),
+      align: "center" as const,
+      cell: (pt: PaymentType) => (
+        <Switch checked={pt.isActive} disabled={togglingId === pt.id} onCheckedChange={() => void toggle(pt)} aria-label={t("active")} />
+      ),
+    },
+    {
+      key: "kind",
+      header: t("type"),
+      align: "center" as const,
+      showFrom: "sm" as const,
+      cell: (pt: PaymentType) => <StatusPill tone={pt.isSystem ? "info" : "neutral"}>{pt.isSystem ? t("system") : t("custom")}</StatusPill>,
+    },
+    {
+      key: "actions",
+      header: <span className="sr-only">{t("actions")}</span>,
+      align: "right" as const,
+      className: "w-12",
+      cell: (pt: PaymentType) => (
+        <RowActions
+          actions={[
+            { label: t("edit"), icon: Pencil, onSelect: () => open({ kind: "form", type: pt }) },
+            {
+              label: t("delete"), icon: Trash2, destructive: true, separated: true, disabled: pt.isSystem,
+              title: pt.isSystem ? t("systemTypesCannotBeDeleted") : undefined,
+              onSelect: () => open({ kind: "delete", type: pt }),
+            },
+          ]}
+        />
+      ),
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [language, togglingId]);
 
   return (
     <DashboardLayout>
-      <TooltipProvider>
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">{t("paymentTypesTitle")}</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {tf(t("typesCountSummary"), { count: types.length, activeCount, systemCount })}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2" onClick={load} disabled={loading}>
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-              {t("refresh")}
-            </Button>
-            <Button size="sm" className="gap-2" onClick={openCreate}>
-              <Plus className="w-4 h-4" />
+      <PageHeader
+        title={t("paymentTypesTitle")}
+        description={res.data ? tf(t("typesCountSummary"), { count: types.length, activeCount, systemCount }) : undefined}
+        actions={
+          <>
+            <RefreshButton onClick={() => void res.reload()} busy={res.fetching} />
+            <Button className="gap-2" onClick={() => open({ kind: "form", type: null })}>
+              <Plus className="h-4 w-4" />
               {t("addType")}
             </Button>
-          </div>
-        </div>
+          </>
+        }
+      />
 
-        {error && (
-          <div className="flex items-center gap-3 p-4 mb-4 rounded-lg border border-status-critical/30 bg-status-critical/10 text-status-critical text-sm">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            {error}
-          </div>
-        )}
+      {res.error && <ErrorNotice message={res.error} onRetry={() => void res.reload()} />}
 
-        {/* Table */}
-        <div className="glass-card rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-muted/20 text-xs text-muted-foreground">
-                <th className="text-left px-4 py-3 font-medium">{t("code")}</th>
-                <th className="text-left px-4 py-3 font-medium">{t("displayName")}</th>
-                <th className="text-left px-4 py-3 font-medium">{t("description")}</th>
-                <th className="text-center px-4 py-3 font-medium">{t("order")}</th>
-                <th className="text-center px-4 py-3 font-medium">{t("active")}</th>
-                <th className="text-center px-4 py-3 font-medium">{t("type")}</th>
-                <th className="text-right px-4 py-3 font-medium">{t("actions")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {loading ? (
-                [...Array(4)].map((_, i) => (
-                  <tr key={i}>
-                    {[...Array(7)].map((_, j) => (
-                      <td key={j} className="px-4 py-3">
-                        <div className="h-4 bg-muted animate-pulse rounded" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : types.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-14 text-center text-muted-foreground">
-                    <CreditCard className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">{t("noPaymentTypesFound")}</p>
-                  </td>
-                </tr>
-              ) : (
-                types.map((pt) => (
-                  <tr key={pt.id} className="hover:bg-accent/20 transition-colors">
-                    <td className="px-4 py-3">
-                      <code className="text-xs font-mono font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">
-                        {pt.code}
-                      </code>
-                    </td>
-                    <td className="px-4 py-3 font-medium text-foreground">{pt.displayName}</td>
-                    <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">
-                      {pt.description || <span className="opacity-40">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center font-mono text-muted-foreground">{pt.sortOrder}</td>
-                    <td className="px-4 py-3 text-center">
-                      <Switch
-                        checked={pt.isActive}
-                        onCheckedChange={() => handleToggle(pt)}
-                        className="data-[state=checked]:bg-status-healthy"
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {pt.isSystem ? (
-                        <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary border-primary/20">
-                          {t("system")}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                          {t("custom")}
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(pt)} className="h-7 w-7 p-0">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        {pt.isSystem ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled
-                                  className="h-7 w-7 p-0 text-muted-foreground/40"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </Button>
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>{t("systemTypesCannotBeDeleted")}</TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-status-critical hover:text-status-critical"
-                            onClick={() => { setDeleteTarget(pt); setDeleteOpen(true); }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      <DataTable
+        columns={columns}
+        rows={types}
+        rowKey={(pt) => pt.id}
+        loading={res.loading}
+        empty={<EmptyState icon={Wallet} title={t("noPaymentTypesFound")} />}
+      />
 
-        {/* Create / Edit Modal */}
-        <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-          <DialogContent className="sm:max-w-[440px]">
-            <DialogHeader>
-              <DialogTitle>{editTarget ? t("editPaymentType") : t("newPaymentType")}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="space-y-1">
-                <Label>{t("code")} <span className="text-status-critical">*</span></Label>
-                <Input
-                  value={form.code}
-                  onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
-                  placeholder="e.g. payme"
-                  disabled={!!editTarget}
-                  className={cn("font-mono", !!editTarget && "opacity-60 cursor-not-allowed")}
-                />
-                {!editTarget && (
-                  <p className="text-xs text-muted-foreground">
-                    {t("internalIdentifierNotice")}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1">
-                <Label>{t("displayName")} <span className="text-status-critical">*</span></Label>
-                <Input
-                  value={form.displayName}
-                  onChange={(e) => setForm((f) => ({ ...f, displayName: e.target.value }))}
-                  placeholder="e.g. Payme"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>{t("description")}</Label>
-                <Input
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder={t("shortDescriptionShownToUsers")}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>{t("sortOrder")}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.sortOrder}
-                  onChange={(e) => setForm((f) => ({ ...f, sortOrder: parseInt(e.target.value) || 0 }))}
-                  className="w-24 font-mono"
-                />
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <Label>{t("activeByDefault")}</Label>
-                <Switch
-                  checked={form.isActive}
-                  onCheckedChange={(v) => setForm((f) => ({ ...f, isActive: v }))}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setModalOpen(false)}>{t("cancel")}</Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {editTarget ? t("update") : t("create")}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+      <PaymentTypeDialog
+        key={`pt-${seq}`}
+        open={dialog?.kind === "form"}
+        type={dialog?.kind === "form" ? dialog.type : null}
+        busy={busy}
+        t={t}
+        onClose={() => setDialog(null)}
+        onSubmit={async (v) => {
+          const editing = dialog?.kind === "form" ? dialog.type : null;
+          setBusy(true);
+          try {
+            if (editing) {
+              upsert(await updatePaymentType(editing.id, {
+                displayName: v.displayName, description: v.description || undefined, isActive: v.isActive, sortOrder: v.sortOrder,
+              }));
+              toast.success(t("paymentTypeUpdated"));
+            } else {
+              upsert(await createPaymentType({
+                code: v.code, displayName: v.displayName, description: v.description || undefined, isActive: v.isActive, sortOrder: v.sortOrder,
+              }));
+              toast.success(t("paymentTypeCreated"));
+            }
+            setDialog(null);
+          } catch (e) {
+            toast.error(e instanceof Error && e.message ? e.message : t("saveFailed"));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
 
-        {/* Delete Confirm */}
-        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t("deletePaymentType")}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {tf(t("deletePaymentTypeConfirm"), { name: deleteTarget?.displayName || "", code: deleteTarget?.code || "" })}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDelete}
-                disabled={saving}
-                className="bg-status-critical hover:bg-status-critical/90"
-              >
-                {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                {t("delete")}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </TooltipProvider>
+      <ConfirmDialog
+        open={dialog?.kind === "delete"}
+        onOpenChange={(o) => !o && setDialog(null)}
+        title={t("deletePaymentType")}
+        description={tf(t("deletePaymentTypeConfirm"), {
+          name: dialog?.kind === "delete" ? dialog.type.displayName : "",
+          code: dialog?.kind === "delete" ? dialog.type.code : "",
+        })}
+        confirmLabel={t("delete")}
+        busy={busy}
+        onConfirm={async () => {
+          if (dialog?.kind !== "delete") return;
+          setBusy(true);
+          try {
+            await deletePaymentType(dialog.type.id);
+            res.setData((d) => (d ?? []).filter((x) => x.id !== dialog.type.id));
+            toast.success(t("paymentTypeDeleted"));
+            setDialog(null);
+          } catch (e) {
+            toast.error(e instanceof Error && e.message ? e.message : t("deleteFailed"));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
     </DashboardLayout>
+  );
+}
+
+interface TypeValues { code: string; displayName: string; description: string; isActive: boolean; sortOrder: number }
+
+function PaymentTypeDialog({
+  open, type, busy, t, onClose, onSubmit,
+}: {
+  open: boolean; type: PaymentType | null; busy: boolean; t: (k: string) => string;
+  onClose: () => void; onSubmit: (v: TypeValues) => void;
+}) {
+  const [v, setV] = useState({
+    code: type?.code ?? "",
+    displayName: type?.displayName ?? "",
+    description: type?.description ?? "",
+    isActive: type?.isActive ?? true,
+    sortOrder: String(type?.sortOrder ?? 0),
+  });
+
+  const submit = () => {
+    if (!v.code.trim() || !v.displayName.trim()) return void toast.error(t("codeDisplayNameRequired"));
+    const order = Number(v.sortOrder);
+    onSubmit({
+      code: v.code.trim(),
+      displayName: v.displayName.trim(),
+      description: v.description.trim(),
+      isActive: v.isActive,
+      sortOrder: Number.isFinite(order) ? Math.trunc(order) : 0,
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{type ? t("editPaymentType") : t("newPaymentType")}</DialogTitle>
+          <DialogDescription>{type ? t("internalIdentifierNotice") : t("shortDescriptionShownToUsers")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <Field label={t("code")}>
+            <Input
+              value={v.code}
+              disabled={!!type}
+              onChange={(e) => setV({ ...v, code: e.target.value.toLowerCase().replace(/\s+/g, "_") })}
+              placeholder="click_uz"
+              className="font-mono"
+              autoFocus={!type}
+            />
+          </Field>
+          <Field label={t("displayName")}>
+            <Input value={v.displayName} onChange={(e) => setV({ ...v, displayName: e.target.value })} autoFocus={!!type} />
+          </Field>
+          <Field label={t("description")}>
+            <Input value={v.description} onChange={(e) => setV({ ...v, description: e.target.value })} placeholder={t("shortDescriptionShownToUsers")} />
+          </Field>
+          <Field label={t("sortOrder")}>
+            <Input type="number" value={v.sortOrder} onChange={(e) => setV({ ...v, sortOrder: e.target.value })} className="w-28 font-mono" />
+          </Field>
+          <SwitchRow label={t("activeByDefault")}>
+            <Switch checked={v.isActive} onCheckedChange={(x) => setV({ ...v, isActive: x })} />
+          </SwitchRow>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>{t("cancel")}</Button>
+          <Button onClick={submit} disabled={busy}>
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            {type ? t("update") : t("create")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

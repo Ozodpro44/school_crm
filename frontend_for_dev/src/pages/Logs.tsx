@@ -1,124 +1,82 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import {
-  Search, Download, RefreshCw, Trash2, Loader2, AlertCircle,
-  Bug, Info, AlertTriangle, Copy, ChevronDown, ChevronRight, Activity,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Copy, Download, FileText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { getLogs, clearLogs, type LogEntry } from "@/services/api-client";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { StatusPill, type Tone } from "@/components/kit/StatusPill";
+import { EmptyState, ErrorNotice, RowsSkeleton } from "@/components/kit/States";
+import { RefreshButton, SearchField } from "@/components/kit/Toolbar";
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation, tf } from "@/lib/i18n";
+import { useResource } from "@/hooks/useResource";
+import { orEmpty } from "@/lib/empty";
+import { useInterval } from "@/hooks/useInterval";
+import { copyText } from "@/lib/clipboard";
+import { localeOf } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { clearLogs, getLogs, type LogEntry } from "@/services/api-client";
 
 type Level = "ALL" | "DEBUG" | "INFO" | "WARN" | "ERROR";
-
-const LEVEL_CONFIG: Record<string, { icon: typeof Info; lineClass: string; badgeClass: string; label: string }> = {
-  DEBUG: { icon: Bug,           lineClass: "log-debug", badgeClass: "bg-muted text-muted-foreground",           label: "DEBUG" },
-  INFO:  { icon: Info,          lineClass: "log-info",  badgeClass: "bg-status-info/15 text-status-info",       label: "INFO"  },
-  WARN:  { icon: AlertTriangle, lineClass: "log-warn",  badgeClass: "bg-status-warning/15 text-status-warning", label: "WARN"  },
-  ERROR: { icon: AlertCircle,   lineClass: "log-error", badgeClass: "bg-status-critical/15 text-status-critical",label: "ERROR" },
-};
-
+const LEVELS: Level[] = ["ALL", "DEBUG", "INFO", "WARN", "ERROR"];
+const LEVEL_TONE: Record<string, Tone> = { DEBUG: "neutral", INFO: "info", WARN: "warning", ERROR: "critical" };
 const LIMITS = [50, 100, 200, 500];
 
 export default function Logs() {
   const { language } = useLanguage();
   const t = (key: string) => getTranslation(key, language);
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [level, setLevel] = useState<Level>("ALL");
   const [limit, setLimit] = useState(200);
   const [moduleFilter, setModuleFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [clearDialogOpen, setClearDialogOpen] = useState(false);
-  const autoRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [auto, setAuto] = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
-  // Module list for the filter dropdown — fetched unfiltered/separately so
-  // switching modules doesn't make other modules disappear from the list.
-  const [moduleOptions, setModuleOptions] = useState<string[]>([]);
-
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // The module filter used to be applied only client-side to whatever
-      // the `limit`-capped fetch happened to contain, so picking a module
-      // could silently show an incomplete (or empty) result even though
-      // more matching entries exist beyond the fetch window. The backend
-      // supports filtering by module directly — use that instead.
-      const data = await getLogs({
-        limit,
-        level: level !== "ALL" ? level : undefined,
-        module: moduleFilter !== "all" ? moduleFilter : undefined,
-      });
-      setLogs(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("failedToFetchLogs"));
-      setLogs([]);
-    } finally {
-      setLoading(false);
-    }
+  const res = useResource<LogEntry[]>(
+    () => getLogs({ limit, level: level !== "ALL" ? level : undefined, module: moduleFilter !== "all" ? moduleFilter : undefined }),
+    t("failedToFetchLogs"),
+  );
+  // Re-query when a server-side filter changes (reload is stable, the fetcher is read via ref).
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) { mounted.current = true; return; } // the hook already loads on mount
+    void res.reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [limit, level, moduleFilter]);
+  useInterval(() => void res.reload(), 5000, auto);
 
-  useEffect(() => { fetchLogs(); }, [fetchLogs]);
+  // Module list comes from an unfiltered fetch so picking a module never empties the dropdown.
+  const modules = useResource<string[]>(
+    async () => Array.from(new Set((await getLogs({ limit: 500 })).map((l) => l.module).filter(Boolean))).sort(),
+    t("failedToFetchLogs"),
+  );
 
-  useEffect(() => {
-    getLogs({ limit: 500 })
-      .then((data) => {
-        setModuleOptions(Array.from(new Set(data.map((l) => l.module).filter(Boolean))).sort());
-      })
-      .catch(() => { /* dropdown just stays empty — not critical */ });
-  }, []);
+  const logs = orEmpty(res.data);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? logs.filter((l) => l.message.toLowerCase().includes(q) || l.module.toLowerCase().includes(q)) : logs;
+  }, [logs, search]);
 
-  useEffect(() => {
-    if (autoRefresh) {
-      autoRefreshRef.current = setInterval(fetchLogs, 5000);
-    } else {
-      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current);
-    }
-    return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); };
-  }, [autoRefresh, fetchLogs]);
+  const counts = useMemo(() => {
+    const c: Record<Level, number> = { ALL: logs.length, DEBUG: 0, INFO: 0, WARN: 0, ERROR: 0 };
+    for (const l of logs) c[l.level]++;
+    return c;
+  }, [logs]);
 
-  const allModules = ["all", ...moduleOptions];
-
-  const filtered = logs.filter((l) => {
-    if (search) {
-      const q = search.toLowerCase();
-      if (!l.message.toLowerCase().includes(q) && !l.module.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
-
-  const counts: Record<Level, number> = {
-    ALL:   logs.length,
-    DEBUG: logs.filter((l) => l.level === "DEBUG").length,
-    INFO:  logs.filter((l) => l.level === "INFO").length,
-    WARN:  logs.filter((l) => l.level === "WARN").length,
-    ERROR: logs.filter((l) => l.level === "ERROR").length,
+  const copy = async (log: LogEntry) => {
+    const text = `[${log.timestamp}] [${log.level}] [${log.module}] ${log.message}${log.metadata ? "\n" + JSON.stringify(log.metadata, null, 2) : ""}`;
+    if (await copyText(text)) toast.success(t("copiedToClipboard"));
+    else toast.error(t("copyFailed"));
   };
 
-  const handleCopy = (log: LogEntry) => {
-    const text = `[${log.timestamp}] [${log.level}] [${log.module}] ${log.message}${
-      log.metadata ? "\n" + JSON.stringify(log.metadata, null, 2) : ""
-    }`;
-    navigator.clipboard.writeText(text);
-    toast.success(t("copiedToClipboard"));
-  };
-
-  const handleDownload = () => {
+  const download = () => {
     const blob = new Blob([JSON.stringify(filtered, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -129,235 +87,149 @@ export default function Logs() {
     toast.success(t("downloadedLogsJson"));
   };
 
-  const handleClear = async () => {
+  const doClear = async () => {
+    setClearing(true);
     try {
       await clearLogs();
-      setLogs([]);
-      setClearDialogOpen(false);
+      res.setData([]);
+      setClearOpen(false);
       toast.success(t("logsCleared"));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("failedToClearLogs"));
-      setClearDialogOpen(false);
+      toast.error(e instanceof Error && e.message ? e.message : t("failedToClearLogs"));
+    } finally {
+      setClearing(false);
     }
   };
 
-  const LEVEL_BTNS: Level[] = ["ALL", "DEBUG", "INFO", "WARN", "ERROR"];
+  const time = (iso: string) => new Date(iso).toLocaleTimeString(localeOf(language), { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const day = (iso: string) => new Date(iso).toLocaleDateString(localeOf(language), { day: "2-digit", month: "short" });
 
   return (
     <DashboardLayout>
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("logViewer")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("realTimeLogsFromBackend")}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" className="gap-2" onClick={handleDownload}>
-            <Download className="w-4 h-4" />
-            {t("downloadJson")}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className={cn("gap-2", autoRefresh && "border-primary/50 text-primary")}
-            onClick={() => setAutoRefresh((v) => !v)}
-          >
-            <Activity className="w-4 h-4" />
-            {autoRefresh ? t("autoRefreshOn") : t("autoRefresh")}
-          </Button>
-          <Button variant="outline" size="sm" className="gap-2" onClick={fetchLogs} disabled={loading}>
-            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            {t("refresh")}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 text-status-critical hover:text-status-critical"
-            onClick={() => setClearDialogOpen(true)}
-          >
-            <Trash2 className="w-4 h-4" />
-            {t("clear")}
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title={t("logViewer")}
+        description={t("realTimeLogsFromBackend")}
+        actions={
+          <>
+            <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-1.5">
+              <Switch id="logs-auto" checked={auto} onCheckedChange={setAuto} />
+              <Label htmlFor="logs-auto" className="cursor-pointer text-[13px] font-normal text-muted-foreground">{t("autoRefresh")}</Label>
+            </div>
+            <Button variant="outline" className="gap-2" onClick={download} disabled={filtered.length === 0}>
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("downloadJson")}</span>
+            </Button>
+            <RefreshButton onClick={() => void res.reload()} busy={res.fetching} />
+            <Button variant="outline" className="gap-2 text-status-critical hover:text-status-critical" onClick={() => setClearOpen(true)}>
+              <Trash2 className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("clear")}</span>
+            </Button>
+          </>
+        }
+      />
 
-      {error && (
-        <div className="flex items-center gap-3 p-4 mb-4 rounded-lg border border-status-critical/30 bg-status-critical/10 text-status-critical text-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
-        </div>
-      )}
+      {res.error && <ErrorNotice message={res.error} onRetry={() => void res.reload()} />}
 
-      {/* Sticky Toolbar */}
-      <div className="sticky top-0 z-10 glass-card rounded-lg p-3 mb-4 space-y-3">
-        {/* Level filter */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {LEVEL_BTNS.map((l) => (
+      <div className="mb-4 space-y-3">
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("level")}>
+          {LEVELS.map((l) => (
             <button
               key={l}
               onClick={() => setLevel(l)}
+              aria-pressed={level === l}
               className={cn(
-                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors",
-                level === l
-                  ? l === "ALL"   ? "bg-primary text-primary-foreground"
-                  : l === "ERROR" ? "bg-status-critical text-white"
-                  : l === "WARN"  ? "bg-status-warning text-black"
-                  : l === "INFO"  ? "bg-status-info text-white"
-                  : "bg-muted text-foreground"
-                  : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                "rounded-full border px-3 py-1 text-[13px] transition-colors",
+                level === l ? "border-foreground bg-foreground text-background" : "bg-card text-muted-foreground hover:text-foreground",
               )}
             >
-              {l}
-              <span className="opacity-70">({counts[l]})</span>
+              {l === "ALL" ? t("levelAll") : l}
+              {level === "ALL" && <span className="tnum ml-1.5 opacity-70">{counts[l]}</span>}
             </button>
           ))}
         </div>
-
-        {/* Second row: module, limit, search */}
-        <div className="flex flex-col md:flex-row gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <Select value={moduleFilter} onValueChange={setModuleFilter}>
-            <SelectTrigger className="w-full md:w-48 bg-background h-8 text-xs">
-              <SelectValue placeholder={t("module")} />
-            </SelectTrigger>
+            <SelectTrigger className="sm:w-52"><SelectValue placeholder={t("module")} /></SelectTrigger>
             <SelectContent>
-              {allModules.map((m) => (
-                <SelectItem key={m} value={m}>{m === "all" ? t("allModules") : m}</SelectItem>
-              ))}
+              <SelectItem value="all">{t("allModules")}</SelectItem>
+              {(modules.data ?? []).map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
-            <SelectTrigger className="w-full md:w-28 bg-background h-8 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {LIMITS.map((l) => (
-                <SelectItem key={l} value={String(l)}>{l} {t("entries")}</SelectItem>
-              ))}
-            </SelectContent>
+            <SelectTrigger className="sm:w-36"><SelectValue /></SelectTrigger>
+            <SelectContent>{LIMITS.map((n) => <SelectItem key={n} value={String(n)}>{n} {t("entries")}</SelectItem>)}</SelectContent>
           </Select>
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input
-              placeholder={t("searchMessageOrModule")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-8 bg-background text-xs"
-            />
-          </div>
+          <SearchField value={search} onChange={setSearch} placeholder={t("searchMessageOrModule")} />
         </div>
       </div>
 
-      {/* Log List */}
-      <div className="glass-card rounded-lg overflow-hidden">
-        <div className="flex items-center gap-4 px-4 py-2 border-b border-border text-xs text-muted-foreground font-medium">
-          <div className="w-36">{t("timestamp")}</div>
-          <div className="w-14">{t("level")}</div>
-          <div className="w-28">{t("module")}</div>
-          <div className="flex-1">{t("message")}</div>
-          <div className="w-8" />
-        </div>
-
-        <div className="divide-y divide-border max-h-[calc(100vh-380px)] overflow-y-auto scrollbar-thin">
-          {loading ? (
-            <div className="p-10 flex flex-col items-center gap-3 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin text-primary" />
-              <span className="text-sm">{t("loadingLogs")}</span>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="p-10 flex flex-col items-center gap-3 text-muted-foreground">
-              <Info className="w-8 h-8 opacity-30" />
-              <span className="text-sm">
-                {logs.length === 0 ? t("noLogEntriesYet") : t("noLogsMatchFilters")}
-              </span>
-            </div>
-          ) : (
-            filtered.map((log) => {
-              const cfg = LEVEL_CONFIG[log.level] ?? LEVEL_CONFIG.INFO;
-              const LvlIcon = cfg.icon;
-              const isExpanded = expandedId === log.id;
-              const hasMetadata = log.metadata && Object.keys(log.metadata).length > 0;
-
+      <div className="overflow-hidden rounded-xl border bg-card">
+        {res.loading ? (
+          <RowsSkeleton rows={8} />
+        ) : filtered.length === 0 ? (
+          <EmptyState icon={FileText} title={logs.length === 0 ? t("noLogEntriesYet") : t("noLogsMatchFilters")} />
+        ) : (
+          <ul className="max-h-[calc(100vh-22rem)] min-h-[16rem] divide-y overflow-y-auto scrollbar-thin">
+            {filtered.map((log) => {
+              const hasMeta = !!log.metadata && Object.keys(log.metadata).length > 0;
+              const isOpen = expanded === log.id;
               return (
-                <div key={log.id} className={cn("group", cfg.lineClass)}>
-                  <div className="flex items-center gap-4 px-4 py-2 hover:bg-accent/20 transition-colors">
-                    <div className="w-36 text-xs text-muted-foreground font-mono flex-shrink-0">
-                      {new Date(log.timestamp).toLocaleTimeString("en-US", {
-                        hour: "2-digit", minute: "2-digit", second: "2-digit",
-                      })}
+                <li key={log.id} className="group">
+                  <div className="flex items-start gap-3 px-4 py-2.5 hover:bg-muted/40">
+                    <div className="tnum w-20 shrink-0 pt-0.5 font-mono text-xs leading-4 text-muted-foreground">
+                      {time(log.timestamp)}
                       <br />
-                      <span className="opacity-60">
-                        {new Date(log.timestamp).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
-                      </span>
+                      <span className="opacity-60">{day(log.timestamp)}</span>
                     </div>
-                    <div className="w-14 flex-shrink-0">
-                      <span className={cn("inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded", cfg.badgeClass)}>
-                        <LvlIcon className="w-2.5 h-2.5" />
-                        {log.level}
-                      </span>
+                    <div className="w-16 shrink-0 pt-px">
+                      <StatusPill tone={LEVEL_TONE[log.level] ?? "neutral"} dot={false} className="px-1.5 font-mono text-[10px]">{log.level}</StatusPill>
                     </div>
-                    <div className="w-28 flex-shrink-0">
-                      <span className="text-xs font-mono text-primary truncate block">{log.module}</span>
-                    </div>
-                    <div
-                      className={cn("flex-1 text-sm text-foreground truncate", hasMetadata && "cursor-pointer")}
-                      onClick={() => hasMetadata && setExpandedId(isExpanded ? null : log.id)}
+                    <span className="hidden w-28 shrink-0 truncate pt-0.5 font-mono text-xs text-muted-foreground md:block" title={log.module}>{log.module}</span>
+                    <button
+                      className={cn("min-w-0 flex-1 text-left text-sm text-foreground", isOpen ? "whitespace-pre-wrap break-words" : "truncate", !hasMeta && "cursor-default")}
+                      onClick={() => hasMeta && setExpanded(isOpen ? null : log.id)}
+                      aria-expanded={hasMeta ? isOpen : undefined}
+                      title={hasMeta ? t("expandRow") : undefined}
                     >
                       {log.message}
-                    </div>
-                    <div className="w-8 flex-shrink-0 flex items-center gap-1">
-                      {hasMetadata && (
-                        <button
-                          onClick={() => setExpandedId(isExpanded ? null : log.id)}
-                          className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                        </button>
+                    </button>
+                    <div className="flex w-14 shrink-0 items-center justify-end gap-0.5">
+                      {hasMeta && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setExpanded(isOpen ? null : log.id)} aria-label={t("expandRow")}>
+                          {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        </Button>
                       )}
-                      <button
-                        onClick={() => handleCopy(log)}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 focus-visible:opacity-100 group-hover:opacity-100" onClick={() => void copy(log)} aria-label={t("copyEntry")}>
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
-                  {isExpanded && log.metadata && (
-                    <div className="mx-4 mb-2 p-3 bg-accent/30 rounded-lg border-l-2 border-primary">
-                      <pre className="text-xs font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
-                        {JSON.stringify(log.metadata, null, 2)}
-                      </pre>
-                    </div>
+                  {isOpen && log.metadata && (
+                    <pre className="mx-4 mb-3 overflow-x-auto whitespace-pre-wrap rounded-lg bg-muted p-3 font-mono text-xs text-foreground">
+                      {JSON.stringify(log.metadata, null, 2)}
+                    </pre>
                   )}
-                </div>
+                </li>
               );
-            })
-          )}
-        </div>
-
-        {!loading && filtered.length > 0 && (
-          <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">
+            })}
+          </ul>
+        )}
+        {!res.loading && filtered.length > 0 && (
+          <div className="border-t px-4 py-2.5 text-xs text-muted-foreground">
             {tf(t("showingOfEntries"), { shown: filtered.length, total: logs.length })}
           </div>
         )}
       </div>
 
-      {/* Clear Confirm */}
-      <AlertDialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("clearAllLogs")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("clearAllLogsConfirm")}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleClear} className="bg-status-critical hover:bg-status-critical/90">
-              {t("clearAllLogs")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={clearOpen}
+        onOpenChange={setClearOpen}
+        title={t("clearAllLogs")}
+        description={t("clearAllLogsConfirm")}
+        confirmLabel={t("clearAllLogs")}
+        busy={clearing}
+        onConfirm={doClear}
+      />
     </DashboardLayout>
   );
 }
