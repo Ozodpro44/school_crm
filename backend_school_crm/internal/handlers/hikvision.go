@@ -56,6 +56,11 @@ func RegisterHikvisionRoutes(router *gin.RouterGroup, hikvisionService *service.
 	hikvision.GET("/devices", h.listDevices)
 	hikvision.POST("/devices/:id/configure-push", h.configurePush)
 
+	// Terminals that connect out to us over OTAP HTTPS PUSH (no inbound
+	// access to the device needed).
+	hikvision.POST("/push-devices", h.createPushDevice)
+	hikvision.GET("/devices/:id/push-credentials", h.pushCredentials)
+
 	hikvision.POST("/employees", h.addEmployee)
 	hikvision.GET("/employees", h.listEmployees)
 	hikvision.POST("/employees/:id/face", h.uploadEmployeeFace)
@@ -188,6 +193,48 @@ func (h *hikvisionHandler) listDevices(c *gin.Context) {
 		devices = []models.HikvisionDevice{}
 	}
 	c.JSON(http.StatusOK, devices)
+}
+
+type createPushDeviceRequest struct {
+	BranchID string `json:"branchId" binding:"required"`
+	Name     string `json:"name" binding:"required"`
+	DeviceID string `json:"deviceId" binding:"required"` // the terminal's serial, used as DEVID in its /iot/ URLs
+}
+
+// createPushDevice registers a terminal that will connect to us and returns the
+// credential to enter into its PUSH configuration (also re-readable later).
+func (h *hikvisionHandler) createPushDevice(c *gin.Context) {
+	var req createPushDeviceRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.callerBelongsToBranch(c, req.BranchID) {
+		return
+	}
+	device, creds, err := h.svc.CreatePushDevice(c.Request.Context(), req.BranchID, req.Name, req.DeviceID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"device": device, "push": creds})
+}
+
+func (h *hikvisionHandler) pushCredentials(c *gin.Context) {
+	device, ok := h.loadDevice(c, c.Param("id"))
+	if !ok {
+		return
+	}
+	if device.Protocol != "push" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "not a push device"})
+		return
+	}
+	creds, err := h.svc.GetPushCredentials(c.Request.Context(), device.ID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+	c.JSON(http.StatusOK, creds)
 }
 
 type configurePushRequest struct {

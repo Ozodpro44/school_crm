@@ -101,11 +101,11 @@ func (s *HikvisionService) CreateDevice(ctx context.Context, req *CreateDeviceRe
 func (s *HikvisionService) GetDevice(ctx context.Context, id string) (*models.HikvisionDevice, error) {
 	d := &models.HikvisionDevice{}
 	err := s.db.GetConn().QueryRowContext(ctx, `
-		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at
+		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at
 		FROM hikvision_devices d
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 		WHERE d.id = $1`, id).Scan(
-		&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt)
+		&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("device not found")
 	}
@@ -124,6 +124,9 @@ func (s *HikvisionService) UpdateDeviceHost(ctx context.Context, deviceID, newHo
 	device, err := s.GetDevice(ctx, deviceID)
 	if err != nil {
 		return err
+	}
+	if device.Protocol == "push" {
+		return ErrPushDeviceUnsupported
 	}
 
 	client := NewHikvisionClient(newHost, device.Username, device.Password)
@@ -155,6 +158,9 @@ func (s *HikvisionService) UpdateDeviceCredentials(ctx context.Context, deviceID
 	if err != nil {
 		return err
 	}
+	if device.Protocol == "push" {
+		return ErrPushDeviceUnsupported
+	}
 	if host == "" {
 		host = device.Host
 	}
@@ -179,10 +185,10 @@ func (s *HikvisionService) UpdateDeviceCredentials(ctx context.Context, deviceID
 // polling from right here works just as well and needs no local machine).
 func (s *HikvisionService) ListActiveDevices(ctx context.Context) ([]models.HikvisionDevice, error) {
 	rows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at
+		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at
 		FROM hikvision_devices d
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
-		WHERE d.is_active = true`)
+		WHERE d.is_active = true AND d.protocol = 'isapi'`)
 	if err != nil {
 		return nil, err
 	}
@@ -191,7 +197,7 @@ func (s *HikvisionService) ListActiveDevices(ctx context.Context) ([]models.Hikv
 	var out []models.HikvisionDevice
 	for rows.Next() {
 		var d models.HikvisionDevice
-		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -201,7 +207,7 @@ func (s *HikvisionService) ListActiveDevices(ctx context.Context) ([]models.Hikv
 
 func (s *HikvisionService) ListDevicesByBranch(ctx context.Context, branchID string) ([]models.HikvisionDevice, error) {
 	rows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at
+		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at
 		FROM hikvision_devices d
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 		WHERE d.branch_id = $1 ORDER BY d.created_at`, branchID)
@@ -213,7 +219,7 @@ func (s *HikvisionService) ListDevicesByBranch(ctx context.Context, branchID str
 	var out []models.HikvisionDevice
 	for rows.Next() {
 		var d models.HikvisionDevice
-		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -228,6 +234,9 @@ func (s *HikvisionService) ConfigurePush(ctx context.Context, deviceID, publicHo
 	device, err := s.GetDevice(ctx, deviceID)
 	if err != nil {
 		return err
+	}
+	if device.Protocol == "push" {
+		return ErrPushDeviceUnsupported
 	}
 
 	client := NewHikvisionClient(device.Host, device.Username, device.Password)
@@ -255,6 +264,9 @@ func (s *HikvisionService) AddEmployee(ctx context.Context, req *AddEmployeeRequ
 	device, err := s.GetDevice(ctx, req.DeviceID)
 	if err != nil {
 		return nil, err
+	}
+	if device.Protocol == "push" {
+		return nil, ErrPushDeviceUnsupported
 	}
 
 	// A teacher link must point at a live teacher of the device's own branch —
@@ -317,6 +329,9 @@ func (s *HikvisionService) UploadEmployeeFace(ctx context.Context, employeeID st
 	if err != nil {
 		return err
 	}
+	if device.Protocol == "push" {
+		return ErrPushDeviceUnsupported
+	}
 	client := NewHikvisionClient(device.Host, device.Username, device.Password)
 	if err := client.UploadFace(emp.EmployeeNo, jpegData); err != nil {
 		return err
@@ -349,6 +364,9 @@ func (s *HikvisionService) RemoveEmployee(ctx context.Context, employeeID string
 	device, err := s.GetDevice(ctx, emp.DeviceID)
 	if err != nil {
 		return err
+	}
+	if device.Protocol == "push" {
+		return ErrPushDeviceUnsupported
 	}
 
 	client := NewHikvisionClient(device.Host, device.Username, device.Password)
@@ -525,6 +543,9 @@ func (s *HikvisionService) PollAndRecordEvents(ctx context.Context, deviceID str
 	device, err := s.GetDevice(ctx, deviceID)
 	if err != nil {
 		return 0, err
+	}
+	if device.Protocol == "push" {
+		return 0, ErrPushDeviceUnsupported
 	}
 
 	// AcsEvent start/end are naive wall-clock strings in the DEVICE's clock.

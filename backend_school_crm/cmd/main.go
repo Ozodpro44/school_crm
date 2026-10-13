@@ -464,6 +464,13 @@ func main() {
 	handlers.RegisterHikvisionWebhookRoutes(hikvisionWebhookGroup, hikvisionService)
 	handlers.RegisterHikCentralWebhookRoutes(hikvisionWebhookGroup, hikvisionService)
 
+	// Hikvision OTAP HTTPS PUSH: terminals connect OUT to /iot/{DEVID}/... and
+	// authenticate with a per-device credential (no JWT, no inbound access to
+	// the device). Heartbeats arrive every ~10s per device, hence the headroom.
+	hikvisionPushGroup := router.Group("")
+	hikvisionPushGroup.Use(rateLimiter.ByIP(600, time.Minute))
+	handlers.RegisterHikvisionPushRoutes(hikvisionPushGroup, hikvisionService)
+
 	// ── Legacy /api/* aliases ─────────────────────────────────────────────────
 	router.POST("/api/dev/auth/login", authRateLimit, rateLimiter.ByAccount(5, time.Minute), handlers.DeveloperLogin(developerService, cfg.JWTSecret))
 
