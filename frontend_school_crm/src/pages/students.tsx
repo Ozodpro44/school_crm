@@ -62,7 +62,8 @@ import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/compo
 import { InitialsAvatar } from "@/components/InitialsAvatar";
 import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
 import { savePageFilters, loadPageFilters } from "@/lib/page-filters";
-import { parseDelimited, looksLikeHeader } from "@/lib/importCsv";
+import { parseDelimited, looksLikeHeader, type ParsedRow } from "@/lib/importCsv";
+import { readXlsxFirstSheet } from "@/lib/xlsxRead";
 
 export default function StudentsPage() {
   const router = useRouter();
@@ -239,11 +240,21 @@ export default function StudentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, filterStatus, filterClass, filterPaymentStatus, page, limit]);
 
-  const processCSVData = async (csvText: string) => {
+  // Delimiter (, ; or tab), quotes, BOM and CRLF are handled by the parser:
+  // Excel on uz/ru locales saves CSV with ";" which the old split(",") missed.
+  const processCSVData = (csvText: string) => processImportRows(parseDelimited(csvText).rows);
+
+  // Excel stores phone numbers as numbers (no "+"), so 998901234567 or
+  // 901234567 arrive as bare digits.
+  const normalizeImportPhone = (raw: string): string => {
+    const digits = raw.replace(/[\s()-]/g, "");
+    if (/^998\d{9}$/.test(digits)) return `+${digits}`;
+    if (/^\d{9}$/.test(digits)) return `+998${digits}`;
+    return raw;
+  };
+
+  const processImportRows = async (parsedRows: ParsedRow[]) => {
     try {
-      // Delimiter (, ; or tab), quotes, BOM and CRLF are handled by the parser:
-      // Excel on uz/ru locales saves CSV with ";" which the old split(",") missed.
-      const { rows: parsedRows } = parseDelimited(csvText);
       const dataRows = parsedRows[0] && looksLikeHeader(parsedRows[0].cells)
         ? parsedRows.slice(1)
         : parsedRows;
@@ -336,8 +347,8 @@ export default function StudentsPage() {
             await apiCreateStudent({
               fullName,
               classId: classId || undefined,
-              phone,
-              parentPhone,
+              phone: normalizeImportPhone(phone),
+              parentPhone: normalizeImportPhone(parentPhone),
               monthlyPayment,
               status: "active",
               enrollmentDate: new Date().toISOString(),
@@ -388,10 +399,26 @@ export default function StudentsPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // .xlsx/.xls are zip/binary files; reading them as text produces garbage.
-    if (/\.(xlsx|xlsm|xls)$/i.test(file.name)) {
+    // Old binary .xls cannot be read in the browser; .xlsx/.xlsm are zip+XML.
+    if (/\.xls$/i.test(file.name)) {
       notify.error(t("importError"), t("importUseCsvNotExcel"));
       if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    if (/\.(xlsx|xlsm)$/i.test(file.name)) {
+      setIsImporting(true);
+      file
+        .arrayBuffer()
+        .then((buf) => readXlsxFirstSheet(buf))
+        .then((rows) => processImportRows(rows))
+        .catch((error) => {
+          notify.error(t("importError"), t("failedToReadFile"));
+          console.error(error);
+        })
+        .finally(() => {
+          setIsImporting(false);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        });
       return;
     }
 
@@ -1038,7 +1065,7 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".csv"
+                      accept=".csv,.xlsx,.xlsm"
                       onChange={handleFileUpload}
                       className="hidden"
                     />

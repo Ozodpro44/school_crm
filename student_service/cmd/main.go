@@ -156,11 +156,17 @@ func corsMiddleware(allowedOrigins []string) gin.HandlerFunc {
 }
 
 // purgeStatements are the trash-purge DELETEs. Students that still have
-// payments are excluded (payments cascade on student delete).
+// payments are excluded (payments cascade on student delete); classes that
+// still have attendance records or assignments are excluded too, because
+// attendance.class_id / assignments.class_id are ON DELETE CASCADE and a
+// purge would silently erase that academic history (they stay soft-deleted).
 var purgeStatements = []struct{ label, sql string }{
 	{"students", `DELETE FROM students s
 		WHERE s.deleted_at IS NOT NULL AND s.deleted_at < now() - interval '30 days'
 		  AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.student_id = s.id)`},
-	{"classes", `DELETE FROM classes WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`},
+	{"classes", `DELETE FROM classes c
+		WHERE c.deleted_at IS NOT NULL AND c.deleted_at < now() - interval '30 days'
+		  AND NOT EXISTS (SELECT 1 FROM attendance a WHERE a.class_id = c.id)
+		  AND NOT EXISTS (SELECT 1 FROM assignments x WHERE x.class_id = c.id)`},
 	{"assignments", `DELETE FROM assignments WHERE deleted_at IS NOT NULL AND deleted_at < now() - interval '30 days'`},
 }

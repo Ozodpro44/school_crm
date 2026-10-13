@@ -428,7 +428,36 @@ func (s *StudentService) Update(ctx context.Context, id, branchID string, fields
 		}
 	}
 
-	res, err := s.db.Conn().ExecContext(ctx,
+	tx, err := s.db.Conn().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback() // no-op after Commit
+
+	// Moving a student out of "left" puts them back on the plan's student
+	// count (limits count status != 'left'), so it needs the same check as
+	// Create/Restore - otherwise Update was a way around the plan limit.
+	if raw, present := fields["status"]; present {
+		if newStatus, isStr := raw.(string); isStr && newStatus != "left" {
+			var current string
+			err := tx.QueryRowContext(ctx,
+				`SELECT status FROM students WHERE id = $1 AND branch_id = $2 AND deleted_at IS NULL FOR UPDATE`,
+				id, branchID).Scan(&current)
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, ErrNotFound
+			}
+			if err != nil {
+				return nil, err
+			}
+			if current == "left" {
+				if err := checkPlanLimit(ctx, tx, branchID, "students"); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	res, err := tx.ExecContext(ctx,
 		"UPDATE students SET "+strings.Join(parts, ", ")+
 			" WHERE id = $"+strconv.Itoa(n)+" AND branch_id = $"+strconv.Itoa(n+1), args...)
 	if err != nil {
@@ -436,6 +465,9 @@ func (s *StudentService) Update(ctx context.Context, id, branchID string, fields
 	}
 	if rows, _ := res.RowsAffected(); rows == 0 {
 		return nil, ErrNotFound
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
 	}
 	return s.GetByID(ctx, id)
 }

@@ -25,6 +25,9 @@ type CustomClaims struct {
 	Role     string `json:"role"`
 	BranchID string `json:"branch_id,omitempty"`
 	Type     string `json:"type,omitempty"`
+	// SessionID (sid) ties the token to a row in user_sessions; tokens minted
+	// before sessions existed have none.
+	SessionID string `json:"sid,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -68,6 +71,7 @@ func JWTAuth(jwtSecret string) gin.HandlerFunc {
 		c.Request.Header.Set("X-User-ID", claims.UserID)
 		c.Request.Header.Set("X-User-Role", claims.Role)
 		c.Request.Header.Set("X-User-Branch-ID", claims.BranchID)
+		c.Request.Header.Set("X-Session-ID", claims.SessionID)
 
 		c.Next()
 	}

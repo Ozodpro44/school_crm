@@ -103,11 +103,52 @@ var (
 // ── UserService ───────────────────────────────────────────────────────────────
 
 type UserService struct {
-	db *db.DB
+	db    *db.DB
+	redis *redis.Client // optional: lets session revocation reach the gateway/monolith
 }
 
 func NewUserService(database *db.DB) *UserService {
 	return &UserService{db: database}
+}
+
+// WithRedis enables writing the "session revoked" flags that the gateway and
+// monolith check (same key format as auth_service).
+func (s *UserService) WithRedis(r *redis.Client) *UserService {
+	s.redis = r
+	return s
+}
+
+// sessionRevokedKey must match auth_service's key exactly.
+func sessionRevokedKey(sessionID string) string { return "auth:session:revoked:" + sessionID }
+
+const sessionRevokedTTL = 25 * time.Hour // longer than the access-token lifetime
+
+// RevokeSessions signs a user out everywhere except exceptSessionID ("" =
+// everywhere): marks the durable rows revoked and sets the Redis flag per
+// session so tokens already issued stop working.
+func (s *UserService) RevokeSessions(ctx context.Context, userID, exceptSessionID string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	rows, err := s.db.Conn().QueryContext(ctx,
+		`UPDATE user_sessions SET revoked_at = NOW()
+		 WHERE user_id = $1 AND revoked_at IS NULL AND ($2 = '' OR id::text <> $2)
+		 RETURNING id::text`, userID, exceptSessionID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sid string
+		if err := rows.Scan(&sid); err != nil {
+			return err
+		}
+		if s.redis != nil {
+			if err := s.redis.Set(ctx, sessionRevokedKey(sid), "1", sessionRevokedTTL).Err(); err != nil {
+				slog.Warn("session revoke flag write failed", "session_id", sid, "error", err)
+			}
+		}
+	}
+	return rows.Err()
 }
 
 func (s *UserService) GetByID(ctx context.Context, id string) (*User, error) {
@@ -295,7 +336,7 @@ func VerifyPassword(hash, plain string) bool {
 
 // ChangePassword sets a new password for user id. When requireCurrent is true
 // (self-service) the supplied currentPassword must match the stored hash.
-func (s *UserService) ChangePassword(ctx context.Context, id, currentPassword, newPassword string, requireCurrent bool) error {
+func (s *UserService) ChangePassword(ctx context.Context, id, currentPassword, newPassword string, requireCurrent bool, keepSessionID string) error {
 	if err := ValidateNewPassword(newPassword); err != nil {
 		return err
 	}
@@ -333,6 +374,12 @@ func (s *UserService) ChangePassword(ctx context.Context, id, currentPassword, n
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
+	}
+	// A changed password must end other logins: anyone holding the old one
+	// (or a stolen token) stays signed in otherwise. Best effort - the password
+	// change itself already succeeded.
+	if err := s.RevokeSessions(ctx, id, keepSessionID); err != nil {
+		slog.Warn("revoke sessions after password change failed", "user_id", id, "error", err)
 	}
 	return nil
 }

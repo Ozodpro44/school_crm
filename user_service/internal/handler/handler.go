@@ -411,7 +411,13 @@ func (h *Handler) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
-	if err := h.users.ChangePassword(ctx, target.ID, req.CurrentPassword, req.Password, self); err != nil {
+	// Changing your own password keeps this device signed in; resetting someone
+	// else's signs them out everywhere.
+	keep := ""
+	if self {
+		keep = c.GetHeader("X-Session-ID")
+	}
+	if err := h.users.ChangePassword(ctx, target.ID, req.CurrentPassword, req.Password, self, keep); err != nil {
 		code, msg := passwordChangeStatus(err)
 		c.JSON(code, gin.H{"error": msg})
 		return
