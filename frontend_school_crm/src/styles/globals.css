@@ -295,3 +295,21 @@
     background: rgb(15 23 42);
   }
 }
+
+
+/* Toast auto-dismiss countdown bar. Radix pauses the dismiss timer on hover/focus,
+   so the bar pauses with it. */
+@keyframes toast-progress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+.toast-progress {
+  animation: toast-progress var(--toast-duration, 5s) linear forwards;
+}
+.group:hover .toast-progress,
+.group:focus-within .toast-progress {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-progress { animation: none; }
+}

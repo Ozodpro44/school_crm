@@ -243,4 +243,7 @@ export const studentTranslations: Partial<Translation> = {
   noClassesFound: { "uz-cyrl": "Синфлар топилмади", "uz-latn": "Sinflar topilmadi", en: "No classes found" },
   studentsWillBeMoved: { "uz-cyrl": "ўқувчи кўчирилади", "uz-latn": "o’quvchi ko’chiriladi", en: "students will be moved" },
   noPermissionToCreateOrEditStudents: { "uz-cyrl": "Ўқувчи қўшиш ёки таҳрирлаш ҳуқуқи йўқ", "uz-latn": "O’quvchi qo’shish yoki tahrirlash huquqi yo’q", en: "No permission to create or edit students" },
+  importRowSkipped: { "uz-cyrl": "{row}-қатор ўтказиб юборилди: камида 3 та устун керак (Исм, Синф, Телефон)", "uz-latn": "{row}-qator o’tkazib yuborildi: kamida 3 ta ustun kerak (Ism, Sinf, Telefon)", en: "Row {row} skipped: at least 3 columns are required (Name, Class, Phone)" },
+  importNoValidRows: { "uz-cyrl": "Файлда ярокли қаторлар топилмади. Файлни CSV (UTF-8) сифатида сақланг ва устунлар: Исм, Синф, Телефон, Ота-она телефони, Тўлов.", "uz-latn": "Faylda yaroqli qatorlar topilmadi. Faylni CSV (UTF-8) sifatida saqlang va ustunlar: Ism, Sinf, Telefon, Ota-ona telefoni, To’lov.", en: "No valid rows found in the file. Save it as CSV (UTF-8) with columns: Name, Class, Phone, Parent Phone, Payment." },
+  importUseCsvNotExcel: { "uz-cyrl": "Эски .xls формати қўллаб-қувватланмайди. Excel’да «Сақлаш» орқали .xlsx ёки CSV (UTF-8) танланг.", "uz-latn": "Eski .xls formati qo’llab-quvvatlanmaydi. Excel’da «Saqlash» orqali .xlsx yoki CSV (UTF-8) ni tanlang.", en: "The old .xls format is not supported. In Excel use Save As and choose .xlsx or CSV (UTF-8)." },
 };

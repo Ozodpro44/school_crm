@@ -1,148 +1,92 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import {
-  LayoutDashboard, FileText, Building2, CreditCard,
-  Users, Activity, Bell, Settings, LogOut, ChevronLeft,
-  ChevronRight, Terminal, Wallet, BookOpen, AlertTriangle, Globe, Trash2,
-} from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { PanelLeftClose, PanelLeftOpen, Terminal } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation } from "@/lib/i18n";
-import { LANGUAGES } from "@/lib/i18n/types";
-import { toast } from "sonner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { NAV_GROUPS, isActivePath } from "./nav";
 
-const NAV = [
-  { nameKey: "navDashboard",     href: "/",                   icon: LayoutDashboard },
-  { nameKey: "navLogs",          href: "/logs",               icon: FileText        },
-  { nameKey: "navBranches",      href: "/branches",           icon: Building2       },
-  { nameKey: "navSubscriptions", href: "/subscriptions",      icon: CreditCard      },
-  { nameKey: "navPlans",         href: "/subscription-plans", icon: BookOpen        },
-  { nameKey: "navPaymentTypes",  href: "/payment-types",      icon: Wallet          },
-  { nameKey: "navUsers",         href: "/users",              icon: Users           },
-  { nameKey: "navTrash",         href: "/trash",              icon: Trash2          },
-  { nameKey: "navAnalytics",     href: "/analytics",          icon: Activity        },
-  { nameKey: "navIncidents",     href: "/incidents",          icon: AlertTriangle   },
-  { nameKey: "navNotifications", href: "/notifications",      icon: Bell            },
-  { nameKey: "navSettings",      href: "/settings",           icon: Settings        },
-];
+interface SidebarContentProps {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+  onToggleCollapsed?: () => void;
+}
 
-export function Sidebar({ collapsed, onCollapsedChange }: { collapsed: boolean; onCollapsedChange: (collapsed: boolean) => void }) {
+/** Navigation rail. Used inline on desktop and inside a Sheet on small screens. */
+export function SidebarContent({ collapsed = false, onNavigate, onToggleCollapsed }: SidebarContentProps) {
   const location = useLocation();
-  const navigate = useNavigate();
-  const { user, logout } = useAuth();
-  const { language, setLanguage } = useLanguage();
+  const { language } = useLanguage();
   const t = (key: string) => getTranslation(key, language);
 
-  const handleLogout = () => {
-    logout();
-    toast.success(t("signedOut"));
-    navigate("/login");
-  };
-
-  const cycleLanguage = () => {
-    const idx = LANGUAGES.findIndex((l) => l.value === language);
-    setLanguage(LANGUAGES[(idx + 1) % LANGUAGES.length].value);
-  };
-
-  const initials = user?.fullName
-    ? user.fullName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
-    : user?.email?.slice(0, 2).toUpperCase() ?? "?";
-
   return (
-    <aside
-      className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-sidebar border-r border-sidebar-border transition-all duration-300 flex flex-col",
-        collapsed ? "w-14" : "w-60"
-      )}
-    >
-      {/* Logo */}
-      <div className={cn(
-        "flex h-14 items-center border-b border-sidebar-border flex-shrink-0",
-        collapsed ? "justify-center px-0" : "px-4 gap-2.5"
-      )}>
-        <div className="w-7 h-7 rounded-lg bg-primary/15 border border-primary/30 flex items-center justify-center flex-shrink-0">
-          <Terminal className="w-4 h-4 text-primary" />
-        </div>
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+      <div className={cn("flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border", collapsed ? "justify-center" : "px-4")}>
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background">
+          <Terminal className="h-4 w-4" />
+        </span>
         {!collapsed && (
-          <div>
-            <p className="text-xs font-bold text-primary tracking-wider uppercase leading-none">{t("devPortal")}</p>
-            <p className="text-[10px] text-sidebar-foreground mt-0.5">Wonderkids CRM</p>
+          <div className="min-w-0 leading-tight">
+            <p className="truncate text-sm font-semibold text-sidebar-accent-foreground">{t("devPortal")}</p>
+            <p className="truncate text-[11px] text-sidebar-foreground">Wonderkids CRM</p>
           </div>
         )}
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-        {NAV.map(({ nameKey, href, icon: Icon }) => {
-          const active = href === "/" ? location.pathname === "/" : location.pathname.startsWith(href);
-          const name = t(nameKey);
-          return (
-            <Link
-              key={href}
-              to={href}
-              title={collapsed ? name : undefined}
-              className={cn(
-                "nav-item",
-                active && "nav-item-active",
-                collapsed && "justify-center px-2"
-              )}
-            >
-              <Icon className="w-4 h-4 flex-shrink-0" />
-              {!collapsed && <span>{name}</span>}
-              {!collapsed && active && <ChevronRight className="w-3 h-3 ml-auto opacity-50" />}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 space-y-5 overflow-y-auto px-2 py-4" aria-label="Primary">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.titleKey} className="space-y-0.5">
+            {!collapsed && (
+              <p className="px-2.5 pb-1 text-[11px] font-medium text-sidebar-foreground/70">{t(group.titleKey)}</p>
+            )}
+            {group.items.map(({ nameKey, href, icon: Icon }) => {
+              const active = isActivePath(location.pathname, href);
+              const name = t(nameKey);
+              const link = (
+                <Link
+                  to={href}
+                  onClick={onNavigate}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring/50",
+                    collapsed && "justify-center px-0 py-2",
+                    active
+                      ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                      : "hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+                  )}
+                >
+                  <Icon className={cn("h-4 w-4 shrink-0", active ? "text-sidebar-accent-foreground" : "text-sidebar-foreground/80")} />
+                  {!collapsed && <span className="truncate">{name}</span>}
+                </Link>
+              );
+              return collapsed ? (
+                <Tooltip key={href}>
+                  <TooltipTrigger asChild>{link}</TooltipTrigger>
+                  <TooltipContent side="right">{name}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <div key={href}>{link}</div>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
-      {/* Footer */}
-      <div className="border-t border-sidebar-border p-2 space-y-1 flex-shrink-0">
-        {!collapsed && user && (
-          <div className="flex items-center gap-2.5 px-2 py-1.5">
-            <div className="w-7 h-7 rounded-full bg-primary/15 border border-primary/25 flex items-center justify-center text-[11px] font-bold text-primary flex-shrink-0">
-              {initials}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-sidebar-accent-foreground truncate">
-                {user.fullName || "Developer"}
-              </p>
-              <p className="text-[10px] text-sidebar-foreground truncate">{user.email}</p>
-            </div>
-          </div>
-        )}
-        <button
-          onClick={cycleLanguage}
-          title={collapsed ? LANGUAGES.find((l) => l.value === language)?.label : undefined}
-          className={cn(
-            "w-full flex items-center gap-2 py-2 px-2 rounded-lg transition-colors text-sidebar-foreground hover:text-sidebar-accent-foreground hover:bg-sidebar-accent text-xs",
-            collapsed && "justify-center"
-          )}
-        >
-          <Globe className="w-4 h-4 flex-shrink-0" />
-          {!collapsed && <span>{LANGUAGES.find((l) => l.value === language)?.label}</span>}
-        </button>
-        <button
-          onClick={handleLogout}
-          title={collapsed ? t("signOut") : undefined}
-          className={cn(
-            "w-full flex items-center gap-2 py-2 px-2 rounded-lg transition-colors text-sidebar-foreground hover:text-destructive hover:bg-destructive/10 text-xs",
-            collapsed && "justify-center"
-          )}
-        >
-          <LogOut className="w-4 h-4 flex-shrink-0" />
-          {!collapsed && t("signOut")}
-        </button>
-        <button
-          onClick={() => onCollapsedChange(!collapsed)}
-          className="w-full flex items-center justify-center py-2 rounded-lg hover:bg-sidebar-accent transition-colors text-sidebar-foreground hover:text-sidebar-accent-foreground"
-        >
-          {collapsed ? <ChevronRight className="w-3.5 h-3.5" /> : (
-            <span className="flex items-center gap-1.5 text-xs">
-              <ChevronLeft className="w-3.5 h-3.5" /> {t("collapse")}
-            </span>
-          )}
-        </button>
-      </div>
-    </aside>
+      {onToggleCollapsed && (
+        <div className="shrink-0 border-t border-sidebar-border p-2">
+          <button
+            onClick={onToggleCollapsed}
+            aria-label={collapsed ? t("expandSidebar") : t("collapseSidebar")}
+            className={cn(
+              "flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground",
+              collapsed && "justify-center px-0 py-2",
+            )}
+          >
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            {!collapsed && <span>{t("collapse")}</span>}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

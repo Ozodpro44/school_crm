@@ -27,7 +27,7 @@ export const subscriptionPlans: Translation = {
   deletePlanConfirm: { en: 'Delete "{name}"? This cannot be undone.', ru: 'Удалить "{name}"? Это действие нельзя отменить.', uz: '"{name}" o\'chirilsinmi? Bu amalni ortga qaytarib bo\'lmaydi.' },
   planName: { en: "Plan Name *", ru: "Название тарифа *", uz: "Tarif nomi *" },
   briefPlanDescription: { en: "Brief plan description", ru: "Краткое описание тарифа", uz: "Qisqacha tarif tavsifi" },
-  priceUsd: { en: "Price ($)", ru: "Цена ($)", uz: "Narx ($)" },
+  priceUsd: { en: "Price (UZS)", ru: "Цена (UZS)", uz: "Narx (UZS)" },
   billingPeriod: { en: "Billing Period", ru: "Период оплаты", uz: "To'lov davri" },
   monthly: { en: "Monthly", ru: "Ежемесячно", uz: "Oylik" },
   yearly: { en: "Yearly", ru: "Ежегодно", uz: "Yillik" },

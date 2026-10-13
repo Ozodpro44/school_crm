@@ -77,6 +77,29 @@ type TeacherService struct {
 // ListTeachers/ListSalaries/TeacherSalaryHistory) let ANY authenticated
 // caller — including a teacher — read another branch's teacher/salary data
 // by editing the query string.
+// deleteFlagColumns is a whitelist: column names are interpolated into SQL.
+var deleteFlagColumns = map[string]bool{"can_delete_teachers": true, "can_delete_salaries": true}
+
+// HasDeleteFlag reports whether the user was granted the given per-user delete
+// permission (permissions.<column>). No row or a NULL value means false.
+func (s *TeacherService) HasDeleteFlag(ctx context.Context, userID, column string) (bool, error) {
+	if !deleteFlagColumns[column] {
+		return false, fmt.Errorf("HasDeleteFlag: column %q not allowed", column)
+	}
+	if userID == "" {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	var ok bool
+	err := s.db.Conn().QueryRowContext(ctx,
+		`SELECT COALESCE(`+column+`, false) FROM permissions WHERE user_id = $1`, userID).Scan(&ok)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return ok, err
+}
+
 func (s *TeacherService) HasBranchAccess(ctx context.Context, userID, role, branchID string) (bool, error) {
 	if role == "developer" || role == "super_admin" {
 		return true, nil
@@ -295,8 +318,10 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 		}
 		userID := uuid.New().String()
 		_, err = tx.ExecContext(ctx,
-			`INSERT INTO users (id, email, password_hash, role, full_name, branch_id, created_at, updated_at)
-			 VALUES ($1, $2, $3, 'teacher', $4, $5, $6, $6)`,
+			// email_verified = true: the admin who adds the teacher vouches for the
+			// address; unverified accounts cannot log in (auth_service).
+			`INSERT INTO users (id, email, password_hash, role, full_name, branch_id, email_verified, email_verified_at, created_at, updated_at)
+			 VALUES ($1, $2, $3, 'teacher', $4, $5, true, $6, $6, $6)`,
 			userID, req.Email, string(hashedPw), req.FullName, req.BranchID, now,
 		)
 		if err != nil {

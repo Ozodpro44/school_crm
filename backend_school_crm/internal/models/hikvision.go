@@ -16,6 +16,14 @@ type HikvisionDevice struct {
 	IsActive     bool      `json:"isActive" db:"is_active"`
 	CreatedAt    time.Time `json:"createdAt" db:"created_at"`
 	UpdatedAt    time.Time `json:"updatedAt" db:"updated_at"`
+
+	// Protocol is "isapi" (we dial the device) or "push" (the device dials
+	// us over OTAP HTTPS PUSH; no inbound access needed, Host is empty).
+	Protocol     string     `json:"protocol" db:"protocol"`
+	PushDeviceID *string    `json:"pushDeviceId,omitempty" db:"push_device_id"` // serial used as DEVID in /iot/{DEVID}/...
+	PushUsername string     `json:"-" db:"push_username"`
+	PushPassword string     `json:"-" db:"push_password"`
+	LastSeenAt   *time.Time `json:"lastSeenAt,omitempty" db:"last_seen_at"` // last heartbeat/event from a push device
 }
 
 // HikvisionEmployee links a person enrolled on a device (by its own

@@ -738,6 +738,20 @@ export async function deleteUser(id: string): Promise<{ success: boolean }> {
 }
 
 /**
+ * A user's permission flags (user_service GET /permissions/:id; allowed for
+ * the user themself and for admins within their branch). Returns null when
+ * there is no permissions row or the request fails; callers then keep the
+ * role defaults.
+ */
+export async function getUserPermissions(userId: string): Promise<Record<string, boolean> | null> {
+  try {
+    return await apiRequest<Record<string, boolean>>(`/permissions/${userId}`);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Update user permissions
  */
 export async function updateUserPermissions(

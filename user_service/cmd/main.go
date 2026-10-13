@@ -61,7 +61,7 @@ func main() {
 		}
 	}
 
-	userSvc := service.NewUserService(database)
+	userSvc := service.NewUserService(database).WithRedis(rdb)
 	branchSvc := service.NewBranchService(database)
 	permSvc := service.NewPermissionService(database, rdb)
 

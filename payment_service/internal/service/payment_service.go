@@ -132,6 +132,29 @@ type PaymentService struct {
 // by editing the query string. Blindly preferring the JWT's own branch_id
 // instead would break the legitimate multi-branch case. This checks
 // authorization for whichever branchId was actually requested.
+// deleteFlagColumns is a whitelist: column names are interpolated into SQL.
+var deleteFlagColumns = map[string]bool{"can_delete_payments": true}
+
+// HasDeleteFlag reports whether the user was granted the given per-user delete
+// permission (permissions.<column>). No row or a NULL value means false.
+func (s *PaymentService) HasDeleteFlag(ctx context.Context, userID, column string) (bool, error) {
+	if !deleteFlagColumns[column] {
+		return false, fmt.Errorf("HasDeleteFlag: column %q not allowed", column)
+	}
+	if userID == "" {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	var ok bool
+	err := s.db.Conn().QueryRowContext(ctx,
+		`SELECT COALESCE(`+column+`, false) FROM permissions WHERE user_id = $1`, userID).Scan(&ok)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return ok, err
+}
+
 func (s *PaymentService) HasBranchAccess(ctx context.Context, userID, role, branchID string) (bool, error) {
 	if role == "developer" || role == "super_admin" {
 		return true, nil

@@ -14,6 +14,7 @@ import { incidents } from "./incidents";
 import { notifications } from "./notifications";
 import { settings } from "./settings";
 import { trash } from "./trash";
+import { kit } from "./kit";
 
 export type { Language } from "./types";
 export { LANGUAGES } from "./types";
@@ -34,6 +35,7 @@ const translations: Translation = {
   ...notifications,
   ...settings,
   ...trash,
+  ...kit,
 };
 
 export function getTranslation(key: string, language: Language): string {

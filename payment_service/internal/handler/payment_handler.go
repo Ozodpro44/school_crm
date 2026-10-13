@@ -52,12 +52,20 @@ func canDelete(role string) bool {
 	}
 }
 
-func (h *PaymentHandler) requireDeletePermission(c *gin.Context) bool {
-	if !canDelete(c.GetHeader("X-User-Role")) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
-		return false
+func (h *PaymentHandler) requireDeletePermission(c *gin.Context, flag string) bool {
+	if canDelete(c.GetHeader("X-User-Role")) {
+		return true
 	}
-	return true
+	// Otherwise honour the per-user permission flag an admin granted on the
+	// Managers page (permissions.<flag>). flag == "" means role-only.
+	if flag != "" {
+		ok, err := h.svc.HasDeleteFlag(c.Request.Context(), c.GetHeader("X-User-ID"), flag)
+		if err == nil && ok {
+			return true
+		}
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
+	return false
 }
 
 // isSuperRole reports whether role is a platform-level role that operates
@@ -228,7 +236,7 @@ func (h *PaymentHandler) Update(c *gin.Context) {
 // Delete godoc
 // DELETE /api/v1/payments/:id
 func (h *PaymentHandler) Delete(c *gin.Context) {
-	if !h.requireDeletePermission(c) {
+	if !h.requireDeletePermission(c, "can_delete_payments") {
 		return
 	}
 	id := c.Param("id")
@@ -275,7 +283,7 @@ func (h *PaymentHandler) Delete(c *gin.Context) {
 // POST /api/v1/payments/:id/restore
 // Undoes a soft-delete, same authorization as Delete.
 func (h *PaymentHandler) Restore(c *gin.Context) {
-	if !h.requireDeletePermission(c) {
+	if !h.requireDeletePermission(c, "can_delete_payments") {
 		return
 	}
 	id := c.Param("id")

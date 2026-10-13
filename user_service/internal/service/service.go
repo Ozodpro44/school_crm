@@ -73,12 +73,15 @@ type Permission struct {
 	CanViewClasses         bool   `json:"canViewClasses"`
 	CanCreateClasses       bool   `json:"canCreateClasses"`
 	CanEditClasses         bool   `json:"canEditClasses"`
+	CanDeleteClasses       bool   `json:"canDeleteClasses"`
 	CanViewPayments        bool   `json:"canViewPayments"`
 	CanCreatePayments      bool   `json:"canCreatePayments"`
 	CanEditPayments        bool   `json:"canEditPayments"`
+	CanDeletePayments      bool   `json:"canDeletePayments"`
 	CanViewSalaries        bool   `json:"canViewSalaries"`
 	CanCreateSalaries      bool   `json:"canCreateSalaries"`
 	CanEditSalaries        bool   `json:"canEditSalaries"`
+	CanDeleteSalaries      bool   `json:"canDeleteSalaries"`
 	CanViewExpenses        bool   `json:"canViewExpenses"`
 	CanCreateExpenses      bool   `json:"canCreateExpenses"`
 	CanEditExpenses        bool   `json:"canEditExpenses"`
@@ -100,11 +103,52 @@ var (
 // ── UserService ───────────────────────────────────────────────────────────────
 
 type UserService struct {
-	db *db.DB
+	db    *db.DB
+	redis *redis.Client // optional: lets session revocation reach the gateway/monolith
 }
 
 func NewUserService(database *db.DB) *UserService {
 	return &UserService{db: database}
+}
+
+// WithRedis enables writing the "session revoked" flags that the gateway and
+// monolith check (same key format as auth_service).
+func (s *UserService) WithRedis(r *redis.Client) *UserService {
+	s.redis = r
+	return s
+}
+
+// sessionRevokedKey must match auth_service's key exactly.
+func sessionRevokedKey(sessionID string) string { return "auth:session:revoked:" + sessionID }
+
+const sessionRevokedTTL = 25 * time.Hour // longer than the access-token lifetime
+
+// RevokeSessions signs a user out everywhere except exceptSessionID ("" =
+// everywhere): marks the durable rows revoked and sets the Redis flag per
+// session so tokens already issued stop working.
+func (s *UserService) RevokeSessions(ctx context.Context, userID, exceptSessionID string) error {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	rows, err := s.db.Conn().QueryContext(ctx,
+		`UPDATE user_sessions SET revoked_at = NOW()
+		 WHERE user_id = $1 AND revoked_at IS NULL AND ($2 = '' OR id::text <> $2)
+		 RETURNING id::text`, userID, exceptSessionID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sid string
+		if err := rows.Scan(&sid); err != nil {
+			return err
+		}
+		if s.redis != nil {
+			if err := s.redis.Set(ctx, sessionRevokedKey(sid), "1", sessionRevokedTTL).Err(); err != nil {
+				slog.Warn("session revoke flag write failed", "session_id", sid, "error", err)
+			}
+		}
+	}
+	return rows.Err()
 }
 
 func (s *UserService) GetByID(ctx context.Context, id string) (*User, error) {
@@ -187,8 +231,11 @@ func (s *UserService) Create(ctx context.Context, email, password, fullName, rol
 	id := uuid.NewString()
 	now := time.Now().UTC()
 	_, err = s.db.Conn().ExecContext(ctx,
-		`INSERT INTO users (id, email, password_hash, full_name, role, branch_id, language, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, 'en', $7, $7)`,
+		// email_verified = true: an admin creating the account vouches for the
+		// address (there is no signup OTP for it); the column defaults to false
+		// and auth_service refuses to log in unverified accounts.
+		`INSERT INTO users (id, email, password_hash, full_name, role, branch_id, language, email_verified, email_verified_at, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, 'en', true, $7, $7, $7)`,
 		id, email, string(hash), fullName, role, branchID, now,
 	)
 	if err != nil {
@@ -224,12 +271,21 @@ func (s *UserService) Update(ctx context.Context, id string, fields map[string]i
 	parts := []string{}
 	args := []interface{}{}
 	n := 1
-	for k, v := range fields {
+	// The frontend sends camelCase keys (canDeleteStudents) while columns are
+	// snake_case; before this, every key from the Managers page failed the
+	// allowlist and the edit was silently dropped. Accept both spellings and
+	// require real booleans.
+	for rawKey, v := range fields {
+		k := permissionColumn(rawKey)
 		if !allowed[k] {
 			continue
 		}
+		b, ok := v.(bool)
+		if !ok {
+			return nil, fmt.Errorf("permission %q must be a boolean", rawKey)
+		}
 		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
-		args = append(args, v)
+		args = append(args, b)
 		n++
 	}
 	if len(parts) == 0 {
@@ -280,7 +336,7 @@ func VerifyPassword(hash, plain string) bool {
 
 // ChangePassword sets a new password for user id. When requireCurrent is true
 // (self-service) the supplied currentPassword must match the stored hash.
-func (s *UserService) ChangePassword(ctx context.Context, id, currentPassword, newPassword string, requireCurrent bool) error {
+func (s *UserService) ChangePassword(ctx context.Context, id, currentPassword, newPassword string, requireCurrent bool, keepSessionID string) error {
 	if err := ValidateNewPassword(newPassword); err != nil {
 		return err
 	}
@@ -318,6 +374,12 @@ func (s *UserService) ChangePassword(ctx context.Context, id, currentPassword, n
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
+	}
+	// A changed password must end other logins: anyone holding the old one
+	// (or a stolen token) stays signed in otherwise. Best effort - the password
+	// change itself already succeeded.
+	if err := s.RevokeSessions(ctx, id, keepSessionID); err != nil {
+		slog.Warn("revoke sessions after password change failed", "user_id", id, "error", err)
 	}
 	return nil
 }
@@ -973,9 +1035,9 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		SELECT id, user_id,
 		       can_view_students, can_create_students, can_edit_students, can_delete_students,
 		       can_view_teachers, can_create_teachers, can_edit_teachers, can_delete_teachers,
-		       can_view_classes, can_create_classes, can_edit_classes,
-		       can_view_payments, can_create_payments, can_edit_payments,
-		       can_view_salaries, can_create_salaries, can_edit_salaries,
+		       can_view_classes, can_create_classes, can_edit_classes, can_delete_classes,
+		       can_view_payments, can_create_payments, can_edit_payments, can_delete_payments,
+		       can_view_salaries, can_create_salaries, can_edit_salaries, can_delete_salaries,
 		       can_view_expenses, can_create_expenses, can_edit_expenses, can_delete_expenses,
 		       can_view_reports, can_view_settings, can_edit_settings,
 		       COALESCE(can_view_subscriptions, true), COALESCE(can_manage_subscriptions, false)
@@ -984,9 +1046,9 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		&p.ID, &p.UserID,
 		&p.CanViewStudents, &p.CanCreateStudents, &p.CanEditStudents, &p.CanDeleteStudents,
 		&p.CanViewTeachers, &p.CanCreateTeachers, &p.CanEditTeachers, &p.CanDeleteTeachers,
-		&p.CanViewClasses, &p.CanCreateClasses, &p.CanEditClasses,
-		&p.CanViewPayments, &p.CanCreatePayments, &p.CanEditPayments,
-		&p.CanViewSalaries, &p.CanCreateSalaries, &p.CanEditSalaries,
+		&p.CanViewClasses, &p.CanCreateClasses, &p.CanEditClasses, &p.CanDeleteClasses,
+		&p.CanViewPayments, &p.CanCreatePayments, &p.CanEditPayments, &p.CanDeletePayments,
+		&p.CanViewSalaries, &p.CanCreateSalaries, &p.CanEditSalaries, &p.CanDeleteSalaries,
 		&p.CanViewExpenses, &p.CanCreateExpenses, &p.CanEditExpenses, &p.CanDeleteExpenses,
 		&p.CanViewReports, &p.CanViewSettings, &p.CanEditSettings,
 		&p.CanViewSubscriptions, &p.CanManageSubscriptions,
@@ -998,6 +1060,23 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		return nil, err
 	}
 	return &p, nil
+}
+
+// permissionColumn maps "canDeleteStudents" or "can_delete_students" to the
+// snake_case column name.
+func permissionColumn(key string) string {
+	var b strings.Builder
+	for i, r := range key {
+		if r >= 'A' && r <= 'Z' {
+			if i > 0 {
+				b.WriteByte('_')
+			}
+			b.WriteRune(r + ('a' - 'A'))
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func (s *PermissionService) Upsert(ctx context.Context, userID string, fields map[string]interface{}) (*Permission, error) {
@@ -1025,9 +1104,9 @@ func (s *PermissionService) Upsert(ctx context.Context, userID string, fields ma
 	allowed := map[string]bool{
 		"can_view_students": true, "can_create_students": true, "can_edit_students": true, "can_delete_students": true,
 		"can_view_teachers": true, "can_create_teachers": true, "can_edit_teachers": true, "can_delete_teachers": true,
-		"can_view_classes": true, "can_create_classes": true, "can_edit_classes": true,
-		"can_view_payments": true, "can_create_payments": true, "can_edit_payments": true,
-		"can_view_salaries": true, "can_create_salaries": true, "can_edit_salaries": true,
+		"can_view_classes": true, "can_create_classes": true, "can_edit_classes": true, "can_delete_classes": true,
+		"can_view_payments": true, "can_create_payments": true, "can_edit_payments": true, "can_delete_payments": true,
+		"can_view_salaries": true, "can_create_salaries": true, "can_edit_salaries": true, "can_delete_salaries": true,
 		"can_view_expenses": true, "can_create_expenses": true, "can_edit_expenses": true, "can_delete_expenses": true,
 		"can_view_reports": true, "can_view_settings": true, "can_edit_settings": true,
 		"can_view_subscriptions": true, "can_manage_subscriptions": true,

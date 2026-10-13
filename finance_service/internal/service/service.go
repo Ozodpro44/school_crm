@@ -69,6 +69,29 @@ type ExpenseService struct {
 // param. Blindly trusting that query param let ANY authenticated caller —
 // including a teacher — read another branch's expense data by editing the
 // query string.
+// deleteFlagColumns is a whitelist: column names are interpolated into SQL.
+var deleteFlagColumns = map[string]bool{"can_delete_expenses": true}
+
+// HasDeleteFlag reports whether the user was granted the given per-user delete
+// permission (permissions.<column>). No row or a NULL value means false.
+func (s *ExpenseService) HasDeleteFlag(ctx context.Context, userID, column string) (bool, error) {
+	if !deleteFlagColumns[column] {
+		return false, fmt.Errorf("HasDeleteFlag: column %q not allowed", column)
+	}
+	if userID == "" {
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
+	var ok bool
+	err := s.db.Read().QueryRowContext(ctx,
+		`SELECT COALESCE(`+column+`, false) FROM permissions WHERE user_id = $1`, userID).Scan(&ok)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return ok, err
+}
+
 func (s *ExpenseService) HasBranchAccess(ctx context.Context, userID, role, branchID string) (bool, error) {
 	if role == "developer" || role == "super_admin" {
 		return true, nil

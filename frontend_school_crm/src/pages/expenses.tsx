@@ -815,16 +815,17 @@ export default function ExpensesPage() {
           >
             <Edit2 className="w-4 h-4" />
           </Button>
+          {canDeleteExpenses && (
           <Button
             size="sm"
             variant="ghost"
             aria-label={t("delete")}
             onClick={(e) => { e.stopPropagation(); handleDelete(expense.id); }}
-            disabled={!canDeleteExpenses}
             title={canDeleteExpenses ? "" : t("noPermission")}
           >
             <Trash2 className="w-4 h-4 text-red-500" />
           </Button>
+          )}
         </div>
       ),
     },
@@ -1299,9 +1300,11 @@ export default function ExpensesPage() {
                     <Button size="icon" variant="ghost" aria-label={t("edit")} className="h-7 w-7" onClick={() => handleEdit(expense)} disabled={!canEditExpenses}>
                       <Edit2 className="w-3.5 h-3.5" />
                     </Button>
-                    <Button size="icon" variant="ghost" aria-label={t("delete")} className="h-7 w-7" onClick={() => handleDelete(expense.id)} disabled={!canDeleteExpenses}>
+                    {canDeleteExpenses && (
+                    <Button size="icon" variant="ghost" aria-label={t("delete")} className="h-7 w-7" onClick={() => handleDelete(expense.id)}>
                       <Trash2 className="w-3.5 h-3.5 text-red-500" />
                     </Button>
+                    )}
                   </div>
                 </div>
                 {expense.createdBy && (

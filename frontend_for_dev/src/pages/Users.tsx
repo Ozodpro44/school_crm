@@ -1,360 +1,251 @@
-import { useState, useEffect, useCallback } from "react";
+import { useMemo, useState } from "react";
+import { Loader2, Pencil, Shield, Trash2, Users as UsersIcon } from "lucide-react";
+import { toast } from "sonner";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import {
-  Search, Trash2, Edit, RefreshCw, Loader2, AlertCircle, Users as UsersIcon,
-  Shield, User,
-} from "lucide-react";
+import { PageHeader } from "@/components/kit/PageHeader";
+import { Stat } from "@/components/kit/Stat";
+import { StatusPill, type Tone } from "@/components/kit/StatusPill";
+import { DataTable, type Column } from "@/components/kit/DataTable";
+import { EmptyState, ErrorNotice } from "@/components/kit/States";
+import { FilterBar, RefreshButton, SearchField } from "@/components/kit/Toolbar";
+import { RowActions } from "@/components/kit/RowActions";
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { Field } from "@/components/kit/Field";
+import { Pager, usePaging } from "@/components/kit/Pager";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { cn } from "@/lib/utils";
-import { toast } from "sonner";
-import { listUsers, updateUser, deleteUser, type CRMUser } from "@/services/api-client";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { getTranslation, tf } from "@/lib/i18n";
+import { useResource } from "@/hooks/useResource";
+import { orEmpty } from "@/lib/empty";
+import { formatDate, formatNumber, initialsOf } from "@/lib/format";
+import { deleteUser, listBranches, listUsers, updateUser, type CRMBranch, type CRMUser } from "@/services/api-client";
 
-const ROLE_CONFIG: Record<string, { labelKey: string; cls: string }> = {
-  admin:        { labelKey: "roleAdmin",       cls: "bg-primary/15 text-primary border border-primary/25"                        },
-  manager:      { labelKey: "roleManager",     cls: "bg-status-info/15 text-status-info border border-status-info/25"            },
-  teacher:      { labelKey: "roleTeacher",     cls: "bg-status-healthy/15 text-status-healthy border border-status-healthy/25"   },
-  accountant:   { labelKey: "roleAccountant",  cls: "bg-amber-500/15 text-amber-400 border border-amber-500/25"                  },
-  branch_admin: { labelKey: "roleBranchAdmin", cls: "bg-violet-500/15 text-violet-400 border border-violet-500/25"               },
+interface Bundle { users: CRMUser[]; branches: CRMBranch[] }
+
+const ROLE_TONE: Record<string, Tone> = {
+  admin: "accent", branch_admin: "accent", manager: "info", teacher: "healthy", accountant: "warning",
 };
-
-function getRoleCfg(role: string, t: (key: string) => string) {
-  const cfg = ROLE_CONFIG[role];
-  return cfg ? { label: t(cfg.labelKey), cls: cfg.cls } : { label: role, cls: "bg-muted text-muted-foreground border border-border" };
-}
-
-function getInitials(name: string) {
-  return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) || "?";
-}
-
-const ROLES = ["all", "admin", "manager", "teacher", "accountant", "branch_admin"];
+const ROLE_LABEL: Record<string, string> = {
+  admin: "roleAdmin", manager: "roleManager", teacher: "roleTeacher", accountant: "roleAccountant", branch_admin: "roleBranchAdmin",
+};
+const ROLES = ["admin", "branch_admin", "manager", "teacher", "accountant"] as const;
+const PAGE_SIZE = 25;
 
 export default function Users() {
   const { language } = useLanguage();
   const t = (key: string) => getTranslation(key, language);
-  const [users, setUsers] = useState<CRMUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const roleLabel = (r: string) => (ROLE_LABEL[r] ? t(ROLE_LABEL[r]) : r);
+
+  const res = useResource<Bundle>(async () => {
+    const [users, branches] = await Promise.allSettled([listUsers(), listBranches()]);
+    if (users.status === "rejected") throw users.reason;
+    return { users: users.value, branches: branches.status === "fulfilled" ? branches.value : [] };
+  }, t("failedToLoadUsers"));
+
+  const users = orEmpty(res.data?.users);
+  const branchNames = useMemo(() => new Map((res.data?.branches ?? []).map((b) => [b.id, b.name])), [res.data?.branches]);
+
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [editOpen, setEditOpen] = useState(false);
-  const [selected, setSelected] = useState<CRMUser | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editForm, setEditForm] = useState({ fullName: "", email: "", password: "" });
+  const [dialog, setDialog] = useState<{ kind: "edit"; user: CRMUser } | { kind: "delete"; user: CRMUser } | null>(null);
+  const [seq, setSeq] = useState(0);
+  const open = (d: NonNullable<typeof dialog>) => { setSeq((n) => n + 1); setDialog(d); };
+  const [busy, setBusy] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listUsers();
-      setUsers(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : t("failedToLoadUsers"));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users.filter((u) => {
+      if (roleFilter !== "all" && u.role !== roleFilter) return false;
+      return !q || (u.fullName ?? "").toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+    });
+  }, [users, roleFilter, search]);
+  const paging = usePaging(filtered, PAGE_SIZE, `${roleFilter}|${search}`);
+  const count = (role: string) => users.filter((u) => u.role === role).length;
 
-  useEffect(() => { load(); }, [load]);
-
-  const filtered = users.filter((u) => {
-    if (roleFilter !== "all" && u.role !== roleFilter) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      if (!u.fullName.toLowerCase().includes(q) && !u.email.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
-
-  const countByRole = (role: string) => users.filter((u) => u.role === role).length;
-
-  const openEdit = (user: CRMUser) => {
-    setSelected(user);
-    setEditForm({ fullName: user.fullName, email: user.email, password: "" });
-    setEditOpen(true);
-  };
-
-  const handleEdit = async () => {
-    if (!selected) return;
-    if (!editForm.fullName.trim() || !editForm.email.trim()) {
-      toast.error(t("nameEmailRequired"));
-      return;
-    }
-    setSaving(true);
-    try {
-      const updated = await updateUser(selected.id, {
-        full_name: editForm.fullName,
-        email: editForm.email,
-        ...(editForm.password ? { password: editForm.password } : {}),
-      });
-      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
-      setEditOpen(false);
-      toast.success(t("userUpdated"));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("failedToUpdateUser"));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!selected) return;
-    setDeleting(true);
-    try {
-      await deleteUser(selected.id);
-      setUsers((prev) => prev.filter((u) => u.id !== selected.id));
-      setDeleteOpen(false);
-      toast.success(t("userDeleted"));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t("failedToDeleteUser"));
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  const statCards = [
-    { label: t("statTotal"),       value: users.length,               icon: UsersIcon, cls: "text-primary",        bg: "bg-primary/15"           },
-    { label: t("statAdmins"),      value: countByRole("admin"),       icon: Shield,    cls: "text-primary",        bg: "bg-primary/15"           },
-    { label: t("statManagers"),    value: countByRole("manager"),     icon: User,      cls: "text-status-info",    bg: "bg-status-info/15"       },
-    { label: t("statTeachers"),    value: countByRole("teacher"),     icon: User,      cls: "text-status-healthy", bg: "bg-status-healthy/15"    },
-    { label: t("statAccountants"), value: countByRole("accountant"),  icon: User,      cls: "text-amber-400",      bg: "bg-amber-500/15"         },
+  const columns: Column<CRMUser>[] = [
+    {
+      key: "user",
+      header: t("user"),
+      cell: (u) => (
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground">
+            {initialsOf(u.fullName || u.email)}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate font-medium text-foreground">{u.fullName || "—"}</p>
+            <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+          </div>
+        </div>
+      ),
+    },
+    { key: "role", header: t("role"), cell: (u) => <StatusPill tone={ROLE_TONE[u.role] ?? "neutral"} dot={false}>{roleLabel(u.role)}</StatusPill> },
+    {
+      key: "branch",
+      header: t("branches"),
+      showFrom: "md",
+      cell: (u) =>
+        u.branchId ? (
+          <span className="text-foreground">{branchNames.get(u.branchId) ?? <span className="font-mono text-xs text-muted-foreground" title={u.branchId}>{u.branchId.slice(0, 8)}…</span>}</span>
+        ) : (
+          <span className="text-muted-foreground">{t("noBranch")}</span>
+        ),
+    },
+    { key: "created", header: t("created"), showFrom: "lg", cell: (u) => <span className="tnum text-muted-foreground">{formatDate(u.createdAt, language)}</span> },
+    {
+      key: "actions",
+      header: <span className="sr-only">{t("actions")}</span>,
+      align: "right",
+      className: "w-12",
+      cell: (u) => (
+        <RowActions
+          actions={[
+            { label: t("edit"), icon: Pencil, onSelect: () => open({ kind: "edit", user: u }) },
+            { label: t("delete"), icon: Trash2, destructive: true, separated: true, onSelect: () => open({ kind: "delete", user: u }) },
+          ]}
+        />
+      ),
+    },
   ];
 
   return (
     <DashboardLayout>
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{t("usersTitle")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t("crmUsersAcrossBranches")}</p>
-        </div>
-        <Button variant="outline" size="sm" className="gap-2" onClick={load} disabled={loading}>
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          {t("refresh")}
-        </Button>
+      <PageHeader
+        title={t("usersTitle")}
+        description={t("crmUsersAcrossBranches")}
+        actions={<RefreshButton onClick={() => void res.reload()} busy={res.fetching} />}
+      />
+
+      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <Stat label={t("statTotal")} value={formatNumber(users.length, language)} icon={UsersIcon} loading={res.loading} />
+        <Stat label={t("statAdmins")} value={count("admin")} icon={Shield} loading={res.loading} />
+        <Stat label={t("statManagers")} value={count("manager")} loading={res.loading} />
+        <Stat label={t("statTeachers")} value={count("teacher")} loading={res.loading} />
+        <Stat label={t("statAccountants")} value={count("accountant")} loading={res.loading} />
       </div>
 
-      {/* Stats Row */}
-      <div className="flex flex-wrap gap-3 mb-5">
-        {statCards.map(({ label, value, icon: Icon, cls, bg }) => (
-          <div key={label} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-card">
-            <div className={cn("w-7 h-7 rounded-md flex items-center justify-center", bg)}>
-              <Icon className={cn("w-3.5 h-3.5", cls)} />
-            </div>
-            <div>
-              <span className="text-sm font-bold text-foreground font-mono">{loading ? "—" : value}</span>
-              <span className="text-xs text-muted-foreground ml-1">{label}</span>
-            </div>
-          </div>
-        ))}
-      </div>
+      {res.error && <ErrorNotice message={res.error} onRetry={() => void res.reload()} />}
 
-      {error && (
-        <div className="flex items-center gap-3 p-4 mb-4 rounded-lg border border-status-critical/30 bg-status-critical/10 text-status-critical text-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          {error}
-        </div>
-      )}
+      <FilterBar>
+        <SearchField value={search} onChange={setSearch} placeholder={t("searchByNameOrEmail")} />
+        <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <SelectTrigger className="sm:w-52"><SelectValue placeholder={t("allRoles")} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t("allRoles")}</SelectItem>
+            {ROLES.map((r) => <SelectItem key={r} value={r}>{roleLabel(r)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </FilterBar>
 
-      {/* Filters */}
-      <div className="glass-card rounded-lg p-3 mb-4">
-        <div className="flex flex-col md:flex-row gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input
-              placeholder={t("searchByNameOrEmail")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-8 bg-background text-sm"
-            />
-          </div>
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
-            <SelectTrigger className="w-full md:w-44 bg-background h-8 text-sm">
-              <SelectValue placeholder={t("allRoles")} />
-            </SelectTrigger>
-            <SelectContent>
-              {ROLES.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {r === "all" ? t("allRoles") : getRoleCfg(r, t).label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={paging.slice}
+        rowKey={(u) => u.id}
+        loading={res.loading}
+        empty={<EmptyState icon={UsersIcon} title={search || roleFilter !== "all" ? t("noResultsForFilters") : t("noUsersFound")} />}
+        footer={<Pager page={paging.page} pages={paging.pages} total={filtered.length} onPage={paging.setPage} />}
+      />
 
-      {/* Table */}
-      <div className="glass-card rounded-lg overflow-hidden">
-        {loading ? (
-          <div className="p-12 flex justify-center">
-            <Loader2 className="w-5 h-5 animate-spin text-primary" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="p-12 flex flex-col items-center gap-3 text-muted-foreground">
-            <UsersIcon className="w-8 h-8 opacity-30" />
-            <span className="text-sm">{t("noUsersFound")}</span>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-muted-foreground border-b border-border">
-                  <th className="text-left px-4 py-3 font-medium">{t("user")}</th>
-                  <th className="text-left px-4 py-3 font-medium">{t("email")}</th>
-                  <th className="text-left px-4 py-3 font-medium">{t("role")}</th>
-                  <th className="text-left px-4 py-3 font-medium">{t("branchId")}</th>
-                  <th className="text-left px-4 py-3 font-medium">{t("created")}</th>
-                  <th className="text-right px-4 py-3 font-medium">{t("actions")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filtered.map((user) => {
-                  const { label, cls } = getRoleCfg(user.role, t);
-                  return (
-                    <tr key={user.id} className="hover:bg-accent/20 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="w-8 h-8">
-                            <AvatarFallback className="bg-accent text-foreground text-xs font-bold">
-                              {getInitials(user.fullName || user.email)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-medium text-foreground">{user.fullName || "—"}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
-                      <td className="px-4 py-3">
-                        <span className={cn("text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full", cls)}>
-                          {label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {user.branchId ? (
-                          <code className="text-xs font-mono text-muted-foreground">
-                            {user.branchId.slice(0, 8)}…
-                          </code>
-                        ) : (
-                          <span className="text-muted-foreground opacity-40 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
-                        {user.createdAt
-                          ? new Date(user.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
-                          : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0"
-                            onClick={() => openEdit(user)}
-                          >
-                            <Edit className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-status-critical hover:text-status-critical"
-                            onClick={() => { setSelected(user); setDeleteOpen(true); }}
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <EditUserDialog
+        key={`user-${seq}`}
+        open={dialog?.kind === "edit"}
+        user={dialog?.kind === "edit" ? dialog.user : null}
+        busy={busy}
+        t={t}
+        onClose={() => setDialog(null)}
+        onSubmit={async (v) => {
+          if (dialog?.kind !== "edit") return;
+          setBusy(true);
+          try {
+            const updated = await updateUser(dialog.user.id, {
+              full_name: v.fullName, email: v.email, ...(v.password ? { password: v.password } : {}),
+            });
+            // The update response may omit fields the list has (e.g. branch); merge, don't replace.
+            res.setData((d) => (d ? { ...d, users: d.users.map((u) => (u.id === updated.id ? { ...u, ...updated } : u)) } : d));
+            toast.success(t("userUpdated"));
+            setDialog(null);
+          } catch (e) {
+            toast.error(e instanceof Error && e.message ? e.message : t("failedToUpdateUser"));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
 
-      {/* Edit Dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t("editUser")}</DialogTitle>
-            <DialogDescription>
-              {t("editUserNotice")}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>{t("fullName")}</Label>
-              <Input
-                value={editForm.fullName}
-                onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("email")}</Label>
-              <Input
-                type="email"
-                value={editForm.email}
-                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("newPasswordOptional")}</Label>
-              <Input
-                type="password"
-                placeholder={t("leaveBlankToKeepPassword")}
-                value={editForm.password}
-                onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>{t("cancel")}</Button>
-            <Button onClick={handleEdit} disabled={saving}>
-              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {t("saveChanges")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirm */}
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("deleteUser")}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {tf(t("deleteUserConfirm"), { name: selected?.fullName || selected?.email || "" })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={deleting}
-              className="bg-status-critical hover:bg-status-critical/90"
-            >
-              {deleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {t("delete")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={dialog?.kind === "delete"}
+        onOpenChange={(o) => !o && setDialog(null)}
+        title={t("deleteUser")}
+        description={tf(t("deleteUserConfirm"), { name: dialog?.kind === "delete" ? dialog.user.fullName || dialog.user.email : "" })}
+        confirmLabel={t("delete")}
+        busy={busy}
+        onConfirm={async () => {
+          if (dialog?.kind !== "delete") return;
+          setBusy(true);
+          try {
+            await deleteUser(dialog.user.id);
+            res.setData((d) => (d ? { ...d, users: d.users.filter((u) => u.id !== dialog.user.id) } : d));
+            toast.success(t("userDeleted"));
+            setDialog(null);
+          } catch (e) {
+            toast.error(e instanceof Error && e.message ? e.message : t("failedToDeleteUser"));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
     </DashboardLayout>
+  );
+}
+
+function EditUserDialog({
+  open, user, busy, t, onClose, onSubmit,
+}: {
+  open: boolean; user: CRMUser | null; busy: boolean; t: (k: string) => string;
+  onClose: () => void; onSubmit: (v: { fullName: string; email: string; password: string }) => void;
+}) {
+  const [v, setV] = useState({ fullName: user?.fullName ?? "", email: user?.email ?? "", password: "" });
+
+  const submit = () => {
+    if (!v.fullName.trim() || !v.email.trim()) return void toast.error(t("nameEmailRequired"));
+    if (v.password && v.password.length < 8) return void toast.error(t("passwordTooShort"));
+    onSubmit({ fullName: v.fullName.trim(), email: v.email.trim(), password: v.password });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t("editUser")}</DialogTitle>
+          <DialogDescription>{t("editUserNotice")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <Field label={t("fullName")}>
+            <Input value={v.fullName} onChange={(e) => setV({ ...v, fullName: e.target.value })} autoFocus />
+          </Field>
+          <Field label={t("email")}>
+            <Input type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} />
+          </Field>
+          <Field label={t("newPasswordOptional")}>
+            <Input
+              type="password"
+              autoComplete="new-password"
+              value={v.password}
+              onChange={(e) => setV({ ...v, password: e.target.value })}
+              placeholder={t("leaveBlankToKeepPassword")}
+            />
+          </Field>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={busy}>{t("cancel")}</Button>
+          <Button onClick={submit} disabled={busy}>
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            {t("saveChanges")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

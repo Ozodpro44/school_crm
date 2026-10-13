@@ -25,19 +25,21 @@ export function UserPicker({ value, onChange, className }: UserPickerProps) {
   const t = (key: string) => getTranslation(key, language);
   const [open, setOpen] = useState(false);
   const [users, setUsers] = useState<CRMUser[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState(false);
+  const [state, setState] = useState<"idle" | "loading" | "loaded" | "error">("idle");
 
+  // Load once per mount, on first open. Tracking an explicit state (rather than
+  // "users.length === 0") matters: an empty list or a failed request must not
+  // re-trigger the fetch on every render while the popover is open.
   useEffect(() => {
-    if (!open || users.length > 0 || loading) return;
-    setLoading(true);
-    setLoadError(false);
+    if (!open || state !== "idle") return;
+    setState("loading");
     listUsers()
-      .then(setUsers)
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false));
-  }, [open, users.length, loading]);
+      .then((list) => { setUsers(list); setState("loaded"); })
+      .catch(() => setState("error"));
+  }, [open, state]);
 
+  const loading = state === "loading";
+  const loadError = state === "error";
   const selected = users.find((u) => u.id === value);
 
   return (
@@ -70,9 +72,12 @@ export function UserPicker({ value, onChange, className }: UserPickerProps) {
               </div>
             )}
             {!loading && loadError && (
-              <div className="py-6 text-center text-sm text-status-critical">{t("failedToLoadData")}</div>
+              <div className="flex flex-col items-center gap-2 py-6 text-center text-sm text-status-critical">
+                {t("failedToLoadData")}
+                <Button variant="outline" size="sm" onClick={() => setState("idle")}>{t("retry")}</Button>
+              </div>
             )}
-            {!loading && !loadError && <CommandEmpty>{t("noUsersFound")}</CommandEmpty>}
+            {state === "loaded" && <CommandEmpty>{t("noUsersFound")}</CommandEmpty>}
             <CommandGroup>
               {users.map((u) => (
                 <CommandItem

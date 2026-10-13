@@ -85,7 +85,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { getCurrentUser, logout, hasPermission } from "@/lib/auth";
+import { getCurrentUser, logout, hasPermission, refreshDeletePermissions } from "@/lib/auth";
 import { getStoredBranchId, getAuthToken } from "@/lib/storage";
 import { isTokenExpired } from "@/lib/jwt";
 import { User } from "@/types";
@@ -723,6 +723,20 @@ export function Layout({ children }: LayoutProps) {
     const timer = setInterval(checkExpiry, 30000);
     return () => clearInterval(timer);
   }, [router.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A session restored from storage may predate a permission change an admin
+  // made; re-sync the delete flags once per tab session and reload if they
+  // changed (pages read their permission flags once, at mount).
+  useEffect(() => {
+    if (router.pathname === "/login") return;
+    let done = false;
+    try { done = sessionStorage.getItem("permsSynced") === "1"; } catch { /* storage blocked */ }
+    if (done) return;
+    refreshDeletePermissions().then((changed) => {
+      try { sessionStorage.setItem("permsSynced", "1"); } catch { /* ignore */ }
+      if (changed) window.location.reload();
+    });
+  }, [router.pathname]);
 
   useEffect(() => {
     const currentUser = getCurrentUser();

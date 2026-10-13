@@ -74,12 +74,20 @@ func canDelete(role string) bool {
 	}
 }
 
-func (h *Handler) requireDeletePermission(c *gin.Context) bool {
-	if !canDelete(c.GetHeader("X-User-Role")) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
-		return false
+func (h *Handler) requireDeletePermission(c *gin.Context, flag string) bool {
+	if canDelete(c.GetHeader("X-User-Role")) {
+		return true
 	}
-	return true
+	// Otherwise honour the per-user permission flag an admin granted on the
+	// Managers page (permissions.<flag>). flag == "" means role-only.
+	if flag != "" {
+		ok, err := h.expenses.HasDeleteFlag(c.Request.Context(), c.GetHeader("X-User-ID"), flag)
+		if err == nil && ok {
+			return true
+		}
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete this resource"})
+	return false
 }
 
 // isSuperRole reports whether role is a platform-level role that operates
@@ -294,7 +302,7 @@ func (h *Handler) UpdateExpense(c *gin.Context) {
 }
 
 func (h *Handler) DeleteExpense(c *gin.Context) {
-	if !h.requireDeletePermission(c) {
+	if !h.requireDeletePermission(c, "can_delete_expenses") {
 		return
 	}
 	branchID := requestBranchID(c)
@@ -322,7 +330,7 @@ func (h *Handler) DeleteExpense(c *gin.Context) {
 
 // RestoreExpense undoes a soft-delete, same authorization as DeleteExpense.
 func (h *Handler) RestoreExpense(c *gin.Context) {
-	if !h.requireDeletePermission(c) {
+	if !h.requireDeletePermission(c, "can_delete_expenses") {
 		return
 	}
 	branchID := requestBranchID(c)

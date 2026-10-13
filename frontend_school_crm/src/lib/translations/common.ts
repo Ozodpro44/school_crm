@@ -1368,9 +1368,9 @@ export const commonTranslations: Partial<Translation> = {
     en: "Click to upload or drag and drop",
   },
   csvFilesOnly: {
-    "uz-cyrl": "Фақат CSV файллар",
-    "uz-latn": "Faqat CSV fayllar",
-    en: "CSV files only",
+    "uz-cyrl": "CSV ёки Excel (.xlsx) файллар",
+    "uz-latn": "CSV yoki Excel (.xlsx) fayllar",
+    en: "CSV or Excel (.xlsx) files",
   },
   orPasteCSVDataBelow: {
     "uz-cyrl": "ёки CSV маълумотларини пастда жойлаштиринг",
