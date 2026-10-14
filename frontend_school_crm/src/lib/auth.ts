@@ -211,7 +211,6 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
 
 export function logout(): void {
   if (typeof window === "undefined") return;
-  try { sessionStorage.removeItem("permsSynced"); } catch { /* ignore */ }
   clearAuthState();
   // Hard navigation guarantees React Query caches and component state
   // are dropped — preventing leakage of the previous user's data.
@@ -254,46 +253,43 @@ export function isAuthenticated(): boolean {
 }
 
 
-const DELETE_FLAGS = [
-  "canDeleteStudents",
-  "canDeleteTeachers",
-  "canDeleteClasses",
-  "canDeletePayments",
-  "canDeleteSalaries",
-  "canDeleteExpenses",
-] as const;
-
 /**
- * Brings the delete flags in line with what the backend enforces: admin and
- * branch_admin may always delete; every other role only what an admin granted
- * on the Managers page (permissions.can_delete_*). Without this the UI used
- * hard-coded role defaults, so a granted flag never reached the buttons.
- * Returns true when a flag changed (pages read flags once at mount, so the
- * caller should reload to apply it).
+ * Brings the signed-in user's permission flags in line with the backend.
+ *
+ * - admin: always everything (hasPermission short-circuits on the role).
+ * - branch_admin: always allowed to delete; other flags follow the role defaults.
+ * - everyone else: if an admin has saved permissions for them
+ *   (user_service permissions row, written in full from the Managers page),
+ *   those flags win over the role defaults; with no saved row the defaults stay.
+ *
+ * Before this, only the stored role defaults were ever used, so switching a
+ * flag off for a manager changed nothing in the UI. Returns true when
+ * anything changed, so callers can re-render.
  */
-export async function refreshDeletePermissions(): Promise<boolean> {
+export async function refreshPermissions(): Promise<boolean> {
   const user = getCurrentUser();
-  if (!user) return false;
-  const full = user.role === "admin" || user.role === "branch_admin";
+  if (!user || user.role === "admin") return false;
 
-  let server: Record<string, boolean> | null = null;
-  if (!full) {
-    server = await getUserPermissions(user.id);
-    if (server === null) return false; // unknown: keep the role defaults
-  }
+  const defaults = (DEFAULT_PERMISSIONS[user.role as UserRole] || DEFAULT_PERMISSIONS.teacher) as Permission;
+  const next: Permission = { ...defaults, ...(user.permissions || {}) } as Permission;
 
-  const next: Permission = { ...user.permissions } as Permission;
-  let changed = false;
-  for (const flag of DELETE_FLAGS) {
-    const value = full ? true : Boolean(server?.[flag]);
-    if (next[flag] !== value) {
-      next[flag] = value;
-      changed = true;
+  if (user.role === "branch_admin") {
+    for (const key of Object.keys(defaults) as (keyof Permission)[]) {
+      if (/^canDelete/.test(key)) (next as unknown as Record<string, boolean>)[key] = true;
+    }
+  } else {
+    const server = await getUserPermissions(user.id);
+    if (server === null) return false; // no row / request failed: keep what we have
+    for (const key of Object.keys(defaults) as (keyof Permission)[]) {
+      const v = server[key as string];
+      if (typeof v === "boolean") (next as unknown as Record<string, boolean>)[key] = v;
     }
   }
-  if (changed) {
-    const stored = getStoredUser();
-    if (stored) setStoredUser({ ...stored, permissions: next } as unknown as Parameters<typeof setStoredUser>[0]);
-  }
-  return changed;
+
+  const before = JSON.stringify(user.permissions || {});
+  if (JSON.stringify(next) === before) return false;
+
+  const stored = getStoredUser();
+  if (stored) setStoredUser({ ...stored, permissions: next } as unknown as Parameters<typeof setStoredUser>[0]);
+  return true;
 }
