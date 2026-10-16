@@ -292,6 +292,9 @@ func main() {
 	hikvisionStorage := service.NewStorageServiceFromEnv()
 	hikvisionService := service.NewHikvisionService(database, hikvisionStorage)
 	go hikvisionService.RunEventPoller(context.Background(), 20*time.Second)
+	// Hik-Connect for Teams cloud devices (off unless HCT_API_KEY/HCT_API_SECRET are set).
+	hikvisionService.SetHCT(service.NewHCTClientFromEnv())
+	go hikvisionService.RunHCTBootstrap(context.Background())
 
 	// Click.uz integration
 	clickMerchantID := os.Getenv("CLICK_MERCHANT_ID")
@@ -463,6 +466,7 @@ func main() {
 	hikvisionWebhookGroup.Use(rateLimiter.ByIP(300, time.Minute))
 	handlers.RegisterHikvisionWebhookRoutes(hikvisionWebhookGroup, hikvisionService)
 	handlers.RegisterHikCentralWebhookRoutes(hikvisionWebhookGroup, hikvisionService)
+	handlers.RegisterHikvisionHCTWebhookRoutes(hikvisionWebhookGroup, hikvisionService)
 
 	// Hikvision OTAP HTTPS PUSH: terminals connect OUT to /iot/{DEVID}/... and
 	// authenticate with a per-device credential (no JWT, no inbound access to

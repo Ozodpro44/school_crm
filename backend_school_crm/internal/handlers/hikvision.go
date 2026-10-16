@@ -61,6 +61,10 @@ func RegisterHikvisionRoutes(router *gin.RouterGroup, hikvisionService *service.
 	hikvision.POST("/push-devices", h.createPushDevice)
 	hikvision.GET("/devices/:id/push-credentials", h.pushCredentials)
 
+	// Terminals in the Hik-Connect cloud (reached through its OpenAPI).
+	hikvision.POST("/hct-devices", h.createHCTDevice)
+	hikvision.GET("/hct/status", h.hctStatus)
+
 	hikvision.POST("/employees", h.addEmployee)
 	hikvision.GET("/employees", h.listEmployees)
 	hikvision.POST("/employees/:id/face", h.uploadEmployeeFace)

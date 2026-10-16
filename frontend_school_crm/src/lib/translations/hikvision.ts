@@ -178,4 +178,21 @@ export const hikvisionTranslations: Partial<Translation> = {
     "uz-latn": "Bu davrda davomat yozuvlari topilmadi",
     en: "No attendance records for this period",
   },
+  connectionType: { "uz-cyrl": "Уланиш тури", "uz-latn": "Ulanish turi", en: "Connection type" },
+  connHikConnect: { "uz-cyrl": "Hik-Connect (булут, IP керак эмас)", "uz-latn": "Hik-Connect (bulut, IP kerak emas)", en: "Hik-Connect (cloud, no IP needed)" },
+  connLocal: { "uz-cyrl": "Локал тармоқ (IP орқали)", "uz-latn": "Lokal tarmoq (IP orqali)", en: "Local network (by IP)" },
+  deviceSerial: { "uz-cyrl": "Серия рақами", "uz-latn": "Seriya raqami", en: "Serial number" },
+  deviceSerialHint: {
+    "uz-cyrl": "Қурилма ёрлиғидаги қисқа серия, масалан FF7999936.",
+    "uz-latn": "Qurilma yorlig'idagi qisqa seriya, masalan FF7999936.",
+    en: "The short serial printed on the terminal, e.g. FF7999936.",
+  },
+  verifyCode: { "uz-cyrl": "Тасдиқлаш коди", "uz-latn": "Tasdiqlash kodi", en: "Verification code" },
+  verifyCodeHint: {
+    "uz-cyrl": "Қурилмада Hik-Connect ёқилганда ўрнатилган код. Уни Hikvision текширади.",
+    "uz-latn": "Qurilmada Hik-Connect yoqilganda o'rnatilgan kod. Uni Hikvision tekshiradi.",
+    en: "The code set when Hik-Connect was enabled on the terminal. Hikvision verifies it.",
+  },
+  cloudDevice: { "uz-cyrl": "Hik-Connect булут", "uz-latn": "Hik-Connect bulut", en: "Hik-Connect cloud" },
+  failedToAddCloudDevice: { "uz-cyrl": "Қурилмани қўшиб бўлмади", "uz-latn": "Qurilmani qo'shib bo'lmadi", en: "Could not add the device" },
 };

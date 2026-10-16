@@ -49,6 +49,8 @@ import { formatDateTimeInTashkent } from "@/lib/timezone";
 import {
   listHikvisionDevices,
   createHikvisionDevice,
+  createHikvisionHCTDevice,
+  getHikvisionHCTStatus,
   configureHikvisionPush,
   listHikvisionEmployees,
   addHikvisionEmployee,
@@ -90,6 +92,10 @@ export function HikvisionPanel() {
     username: "admin",
     password: "",
   });
+  // Hik-Connect (cloud) devices: only offered when the server has credentials.
+  const [hctEnabled, setHctEnabled] = useState(false);
+  const [connType, setConnType] = useState<"hct" | "isapi">("isapi");
+  const [hctForm, setHctForm] = useState({ serial: "", verifyCode: "" });
 
   // Configure push dialog
   const [pushDialogDevice, setPushDialogDevice] = useState<HikvisionDevice | null>(null);
@@ -171,10 +177,12 @@ export function HikvisionPanel() {
     }
     try {
       setLoading(true);
-      const [deviceList, teacherList] = await Promise.all([
+      const [deviceList, teacherList, hct] = await Promise.all([
         listHikvisionDevices(branchId),
         listTeachers(branchId).catch(() => []),
+        getHikvisionHCTStatus().catch(() => false),
       ]);
+      setHctEnabled(hct);
       setDevices(deviceList);
       setTeachers(teacherList);
       setSelectedDeviceId((prev) => prev || (deviceList[0]?.id ?? ""));
@@ -227,8 +235,11 @@ export function HikvisionPanel() {
     }
   };
 
-  const resetDeviceForm = () =>
+  const resetDeviceForm = () => {
     setDeviceForm({ name: "", host: "", username: "admin", password: "" });
+    setHctForm({ serial: "", verifyCode: "" });
+    setConnType(hctEnabled ? "hct" : "isapi");
+  };
 
   const handleAddDevice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,13 +250,21 @@ export function HikvisionPanel() {
     }
     setIsSubmittingDevice(true);
     try {
-      const device = await createHikvisionDevice({
-        branchId,
-        name: deviceForm.name,
-        host: deviceForm.host,
-        username: deviceForm.username || undefined,
-        password: deviceForm.password,
-      });
+      const device =
+        connType === "hct"
+          ? await createHikvisionHCTDevice({
+              branchId,
+              name: deviceForm.name,
+              serial: hctForm.serial.trim(),
+              verifyCode: hctForm.verifyCode,
+            })
+          : await createHikvisionDevice({
+              branchId,
+              name: deviceForm.name,
+              host: deviceForm.host,
+              username: deviceForm.username || undefined,
+              password: deviceForm.password,
+            });
       toast({ title: t("success"), description: t("deviceAdded"), variant: "success" });
       resetDeviceForm();
       setIsDeviceDialogOpen(false);
@@ -254,7 +273,10 @@ export function HikvisionPanel() {
     } catch (error) {
       toast({
         title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToAddDevice"),
+        description:
+          error instanceof Error
+            ? error.message
+            : t(connType === "hct" ? "failedToAddCloudDevice" : "failedToAddDevice"),
         variant: "destructive",
       });
     } finally {
@@ -452,6 +474,20 @@ export function HikvisionPanel() {
                     <DialogTitle>{t("addNewDevice")}</DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleAddDevice} className="space-y-4">
+                    {hctEnabled && (
+                      <div className="space-y-2">
+                        <Label>{t("connectionType")}</Label>
+                        <Select value={connType} onValueChange={(v) => setConnType(v as "hct" | "isapi")}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="hct">{t("connHikConnect")}</SelectItem>
+                            <SelectItem value="isapi">{t("connLocal")}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label htmlFor="deviceName">{t("deviceName")} *</Label>
                       <Input
@@ -462,43 +498,78 @@ export function HikvisionPanel() {
                         required
                       />
                     </div>
+                    {connType === "hct" ? (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="deviceSerial">{t("deviceSerial")} *</Label>
+                          <Input
+                            id="deviceSerial"
+                            value={hctForm.serial}
+                            onChange={(e) => setHctForm({ ...hctForm, serial: e.target.value })}
+                            placeholder="FF7999936"
+                            autoComplete="off"
+                            required
+                          />
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {t("deviceSerialHint")}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="verifyCode">{t("verifyCode")} *</Label>
+                          <Input
+                            id="verifyCode"
+                            type="password"
+                            value={hctForm.verifyCode}
+                            onChange={(e) => setHctForm({ ...hctForm, verifyCode: e.target.value })}
+                            autoComplete="off"
+                            required
+                          />
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {t("verifyCodeHint")}
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
                     <div className="space-y-2">
-                      <Label htmlFor="deviceHost">{t("deviceHost")} *</Label>
-                      <Input
-                        id="deviceHost"
-                        value={deviceForm.host}
-                        onChange={(e) => setDeviceForm({ ...deviceForm, host: e.target.value })}
-                        placeholder="192.168.0.115"
-                        required
-                      />
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {t("deviceHostHint")}
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="deviceUsername">{t("deviceUsername")}</Label>
-                        <Input
-                          id="deviceUsername"
-                          value={deviceForm.username}
-                          onChange={(e) =>
-                            setDeviceForm({ ...deviceForm, username: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="devicePassword">{t("password")} *</Label>
-                        <Input
-                          id="devicePassword"
-                          type="password"
-                          value={deviceForm.password}
-                          onChange={(e) =>
-                            setDeviceForm({ ...deviceForm, password: e.target.value })
-                          }
-                          required
-                        />
-                      </div>
-                    </div>
+                          <Label htmlFor="deviceHost">{t("deviceHost")} *</Label>
+                          <Input
+                            id="deviceHost"
+                            value={deviceForm.host}
+                            onChange={(e) => setDeviceForm({ ...deviceForm, host: e.target.value })}
+                            placeholder="192.168.0.115"
+                            required
+                          />
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {t("deviceHostHint")}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="deviceUsername">{t("deviceUsername")}</Label>
+                            <Input
+                              id="deviceUsername"
+                              value={deviceForm.username}
+                              onChange={(e) =>
+                                setDeviceForm({ ...deviceForm, username: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="devicePassword">{t("password")} *</Label>
+                            <Input
+                              id="devicePassword"
+                              type="password"
+                              value={deviceForm.password}
+                              onChange={(e) =>
+                                setDeviceForm({ ...deviceForm, password: e.target.value })
+                              }
+                              required
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
                     <div className="flex justify-end gap-3 pt-2">
                       <Button
                         type="button"
@@ -557,7 +628,9 @@ export function HikvisionPanel() {
                               {device.name}
                             </td>
                             <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                              {device.host}
+                              {device.protocol === "hct"
+                                ? `${t("cloudDevice")} · ${device.hctSerial ?? ""}`
+                                : device.host}
                             </td>
                             <td className="py-3 px-4">
                               <Badge
@@ -572,10 +645,12 @@ export function HikvisionPanel() {
                               </Badge>
                             </td>
                             <td className="py-3 px-4 text-right">
-                              <Button size="sm" variant="outline" onClick={() => openPushDialog(device)}>
-                                <Wifi className="w-4 h-4 mr-2" />
-                                {t("configurePush")}
-                              </Button>
+                              {(device.protocol ?? "isapi") === "isapi" && (
+                                <Button size="sm" variant="outline" onClick={() => openPushDialog(device)}>
+                                  <Wifi className="w-4 h-4 mr-2" />
+                                  {t("configurePush")}
+                                </Button>
+                              )}
                             </td>
                           </tr>
                         ))}

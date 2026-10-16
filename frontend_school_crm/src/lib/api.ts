@@ -2446,6 +2446,32 @@ export async function createHikvisionDevice(
   });
 }
 
+export interface CreateHikvisionHCTDeviceRequest {
+  branchId: string;
+  name: string;
+  /** Short serial printed on the terminal (e.g. FF7999936). */
+  serial: string;
+  /** Verification code set under Hik-Connect on the terminal; Hikvision checks it. */
+  verifyCode: string;
+}
+
+/** Add a terminal through the Hik-Connect cloud (works behind NAT, no IP needed). */
+export async function createHikvisionHCTDevice(
+  request: CreateHikvisionHCTDeviceRequest
+): Promise<HikvisionDevice> {
+  const res = await apiRequest<{ device: HikvisionDevice }>("/hikvision/hct-devices", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+  return res.device;
+}
+
+/** Whether the server has Hik-Connect credentials (decides if the option is shown). */
+export async function getHikvisionHCTStatus(): Promise<boolean> {
+  const res = await apiRequest<{ enabled: boolean }>("/hikvision/hct/status");
+  return !!res?.enabled;
+}
+
 export async function listHikvisionDevices(branchId: string): Promise<HikvisionDevice[]> {
   const response = await apiRequest<HikvisionDevice[]>(`/hikvision/devices?branchId=${branchId}`);
   return Array.isArray(response) ? response : [];

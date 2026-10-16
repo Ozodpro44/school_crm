@@ -305,6 +305,10 @@ export interface HikvisionDevice {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /** "isapi" (we dial the device), "push" or "hct" (Hik-Connect cloud). Absent on old rows = isapi. */
+  protocol?: "isapi" | "push" | "hct";
+  /** Serial number of a Hik-Connect (hct) device. */
+  hctSerial?: string;
 }
 
 export interface HikvisionEmployee {

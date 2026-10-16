@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +28,12 @@ const photoURLTTL = 24 * time.Hour
 type HikvisionService struct {
 	db      *db.Database
 	storage *StorageService // nil when no bucket is configured — photos then only live on the device
+
+	hct      *HCTClient // nil when Hik-Connect credentials are not configured
+	hctMu    sync.Mutex
+	hctGroup string // cached root person group id
+
+	hctVerifyUntil time.Time // while in the future, the webhook URL-verification GET is answered
 }
 
 func NewHikvisionService(database *db.Database, storage *StorageService) *HikvisionService {
@@ -101,11 +108,11 @@ func (s *HikvisionService) CreateDevice(ctx context.Context, req *CreateDeviceRe
 func (s *HikvisionService) GetDevice(ctx context.Context, id string) (*models.HikvisionDevice, error) {
 	d := &models.HikvisionDevice{}
 	err := s.db.GetConn().QueryRowContext(ctx, `
-		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at
+		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at, d.hct_serial, COALESCE(d.hct_access_level_id, '')
 		FROM hikvision_devices d
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 		WHERE d.id = $1`, id).Scan(
-		&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt)
+		&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt, &d.HCTSerial, &d.HCTAccessLevelID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("device not found")
 	}
@@ -125,7 +132,7 @@ func (s *HikvisionService) UpdateDeviceHost(ctx context.Context, deviceID, newHo
 	if err != nil {
 		return err
 	}
-	if device.Protocol == "push" {
+	if device.Protocol != "isapi" {
 		return ErrPushDeviceUnsupported
 	}
 
@@ -158,7 +165,7 @@ func (s *HikvisionService) UpdateDeviceCredentials(ctx context.Context, deviceID
 	if err != nil {
 		return err
 	}
-	if device.Protocol == "push" {
+	if device.Protocol != "isapi" {
 		return ErrPushDeviceUnsupported
 	}
 	if host == "" {
@@ -185,7 +192,7 @@ func (s *HikvisionService) UpdateDeviceCredentials(ctx context.Context, deviceID
 // polling from right here works just as well and needs no local machine).
 func (s *HikvisionService) ListActiveDevices(ctx context.Context) ([]models.HikvisionDevice, error) {
 	rows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at
+		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at, d.hct_serial, COALESCE(d.hct_access_level_id, '')
 		FROM hikvision_devices d
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 		WHERE d.is_active = true AND d.protocol = 'isapi'`)
@@ -197,7 +204,7 @@ func (s *HikvisionService) ListActiveDevices(ctx context.Context) ([]models.Hikv
 	var out []models.HikvisionDevice
 	for rows.Next() {
 		var d models.HikvisionDevice
-		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt, &d.HCTSerial, &d.HCTAccessLevelID); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -207,7 +214,7 @@ func (s *HikvisionService) ListActiveDevices(ctx context.Context) ([]models.Hikv
 
 func (s *HikvisionService) ListDevicesByBranch(ctx context.Context, branchID string) ([]models.HikvisionDevice, error) {
 	rows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at
+		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at, d.hct_serial, COALESCE(d.hct_access_level_id, '')
 		FROM hikvision_devices d
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 		WHERE d.branch_id = $1 ORDER BY d.created_at`, branchID)
@@ -219,7 +226,7 @@ func (s *HikvisionService) ListDevicesByBranch(ctx context.Context, branchID str
 	var out []models.HikvisionDevice
 	for rows.Next() {
 		var d models.HikvisionDevice
-		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt, &d.HCTSerial, &d.HCTAccessLevelID); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -235,7 +242,7 @@ func (s *HikvisionService) ConfigurePush(ctx context.Context, deviceID, publicHo
 	if err != nil {
 		return err
 	}
-	if device.Protocol == "push" {
+	if device.Protocol != "isapi" {
 		return ErrPushDeviceUnsupported
 	}
 
@@ -286,6 +293,10 @@ func (s *HikvisionService) AddEmployee(ctx context.Context, req *AddEmployeeRequ
 		}
 	}
 
+	if device.Protocol == "hct" {
+		return s.addEmployeeHCT(ctx, device, req)
+	}
+
 	client := NewHikvisionClient(device.Host, device.Username, device.Password)
 	if err := client.CreateUser(req.EmployeeNo, req.FullName); err != nil {
 		return nil, fmt.Errorf("device rejected new employee: %w", err)
@@ -329,6 +340,9 @@ func (s *HikvisionService) UploadEmployeeFace(ctx context.Context, employeeID st
 	if err != nil {
 		return err
 	}
+	if device.Protocol == "hct" {
+		return s.uploadFaceHCT(ctx, emp, jpegData)
+	}
 	if device.Protocol == "push" {
 		return ErrPushDeviceUnsupported
 	}
@@ -365,6 +379,9 @@ func (s *HikvisionService) RemoveEmployee(ctx context.Context, employeeID string
 	if err != nil {
 		return err
 	}
+	if device.Protocol == "hct" {
+		return s.removeEmployeeHCT(ctx, emp)
+	}
 	if device.Protocol == "push" {
 		return ErrPushDeviceUnsupported
 	}
@@ -381,9 +398,9 @@ func (s *HikvisionService) RemoveEmployee(ctx context.Context, employeeID string
 func (s *HikvisionService) GetEmployee(ctx context.Context, id string) (*models.HikvisionEmployee, error) {
 	e := &models.HikvisionEmployee{}
 	err := s.db.GetConn().QueryRowContext(ctx, `
-		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, is_active, created_at, updated_at
+		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, hct_person_id, is_active, created_at, updated_at
 		FROM hikvision_employees WHERE id = $1`, id).Scan(
-		&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.IsActive, &e.CreatedAt, &e.UpdatedAt)
+		&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.HCTPersonID, &e.IsActive, &e.CreatedAt, &e.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("employee not found")
 	}
@@ -544,7 +561,7 @@ func (s *HikvisionService) PollAndRecordEvents(ctx context.Context, deviceID str
 	if err != nil {
 		return 0, err
 	}
-	if device.Protocol == "push" {
+	if device.Protocol != "isapi" {
 		return 0, ErrPushDeviceUnsupported
 	}
 
