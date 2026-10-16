@@ -1114,11 +1114,15 @@ func (s *PermissionService) Upsert(ctx context.Context, userID string, fields ma
 	parts := []string{}
 	args := []interface{}{}
 	n := 1
-	for k, v := range fields {
-		if !allowed[k] {
+	for key, v := range fields {
+		// The Managers UI sends camelCase JSON keys (canViewStudents), while
+		// permission columns and the allowlist are snake_case. Normalize before
+		// checking the allowlist; otherwise every UI update is silently ignored.
+		column := permissionColumn(key)
+		if !allowed[column] {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
+		parts = append(parts, fmt.Sprintf("%s = $%d", column, n))
 		args = append(args, v)
 		n++
 	}
