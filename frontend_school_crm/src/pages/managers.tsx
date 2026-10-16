@@ -207,7 +207,7 @@ export default function ManagersPage() {
       setFormErrors({});
 
       try {
-        await apiRequest("/users", {
+        const createdManager = await apiRequest<User>("/users", {
           method: "POST",
           body: JSON.stringify({
             full_name: formData.fullName,
@@ -217,6 +217,10 @@ export default function ManagersPage() {
             branchId: formData.branchId,
           }),
         });
+        // The user endpoint creates the account, while permissions are stored
+        // separately. Persist the choices from this form immediately so the
+        // manager doesn't silently receive role defaults instead.
+        await updateUserPermissions(createdManager.id, permissions);
         notify.success(t("success"), t("managerCreatedSuccess"));
         await loadData();
         resetForm();

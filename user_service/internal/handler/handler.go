@@ -765,7 +765,7 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 	callerID := c.GetHeader("X-User-ID")
 	callerRole := c.GetHeader("X-User-Role")
 	if callerID != targetID {
-		if !canReassignRole(callerRole) {
+		if !canReassignRole(callerRole) && callerRole != "branch_admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to view these permissions"})
 			return
 		}
@@ -780,6 +780,10 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if callerRole == "branch_admin" && target.Role != "manager" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 			return
 		}
 		if !h.canAccessUser(c.Request.Context(), callerID, callerRole, target) {
@@ -804,7 +808,7 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 // closes, matching canReassignRole's restriction on role changes.
 func (h *Handler) UpdatePermissions(c *gin.Context) {
 	callerRole := c.GetHeader("X-User-Role")
-	if !canReassignRole(callerRole) {
+	if !canReassignRole(callerRole) && callerRole != "branch_admin" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to change permissions"})
 		return
 	}
@@ -816,6 +820,10 @@ func (h *Handler) UpdatePermissions(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if callerRole == "branch_admin" && target.Role != "manager" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 	// See GetPermissions: canReassignRole alone doesn't confirm target is in
