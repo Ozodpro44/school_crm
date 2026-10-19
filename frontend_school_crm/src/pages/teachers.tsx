@@ -174,7 +174,7 @@ export default function TeachersPage() {
           notify.success(t("success"), t("teacherAddedSuccess"));
           resetForm(); setIsDialogOpen(false);
         },
-        onError: () => notify.error(t("error"), t("failedToCreateTeacher")),
+        onError: (err) => notify.error(t("failedToCreateTeacher"), err instanceof Error ? err.message : undefined),
       });
     }
   };
