@@ -4,7 +4,7 @@
  * Handles all HTTP requests with authentication, error handling, and data marshalling
  */
 
-import { Branch, HikvisionDevice, HikvisionEmployee, HikvisionAttendanceRecord } from "@/types";
+import { Branch, Permission, HikvisionDevice, HikvisionEmployee, HikvisionAttendanceRecord } from "@/types";
 import {
   AuthEvents,
   clearAuthState,
@@ -756,7 +756,8 @@ export async function getUserPermissions(userId: string): Promise<Record<string,
  */
 export async function updateUserPermissions(
   userId: string,
-  permissions: Record<string, boolean>
+  // Callers pass either the typed Permission object or a plain flag map.
+  permissions: Permission | Record<string, boolean>
 ): Promise<any> {
   // user_service registers this at PUT /permissions/:userId (not nested
   // under /users/:id) — the old path always 404'd, so no permission edit
