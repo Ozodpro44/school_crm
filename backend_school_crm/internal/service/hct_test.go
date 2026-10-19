@@ -151,6 +151,13 @@ func fakeHCT(t *testing.T, tokenCalls *int32, rejectFirstToken bool) *httptest.S
 		reply(w, map[string]any{"errorCode": "0", "data": map[string]any{"personId": "P123", "personCode": "T001"}})
 	}))
 	mux.HandleFunc("/api/hccgw/resource/v1/devices/get", authed(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&b)
+		// Mirrors the real platform: a matchKey filter without deviceCategory is a parameter error.
+		if b["deviceCategory"] != "accessControllerDevice" {
+			reply(w, map[string]any{"errorCode": "OPEN000010", "message": "Parameter verification failed"})
+			return
+		}
 		reply(w, map[string]any{"errorCode": "0", "data": map[string]any{"device": []map[string]any{
 			{"id": "d1", "serialNo": "OTHER", "onlineStatus": 1}, {"id": "d2", "serialNo": "ff7999936", "onlineStatus": 1},
 		}}})
@@ -217,8 +224,9 @@ func TestHCTClientErrors(t *testing.T) {
 	}
 
 	c := NewHCTClient("AK", "SK", srv.URL, nil)
-	if err := c.AddDevice(context.Background(), "n", "FF7999936", "wrongcode"); err == nil {
-		t.Error("a rejected verification code must be an error even though the HTTP call succeeded")
+	err = c.AddDevice(context.Background(), "n", "FF7999936", "wrongcode")
+	if err == nil || !asHCT(err, &he) || he.Code != "EVZ20010" || !strings.Contains(he.Message, "verification code") {
+		t.Errorf("a rejected verification code must be an explained error even though the HTTP call succeeded, got %v", err)
 	}
 	if err := c.AddDevice(context.Background(), "n", "FF7999936", "goodcode"); err != nil {
 		t.Errorf("valid code rejected: %v", err)

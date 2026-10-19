@@ -241,8 +241,11 @@ func (c *HCTClient) FindDeviceBySerial(ctx context.Context, serial string) (*HCT
 	var out struct {
 		Device []HCTDevice `json:"device"`
 	}
+	// The platform answers OPEN000010 (parameter error) to a matchKey filter
+	// unless deviceCategory is given too.
 	err := c.Call(ctx, "/api/hccgw/resource/v1/devices/get", map[string]any{
-		"pageIndex": 1, "pageSize": 20, "filter": map[string]any{"matchKey": serial},
+		"pageIndex": 1, "pageSize": 20, "deviceCategory": "accessControllerDevice",
+		"filter": map[string]any{"matchKey": serial},
 	}, &out)
 	if err != nil {
 		return nil, err
@@ -284,7 +287,7 @@ func (c *HCTClient) AddDevice(ctx context.Context, name, serial, verifyCode stri
 		if len(out.AddDeviceResponse.DeviceList) > 0 {
 			code = out.AddDeviceResponse.DeviceList[0].ErrorCode
 		}
-		return &HCTError{Code: code, Message: "device was not added (check the serial number and verification code)"}
+		return &HCTError{Code: code, Message: hctAddDeviceHint(code)}
 	}
 	return nil
 }
@@ -382,4 +385,24 @@ func (c *HCTClient) SubscribeEvents(ctx context.Context, msgTypes []string) erro
 	return c.Call(ctx, "/api/hccgw/rawmsg/v1/mq/subscribe", map[string]any{
 		"subscribeType": 1, "msgType": msgTypes,
 	}, nil)
+}
+
+// hctAddDeviceHint explains the device-registration (EVZ) error codes from the guide.
+func hctAddDeviceHint(code string) string {
+	switch code {
+	case "EVZ20010":
+		return "the verification code is wrong (use the code set under Hik-Connect on the terminal)"
+	case "EVZ20014", "EVZ20002":
+		return "the serial number is wrong, or the device is registered in another Hik-Connect region"
+	case "EVZ20007":
+		return "the device is offline: check its internet connection and that Hik-Connect is enabled on it"
+	case "EVZ20008":
+		return "the device did not answer in time, try again"
+	case "EVZ20013":
+		return "the device is already added to another Hik-Connect account (remove it there first)"
+	case "EVZ20017":
+		return "the device is already in our Hik-Connect account: delete it in the Hik-Connect portal (Devices), then add it here"
+	default:
+		return "the device was not added (check the serial number and verification code)"
+	}
 }
