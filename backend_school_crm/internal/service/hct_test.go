@@ -165,10 +165,15 @@ func fakeHCT(t *testing.T, tokenCalls *int32, rejectFirstToken bool) *httptest.S
 	mux.HandleFunc("/api/hccgw/resource/v1/devices/add", authed(func(w http.ResponseWriter, r *http.Request) {
 		var b struct {
 			DeviceInfo struct {
+				Name string `json:"name"`
 				Code string `json:"ezvizVerifyCode"`
 			} `json:"deviceInfo"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&b)
+		if b.DeviceInfo.Name == "taken" { // an area with this name already exists
+			reply(w, map[string]any{"errorCode": "OPEN000510", "message": "Area name already exist{CCF021103}"})
+			return
+		}
 		if b.DeviceInfo.Code != "goodcode" {
 			reply(w, map[string]any{"errorCode": "0", "data": map[string]any{"addDeviceResponse": map[string]any{
 				"failed": 1, "deviceList": []map[string]any{{"deviceSerial": "FF7999936", "errorCode": "EVZ20010"}}}}})
@@ -252,4 +257,15 @@ func asHCT(err error, target **HCTError) bool {
 		err = u.Unwrap()
 	}
 	return false
+}
+
+func TestHCTAddDeviceRetriesWhenAreaNameExists(t *testing.T) {
+	var tokens int32
+	srv := fakeHCT(t, &tokens, false)
+	defer srv.Close()
+	c := NewHCTClient("AK", "SK", srv.URL, nil)
+	// The first attempt (name "taken") fails with OPEN000510; the retry uses "taken FF7999936".
+	if err := c.AddDevice(context.Background(), "taken", "FF7999936", "goodcode"); err != nil {
+		t.Fatalf("a duplicate area name should be retried under a unique name: %v", err)
+	}
 }

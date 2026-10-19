@@ -261,6 +261,18 @@ func (c *HCTClient) FindDeviceBySerial(ctx context.Context, serial string) (*HCT
 // AddDevice adds a terminal to the Team account. Hikvision checks the
 // verification code, which is our proof that whoever asks really holds the device.
 func (c *HCTClient) AddDevice(ctx context.Context, name, serial, verifyCode string) error {
+	err := c.addDeviceOnce(ctx, name, serial, verifyCode)
+	// The platform creates an area named after the device; a leftover area of the
+	// same name (e.g. from a device that was deleted and is being re-added)
+	// makes it answer OPEN000510. Retry once under a unique name.
+	var he *HCTError
+	if errors.As(err, &he) && he.Code == "OPEN000510" {
+		return c.addDeviceOnce(ctx, name+" "+serial, serial, verifyCode)
+	}
+	return err
+}
+
+func (c *HCTClient) addDeviceOnce(ctx context.Context, name, serial, verifyCode string) error {
 	var out struct {
 		AddDeviceResponse struct {
 			Failed     int `json:"failed"`
