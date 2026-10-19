@@ -223,7 +223,7 @@ function StudentRow({
         "py-2.5 border-b border-slate-100 dark:border-slate-800 last:border-b-0 transition-colors",
         isPaid && "bg-emerald-50/50 dark:bg-emerald-950/10",
         selected && !isPaid && "bg-indigo-50 dark:bg-indigo-950/30",
-        active && !isPaid && "bg-indigo-50/70 dark:bg-indigo-950/20 ring-1 ring-inset ring-indigo-400/60",
+        active && "bg-indigo-100/70 dark:bg-indigo-500/15 ring-2 ring-inset ring-indigo-500 shadow-[inset_4px_0_0_0_theme(colors.indigo.500)]",
         !isPaid && !active && !selected && "hover:bg-slate-50 dark:hover:bg-slate-800/50"
       )}
     >
@@ -609,6 +609,7 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
   // Any filter change starts again from page 1.
   useEffect(() => {
     setPage(1);
+    setActiveIndex(0);
   }, [debouncedSearch, classFilter, statusFilter, pageSize, branchId]);
 
   const loadStudents = useCallback(async () => {
@@ -635,7 +636,9 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
       setStudents(data);
       setTotal(res.total ?? data.length);
       if (res.counts) setCounts(res.counts);
-      setActiveIndex(0);
+      // Keep the keyboard cursor where it was (just clamp it) — resetting on every
+      // refetch made ↑↓ appear to do nothing whenever a reload landed mid-navigation.
+      setActiveIndex((i) => Math.min(i, Math.max(data.length - 1, 0)));
     } catch {
       if (reqId !== requestRef.current) return;
       setStudents([]);
@@ -784,21 +787,53 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
     }
   };
 
-  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, Math.max(students.length - 1, 0)));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActiveIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const s = students[activeIndex];
-      if (s) payOne(s);
-    } else if (e.key === "Escape") {
-      setSearch("");
-    }
-  };
+  // Keyboard shortcuts work from anywhere on the page (not only while the search
+  // box has focus), except inside other fields, menus and dialogs. The handler
+  // reads the latest state through a ref so one listener serves every render.
+  const keyStateRef = useRef({ students, activeIndex, receiptOpen: false, payOne });
+  keyStateRef.current = { students, activeIndex, receiptOpen: receipt !== null, payOne };
+
+  useEffect(() => {
+    if (tab !== "collect") return;
+    const onKey = (e: KeyboardEvent) => {
+      const st = keyStateRef.current;
+      if (st.receiptOpen || e.altKey || e.ctrlKey || e.metaKey) return;
+      const el = e.target as HTMLElement | null;
+      const tag = el?.tagName;
+      const isSearch = el === searchRef.current;
+      if (
+        (tag === "INPUT" && !isSearch) ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        el?.isContentEditable ||
+        el?.closest('[role="dialog"],[role="listbox"],[role="menu"],[role="combobox"]')
+      ) {
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setActiveIndex((i) => Math.min(i + 1, Math.max(st.students.length - 1, 0)));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setActiveIndex((i) => Math.max(i - 1, 0));
+      } else if (e.key === "Enter") {
+        if (tag === "BUTTON") return; // a focused button handles Enter itself
+        const target = st.students[st.activeIndex];
+        if (target) {
+          e.preventDefault();
+          st.payOne(target);
+        }
+      } else if (e.key === "Escape") {
+        setSearch("");
+        searchRef.current?.focus();
+      } else if (e.key === "/" && !isSearch) {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tab]);
 
   // Keep the highlighted row visible while arrowing through a long page.
   useEffect(() => {
@@ -889,7 +924,6 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
                     placeholder={t("qpSearchPlaceholder")}
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={onSearchKeyDown}
                     className="pl-9 h-10"
                   />
                 </div>
