@@ -323,6 +323,30 @@ export interface HikvisionEmployee {
   updatedAt: string;
 }
 
+export interface HikvisionReportDay {
+  date: string; // YYYY-MM-DD, school-local
+  firstIn: string;
+  lastOut: string;
+  events: number;
+  minutes: number;
+  late: boolean;
+}
+
+export interface HikvisionEmployeeReport {
+  employeeId: string;
+  employeeNo: string;
+  fullName: string;
+  teacherId: string | null;
+  teacherName: string | null;
+  deviceId: string;
+  deviceName: string;
+  daysPresent: number;
+  lateDays: number;
+  totalMinutes: number;
+  avgInMinute: number | null; // minutes after local midnight
+  days: HikvisionReportDay[];
+}
+
 export interface HikvisionAttendanceRecord {
   id: string;
   deviceId: string;

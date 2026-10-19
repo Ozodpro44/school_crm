@@ -1,6 +1,6 @@
 // Hikvision Face ID terminals: devices, enrolled staff, and the check-in/out log.
 // Embedded as a tab on the Attendance page (admin only).
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Card,
   CardContent,
@@ -59,6 +59,7 @@ import {
   listHikvisionAttendance,
   listTeachers,
 } from "@/lib/api";
+import { HikvisionReport } from "@/components/panels/HikvisionReport";
 import { HikvisionDevice, HikvisionEmployee, HikvisionAttendanceRecord, Teacher } from "@/types";
 
 export function HikvisionPanel() {
@@ -110,11 +111,20 @@ export function HikvisionPanel() {
   const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false);
   const [isSubmittingEmployee, setIsSubmittingEmployee] = useState(false);
   const [employeeForm, setEmployeeForm] = useState({
-    employeeNo: "",
     fullName: "",
     teacherId: "",
   });
   const [newEmployeePhoto, setNewEmployeePhoto] = useState<File | null>(null);
+  const [photoError, setPhotoError] = useState<string>("");
+  const photoPreviewUrl = useMemo(
+    () => (newEmployeePhoto ? URL.createObjectURL(newEmployeePhoto) : ""),
+    [newEmployeePhoto]
+  );
+  useEffect(() => {
+    return () => {
+      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+    };
+  }, [photoPreviewUrl]);
 
   // Upload face dialog
   const [faceDialogEmployee, setFaceDialogEmployee] = useState<HikvisionEmployee | null>(null);
@@ -313,38 +323,57 @@ export function HikvisionPanel() {
   };
 
   const resetEmployeeForm = () => {
-    setEmployeeForm({ employeeNo: "", fullName: "", teacherId: "" });
+    setEmployeeForm({ fullName: "", teacherId: "" });
     setNewEmployeePhoto(null);
+    setPhotoError("");
+  };
+
+  // Checks the picked photo (type, size, dimensions) and stores it for the preview.
+  const handlePickPhoto = (file: File | null) => {
+    setNewEmployeePhoto(null);
+    setPhotoError("");
+    if (!file) return;
+    if (file.type !== "image/jpeg" && file.type !== "image/png") {
+      setPhotoError(t("facePhotoBadType"));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError(t("facePhotoTooBig"));
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new window.Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      if (img.naturalWidth < 200 || img.naturalHeight < 200) {
+        setPhotoError(t("facePhotoTooSmall"));
+        return;
+      }
+      setNewEmployeePhoto(file);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      setPhotoError(t("facePhotoBadType"));
+    };
+    img.src = url;
   };
 
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDeviceId) return;
+    if (!newEmployeePhoto) {
+      setPhotoError(t("facePhotoRequiredError"));
+      return;
+    }
     setIsSubmittingEmployee(true);
     try {
-      const employee = await addHikvisionEmployee({
+      await addHikvisionEmployee({
         deviceId: selectedDeviceId,
-        employeeNo: employeeForm.employeeNo,
         fullName: employeeForm.fullName,
         teacherId: employeeForm.teacherId || null,
+        photo: newEmployeePhoto,
       });
-
-      if (newEmployeePhoto) {
-        try {
-          await uploadHikvisionEmployeeFace(employee.id, newEmployeePhoto);
-          toast({ title: t("success"), description: t("employeeAdded"), variant: "success" });
-        } catch (photoError) {
-          toast({
-            title: t("warning"),
-            description: `${t("employeeAdded")}. ${t("photoUploadFailedNote")}${
-              photoError instanceof Error ? ` (${photoError.message})` : ""
-            }`,
-          });
-        }
-      } else {
-        toast({ title: t("success"), description: t("employeeAdded"), variant: "success" });
-      }
-
+      toast({ title: t("success"), description: t("employeeAdded"), variant: "success" });
       resetEmployeeForm();
       setIsEmployeeDialogOpen(false);
       await loadEmployees(selectedDeviceId);
@@ -450,6 +479,7 @@ export function HikvisionPanel() {
             <TabsTrigger value="devices">{t("tabDevices")}</TabsTrigger>
             <TabsTrigger value="employees">{t("tabEmployees")}</TabsTrigger>
             <TabsTrigger value="records">{t("tabRecords")}</TabsTrigger>
+            <TabsTrigger value="report">{t("tabReport")}</TabsTrigger>
           </TabsList>
 
           {/* ============================== DEVICES ============================== */}
@@ -767,21 +797,9 @@ export function HikvisionPanel() {
                         required
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="employeeNo">{t("employeeNo")} *</Label>
-                      <Input
-                        id="employeeNo"
-                        value={employeeForm.employeeNo}
-                        onChange={(e) =>
-                          setEmployeeForm({ ...employeeForm, employeeNo: e.target.value })
-                        }
-                        placeholder="1001"
-                        required
-                      />
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {t("employeeNoHint")}
-                      </p>
-                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {t("employeeNoAuto")}
+                    </p>
                     <div className="space-y-2">
                       <Label>{t("linkedTeacherOptional")}</Label>
                       <Select
@@ -807,16 +825,34 @@ export function HikvisionPanel() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="newEmployeePhoto">{t("facePhotoOptional")}</Label>
+                      <Label htmlFor="newEmployeePhoto">{t("facePhotoRequired")}</Label>
                       <Input
                         id="newEmployeePhoto"
                         type="file"
-                        accept="image/jpeg,image/jpg"
-                        onChange={(e) => setNewEmployeePhoto(e.target.files?.[0] ?? null)}
+                        accept="image/jpeg,image/png"
+                        onChange={(e) => handlePickPhoto(e.target.files?.[0] ?? null)}
                       />
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {t("facePhotoOptionalHint")}
+                        {t("facePhotoRequiredHint")}
                       </p>
+                      {photoError && (
+                        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                          {photoError}
+                        </p>
+                      )}
+                      {photoPreviewUrl && (
+                        <div className="flex items-center gap-3 rounded-md border border-slate-200 dark:border-slate-800 p-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={photoPreviewUrl}
+                            alt={t("facePhotoPreview")}
+                            className="h-28 w-28 rounded-md object-cover"
+                          />
+                          <div className="text-xs text-slate-500 dark:text-slate-400 break-all">
+                            {newEmployeePhoto?.name}
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="flex justify-end gap-3 pt-2">
                       <Button
@@ -827,7 +863,7 @@ export function HikvisionPanel() {
                       >
                         {t("cancel")}
                       </Button>
-                      <Button type="submit" disabled={isSubmittingEmployee}>
+                      <Button type="submit" disabled={isSubmittingEmployee || !newEmployeePhoto}>
                         {isSubmittingEmployee && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                         {t("create")}
                       </Button>
@@ -1105,6 +1141,11 @@ export function HikvisionPanel() {
                 )}
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* ============================= REPORT ============================= */}
+          <TabsContent value="report" className="pt-4">
+            {activeTab === "report" && <HikvisionReport />}
           </TabsContent>
         </Tabs>
       )}
