@@ -361,6 +361,31 @@ func stringFieldPtr(v interface{}, present bool) (*string, error) {
 
 // canResetOthersPassword reports whether a caller with this role may set
 // another user's password (still subject to canAccessUser).
+// canDeleteUser reports whether the caller may delete target. Branch access is
+// checked separately (canAccessUser).
+//   - nobody deletes themselves through this endpoint;
+//   - platform roles may delete anyone;
+//   - a tenant admin may delete manager, branch_admin and accountant accounts
+//     (teachers go through teacher_service, which also removes the teacher row;
+//     other admins and platform accounts are never deletable by a tenant admin);
+//   - a branch_admin may delete managers only.
+func canDeleteUser(callerID, callerRole string, target *service.User) bool {
+	if callerID == "" || callerID == target.ID {
+		return false
+	}
+	if isSuperRole(callerRole) {
+		return true
+	}
+	switch callerRole {
+	case "admin":
+		return target.Role == "manager" || target.Role == "branch_admin" || target.Role == "accountant"
+	case "branch_admin":
+		return target.Role == "manager"
+	default:
+		return false
+	}
+}
+
 func canResetOthersPassword(role string) bool {
 	return role == "admin" || role == "branch_admin" || isSuperRole(role)
 }
@@ -435,11 +460,15 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// Deleting a user is more sensitive than reading/updating one — restrict
-	// it to platform-level roles rather than extending it to same-branch
-	// staff via canAccessUser (and never allow self-delete through this
-	// generic admin endpoint).
-	if !isSuperRole(c.GetHeader("X-User-Role")) {
+	// Deleting a user is more sensitive than reading/updating one, so the
+	// caller must pass canDeleteUser (never self, never a platform account,
+	// tenant admin/branch_admin only within their own branches and only for
+	// the account types they manage) AND have access to the user's branch.
+	// It used to be platform-only, which left the Managers page unable to
+	// delete anyone (403).
+	callerID, callerRole := c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role")
+	if !canDeleteUser(callerID, callerRole, existing) ||
+		!h.canAccessUser(c.Request.Context(), callerID, callerRole, existing) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete users"})
 		return
 	}

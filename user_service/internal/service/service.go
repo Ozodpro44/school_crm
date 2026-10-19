@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -268,26 +269,11 @@ func (s *UserService) Update(ctx context.Context, id string, fields map[string]i
 		"organization_name": true,
 	}
 
-	parts := []string{}
-	args := []interface{}{}
-	n := 1
-	// The frontend sends camelCase keys (canDeleteStudents) while columns are
-	// snake_case; before this, every key from the Managers page failed the
-	// allowlist and the edit was silently dropped. Accept both spellings and
-	// require real booleans.
-	for rawKey, v := range fields {
-		k := permissionColumn(rawKey)
-		if !allowed[k] {
-			continue
-		}
-		b, ok := v.(bool)
-		if !ok {
-			return nil, fmt.Errorf("permission %q must be a boolean", rawKey)
-		}
-		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
-		args = append(args, b)
-		n++
+	parts, args, err := buildSetClauses(fields, allowed, nil, false)
+	if err != nil {
+		return nil, err
 	}
+	n := len(args) + 1
 	if len(parts) == 0 {
 		return s.GetByID(ctx, id)
 	}
@@ -299,7 +285,7 @@ func (s *UserService) Update(ctx context.Context, id string, fields map[string]i
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	_, err := s.db.Conn().ExecContext(ctx,
+	_, err = s.db.Conn().ExecContext(ctx,
 		"UPDATE users SET "+strings.Join(parts, ", ")+" WHERE id = $"+fmt.Sprintf("%d", n), args...)
 	if err != nil {
 		return nil, err
@@ -1062,6 +1048,42 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 	return &p, nil
 }
 
+// buildSetClauses turns a client-supplied field map into "col = $n" fragments
+// and their arguments. Only keys present in allowed (after normalize, when
+// given) are used, in sorted order so the SQL is deterministic; the column
+// name therefore never comes straight from the request. boolOnly rejects
+// non-boolean values (permission flags).
+func buildSetClauses(fields map[string]interface{}, allowed map[string]bool, normalize func(string) string, boolOnly bool) ([]string, []interface{}, error) {
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	parts := []string{}
+	args := []interface{}{}
+	for _, raw := range keys {
+		col := raw
+		if normalize != nil {
+			col = normalize(raw)
+		}
+		if !allowed[col] {
+			continue
+		}
+		v := fields[raw]
+		if boolOnly {
+			b, ok := v.(bool)
+			if !ok {
+				return nil, nil, fmt.Errorf("%q must be a boolean", raw)
+			}
+			v = b
+		}
+		args = append(args, v)
+		parts = append(parts, fmt.Sprintf("%s = $%d", col, len(args)))
+	}
+	return parts, args, nil
+}
+
 // permissionColumn maps "canDeleteStudents" or "can_delete_students" to the
 // snake_case column name.
 func permissionColumn(key string) string {
@@ -1111,21 +1133,14 @@ func (s *PermissionService) Upsert(ctx context.Context, userID string, fields ma
 		"can_view_reports": true, "can_view_settings": true, "can_edit_settings": true,
 		"can_view_subscriptions": true, "can_manage_subscriptions": true,
 	}
-	parts := []string{}
-	args := []interface{}{}
-	n := 1
-	for key, v := range fields {
-		// The Managers UI sends camelCase JSON keys (canViewStudents), while
-		// permission columns and the allowlist are snake_case. Normalize before
-		// checking the allowlist; otherwise every UI update is silently ignored.
-		column := permissionColumn(key)
-		if !allowed[column] {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s = $%d", column, n))
-		args = append(args, v)
-		n++
+	// The Managers UI sends camelCase keys (canViewStudents) while the columns
+	// and allowlist are snake_case; buildSetClauses normalises them, rejects
+	// anything that is not a boolean and ignores unknown keys (id, userId, ...).
+	parts, args, err := buildSetClauses(fields, allowed, permissionColumn, true)
+	if err != nil {
+		return nil, err
 	}
+	n := len(args) + 1
 	if len(parts) == 0 {
 		return s.GetByUserID(ctx, userID)
 	}
