@@ -385,7 +385,7 @@ export default function TeachersPage() {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, monthlySalary: removeNumberFormatting(e.target.value) }); clearFieldError("monthlySalary"); }}
             />
             <Field id="subjects" as="textarea"
-              label={`${t("subjects")} (${t("commaSeparated")}) *`}
+              label={`${t("subjects")} (${t("commaSeparated")}, ${t("optional")})`}
               value={formData.subjects} placeholder={t("subjectsPlaceholder")}
               className="md:col-span-2"
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, subjects: e.target.value })}

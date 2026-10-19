@@ -300,6 +300,10 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 		UpdatedAt:     now,
 	}
 
+	if t.Subjects == nil {
+		t.Subjects = []string{} // subjects are optional; never serialise as null
+	}
+
 	tx, err := s.db.Conn().BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -320,9 +324,12 @@ func (s *TeacherService) Create(ctx context.Context, req *CreateTeacherRequest) 
 		_, err = tx.ExecContext(ctx,
 			// email_verified = true: the admin who adds the teacher vouches for the
 			// address; unverified accounts cannot log in (auth_service).
+			// Separate parameters: email_verified_at is timestamptz while
+			// created_at/updated_at are timestamp, and one parameter reused across
+			// both fails with "inconsistent types deduced for parameter".
 			`INSERT INTO users (id, email, password_hash, role, full_name, branch_id, email_verified, email_verified_at, created_at, updated_at)
-			 VALUES ($1, $2, $3, 'teacher', $4, $5, true, $6, $6, $6)`,
-			userID, req.Email, string(hashedPw), req.FullName, req.BranchID, now,
+			 VALUES ($1, $2, $3, 'teacher', $4, $5, true, $6, $7, $8)`,
+			userID, req.Email, string(hashedPw), req.FullName, req.BranchID, now, now, now,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("create teacher user: %w", err)
