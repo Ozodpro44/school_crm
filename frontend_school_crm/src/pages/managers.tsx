@@ -578,7 +578,8 @@ export default function ManagersPage() {
           submitLabel={editingManager ? t("update") : t("create")}
           submittingLabel={editingManager ? t("updating") : t("creating")}
           cancelLabel={t("cancel")}
-          isPending={isSubmitting || !!(editingManager && !hasPermissionsChanged())}
+          isPending={isSubmitting}
+          submitDisabled={!!(editingManager && !hasPermissionsChanged())}
           maxWidth="max-w-4xl"
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
