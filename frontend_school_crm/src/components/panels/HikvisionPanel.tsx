@@ -33,6 +33,8 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Plus,
+  ChevronLeft,
+  ChevronRight,
   Trash2,
   Upload,
   Wifi,
@@ -57,7 +59,7 @@ import {
   addHikvisionEmployee,
   uploadHikvisionEmployeeFace,
   removeHikvisionEmployee,
-  listHikvisionAttendance,
+  listHikvisionAttendancePage,
   listTeachers,
 } from "@/lib/api";
 import { HikvisionReport } from "@/components/panels/HikvisionReport";
@@ -76,6 +78,9 @@ export function HikvisionPanel() {
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [records, setRecords] = useState<HikvisionAttendanceRecord[]>([]);
   const [recordsLoaded, setRecordsLoaded] = useState(false);
+  const [recordsPage, setRecordsPage] = useState(1);
+  const [recordsPageSize, setRecordsPageSize] = useState(50);
+  const [recordsTotal, setRecordsTotal] = useState(0);
   const [recordsLoading, setRecordsLoading] = useState(false);
 
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
@@ -221,18 +226,22 @@ export function HikvisionPanel() {
     }
   };
 
-  const loadRecords = async (deviceOverride?: string) => {
+  const loadRecords = async (deviceOverride?: string, page = 1, pageSize = recordsPageSize) => {
     const myId = ++recordsRequestIdRef.current;
     const deviceFilter = deviceOverride ?? filterDeviceId;
     try {
       setRecordsLoading(true);
-      const list = await listHikvisionAttendance({
+      const res = await listHikvisionAttendancePage({
         deviceId: deviceFilter !== "all" ? deviceFilter : undefined,
         from: filterFrom || undefined,
         to: filterTo || undefined,
+        page,
+        limit: pageSize,
       });
       if (myId !== recordsRequestIdRef.current) return;
-      setRecords(list);
+      setRecords(res.items);
+      setRecordsTotal(res.total);
+      setRecordsPage(res.page);
       setRecordsLoaded(true);
     } catch (error) {
       if (myId !== recordsRequestIdRef.current) return;
@@ -1138,6 +1147,54 @@ export function HikvisionPanel() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+                {recordsTotal > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-4 mt-2 border-t border-slate-100 dark:border-slate-800 text-sm">
+                    <div className="flex items-center gap-2 text-slate-500">
+                      <span>{t("qpRowsPerPage")}</span>
+                      <Select
+                        value={String(recordsPageSize)}
+                        onValueChange={(v) => {
+                          setRecordsPageSize(Number(v));
+                          loadRecords(undefined, 1, Number(v));
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-[76px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[25, 50, 100, 200].map((n) => (
+                            <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500 tabular-nums">
+                        {(recordsPage - 1) * recordsPageSize + 1}–{Math.min(recordsPage * recordsPageSize, recordsTotal)} / {recordsTotal}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={t("qpPrev")}
+                        disabled={recordsPage <= 1 || recordsLoading}
+                        onClick={() => loadRecords(undefined, recordsPage - 1)}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={t("qpNext")}
+                        disabled={recordsPage * recordsPageSize >= recordsTotal || recordsLoading}
+                        onClick={() => loadRecords(undefined, recordsPage + 1)}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                 )}
               </CardContent>

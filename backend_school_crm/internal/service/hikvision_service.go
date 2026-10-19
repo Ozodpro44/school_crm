@@ -643,7 +643,14 @@ func (s *HikvisionService) pollAllDevicesOnce(ctx context.Context) {
 // configured with its own attendance shift rules: the first scan of the day
 // is a check-in, the next is a check-out, and so on.
 func (s *HikvisionService) nextEventType(ctx context.Context, deviceID, employeeNo string, eventTime time.Time) (models.AttendanceEventType, error) {
-	dayStart := time.Date(eventTime.Year(), eventTime.Month(), eventTime.Day(), 0, 0, 0, 0, eventTime.Location())
+	// "The first scan of the day" means the school's day (Tashkent), not the
+	// UTC day or whatever zone the event happened to be parsed in.
+	loc, lerr := time.LoadLocation(reportTimezone)
+	if lerr != nil {
+		loc = time.FixedZone("UTC+5", 5*3600)
+	}
+	local := eventTime.In(loc)
+	dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
 	dayEnd := dayStart.Add(24 * time.Hour)
 
 	var count int
@@ -680,20 +687,19 @@ type AttendanceFilter struct {
 	EmployeeID string
 	From       *time.Time
 	To         *time.Time
+	Limit      int
+	Offset     int
 }
 
-func (s *HikvisionService) ListAttendance(ctx context.Context, filter AttendanceFilter) ([]models.AttendanceRecord, error) {
-	query := `
-		SELECT a.id, a.device_id, a.employee_id, a.employee_no, a.event_time, a.event_type, a.minor_event, a.source, a.created_at,
-		       COALESCE(e.full_name, '')
-		FROM attendance_records a
-		LEFT JOIN hikvision_employees e ON e.id = a.employee_id
-		WHERE 1=1`
+// attendanceWhere builds the shared WHERE clause (after "WHERE 1=1") and args
+// for ListAttendance and CountAttendance.
+func attendanceWhere(filter AttendanceFilter) (string, []interface{}) {
+	where := ""
 	args := []interface{}{}
 	argN := 1
 
 	if filter.BranchID != "" {
-		query += fmt.Sprintf(` AND a.device_id IN (
+		where += fmt.Sprintf(` AND a.device_id IN (
 			SELECT d.id FROM hikvision_devices d
 			JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 			WHERE d.branch_id = $%d)`, argN)
@@ -701,26 +707,55 @@ func (s *HikvisionService) ListAttendance(ctx context.Context, filter Attendance
 		argN++
 	}
 	if filter.DeviceID != "" {
-		query += fmt.Sprintf(" AND a.device_id = $%d", argN)
+		where += fmt.Sprintf(" AND a.device_id = $%d", argN)
 		args = append(args, filter.DeviceID)
 		argN++
 	}
 	if filter.EmployeeID != "" {
-		query += fmt.Sprintf(" AND a.employee_id = $%d", argN)
+		where += fmt.Sprintf(" AND a.employee_id = $%d", argN)
 		args = append(args, filter.EmployeeID)
 		argN++
 	}
 	if filter.From != nil {
-		query += fmt.Sprintf(" AND a.event_time >= $%d", argN)
+		where += fmt.Sprintf(" AND a.event_time >= $%d", argN)
 		args = append(args, *filter.From)
 		argN++
 	}
 	if filter.To != nil {
-		query += fmt.Sprintf(" AND a.event_time < $%d", argN)
+		where += fmt.Sprintf(" AND a.event_time < $%d", argN)
 		args = append(args, *filter.To)
-		argN++
 	}
-	query += " ORDER BY a.event_time DESC LIMIT 500"
+	return where, args
+}
+
+// CountAttendance returns how many records match the filter (for paging).
+func (s *HikvisionService) CountAttendance(ctx context.Context, filter AttendanceFilter) (int, error) {
+	where, args := attendanceWhere(filter)
+	var n int
+	err := s.db.GetConn().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM attendance_records a WHERE 1=1`+where, args...).Scan(&n)
+	return n, err
+}
+
+// ListAttendance returns newest-first records. Limit/Offset page through the
+// result; with Limit unset it returns at most 500 (the historical cap).
+func (s *HikvisionService) ListAttendance(ctx context.Context, filter AttendanceFilter) ([]models.AttendanceRecord, error) {
+	where, args := attendanceWhere(filter)
+	limit := filter.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	query := `
+		SELECT a.id, a.device_id, a.employee_id, a.employee_no, a.event_time, a.event_type, a.minor_event, a.source, a.created_at,
+		       COALESCE(e.full_name, '')
+		FROM attendance_records a
+		LEFT JOIN hikvision_employees e ON e.id = a.employee_id
+		WHERE 1=1` + where + fmt.Sprintf(" ORDER BY a.event_time DESC, a.id LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	args = append(args, limit, offset)
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, args...)
 	if err != nil {

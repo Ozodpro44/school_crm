@@ -24,14 +24,15 @@ export function formatInTashkent(
       return "-";
     }
 
-    const defaultOptions: Intl.DateTimeFormatOptions = {
+    // Explicit options replace the defaults instead of being merged into them:
+    // merging made the date-only and time-only helpers print date AND time.
+    const defaultOptions: Intl.DateTimeFormatOptions = options ?? {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
-      ...options,
     };
 
     return dateObj.toLocaleString("en-GB", {

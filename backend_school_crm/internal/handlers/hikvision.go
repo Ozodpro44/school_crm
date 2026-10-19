@@ -7,6 +7,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -442,16 +443,53 @@ func (h *hikvisionHandler) listAttendance(c *gin.Context) {
 		}
 		filter.BranchID = branchID
 	}
+	// Day boundaries are the school's (Tashkent) days, not UTC days.
+	loc, lerr := time.LoadLocation("Asia/Tashkent")
+	if lerr != nil {
+		loc = time.FixedZone("UTC+5", 5*3600)
+	}
 	if from := c.Query("from"); from != "" {
-		if t, err := time.Parse("2006-01-02", from); err == nil {
+		if t, err := time.ParseInLocation("2006-01-02", from, loc); err == nil {
 			filter.From = &t
 		}
 	}
 	if to := c.Query("to"); to != "" {
-		if t, err := time.Parse("2006-01-02", to); err == nil {
-			t = t.Add(24 * time.Hour)
+		if t, err := time.ParseInLocation("2006-01-02", to, loc); err == nil {
+			t = t.AddDate(0, 0, 1)
 			filter.To = &t
 		}
+	}
+
+	// Paged mode: ?page=&limit= returns {items,total,page,limit,totalPages}.
+	// Without ?page the plain array (newest 500) is kept for older callers.
+	if pageStr := c.Query("page"); pageStr != "" {
+		page, _ := strconv.Atoi(pageStr)
+		if page < 1 {
+			page = 1
+		}
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+		if limit < 1 || limit > 200 {
+			limit = 50
+		}
+		filter.Limit, filter.Offset = limit, (page-1)*limit
+		total, err := h.svc.CountAttendance(c.Request.Context(), filter)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		items, err := h.svc.ListAttendance(c.Request.Context(), filter)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if items == nil {
+			items = []models.AttendanceRecord{}
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"items": items, "total": total, "page": page, "limit": limit,
+			"totalPages": (total + limit - 1) / limit,
+		})
+		return
 	}
 
 	records, err := h.svc.ListAttendance(c.Request.Context(), filter)

@@ -241,6 +241,8 @@ export const hikvisionTranslations: Partial<Translation> = {
   reportFirstIn: { "uz-cyrl": "Келди", "uz-latn": "Keldi", en: "In" },
   reportLastOut: { "uz-cyrl": "Кетди", "uz-latn": "Ketdi", en: "Out" },
   reportHours: { "uz-cyrl": "Соат", "uz-latn": "Soat", en: "Hours" },
+  reportHourShort: { "uz-cyrl": "соат", "uz-latn": "soat", en: "h" },
+  reportMinuteShort: { "uz-cyrl": "дақ", "uz-latn": "daq", en: "min" },
   reportLate: { "uz-cyrl": "Кечикди", "uz-latn": "Kechikdi", en: "Late" },
   reportNoDays: { "uz-cyrl": "Бу ойда ёзув йўқ", "uz-latn": "Bu oyda yozuv yo'q", en: "No scans this month" },
   reportEmpty: {

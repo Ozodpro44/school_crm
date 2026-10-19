@@ -17,6 +17,14 @@ import { HikvisionEmployeeReport } from "@/types";
 const hhmm = (minutes: number) =>
   `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
 
+// "4 daq" / "1 s 20 daq": H:MM alone is ambiguous ("0:04" reads like a time of day).
+const duration = (minutes: number, h: string, m: string) => {
+  if (minutes <= 0) return "—";
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return [hours > 0 ? `${hours} ${h}` : "", mins > 0 || hours === 0 ? `${mins} ${m}` : ""].filter(Boolean).join(" ");
+};
+
 const currentMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -188,7 +196,7 @@ export function HikvisionReport() {
                               <span className="text-slate-400">0</span>
                             )}
                           </td>
-                          <td className="py-3 px-4 tabular-nums">{hhmm(r.totalMinutes)}</td>
+                          <td className="py-3 px-4 tabular-nums">{duration(r.totalMinutes, t("reportHourShort"), t("reportMinuteShort"))}</td>
                           <td className="py-3 px-4 tabular-nums">
                             {r.avgInMinute != null ? hhmm(r.avgInMinute) : "—"}
                           </td>
@@ -225,7 +233,7 @@ export function HikvisionReport() {
                                           {d.events >= 2 ? formatTimeInTashkent(d.lastOut) : "—"}
                                         </td>
                                         <td className="py-1 tabular-nums">
-                                          {d.events >= 2 ? hhmm(d.minutes) : "—"}
+                                          {d.events >= 2 ? duration(d.minutes, t("reportHourShort"), t("reportMinuteShort")) : "—"}
                                         </td>
                                       </tr>
                                     ))}

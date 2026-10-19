@@ -525,6 +525,12 @@ func (h *Handler) ListUserTrash(c *gin.Context) {
 
 // isSuperRole reports whether callerRole is a platform-level role that
 // operates across every branch/tenant, rather than being scoped to one.
+// canSeeOwnerActivity: only owners (admin, branch admin) and platform staff
+// may read the audit entries written by owners.
+func canSeeOwnerActivity(role string) bool {
+	return role == "admin" || role == "branch_admin" || isSuperRole(role)
+}
+
 func isSuperRole(role string) bool {
 	return role == "developer" || role == "super_admin"
 }
@@ -1106,8 +1112,15 @@ func (h *Handler) ListAuditLogs(c *gin.Context) {
 		idx++
 	}
 
+	// Managers and other non-owner staff must not see what the owners did
+	// (admins, branch admins, platform staff): entries whose actor holds one of
+	// those roles are left out. System rows with no actor stay visible.
+	if !canSeeOwnerActivity(c.GetHeader("X-User-Role")) {
+		where += " AND (u.role IS NULL OR u.role NOT IN ('admin','branch_admin','developer','super_admin')) "
+	}
+
 	var total int
-	if err := h.db.QueryRowContext(c.Request.Context(), "SELECT COUNT(*) FROM audit_logs al"+where, args...).Scan(&total); err != nil {
+	if err := h.db.QueryRowContext(c.Request.Context(), "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id"+where, args...).Scan(&total); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

@@ -2558,6 +2558,34 @@ export async function listHikvisionAttendance(
   return Array.isArray(response) ? response : [];
 }
 
+export interface HikvisionAttendancePage {
+  items: HikvisionAttendanceRecord[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+/** One page of the Face ID log (newest first). */
+export async function listHikvisionAttendancePage(
+  filter: HikvisionAttendanceFilter & { page: number; limit: number }
+): Promise<HikvisionAttendancePage> {
+  const params = new URLSearchParams();
+  if (filter.deviceId) {
+    params.set("deviceId", filter.deviceId);
+  } else {
+    const branchId = filter.branchId ?? getStoredBranchId();
+    if (branchId) params.set("branchId", branchId);
+  }
+  if (filter.employeeId) params.set("employeeId", filter.employeeId);
+  if (filter.from) params.set("from", filter.from);
+  if (filter.to) params.set("to", filter.to);
+  params.set("page", String(filter.page));
+  params.set("limit", String(filter.limit));
+  const res = await apiRequest<HikvisionAttendancePage>(`/hikvision/attendance?${params.toString()}`);
+  return { ...res, items: Array.isArray(res?.items) ? res.items : [] };
+}
+
 /** Monthly Face ID attendance per person. `lateAfter` is "HH:MM" on the school clock. */
 export async function getHikvisionAttendanceReport(
   month: string,
