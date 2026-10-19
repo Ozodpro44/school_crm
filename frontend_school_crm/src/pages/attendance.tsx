@@ -32,11 +32,13 @@ import {
   Bell,
   Lock,
   Fingerprint,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { localDateString, parseLocalDate } from "@/lib/timezone";
 import { EmptyState } from "@/components/EmptyState";
 import { HikvisionPanel } from "@/components/panels/HikvisionPanel";
+import { HikvisionReport } from "@/components/panels/HikvisionReport";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -133,7 +135,7 @@ export default function AttendancePage() {
   // The Face ID tab is admin-only; a pasted ?tab=faceid falls back to "mark" for everyone else.
   const [activeTab, setActiveTab] = useUrlTab(
     getCurrentUser()?.role === "admin"
-      ? (["mark", "summary", "alerts", "faceid"] as const)
+      ? (["mark", "summary", "alerts", "staff", "faceid"] as const)
       : (["mark", "summary", "alerts"] as const),
     "mark"
   );
@@ -284,7 +286,10 @@ export default function AttendancePage() {
     // Staff Face ID terminals (Hikvision). Admin-only: the backend enforces
     // the same restriction on every /hikvision endpoint.
     ...(currentUser?.role === "admin"
-      ? [{ id: "faceid" as const, label: t("faceIdTab"), icon: Fingerprint, badge: undefined }]
+      ? [
+          { id: "staff" as const, label: t("staffAttendance"), icon: UserCheck, badge: undefined },
+          { id: "faceid" as const, label: t("faceIdTab"), icon: Fingerprint, badge: undefined },
+        ]
       : []),
   ];
 
@@ -329,7 +334,7 @@ export default function AttendancePage() {
         </div>
 
         {/* ── Controls: class + date (class attendance only, not the Face ID tab) ── */}
-        {activeTab !== "faceid" && (
+        {activeTab !== "faceid" && activeTab !== "staff" && (
         <div className="flex flex-wrap gap-3 items-center">
           <div className="w-52">
             {loadingClasses ? (
@@ -651,6 +656,7 @@ export default function AttendancePage() {
         )}
 
         {/* ══════════ TAB: Face ID (staff terminals) ══════════ */}
+        {activeTab === "staff" && currentUser?.role === "admin" && <HikvisionReport />}
         {activeTab === "faceid" && currentUser?.role === "admin" && <HikvisionPanel />}
       </div>
   );

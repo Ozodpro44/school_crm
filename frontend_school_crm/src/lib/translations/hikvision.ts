@@ -270,4 +270,37 @@ export const hikvisionTranslations: Partial<Translation> = {
     "uz-latn": "Xodimni yangilab bo'lmadi",
     en: "Failed to update the employee",
   },
+
+  // Staff page / attendance tabs
+  staffPage: { "uz-cyrl": "Ходимлар", "uz-latn": "Xodimlar", en: "Staff" },
+  staffPageSubtitle: {
+    "uz-cyrl": "Face ID қурилмасига қўшилган ходимлар",
+    "uz-latn": "Face ID qurilmasiga qo'shilgan xodimlar",
+    en: "People enrolled on the Face ID terminals",
+  },
+  staffAttendance: { "uz-cyrl": "Ходимлар давомати", "uz-latn": "Xodimlar davomati", en: "Staff attendance" },
+  staffNoDevices: {
+    "uz-cyrl": "Ходим қўшиш учун аввал Face ID қурилмасини улаш керак.",
+    "uz-latn": "Xodim qo'shish uchun avval Face ID qurilmasini ulash kerak.",
+    en: "Connect a Face ID terminal first to add staff.",
+  },
+  staffGoToDevices: { "uz-cyrl": "Қурилмаларга ўтиш", "uz-latn": "Qurilmalarga o'tish", en: "Go to devices" },
+
+  teacherFaceIdTitle: { "uz-cyrl": "Face ID", "uz-latn": "Face ID", en: "Face ID" },
+  teacherFaceIdHint: {
+    "uz-cyrl": "Расм танланса, ўқитувчи Face ID қурилмасига ҳам бирданига қўшилади.",
+    "uz-latn": "Rasm tanlansa, o'qituvchi Face ID qurilmasiga ham birdaniga qo'shiladi.",
+    en: "Choose a photo and the teacher is enrolled on the Face ID terminal in the same step.",
+  },
+  facePhotoOptional: { "uz-cyrl": "Юз расми (ихтиёрий)", "uz-latn": "Yuz rasmi (ixtiyoriy)", en: "Face photo (optional)" },
+  teacherFaceIdAdded: {
+    "uz-cyrl": "Ўқитувчи Face ID қурилмасига ҳам қўшилди",
+    "uz-latn": "O'qituvchi Face ID qurilmasiga ham qo'shildi",
+    en: "The teacher was also enrolled on the Face ID terminal",
+  },
+  teacherFaceIdFailed: {
+    "uz-cyrl": "Ўқитувчи қўшилди, лекин Face ID га қўшиб бўлмади",
+    "uz-latn": "O'qituvchi qo'shildi, lekin Face ID ga qo'shib bo'lmadi",
+    en: "Teacher added, but enrolling on Face ID failed",
+  },
 };

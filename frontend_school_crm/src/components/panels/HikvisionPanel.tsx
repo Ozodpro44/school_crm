@@ -1,4 +1,4 @@
-// Hikvision Face ID terminals: devices, enrolled staff, and the check-in/out log.
+// Hikvision Face ID terminals: the devices and the raw check-in/out log.
 // Embedded as a tab on the Attendance page (admin only).
 import { useEffect, useRef, useState } from "react";
 import { useUrlTab } from "@/hooks/use-url-tab";
@@ -14,7 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -33,18 +32,13 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Plus,
-  Pencil,
   ChevronLeft,
   ChevronRight,
-  Trash2,
-  Upload,
   Wifi,
   Loader2,
-  Fingerprint,
   LogIn,
   LogOut as LogOutIcon,
   Search,
-  User,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
@@ -56,15 +50,9 @@ import {
   createHikvisionHCTDevice,
   getHikvisionHCTStatus,
   configureHikvisionPush,
-  listHikvisionEmployees,
-  uploadHikvisionEmployeeFace,
-  removeHikvisionEmployee,
   listHikvisionAttendancePage,
-  listTeachers,
 } from "@/lib/api";
-import { HikvisionReport } from "@/components/panels/HikvisionReport";
-import { HikvisionEmployeeEditDialog } from "@/components/panels/HikvisionEmployeeEditDialog";
-import { HikvisionDevice, HikvisionEmployee, HikvisionAttendanceRecord, Teacher } from "@/types";
+import { HikvisionDevice, HikvisionAttendanceRecord } from "@/types";
 
 export function HikvisionPanel() {
   const { toast } = useToast();
@@ -72,11 +60,9 @@ export function HikvisionPanel() {
   const t = (key: string) => getTranslation(key, language);
 
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useUrlTab(["devices", "employees", "records", "report"] as const, "devices", "ftab");
+  const [activeTab, setActiveTab] = useUrlTab(["devices", "records"] as const, "devices", "ftab");
 
   const [devices, setDevices] = useState<HikvisionDevice[]>([]);
-  const [employees, setEmployees] = useState<HikvisionEmployee[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [records, setRecords] = useState<HikvisionAttendanceRecord[]>([]);
   const [recordsLoaded, setRecordsLoaded] = useState(false);
   const [recordsPage, setRecordsPage] = useState(1);
@@ -84,7 +70,6 @@ export function HikvisionPanel() {
   const [recordsTotal, setRecordsTotal] = useState(0);
   const [recordsLoading, setRecordsLoading] = useState(false);
 
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
 
   // Attendance log filters
   const [filterDeviceId, setFilterDeviceId] = useState<string>("all");
@@ -114,17 +99,6 @@ export function HikvisionPanel() {
     useHttps: true,
   });
 
-  // Add employee dialog (shared with editing, see HikvisionEmployeeEditDialog)
-  const [createDeviceId, setCreateDeviceId] = useState<string | null>(null);
-
-  // Upload face dialog
-  const [editEmployee, setEditEmployee] = useState<HikvisionEmployee | null>(null);
-  const [faceDialogEmployee, setFaceDialogEmployee] = useState<HikvisionEmployee | null>(null);
-  const [facePhoto, setFacePhoto] = useState<File | null>(null);
-  const [isUploadingFace, setIsUploadingFace] = useState(false);
-
-  const [removingEmployeeId, setRemovingEmployeeId] = useState<string | null>(null);
-
   const recordsRequestIdRef = useRef(0);
   const activeTabRef = useRef<string>("");
 
@@ -137,8 +111,6 @@ export function HikvisionPanel() {
 
   useEffect(() => {
     const handleBranchChange = () => {
-      setSelectedDeviceId("");
-      setEmployees([]);
       setRecords([]);
       setRecordsLoaded(false);
       setFilterDeviceId("all");
@@ -149,15 +121,6 @@ export function HikvisionPanel() {
     return () => window.removeEventListener("branchChange", handleBranchChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (selectedDeviceId) {
-      loadEmployees(selectedDeviceId);
-    } else {
-      setEmployees([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDeviceId]);
 
   useEffect(() => {
     activeTabRef.current = activeTab;
@@ -179,15 +142,12 @@ export function HikvisionPanel() {
     }
     try {
       setLoading(true);
-      const [deviceList, teacherList, hct] = await Promise.all([
+      const [deviceList, hct] = await Promise.all([
         listHikvisionDevices(branchId),
-        listTeachers(branchId).catch(() => []),
         getHikvisionHCTStatus().catch(() => false),
       ]);
       setHctEnabled(hct);
       setDevices(deviceList);
-      setTeachers(teacherList);
-      setSelectedDeviceId((prev) => prev || (deviceList[0]?.id ?? ""));
     } catch (error) {
       toast({
         title: t("error"),
@@ -196,19 +156,6 @@ export function HikvisionPanel() {
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadEmployees = async (deviceId: string) => {
-    try {
-      const list = await listHikvisionEmployees(deviceId);
-      setEmployees(list);
-    } catch (error) {
-      toast({
-        title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToLoadEmployees"),
-        variant: "destructive",
-      });
     }
   };
 
@@ -275,7 +222,6 @@ export function HikvisionPanel() {
       resetDeviceForm();
       setIsDeviceDialogOpen(false);
       setDevices((prev) => [...prev, device]);
-      setSelectedDeviceId(device.id);
     } catch (error) {
       toast({
         title: t("error"),
@@ -316,53 +262,6 @@ export function HikvisionPanel() {
     } finally {
       setIsSubmittingPush(false);
     }
-  };
-
-  const handleUploadFace = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!faceDialogEmployee) return;
-    if (!facePhoto) {
-      toast({ title: t("error"), description: t("photoRequired"), variant: "destructive" });
-      return;
-    }
-    setIsUploadingFace(true);
-    try {
-      await uploadHikvisionEmployeeFace(faceDialogEmployee.id, facePhoto);
-      toast({ title: t("success"), description: t("faceUploaded"), variant: "success" });
-      setFaceDialogEmployee(null);
-      setFacePhoto(null);
-    } catch (error) {
-      toast({
-        title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToUploadFace"),
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploadingFace(false);
-    }
-  };
-
-  const handleRemoveEmployee = async (employee: HikvisionEmployee) => {
-    if (!confirm(t("confirmRemoveEmployee"))) return;
-    setRemovingEmployeeId(employee.id);
-    try {
-      await removeHikvisionEmployee(employee.id);
-      toast({ title: t("success"), description: t("employeeRemoved"), variant: "success" });
-      await loadEmployees(selectedDeviceId);
-    } catch (error) {
-      toast({
-        title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToRemoveEmployee"),
-        variant: "destructive",
-      });
-    } finally {
-      setRemovingEmployeeId(null);
-    }
-  };
-
-  const getTeacherName = (teacherId?: string | null) => {
-    if (!teacherId) return null;
-    return teachers.find((tc) => tc.id === teacherId)?.fullName || null;
   };
 
   const getDeviceName = (deviceId: string) =>
@@ -407,9 +306,7 @@ export function HikvisionPanel() {
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
           <TabsList>
             <TabsTrigger value="devices">{t("tabDevices")}</TabsTrigger>
-            <TabsTrigger value="employees">{t("tabEmployees")}</TabsTrigger>
             <TabsTrigger value="records">{t("tabRecords")}</TabsTrigger>
-            <TabsTrigger value="report">{t("tabReport")}</TabsTrigger>
           </TabsList>
 
           {/* ============================== DEVICES ============================== */}
@@ -681,188 +578,6 @@ export function HikvisionPanel() {
             </Dialog>
           </TabsContent>
 
-          {/* ============================= EMPLOYEES ============================= */}
-          <TabsContent value="employees" className="space-y-4 pt-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="w-full sm:w-72">
-                <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("selectDevice")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {devices.map((device) => (
-                      <SelectItem key={device.id} value={device.id}>
-                        {device.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button
-                className="bg-brand hover:bg-brand-hover"
-                onClick={() => setCreateDeviceId(selectedDeviceId)}
-                disabled={!selectedDeviceId}
-                title={!selectedDeviceId ? t("addEmployeeToDevice") : ""}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {t("addEmployee")}
-              </Button>
-            </div>
-
-            <Card>
-              <CardContent className="pt-6">
-                {!selectedDeviceId ? (
-                  <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-                    {t("addEmployeeToDevice")}
-                  </div>
-                ) : employees.length === 0 ? (
-                  <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-                    {t("noEmployeesYet")}
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-800">
-                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                            {t("fullName")}
-                          </th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                            {t("employeeNo")}
-                          </th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                            {t("teacher")}
-                          </th>
-                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                            {t("actions")}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {employees.map((employee) => (
-                          <tr
-                            key={employee.id}
-                            className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50"
-                          >
-                            <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">
-                              <div className="flex items-center gap-3">
-                                <Avatar className="h-10 w-10">
-                                  {employee.photoUrl && (
-                                    <AvatarImage src={employee.photoUrl} alt={employee.fullName} className="object-cover" />
-                                  )}
-                                  <AvatarFallback>
-                                    <User className="w-4 h-4 text-slate-400" />
-                                  </AvatarFallback>
-                                </Avatar>
-                                {employee.fullName}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                              {employee.employeeNo}
-                            </td>
-                            <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                              {getTeacherName(employee.teacherId) || "—"}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  aria-label={t("editEmployee")}
-                                  title={t("editEmployee")}
-                                  onClick={() => setEditEmployee(employee)}
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setFaceDialogEmployee(employee);
-                                    setFacePhoto(null);
-                                  }}
-                                >
-                                  <Upload className="w-4 h-4 mr-2" />
-                                  {t("uploadFace")}
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => handleRemoveEmployee(employee)}
-                                  disabled={removingEmployeeId === employee.id}
-                                >
-                                  {removingEmployeeId === employee.id ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="w-4 h-4 text-red-500" />
-                                  )}
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <HikvisionEmployeeEditDialog
-              employee={editEmployee}
-              createDeviceId={createDeviceId}
-              teachers={teachers}
-              t={t}
-              onClose={() => { setEditEmployee(null); setCreateDeviceId(null); }}
-              onSaved={() => loadEmployees(selectedDeviceId)}
-            />
-            <Dialog
-              open={!!faceDialogEmployee}
-              onOpenChange={(open) => {
-                if (!open) {
-                  setFaceDialogEmployee(null);
-                  setFacePhoto(null);
-                }
-              }}
-            >
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>{t("uploadFace")}</DialogTitle>
-                  <DialogDescription>{t("uploadFaceDescription")}</DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleUploadFace} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="facePhoto">{t("choosePhoto")}</Label>
-                    <Input
-                      id="facePhoto"
-                      type="file"
-                      accept="image/jpeg,image/jpg"
-                      onChange={(e) => setFacePhoto(e.target.files?.[0] ?? null)}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-3 pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setFaceDialogEmployee(null);
-                        setFacePhoto(null);
-                      }}
-                      disabled={isUploadingFace}
-                    >
-                      {t("cancel")}
-                    </Button>
-                    <Button type="submit" disabled={isUploadingFace}>
-                      {isUploadingFace && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                      {t("uploadFace")}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </TabsContent>
-
           {/* ============================== RECORDS =============================== */}
           <TabsContent value="records" className="space-y-4 pt-4">
             <Card>
@@ -1045,10 +760,6 @@ export function HikvisionPanel() {
             </Card>
           </TabsContent>
 
-          {/* ============================= REPORT ============================= */}
-          <TabsContent value="report" className="pt-4">
-            {activeTab === "report" && <HikvisionReport />}
-          </TabsContent>
         </Tabs>
       )}
     </div>

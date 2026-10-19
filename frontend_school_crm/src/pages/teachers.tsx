@@ -9,7 +9,9 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Teacher } from "@/types";
 import { Plus, Search, Edit2, Trash2, BookOpen, Loader2, Users } from "lucide-react";
-import { hasPermission } from "@/lib/auth";
+import { hasPermission, getCurrentUser } from "@/lib/auth";
+import { TeacherFaceIdField, FaceIdSelection } from "@/components/TeacherFaceIdField";
+import { addHikvisionEmployee } from "@/lib/api";
 import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -97,6 +99,9 @@ export default function TeachersPage() {
     email: "",
     password: "",
   });
+  // Optional Face ID enrolment that rides along with creating a teacher (admins only).
+  const [faceId, setFaceId] = useState<FaceIdSelection | null>(null);
+  const isAdmin = getCurrentUser()?.role === "admin";
   const [formErrors, setFormErrors] = useState<{
     fullName?: string;
     phone?: string;
@@ -113,6 +118,7 @@ export default function TeachersPage() {
     setFormData({ fullName: "", subjects: "", monthlySalary: "", phone: "", email: "", password: "" });
     setFormErrors({});
     setEditingTeacher(null);
+    setFaceId(null);
   };
 
   // teacher_service's Teacher struct has no assignedClasses field — the
@@ -169,10 +175,25 @@ export default function TeachersPage() {
         onError: () => notify.error(t("error"), t("failedToUpdateTeacher")),
       });
     } else {
+      const enrol = faceId;
       createMutation.mutate({ ...payload, password: formData.password, branchId }, {
-        onSuccess: () => {
+        onSuccess: async (created) => {
           notify.success(t("success"), t("teacherAddedSuccess"));
           resetForm(); setIsDialogOpen(false);
+          if (enrol) {
+            try {
+              await addHikvisionEmployee({
+                deviceId: enrol.deviceId,
+                fullName: payload.fullName,
+                teacherId: created.id,
+                photo: enrol.photo,
+              });
+              notify.success(t("success"), t("teacherFaceIdAdded"));
+            } catch (err) {
+              // The teacher exists; only the terminal enrolment failed, so say exactly that.
+              notify.error(t("teacherFaceIdFailed"), err instanceof Error ? err.message : undefined);
+            }
+          }
         },
         onError: (err) => notify.error(t("failedToCreateTeacher"), err instanceof Error ? err.message : undefined),
       });
@@ -390,6 +411,9 @@ export default function TeachersPage() {
               className="md:col-span-2"
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, subjects: e.target.value })}
             />
+            {isAdmin && !editingTeacher && isDialogOpen && branchId && (
+              <TeacherFaceIdField key={branchId} branchId={branchId} t={t} onChange={setFaceId} />
+            )}
           </div>
         </FormDialog>
       </div>

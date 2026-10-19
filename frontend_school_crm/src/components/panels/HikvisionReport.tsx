@@ -40,7 +40,7 @@ export function HikvisionReport() {
 
   const [month, setMonth] = useState(currentMonth());
   const [lateAfter, setLateAfter] = useState("08:30");
-  const [teachersOnly, setTeachersOnly] = useState(true);
+  const [teachersOnly, setTeachersOnly] = useState(false);
   const [rows, setRows] = useState<HikvisionEmployeeReport[]>([]);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);

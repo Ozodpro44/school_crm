@@ -42,6 +42,7 @@ import {
   CheckCheck,
   Shield,
   ClipboardList,
+  Fingerprint,
   GraduationCap as PortalIcon,
   Calendar,
   MessageSquare,
@@ -892,6 +893,8 @@ export function Layout({ children }: LayoutProps) {
             { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: hasPermission("canViewTeachers") },
             { name: t("classes"), href: "/classes", icon: BookOpen, show: hasPermission("canViewClasses") },
             { name: t("attendance"), href: "/attendance", icon: ClipboardList, show: hasPageAccess("canViewAttendance") },
+            // Face ID staff: admin-only, like every /hikvision endpoint.
+            { name: t("staffPage"), href: "/staff", icon: Fingerprint, show: user?.role === "admin" },
             { name: t("assignments"), href: "/assignments", icon: ClipboardCheck, show: hasPageAccess("canViewAssignments") },
             { name: t("messaging"), href: "/messaging", icon: MessageSquare, show: hasPageAccess("canSendMessages") },
           ],
