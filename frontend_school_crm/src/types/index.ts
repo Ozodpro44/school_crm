@@ -342,6 +342,7 @@ export interface HikvisionEmployeeReport {
   fullName: string;
   teacherId: string | null;
   teacherName: string | null;
+  photoUrl?: string;
   deviceId: string;
   deviceName: string;
   daysPresent: number;

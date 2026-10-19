@@ -30,6 +30,7 @@ type EmployeeReport struct {
 	FullName     string      `json:"fullName"`
 	TeacherID    *string     `json:"teacherId"`
 	TeacherName  *string     `json:"teacherName"`
+	PhotoURL     *string     `json:"photoUrl,omitempty"`
 	DeviceID     string      `json:"deviceId"`
 	DeviceName   string      `json:"deviceName"`
 	DaysPresent  int         `json:"daysPresent"`
@@ -80,7 +81,7 @@ func (s *HikvisionService) AttendanceReport(ctx context.Context, branchID, month
 	}
 
 	empRows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT e.id, e.device_id, e.employee_no, e.full_name, e.teacher_id, t.full_name, d.name
+		SELECT e.id, e.device_id, e.employee_no, e.full_name, e.teacher_id, t.full_name, d.name, e.photo_thumb
 		FROM hikvision_employees e
 		JOIN hikvision_devices d ON d.id = e.device_id
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
@@ -96,8 +97,13 @@ func (s *HikvisionService) AttendanceReport(ctx context.Context, branchID, month
 	var order []string
 	for empRows.Next() {
 		var r EmployeeReport
-		if err := empRows.Scan(&r.EmployeeID, &r.DeviceID, &r.EmployeeNo, &r.FullName, &r.TeacherID, &r.TeacherName, &r.DeviceName); err != nil {
+		var thumb []byte
+		if err := empRows.Scan(&r.EmployeeID, &r.DeviceID, &r.EmployeeNo, &r.FullName, &r.TeacherID, &r.TeacherName, &r.DeviceName, &thumb); err != nil {
 			return nil, err
+		}
+		if len(thumb) > 0 {
+			u := thumbDataURL(thumb)
+			r.PhotoURL = &u
 		}
 		r.Days = []ReportDay{}
 		key := r.DeviceID + "|" + r.EmployeeNo

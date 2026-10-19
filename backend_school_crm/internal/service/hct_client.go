@@ -367,6 +367,21 @@ func (c *HCTClient) AddPerson(ctx context.Context, groupID, employeeNo, fullName
 	return out.PersonID, nil
 }
 
+// UpdatePerson renames a person; if they are on a device the name is changed there too.
+func (c *HCTClient) UpdatePerson(ctx context.Context, groupID, personID, employeeNo, fullName string, validFrom time.Time) error {
+	end := time.Date(2036, 12, 31, 23, 59, 59, 0, time.UTC)
+	return c.Call(ctx, "/api/hccgw/person/v1/persons/update", map[string]any{
+		"groupId":    groupID,
+		"personId":   personID,
+		"personCode": employeeNo,
+		"firstName":  fullName,
+		"lastName":   "",
+		"gender":     2,
+		"startDate":  validFrom.UTC().Format(time.RFC3339),
+		"endDate":    end.Format(time.RFC3339),
+	}, nil)
+}
+
 // SetPersonPhoto uploads the face picture; if the person is on a device the face is pushed to it.
 func (c *HCTClient) SetPersonPhoto(ctx context.Context, personID string, jpeg []byte) error {
 	return c.Call(ctx, "/api/hccgw/person/v1/persons/photo", map[string]any{

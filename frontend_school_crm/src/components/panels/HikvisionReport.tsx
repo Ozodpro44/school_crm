@@ -1,6 +1,7 @@
 // Monthly Face ID attendance report per person (teachers first).
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Download, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Loader2, User } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -183,10 +184,20 @@ export function HikvisionReport() {
                             {open ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                           </td>
                           <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">
-                            {r.teacherName ?? r.fullName}
-                            {r.teacherName && r.teacherName !== r.fullName && (
-                              <span className="block text-xs font-normal text-slate-500">{r.fullName}</span>
-                            )}
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-9 w-9">
+                                {r.photoUrl && <AvatarImage src={r.photoUrl} alt={r.fullName} className="object-cover" />}
+                                <AvatarFallback>
+                                  <User className="w-4 h-4 text-slate-400" />
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                {r.teacherName ?? r.fullName}
+                                {r.teacherName && r.teacherName !== r.fullName && (
+                                  <span className="block text-xs font-normal text-slate-500">{r.fullName}</span>
+                                )}
+                              </div>
+                            </div>
                           </td>
                           <td className="py-3 px-4 tabular-nums">{r.daysPresent}</td>
                           <td className="py-3 px-4 tabular-nums">

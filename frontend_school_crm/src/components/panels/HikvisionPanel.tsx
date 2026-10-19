@@ -33,6 +33,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Plus,
+  Pencil,
   ChevronLeft,
   ChevronRight,
   Trash2,
@@ -63,6 +64,8 @@ import {
   listTeachers,
 } from "@/lib/api";
 import { HikvisionReport } from "@/components/panels/HikvisionReport";
+import { HikvisionEmployeeEditDialog } from "@/components/panels/HikvisionEmployeeEditDialog";
+import { validateFacePhoto } from "@/lib/face-photo";
 import { HikvisionDevice, HikvisionEmployee, HikvisionAttendanceRecord, Teacher } from "@/types";
 
 export function HikvisionPanel() {
@@ -133,6 +136,7 @@ export function HikvisionPanel() {
   }, [photoPreviewUrl]);
 
   // Upload face dialog
+  const [editEmployee, setEditEmployee] = useState<HikvisionEmployee | null>(null);
   const [faceDialogEmployee, setFaceDialogEmployee] = useState<HikvisionEmployee | null>(null);
   const [facePhoto, setFacePhoto] = useState<File | null>(null);
   const [isUploadingFace, setIsUploadingFace] = useState(false);
@@ -339,33 +343,13 @@ export function HikvisionPanel() {
   };
 
   // Checks the picked photo (type, size, dimensions) and stores it for the preview.
-  const handlePickPhoto = (file: File | null) => {
+  const handlePickPhoto = async (file: File | null) => {
     setNewEmployeePhoto(null);
     setPhotoError("");
     if (!file) return;
-    if (file.type !== "image/jpeg" && file.type !== "image/png") {
-      setPhotoError(t("facePhotoBadType"));
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setPhotoError(t("facePhotoTooBig"));
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    const img = new window.Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      if (img.naturalWidth < 200 || img.naturalHeight < 200) {
-        setPhotoError(t("facePhotoTooSmall"));
-        return;
-      }
-      setNewEmployeePhoto(file);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      setPhotoError(t("facePhotoBadType"));
-    };
-    img.src = url;
+    const problem = await validateFacePhoto(file);
+    if (problem) setPhotoError(t(problem));
+    else setNewEmployeePhoto(file);
   };
 
   const handleAddEmployee = async (e: React.FormEvent) => {
@@ -920,9 +904,9 @@ export function HikvisionPanel() {
                           >
                             <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">
                               <div className="flex items-center gap-3">
-                                <Avatar className="h-8 w-8">
+                                <Avatar className="h-10 w-10">
                                   {employee.photoUrl && (
-                                    <AvatarImage src={employee.photoUrl} alt={employee.fullName} />
+                                    <AvatarImage src={employee.photoUrl} alt={employee.fullName} className="object-cover" />
                                   )}
                                   <AvatarFallback>
                                     <User className="w-4 h-4 text-slate-400" />
@@ -939,6 +923,15 @@ export function HikvisionPanel() {
                             </td>
                             <td className="py-3 px-4">
                               <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label={t("editEmployee")}
+                                  title={t("editEmployee")}
+                                  onClick={() => setEditEmployee(employee)}
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -973,6 +966,13 @@ export function HikvisionPanel() {
               </CardContent>
             </Card>
 
+            <HikvisionEmployeeEditDialog
+              employee={editEmployee}
+              teachers={teachers}
+              t={t}
+              onClose={() => setEditEmployee(null)}
+              onSaved={() => loadEmployees(selectedDeviceId)}
+            />
             <Dialog
               open={!!faceDialogEmployee}
               onOpenChange={(open) => {

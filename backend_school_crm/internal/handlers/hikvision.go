@@ -68,6 +68,7 @@ func RegisterHikvisionRoutes(router *gin.RouterGroup, hikvisionService *service.
 
 	hikvision.POST("/employees", h.addEmployee)
 	hikvision.GET("/employees", h.listEmployees)
+	hikvision.PUT("/employees/:id", h.updateEmployee)
 	hikvision.POST("/employees/:id/face", h.uploadEmployeeFace)
 	hikvision.DELETE("/employees/:id", h.removeEmployee)
 
@@ -398,11 +399,36 @@ func (h *hikvisionHandler) uploadEmployeeFace(c *gin.Context) {
 		return
 	}
 
-	if err := h.svc.UploadEmployeeFace(c.Request.Context(), emp.ID, data); err != nil {
+	photo, err := service.NormalizeFacePhoto(data)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.svc.UploadEmployeeFace(c.Request.Context(), emp.ID, photo); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "face uploaded"})
+}
+
+// updateEmployee edits the display name and teacher link (JSON body).
+func (h *hikvisionHandler) updateEmployee(c *gin.Context) {
+	emp, ok := h.loadEmployee(c, c.Param("id"))
+	if !ok {
+		return
+	}
+	var req service.UpdateEmployeeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	updated, err := h.svc.UpdateEmployee(c.Request.Context(), emp.ID, req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, updated)
 }
 
 func (h *hikvisionHandler) removeEmployee(c *gin.Context) {

@@ -44,6 +44,11 @@ func NewHikvisionService(database *db.Database, storage *StorageService) *Hikvis
 // configured. Failures are logged, not returned — a broken photo link should
 // never take down the employee list.
 func (s *HikvisionService) resolvePhotoURL(e *models.HikvisionEmployee) {
+	if len(e.PhotoThumb) > 0 {
+		url := thumbDataURL(e.PhotoThumb)
+		e.PhotoURL = &url
+		return
+	}
 	if s.storage == nil || e.PhotoKey == nil || *e.PhotoKey == "" {
 		return
 	}
@@ -340,15 +345,29 @@ func (s *HikvisionService) UploadEmployeeFace(ctx context.Context, employeeID st
 	if err != nil {
 		return err
 	}
-	if device.Protocol == "hct" {
-		return s.uploadFaceHCT(ctx, emp, jpegData)
-	}
-	if device.Protocol == "push" {
+	switch device.Protocol {
+	case "hct":
+		if err := s.uploadFaceHCT(ctx, emp, jpegData); err != nil {
+			return err
+		}
+	case "push":
 		return ErrPushDeviceUnsupported
+	default:
+		client := NewHikvisionClient(device.Host, device.Username, device.Password)
+		if err := client.UploadFace(emp.EmployeeNo, jpegData); err != nil {
+			return err
+		}
 	}
-	client := NewHikvisionClient(device.Host, device.Username, device.Password)
-	if err := client.UploadFace(emp.EmployeeNo, jpegData); err != nil {
-		return err
+
+	// The profile thumbnail lives in the database, so the CRM can show the face
+	// for every connection type and without any bucket. Best-effort like the
+	// bucket copy: the face is already on the device.
+	if thumb, err := MakeThumbnail(jpegData); err != nil {
+		log.Printf("warning: could not build employee thumbnail: %v", err)
+	} else if _, err := s.db.GetConn().ExecContext(ctx,
+		`UPDATE hikvision_employees SET photo_thumb = $1, updated_at = $2 WHERE id = $3`,
+		thumb, time.Now().UTC(), emp.ID); err != nil {
+		log.Printf("warning: could not save employee thumbnail: %v", err)
 	}
 
 	// Storing the photo in the bucket is best-effort: the face is already
@@ -398,9 +417,9 @@ func (s *HikvisionService) RemoveEmployee(ctx context.Context, employeeID string
 func (s *HikvisionService) GetEmployee(ctx context.Context, id string) (*models.HikvisionEmployee, error) {
 	e := &models.HikvisionEmployee{}
 	err := s.db.GetConn().QueryRowContext(ctx, `
-		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, hct_person_id, is_active, created_at, updated_at
+		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, photo_thumb, hct_person_id, is_active, created_at, updated_at
 		FROM hikvision_employees WHERE id = $1`, id).Scan(
-		&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.HCTPersonID, &e.IsActive, &e.CreatedAt, &e.UpdatedAt)
+		&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.PhotoThumb, &e.HCTPersonID, &e.IsActive, &e.CreatedAt, &e.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("employee not found")
 	}
@@ -413,7 +432,7 @@ func (s *HikvisionService) GetEmployee(ctx context.Context, id string) (*models.
 
 func (s *HikvisionService) ListEmployeesByDevice(ctx context.Context, deviceID string) ([]models.HikvisionEmployee, error) {
 	rows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, is_active, created_at, updated_at
+		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, photo_thumb, is_active, created_at, updated_at
 		FROM hikvision_employees WHERE device_id = $1 ORDER BY full_name`, deviceID)
 	if err != nil {
 		return nil, err
@@ -423,7 +442,7 @@ func (s *HikvisionService) ListEmployeesByDevice(ctx context.Context, deviceID s
 	var out []models.HikvisionEmployee
 	for rows.Next() {
 		var e models.HikvisionEmployee
-		if err := rows.Scan(&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.IsActive, &e.CreatedAt, &e.UpdatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.PhotoThumb, &e.IsActive, &e.CreatedAt, &e.UpdatedAt); err != nil {
 			return nil, err
 		}
 		s.resolvePhotoURL(&e)

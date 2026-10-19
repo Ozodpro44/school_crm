@@ -98,3 +98,24 @@ func TestSummariseDayPairsInOut(t *testing.T) {
 		t.Fatalf("got %+v", d)
 	}
 }
+
+func TestMakeThumbnail(t *testing.T) {
+	out, err := MakeThumbnail(encode(t, 1000, 500, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(out))
+	if err != nil || format != "jpeg" || cfg.Width != 256 || cfg.Height != 128 {
+		t.Fatalf("got %dx%d %s err=%v, want 256x128 jpeg", cfg.Width, cfg.Height, format, err)
+	}
+	small, err := MakeThumbnail(encode(t, 200, 200, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg, _, _ := image.DecodeConfig(bytes.NewReader(small)); cfg.Width != 200 {
+		t.Fatalf("a small image must not be upscaled, got %d", cfg.Width)
+	}
+	if _, err := MakeThumbnail([]byte("nope")); err == nil {
+		t.Fatal("expected an error for non-image data")
+	}
+}

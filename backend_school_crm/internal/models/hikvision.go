@@ -43,6 +43,7 @@ type HikvisionEmployee struct {
 	TeacherID   *string   `json:"teacherId" db:"teacher_id"`
 	HCTPersonID *string   `json:"-" db:"hct_person_id"`      // platform person id (HCT devices only)
 	PhotoKey    *string   `json:"-" db:"photo_key"`          // bucket object key; internal only
+	PhotoThumb  []byte    `json:"-" db:"photo_thumb"`       // <=256px JPEG kept in the database; internal only
 	PhotoURL    *string   `json:"photoUrl,omitempty" db:"-"` // temporary signed link, resolved per request
 	IsActive    bool      `json:"isActive" db:"is_active"`
 	CreatedAt   time.Time `json:"createdAt" db:"created_at"`

@@ -2532,6 +2532,17 @@ export async function uploadHikvisionEmployeeFace(
   return apiUpload<{ message: string }>(`/hikvision/employees/${employeeId}/face`, formData);
 }
 
+/** Change an employee's display name and linked teacher (renamed on the terminal too). */
+export async function updateHikvisionEmployee(
+  employeeId: string,
+  data: { fullName: string; teacherId: string | null }
+): Promise<HikvisionEmployee> {
+  return apiRequest<HikvisionEmployee>(`/hikvision/employees/${employeeId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function removeHikvisionEmployee(employeeId: string): Promise<{ message: string }> {
   return apiRequest<{ message: string }>(`/hikvision/employees/${employeeId}`, {
     method: "DELETE",

@@ -522,6 +522,22 @@ func (c *HikvisionClient) CreateUser(employeeNo, fullName string) error {
 	return checkOK(status, respBody)
 }
 
+// ModifyUser renames a person already on the device (ISAPI UserInfo/Modify;
+// JSON body, see CreateUser for the ?format=json rationale).
+func (c *HikvisionClient) ModifyUser(employeeNo, fullName string) error {
+	body, err := json.Marshal(map[string]any{
+		"UserInfo": map[string]any{"employeeNo": employeeNo, "name": fullName, "userType": "normal"},
+	})
+	if err != nil {
+		return err
+	}
+	status, respBody, err := c.request(http.MethodPut, "/ISAPI/AccessControl/UserInfo/Modify?format=json", body, "application/json")
+	if err != nil {
+		return err
+	}
+	return checkOK(status, respBody)
+}
+
 // DeleteUser removes a person (and, per ISAPI semantics, their enrolled
 // face/card credentials) from the device. JSON body — see CreateUser
 // (including the ?format=json rationale).

@@ -255,4 +255,19 @@ export const hikvisionTranslations: Partial<Translation> = {
     "uz-latn": "O'qituvchiga bog'langan xodim yo'q — «Faqat o'qituvchilar»ni o'chiring yoki xodimni o'qituvchiga bog'lang",
     en: "No employee is linked to a teacher — switch off “Teachers only” or link an employee to a teacher",
   },
+
+  // Edit employee
+  editEmployee: { "uz-cyrl": "Ходимни таҳрирлаш", "uz-latn": "Xodimni tahrirlash", en: "Edit employee" },
+  changePhotoOptional: { "uz-cyrl": "Расмни алмаштириш (ихтиёрий)", "uz-latn": "Rasmni almashtirish (ixtiyoriy)", en: "Change photo (optional)" },
+  noPhotoYetHint: {
+    "uz-cyrl": "Бу ходимнинг расми ҳали сақланмаган — юклаб қўйинг, шунда профилда кўринади.",
+    "uz-latn": "Bu xodimning rasmi hali saqlanmagan — yuklab qo'ying, shunda profilda ko'rinadi.",
+    en: "No photo is stored for this employee yet — upload one and it will show on the profile.",
+  },
+  employeeUpdated: { "uz-cyrl": "Ходим янгиланди", "uz-latn": "Xodim yangilandi", en: "Employee updated" },
+  failedToUpdateEmployee: {
+    "uz-cyrl": "Ходимни янгилаб бўлмади",
+    "uz-latn": "Xodimni yangilab bo'lmadi",
+    en: "Failed to update the employee",
+  },
 };
