@@ -44,6 +44,8 @@ type StatCardProps = {
   };
   /** Optional click handler — makes the card behave like a button. */
   onClick?: () => void;
+  /** Tighter tile (less padding, smaller figure) for pages with many metrics. */
+  compact?: boolean;
   className?: string;
 };
 
@@ -60,6 +62,7 @@ export function StatCard({
   loading = false,
   trend,
   onClick,
+  compact = false,
   className,
 }: StatCardProps) {
   const toneStyle = TONE_STYLES[tone];
@@ -74,13 +77,19 @@ export function StatCard({
       )}
       onClick={onClick}
     >
-      <CardContent className="p-5">
+      <CardContent className={compact ? "px-4 py-3" : "p-5"}>
         {/* min-h reserves two lines for the label so that a tile whose label
             wraps still lines its value up with the tiles beside it. Without
             it, one wrapped label pushed a single value out of line and made
             the whole row look crooked. */}
-        <div className="flex items-start justify-between gap-2 mb-3 min-h-[2rem]">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        <div className={cn("flex items-start justify-between gap-2", compact ? "mb-1" : "mb-3 min-h-[2rem]")}>
+          <p
+            title={compact && typeof label === "string" ? label : undefined}
+            className={cn(
+              "font-medium uppercase text-slate-500 dark:text-slate-400",
+              compact ? "truncate text-[11px] tracking-normal" : "text-xs tracking-wide"
+            )}
+          >
             {label}
           </p>
           <Icon className={cn("w-4 h-4 shrink-0", toneStyle.icon)} />
@@ -101,7 +110,8 @@ export function StatCard({
                   the number. 24px fits the longest realistic amount whole. */}
               <div
                 className={cn(
-                  "text-xl sm:text-2xl font-semibold text-slate-900 dark:text-slate-100",
+                  compact ? "text-lg font-semibold" : "text-xl sm:text-2xl font-semibold",
+                  "text-slate-900 dark:text-slate-100",
                   "whitespace-nowrap tabular-nums",
                   toneStyle.value
                 )}
@@ -122,7 +132,7 @@ export function StatCard({
               )}
             </div>
             {hint && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+              <p className={cn("text-xs text-slate-500 dark:text-slate-400 truncate", compact ? "mt-0.5" : "mt-1.5")}>
                 {hint}
               </p>
             )}

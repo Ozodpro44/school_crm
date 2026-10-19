@@ -44,7 +44,7 @@ import {
 import { DataTable, Column } from "@/components/DataTable";
 import { PaymentStatusBadge } from "@/components/PaymentStatusBadge";
 import { InitialsAvatar } from "@/components/InitialsAvatar";
-import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard } from "@/components/StatCard";
 import { PosReceiptDialog } from "@/components/PosReceiptDialog";
 import { BulkPaymentDialog } from "@/components/BulkPaymentDialog";
 import { getCurrentUser, hasPermission } from "@/lib/auth";
@@ -705,47 +705,60 @@ export default function PaymentsPage() {
 
         <TabsContent value="list" className="space-y-6">
 
-      {/* One compact strip instead of six tiles: the two headline figures on the
-          left, the per-method split as small inline items on the right. */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)] divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-slate-800">
-            {[
-              { label: t("totalIncome"), value: totalIncome, hint: t("fromPaidFees"), Icon: CheckCircle, color: "text-green-600 dark:text-green-400" },
-              { label: t("pendingPayments"), value: totalPending, hint: `${t("unpaidFees")} ${t("thisMonth")}`, Icon: AlertCircle, color: "text-orange-600 dark:text-orange-400" },
-            ].map(({ label, value, hint, Icon, color }) => (
-              <div key={label} className="px-5 py-4 min-w-0">
-                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <Icon className={`h-3.5 w-3.5 ${color}`} />
-                  <span className="truncate">{label}</span>
-                </div>
-                <div className={`mt-1 text-2xl font-bold tabular-nums ${color}`}>
-                  {isLoading && !indicators ? <Skeleton className="h-8 w-40" /> : formatCurrency(value)}
-                </div>
-                <p className="text-xs text-slate-400 truncate">{hint}</p>
-              </div>
-            ))}
-            <div className="px-5 py-4 grid grid-cols-2 gap-x-6 gap-y-2 content-center">
-              {[
-                { label: t("cash"), value: totalByMethod.cash, Icon: Banknote },
-                { label: t("click"), value: totalByMethod.click, Icon: CreditCard },
-                { label: t("terminal"), value: totalByMethod.terminal, Icon: Printer },
-                { label: t("bank"), value: totalByMethod.bank, Icon: Building2 },
-              ].map(({ label, value, Icon }) => (
-                <div key={label} className="flex items-center justify-between gap-2 min-w-0 text-sm">
-                  <span className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 truncate">
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
-                    {label}
-                  </span>
-                  <span className="font-semibold tabular-nums text-slate-900 dark:text-slate-100 whitespace-nowrap">
-                    {isLoading && !indicators ? "…" : formatCurrency(value)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Compact tiles, six across on wide screens (two rows of three below that),
+          so the figures stay visible without pushing the table off the screen. */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        <StatCard
+          compact
+          icon={CheckCircle}
+          tone="green"
+          label={t("totalIncome")}
+          value={formatCurrency(totalIncome)}
+          hint={t("fromPaidFees")}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          compact
+          icon={AlertCircle}
+          tone="orange"
+          label={t("pendingPayments")}
+          value={formatCurrency(totalPending)}
+          hint={`${t("unpaidFees")} ${t("thisMonth")}`}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          compact
+          icon={Banknote}
+          tone="indigo"
+          label={t("cash")}
+          value={formatCurrency(totalByMethod.cash)}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          compact
+          icon={CreditCard}
+          tone="blue"
+          label={t("click")}
+          value={formatCurrency(totalByMethod.click)}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          compact
+          icon={Printer}
+          tone="slate"
+          label={t("terminal")}
+          value={formatCurrency(totalByMethod.terminal)}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          compact
+          icon={Building2}
+          tone="purple"
+          label={t("bank")}
+          value={formatCurrency(totalByMethod.bank)}
+          loading={isLoading && !indicators}
+        />
+      </div>
 
       <FilterBar>
         <FilterSearch
