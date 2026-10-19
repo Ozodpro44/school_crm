@@ -6,6 +6,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"testing"
+	"time"
 )
 
 func encode(t *testing.T, w, h int, asPNG bool) []byte {
@@ -69,5 +70,31 @@ func TestParseReportMonth(t *testing.T) {
 	}
 	if _, _, err := ParseReportMonth("October"); err == nil {
 		t.Fatal("bad month should fail")
+	}
+}
+
+func TestSummariseDayPairsInOut(t *testing.T) {
+	loc, _ := time.LoadLocation("Asia/Tashkent")
+	at := func(h, m int) time.Time { return time.Date(2026, 10, 19, h, m, 0, 0, loc).UTC() }
+
+	// in 08:00, out 12:00, in 13:00, out 17:00 → 4h + 4h; the lunch hour is not counted.
+	d := summariseDay("2026-10-19", []time.Time{at(17, 0), at(8, 0), at(13, 0), at(12, 0)}, 8*60+30, loc)
+	if d.Minutes != 480 || d.Events != 4 || d.Late {
+		t.Fatalf("got %+v", d)
+	}
+	if !d.FirstIn.Equal(at(8, 0)) || !d.LastOut.Equal(at(17, 0)) {
+		t.Fatalf("first/last wrong: %+v", d)
+	}
+
+	// An unpaired trailing "in" counts nothing; arriving after the cut-off is late.
+	d = summariseDay("2026-10-19", []time.Time{at(9, 0), at(12, 0), at(13, 0)}, 8*60+30, loc)
+	if d.Minutes != 180 || !d.Late {
+		t.Fatalf("got %+v", d)
+	}
+
+	// A double scan seconds apart is one visit, not in+out.
+	d = summariseDay("2026-10-19", []time.Time{at(8, 0), at(8, 0).Add(10 * time.Second), at(16, 0)}, 8*60+30, loc)
+	if d.Events != 2 || d.Minutes != 480 {
+		t.Fatalf("got %+v", d)
 	}
 }

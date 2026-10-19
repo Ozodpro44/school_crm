@@ -1,11 +1,13 @@
+import { useRouter } from "next/router";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { apiRequest, listClasses, listStudents } from "@/lib/api";
 import type { Class, Student } from "@/lib/api";
 import { useBranch } from "@/context/BranchContext";
 import { useNotify } from "@/hooks/use-notify";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, hasPageAccess } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -106,6 +108,12 @@ function toDateString(d: Date): string {
 
 export default function AttendancePage() {
   const language = useLanguage();
+  // Hidden from the sidebar without canViewAttendance; this also stops a typed-in URL.
+  const router = useRouter();
+  useEffect(() => {
+    if (!hasPageAccess("canViewAttendance")) router.replace("/");
+  }, [router]);
+
   const t = (key: string) => getTranslation(key, language);
   const notify = useNotify();
   const { currentBranch } = useBranch();
@@ -122,7 +130,13 @@ export default function AttendancePage() {
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<"mark" | "summary" | "alerts" | "faceid">("mark");
+  // The Face ID tab is admin-only; a pasted ?tab=faceid falls back to "mark" for everyone else.
+  const [activeTab, setActiveTab] = useUrlTab(
+    getCurrentUser()?.role === "admin"
+      ? (["mark", "summary", "alerts", "faceid"] as const)
+      : (["mark", "summary", "alerts"] as const),
+    "mark"
+  );
 
   const currentUser = useMemo(() => getCurrentUser(), []);
   const canEdit = currentUser?.role === "admin" || currentUser?.role === "branch_admin";

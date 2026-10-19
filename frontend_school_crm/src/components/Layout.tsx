@@ -85,7 +85,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { getCurrentUser, logout, hasPermission, refreshPermissions } from "@/lib/auth";
+import { getCurrentUser, logout, hasPermission, hasPageAccess, refreshPermissions } from "@/lib/auth";
 import { getStoredBranchId, getAuthToken } from "@/lib/storage";
 import { isTokenExpired } from "@/lib/jwt";
 import { User } from "@/types";
@@ -885,15 +885,15 @@ export function Layout({ children }: LayoutProps) {
             // Permission model (see @/types), same as canViewReports below —
             // but these were hardcoded `show: true` regardless, so a manager
             // whose permissions explicitly withheld view access still saw
-            // and could navigate into these pages. Attendance/schedule/
-            // assignments/messaging have no such flag in the model (every
-            // branch member gets them) — that's unchanged.
+            // and could navigate into these pages. Attendance/assignments/
+            // messaging follow canViewAttendance/canViewAssignments/
+            // canSendMessages (managers only; see hasPageAccess).
             { name: t("students"), href: "/students", icon: Users, show: hasPermission("canViewStudents") },
             { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: hasPermission("canViewTeachers") },
             { name: t("classes"), href: "/classes", icon: BookOpen, show: hasPermission("canViewClasses") },
-            { name: t("attendance"), href: "/attendance", icon: ClipboardList, show: true },
-            { name: t("assignments"), href: "/assignments", icon: ClipboardCheck, show: true },
-            { name: t("messaging"), href: "/messaging", icon: MessageSquare, show: true },
+            { name: t("attendance"), href: "/attendance", icon: ClipboardList, show: hasPageAccess("canViewAttendance") },
+            { name: t("assignments"), href: "/assignments", icon: ClipboardCheck, show: hasPageAccess("canViewAssignments") },
+            { name: t("messaging"), href: "/messaging", icon: MessageSquare, show: hasPageAccess("canSendMessages") },
           ],
         },
         {

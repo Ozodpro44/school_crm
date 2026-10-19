@@ -97,6 +97,9 @@ export default function ManagersPage() {
     canViewReports: true,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   });
 
   const [originalPermissions, setOriginalPermissions] = useState<Permission | null>(null);
@@ -374,6 +377,9 @@ export default function ManagersPage() {
     canViewReports: true,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   });
 
   const hasPermissionsChanged = (): boolean => {
@@ -453,6 +459,24 @@ export default function ManagersPage() {
       title: t("reports"),
       permissions: [
         { key: "canViewReports" as keyof Permission, label: t("canView") },
+      ],
+    },
+    {
+      title: t("attendance"),
+      permissions: [
+        { key: "canViewAttendance" as keyof Permission, label: t("canView") },
+      ],
+    },
+    {
+      title: t("assignments"),
+      permissions: [
+        { key: "canViewAssignments" as keyof Permission, label: t("canView") },
+      ],
+    },
+    {
+      title: t("messaging"),
+      permissions: [
+        { key: "canSendMessages" as keyof Permission, label: t("canSendMessages") },
       ],
     },
     {

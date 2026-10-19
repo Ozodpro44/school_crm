@@ -1,6 +1,7 @@
 // Hikvision Face ID terminals: devices, enrolled staff, and the check-in/out log.
 // Embedded as a tab on the Attendance page (admin only).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import {
   Card,
   CardContent,
@@ -68,7 +69,7 @@ export function HikvisionPanel() {
   const t = (key: string) => getTranslation(key, language);
 
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("devices");
+  const [activeTab, setActiveTab] = useUrlTab(["devices", "employees", "records", "report"] as const, "devices", "ftab");
 
   const [devices, setDevices] = useState<HikvisionDevice[]>([]);
   const [employees, setEmployees] = useState<HikvisionEmployee[]>([]);
@@ -474,7 +475,7 @@ export function HikvisionPanel() {
           </CardContent>
         </Card>
       ) : (
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
           <TabsList>
             <TabsTrigger value="devices">{t("tabDevices")}</TabsTrigger>
             <TabsTrigger value="employees">{t("tabEmployees")}</TabsTrigger>

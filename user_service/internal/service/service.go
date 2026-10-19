@@ -92,6 +92,9 @@ type Permission struct {
 	CanEditSettings        bool   `json:"canEditSettings"`
 	CanViewSubscriptions   bool   `json:"canViewSubscriptions"`
 	CanManageSubscriptions bool   `json:"canManageSubscriptions"`
+	CanViewAttendance      bool   `json:"canViewAttendance"`
+	CanViewAssignments     bool   `json:"canViewAssignments"`
+	CanSendMessages        bool   `json:"canSendMessages"`
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────────
@@ -1026,7 +1029,8 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		       can_view_salaries, can_create_salaries, can_edit_salaries, can_delete_salaries,
 		       can_view_expenses, can_create_expenses, can_edit_expenses, can_delete_expenses,
 		       can_view_reports, can_view_settings, can_edit_settings,
-		       COALESCE(can_view_subscriptions, true), COALESCE(can_manage_subscriptions, false)
+		       COALESCE(can_view_subscriptions, true), COALESCE(can_manage_subscriptions, false),
+		       COALESCE(can_view_attendance, true), COALESCE(can_view_assignments, true), COALESCE(can_send_messages, true)
 		FROM permissions WHERE user_id = $1`, userID,
 	).Scan(
 		&p.ID, &p.UserID,
@@ -1038,6 +1042,7 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		&p.CanViewExpenses, &p.CanCreateExpenses, &p.CanEditExpenses, &p.CanDeleteExpenses,
 		&p.CanViewReports, &p.CanViewSettings, &p.CanEditSettings,
 		&p.CanViewSubscriptions, &p.CanManageSubscriptions,
+		&p.CanViewAttendance, &p.CanViewAssignments, &p.CanSendMessages,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil // no row = no custom permissions (use defaults)
@@ -1132,6 +1137,7 @@ func (s *PermissionService) Upsert(ctx context.Context, userID string, fields ma
 		"can_view_expenses": true, "can_create_expenses": true, "can_edit_expenses": true, "can_delete_expenses": true,
 		"can_view_reports": true, "can_view_settings": true, "can_edit_settings": true,
 		"can_view_subscriptions": true, "can_manage_subscriptions": true,
+		"can_view_attendance": true, "can_view_assignments": true, "can_send_messages": true,
 	}
 	// The Managers UI sends camelCase keys (canViewStudents) while the columns
 	// and allowlist are snake_case; buildSetClauses normalises them, rejects

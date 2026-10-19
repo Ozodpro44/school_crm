@@ -1,8 +1,9 @@
+import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { useNotify } from "@/hooks/use-notify";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, hasPageAccess } from "@/lib/auth";
 import {
   listAssignments,
   createAssignment,
@@ -51,6 +52,12 @@ import { EmptyState } from "@/components/EmptyState";
 
 export default function AssignmentsPage() {
   const language = useLanguage();
+  // Hidden from the sidebar without canViewAssignments; this also stops a typed-in URL.
+  const router = useRouter();
+  useEffect(() => {
+    if (!hasPageAccess("canViewAssignments")) router.replace("/");
+  }, [router]);
+
   const currentUser = getCurrentUser();
   const { currentBranch, isLoading: branchLoading } = useBranch();
 

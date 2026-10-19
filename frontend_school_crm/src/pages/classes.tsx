@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,10 +58,7 @@ export default function ClassesPage() {
 
   // ?tab=schedule keeps old /schedule bookmarks (admin/manager only — the
   // route itself still exists standalone for the teacher portal nav).
-  const [tab, setTab] = useState<"list" | "schedule">("list");
-  useEffect(() => {
-    if (router.query.tab === "schedule") setTab("schedule");
-  }, [router.query.tab]);
+  const [tab, setTab] = useUrlTab(["list", "schedule"] as const, "list");
 
   const [isLoading, setIsLoading] = useState(true);
   const [classes, setClasses] = useState<Class[]>([]);

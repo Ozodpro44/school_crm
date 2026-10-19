@@ -37,6 +37,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: true,
     canViewSettings: true,
     canEditSettings: true,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   branch_admin: {
     canViewStudents: true,
@@ -66,6 +69,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: true,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   manager: {
     canViewStudents: true,
@@ -95,6 +101,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: true,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   accountant: {
     canViewStudents: true,
@@ -124,6 +133,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: true,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   teacher: {
     canViewStudents: true,
@@ -153,6 +165,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: false,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   student: {
     canViewStudents: false,
@@ -182,6 +197,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: false,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   parent: {
     canViewStudents: true,
@@ -211,6 +229,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: false,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
 };
 

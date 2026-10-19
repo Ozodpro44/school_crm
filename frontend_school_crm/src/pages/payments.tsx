@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useRouter } from "next/router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,10 +74,7 @@ export default function PaymentsPage() {
   // Former standalone /quick-pay page is now the "quick" tab here —
   // ?tab=quick keeps the old URL's bookmarks/links working via
   // pages/quick-pay.tsx's standalone render of the same panel.
-  const [tab, setTab] = useState<"list" | "quick">("list");
-  useEffect(() => {
-    if (router.query.tab === "quick") setTab("quick");
-  }, [router.query.tab]);
+  const [tab, setTab] = useUrlTab(["list", "quick"] as const, "list");
 
   // Derived payment list state (populated from query result via useEffect)
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -220,7 +218,12 @@ export default function PaymentsPage() {
   // Sync URL params when filters/page change
   useEffect(() => {
     if (!router.isReady || !selectedMonth) return;
+    // Keep params this effect doesn't manage (e.g. ?tab=quick).
     const params = new URLSearchParams();
+    const managed = new Set(["search", "status", "paymentMethod", "classId", "month", "year", "page", "limit"]);
+    Object.entries(router.query).forEach(([k, v]) => {
+      if (!managed.has(k) && typeof v === "string") params.set(k, v);
+    });
     if (searchTerm) params.set("search", searchTerm);
     if (filterStatus !== "all") params.set("status", filterStatus);
     if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
@@ -229,7 +232,7 @@ export default function PaymentsPage() {
     params.set("year", selectedYear.toString());
     params.set("page", currentPage.toString());
     params.set("limit", itemsPerPage.toString());
-    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+    router.replace(`/payments?${params.toString()}`, undefined, { shallow: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, filterStatus, filterPaymentMethod, filterClassId, currentPage, itemsPerPage, selectedMonth, selectedYear]);
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -30,25 +31,27 @@ import {
 import {
   CheckCircle2,
   Zap,
-  Users,
   QrCode,
   Search,
   Printer,
   CreditCard,
   Banknote,
   Building2,
-  CheckSquare,
-  Square,
   AlertCircle,
   Camera,
+  ChevronLeft,
+  ChevronRight,
+  History,
   X,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type TabId = "collect" | "bulk" | "scan";
+type TabId = "collect" | "scan";
+type StatusFilter = "due" | "all" | "paid";
 type PayMethod = "cash" | "click" | "bank" | "terminal";
 
 interface BulkEntry {
@@ -184,107 +187,109 @@ function ReceiptModal({ data, onClose }: { data: ReceiptData | null; onClose: ()
   );
 }
 
-// ─── Student payment card ─────────────────────────────────────────────────────
 
-function StudentCard({
+// ─── Student row (desktop table row) ──────────────────────────────────────────
+
+// One grid template shared by the header and every row keeps columns aligned.
+const ROW_GRID = "grid grid-cols-[28px_minmax(0,1fr)_110px_150px_132px] items-center gap-3 px-4";
+
+function StudentRow({
   student,
+  className,
   selected,
+  active,
   paying,
   onToggle,
   onPayNow,
-  payMethod,
   t,
 }: {
   student: StudentPaymentInfo;
+  className: string;
   selected: boolean;
+  active: boolean;
   paying: boolean;
   onToggle: () => void;
   onPayNow: () => void;
-  payMethod: PayMethod;
   t: (k: string) => string;
 }) {
-  const isPaid    = student.paymentStatus === "paid";
+  const isPaid = student.paymentStatus === "paid";
   const isPartial = student.paymentStatus === "partial";
 
   return (
-    <div className={cn(
-      "flex items-center gap-3 px-4 py-3 transition-colors",
-      isPaid
-        ? "bg-emerald-50/60 dark:bg-emerald-950/20"
-        : isPartial
-        ? "bg-amber-50/40 dark:bg-amber-950/10 hover:bg-amber-50/60 dark:hover:bg-amber-950/20"
-        : "hover:bg-slate-50 dark:hover:bg-slate-800/50",
-      selected && !isPaid && "bg-indigo-50 dark:bg-indigo-950/30"
-    )}>
-      {/* Icon: checkmark for paid, checkbox for unpaid */}
+    <div
+      data-active={active || undefined}
+      className={cn(
+        ROW_GRID,
+        "py-2.5 border-b border-slate-100 dark:border-slate-800 last:border-b-0 transition-colors",
+        isPaid && "bg-emerald-50/50 dark:bg-emerald-950/10",
+        selected && !isPaid && "bg-indigo-50 dark:bg-indigo-950/30",
+        active && !isPaid && "bg-indigo-50/70 dark:bg-indigo-950/20 ring-1 ring-inset ring-indigo-400/60",
+        !isPaid && !active && !selected && "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+      )}
+    >
       {isPaid ? (
-        <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
       ) : (
-        <button onClick={onToggle} className="flex-shrink-0 text-slate-400 hover:text-indigo-500 transition-colors">
-          {selected
-            ? <CheckSquare className="w-5 h-5 text-indigo-500" />
-            : <Square className="w-5 h-5" />
-          }
-        </button>
+        <Checkbox checked={selected} onCheckedChange={onToggle} aria-label={student.fullName} />
       )}
 
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <p className={cn(
-          "text-sm font-semibold truncate",
-          isPaid ? "text-emerald-700 dark:text-emerald-400" : "text-slate-900 dark:text-white"
-        )}>
+      <div className="min-w-0">
+        <p
+          className={cn(
+            "text-sm font-medium truncate",
+            isPaid ? "text-emerald-700 dark:text-emerald-400" : "text-slate-900 dark:text-white"
+          )}
+          title={student.fullName}
+        >
           {student.fullName}
         </p>
-        <p className="text-xs text-slate-400 truncate">{student.phone}</p>
+        {student.phone && <p className="text-xs text-slate-400 truncate">{student.phone}</p>}
       </div>
 
-      {/* Amount */}
-      {isPaid ? (
-        <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex-shrink-0">
-          {fmtMoney(student.monthlyPayment)} UZS
-        </span>
-      ) : (
-        <div className="text-right flex-shrink-0 mr-1">
-          <p className="text-sm font-bold text-slate-900 dark:text-white">{fmtMoney(student.remaining)} UZS</p>
-          {isPartial && (
-            <p className="text-xs text-amber-500">{t("paid")}: {fmtMoney(student.amountPaid)}</p>
-          )}
-        </div>
-      )}
+      <span className="text-sm text-slate-500 dark:text-slate-400 truncate" title={className}>
+        {className}
+      </span>
 
-      {/* Status badge / Pay button */}
-      {isPaid ? (
-        <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 border-0 text-xs px-2 py-1 flex-shrink-0">
-          <CheckCircle2 className="w-3 h-3 mr-1" /> {t("paid")}
-        </Badge>
-      ) : isPartial ? (
-        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border-0 text-[11px]">
-            {t("partial")}
+      <div className="text-right tabular-nums">
+        {isPaid ? (
+          <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+            {fmtMoney(student.monthlyPayment)}
+          </span>
+        ) : (
+          <>
+            <span className="text-sm font-semibold text-slate-900 dark:text-white">
+              {fmtMoney(student.remaining)}
+            </span>
+            {isPartial && (
+              <span className="block text-xs text-amber-500">
+                {t("paid")}: {fmtMoney(student.amountPaid)}
+              </span>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="flex justify-end">
+        {isPaid ? (
+          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 border-0 text-xs">
+            {t("paid")}
           </Badge>
+        ) : (
           <Button
             size="sm"
             disabled={paying}
             onClick={onPayNow}
-            className="bg-amber-500 hover:bg-amber-600 text-white text-xs h-7 px-2.5"
+            className="h-8 w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5"
           >
-            {paying ? "..." : t("markAsPaid")}
+            {paying ? "..." : t("qpPay")}
+            {active && !paying && <kbd className="text-[10px] opacity-80">↵</kbd>}
           </Button>
-        </div>
-      ) : (
-        <Button
-          size="sm"
-          disabled={paying}
-          onClick={onPayNow}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs h-8 px-3 flex-shrink-0"
-        >
-          {paying ? "..." : t("markAsPaid")}
-        </Button>
-      )}
+        )}
+      </div>
     </div>
   );
 }
+
 
 // ─── QR Scanner tab ───────────────────────────────────────────────────────────
 
@@ -507,118 +512,225 @@ function QRScanTab({
   );
 }
 
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 // Extracted from the former standalone /quick-pay page so it can be embedded
 // as a tab inside the Payments page (payments.tsx) — content only, no
-// page-level <h1> header since the host page already renders one. The
-// collect/bulk/scan tab strip here is this feature's own internal UI, one
-// level below the host page's "To'lovlar"/"Tezkor to'lov" tabs.
+// page-level <h1> header since the host page already renders one.
+//
+// Built for a cashier at a desktop: the search box keeps focus, ↑/↓ pick a row,
+// Enter takes the payment, and the right-hand column shows what has been
+// collected this session (with receipt reprint) so no modal blocks the next
+// payment. The list is paged server-side (the branch can have far more
+// students than one screen or one request).
+const PAGE_SIZES = [25, 50, 100, 200] as const;
+const SEARCH_DEBOUNCE_MS = 250;
+
+interface RecentPayment {
+  key: string;
+  receipt: ReceiptData;
+  time: string;
+}
+
+function readStored<T extends string | number>(key: string, allowed: readonly T[], fallback: T): T {
+  try {
+    const raw = window.localStorage.getItem(key);
+    const v = (typeof fallback === "number" ? Number(raw) : raw) as T;
+    return allowed.includes(v) ? v : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStored(key: string, value: string | number) {
+  try {
+    window.localStorage.setItem(key, String(value));
+  } catch {
+    /* private mode: preference simply isn't remembered */
+  }
+}
+
 export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
   const language = useLanguage();
   const notify = useNotify();
   const t = (k: string) => getTranslation(k, language);
   const { currentBranch } = useBranch();
 
-  const [tab, setTab]                     = useState<TabId>("collect");
-  const [payMethod, setPayMethod]         = useState<PayMethod>("cash");
-  const [classFilter, setClassFilter]     = useState("all");
-  const [search, setSearch]               = useState("");
-  const [classes, setClasses]             = useState<Class[]>([]);
-  const [students, setStudents]           = useState<StudentPaymentInfo[]>([]);
-  const [loading, setLoading]             = useState(false);
-  const [selected, setSelected]           = useState<Set<string>>(new Set());
-  const [payingIds, setPayingIds]         = useState<Set<string>>(new Set());
-  const [bulkPaying, setBulkPaying]       = useState(false);
-  const [receipt, setReceipt]             = useState<ReceiptData | null>(null);
+  const [tab, setTab] = useUrlTab(["collect", "scan"] as const, "collect", "qp");
+  const [payMethod, setPayMethod] = useState<PayMethod>("cash");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("due");
+  const [classFilter, setClassFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [autoReceipt, setAutoReceipt] = useState(false);
 
-  const branchId   = currentBranch?.id   ?? "";
+  const [classes, setClasses] = useState<Class[]>([]);
+  const [students, setStudents] = useState<StudentPaymentInfo[]>([]);
+  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState({ paid: 0, partial: 0, notPaid: 0 });
+  const [loading, setLoading] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const [selected, setSelected] = useState<Map<string, StudentPaymentInfo>>(new Map());
+  const [payingIds, setPayingIds] = useState<Set<string>>(new Set());
+  const [bulkPaying, setBulkPaying] = useState(false);
+  const [receipt, setReceipt] = useState<ReceiptData | null>(null);
+  const [recent, setRecent] = useState<RecentPayment[]>([]);
+  const [sessionTotal, setSessionTotal] = useState(0);
+
+  const searchRef = useRef<HTMLInputElement>(null);
+  const requestRef = useRef(0);
+
+  const branchId = currentBranch?.id ?? "";
   const branchName = currentBranch?.name ?? "";
 
-  // Load classes
+  // Remembered preferences (client only, after hydration).
+  useEffect(() => {
+    setPayMethod(readStored("qp_method", ["cash", "click", "bank", "terminal"] as const, "cash"));
+    setPageSize(readStored("qp_page_size", PAGE_SIZES, 50));
+    setAutoReceipt(readStored("qp_auto_receipt", ["0", "1"] as const, "0") === "1");
+  }, []);
+
   useEffect(() => {
     if (!branchId) return;
     listClasses(branchId).then(setClasses).catch(() => {});
   }, [branchId]);
 
-  // debouncedSearch (not the raw `search` state the input is bound to)
-  // drives the actual fetch. Previously loadStudents depended on `search`
-  // directly, so its identity changed on every keystroke — which re-fired
-  // the tab-effect below immediately (it depends on loadStudents), firing a
-  // second, undebounced fetch alongside the "debounced" one further down.
-  // With no cancellation, a fast typer could get an older response landing
-  // after a newer one. Debouncing the value loadStudents reads, instead of
-  // debouncing a second call to it, fixes both at once.
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const classNames = new Map(classes.map((c) => [c.id, c.name]));
+
   useEffect(() => {
-    const id = setTimeout(() => setDebouncedSearch(search), 300);
+    const id = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(id);
   }, [search]);
 
-  // Load active students with their current-month payment status
+  // Any filter change starts again from page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, classFilter, statusFilter, pageSize, branchId]);
+
   const loadStudents = useCallback(async () => {
     if (!branchId) return;
+    const reqId = ++requestRef.current;
     setLoading(true);
     try {
       const res = await searchStudentsWithPaymentStatus({
         branchId,
         search: debouncedSearch,
         classId: classFilter !== "all" ? classFilter : undefined,
-        status: "active",   // only active students can receive payments
-        limit: 500,
+        status: "active", // only active students can receive payments
+        paymentStatus: statusFilter === "all" ? undefined : statusFilter,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
       });
-      setStudents(res.data ?? []);
+      if (reqId !== requestRef.current) return; // a newer request superseded this one
+      const data = res.data ?? [];
+      // The last row of the last page was just paid: step back instead of showing an empty page.
+      if (data.length === 0 && page > 1 && res.total > 0) {
+        setPage((p) => Math.max(1, p - 1));
+        return;
+      }
+      setStudents(data);
+      setTotal(res.total ?? data.length);
+      if (res.counts) setCounts(res.counts);
+      setActiveIndex(0);
     } catch {
+      if (reqId !== requestRef.current) return;
       setStudents([]);
+      setTotal(0);
     } finally {
-      setLoading(false);
+      if (reqId === requestRef.current) setLoading(false);
     }
-  }, [branchId, debouncedSearch, classFilter]);
+  }, [branchId, debouncedSearch, classFilter, statusFilter, pageSize, page]);
 
   useEffect(() => {
-    if (tab === "collect" || tab === "bulk") loadStudents();
+    if (tab === "collect") loadStudents();
   }, [tab, loadStudents]);
 
-  // Re-fetch when the page regains visibility (e.g. user deleted a payment elsewhere)
+  // Re-fetch when the page regains visibility (e.g. a payment was deleted elsewhere)
   useRefetchOnFocus(loadStudents);
 
-  const unpaid = students.filter((s) => s.paymentStatus !== "paid");
-  const unpaidSelected = unpaid.filter((s) => selected.has(s.id));
+  // Keyboard-first: the search box is ready as soon as the list is shown.
+  useEffect(() => {
+    if (tab === "collect") searchRef.current?.focus();
+  }, [tab]);
 
-  const toggleSelect = (id: string) => {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const rangeFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeTo = Math.min(page * pageSize, total);
+  const payable = students.filter((s) => s.paymentStatus !== "paid");
+  const allPageSelected = payable.length > 0 && payable.every((s) => selected.has(s.id));
+  const selectedList = Array.from(selected.values());
+  const selectedSum = selectedList.reduce((sum, s) => sum + s.remaining, 0);
+
+  const toggleSelect = (s: StudentPaymentInfo) => {
     setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      const next = new Map(prev);
+      if (next.has(s.id)) next.delete(s.id);
+      else next.set(s.id, s);
+      return next;
+    });
+  };
+  const togglePage = () => {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      if (allPageSelected) payable.forEach((s) => next.delete(s.id));
+      else payable.forEach((s) => next.set(s.id, s));
       return next;
     });
   };
 
-  const selectAll = () => setSelected(new Set(unpaid.map((s) => s.id)));
-  const clearAll  = () => setSelected(new Set());
-
   const makeReceipt = (student: StudentPaymentInfo, result: BulkResult): ReceiptData => ({
-    studentName:   student.fullName,
-    amount:        student.remaining,
-    month:         result.payment?.month   ?? "",
-    year:          result.payment?.year    ?? new Date().getFullYear(),
-    method:        payMethod,
+    studentName: student.fullName,
+    amount: student.remaining,
+    month: result.payment?.month ?? "",
+    year: result.payment?.year ?? new Date().getFullYear(),
+    method: payMethod,
     invoiceNumber: result.payment?.invoiceNumber ?? "",
     branchName,
-    paidAt:        new Date().toLocaleString(),
+    paidAt: new Date().toLocaleString(),
   });
 
-  // Pay a single student (collect mode one-tap)
+  const recordPaid = (student: StudentPaymentInfo, result: BulkResult) => {
+    const r = makeReceipt(student, result);
+    setRecent((prev) =>
+      [{ key: result.payment?.id ?? `${student.id}-${Date.now()}`, receipt: r, time: new Date().toLocaleTimeString() }, ...prev].slice(0, 15)
+    );
+    setSessionTotal((sum) => sum + student.remaining);
+    return r;
+  };
+
+  const afterPayment = () => {
+    // Ready for the next student: clear the query and put the cursor back.
+    setSearch("");
+    setDebouncedSearch("");
+    searchRef.current?.focus();
+  };
+
   const payOne = async (student: StudentPaymentInfo) => {
+    if (payingIds.has(student.id) || student.paymentStatus === "paid" || student.remaining <= 0) return;
     setPayingIds((prev) => new Set(prev).add(student.id));
     try {
-      const res = await bulkPay(branchId, payMethod, [{
-        studentId: student.id,
-        amount: student.remaining,
-        paymentMethod: payMethod,
-      }]);
+      const res = await bulkPay(branchId, payMethod, [
+        { studentId: student.id, amount: student.remaining, paymentMethod: payMethod },
+      ]);
       const r = res.results[0]!;
-      if (r.error) { notify.error(t("paymentFailed"), r.error); return; }
-      setReceipt(makeReceipt(student, r));
+      if (r.error) {
+        notify.error(t("paymentFailed"), r.error);
+        return;
+      }
+      const rc = recordPaid(student, r);
+      notify.success(student.fullName, `${fmtMoney(student.remaining)} UZS`);
+      if (autoReceipt) setReceipt(rc);
+      setSelected((prev) => {
+        if (!prev.has(student.id)) return prev;
+        const next = new Map(prev);
+        next.delete(student.id);
+        return next;
+      });
+      afterPayment();
       // Re-fetch from server — never trust stale local state for payment status
       await loadStudents();
     } catch (e: any) {
@@ -632,38 +744,38 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
     }
   };
 
-  // Pay all selected (bulk mode)
   const payBulk = async () => {
-    const targets = unpaid.filter((s) => selected.has(s.id));
+    const targets = selectedList.filter((s) => s.remaining > 0);
     if (targets.length === 0) return;
     setBulkPaying(true);
     try {
       const entries: BulkEntry[] = targets.map((s) => ({
-        studentId:     s.id,
-        amount:        s.remaining,
+        studentId: s.id,
+        amount: s.remaining,
         paymentMethod: payMethod,
       }));
       const res = await bulkPay(branchId, payMethod, entries);
       const results = res.results ?? [];
-      const okCount = results.filter((r) => r.payment && !r.error).length;
       const failedRows = results.filter((r) => r.error || !r.payment);
-      const summary = `${okCount} / ${targets.length} ${t("students").toLowerCase()}`;
-      if (failedRows.length === 0) {
-        notify.success(t("paymentSuccess"), summary);
-      } else if (okCount === 0) {
-        notify.error(t("paymentFailed"), failedRows[0]?.error ?? summary);
-      } else {
-        notify.warning(t("paymentPartial"), `${summary}. ${failedRows[0]?.error ?? ""}`.trim());
-      }
+      const okRows = results.filter((r) => r.payment && !r.error);
+      okRows.forEach((r) => {
+        const s = targets.find((x) => x.id === r.studentId);
+        if (s) recordPaid(s, r);
+      });
+      const summary = `${okRows.length} / ${targets.length} ${t("students").toLowerCase()}`;
+      if (failedRows.length === 0) notify.success(t("paymentSuccess"), summary);
+      else if (okRows.length === 0) notify.error(t("paymentFailed"), failedRows[0]?.error ?? summary);
+      else notify.warning(t("paymentPartial"), `${summary}. ${failedRows[0]?.error ?? ""}`.trim());
       // Keep failed rows selected so they can be retried
-      setSelected(new Set(failedRows.map((r) => r.studentId)));
-      // Show receipt for first success
-      const first = res.results.find((r) => r.payment);
-      if (first) {
-        const s = targets.find((s) => s.id === first.studentId)!;
-        setReceipt(makeReceipt(s, first));
-      }
-      // Re-fetch from server — reflects actual backend state
+      setSelected((prev) => {
+        const next = new Map<string, StudentPaymentInfo>();
+        failedRows.forEach((r) => {
+          const s = prev.get(r.studentId);
+          if (s) next.set(s.id, s);
+        });
+        return next;
+      });
+      afterPayment();
       await loadStudents();
     } catch (e: any) {
       notify.error(t("paymentFailed"), e.message);
@@ -672,19 +784,64 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
     }
   };
 
-  const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
-    { id: "collect", label: t("collectMode"), icon: <Zap       className="w-4 h-4" /> },
-    { id: "bulk",    label: t("bulkMode"),    icon: <Users      className="w-4 h-4" /> },
-    { id: "scan",    label: t("scanMode"),    icon: <QrCode     className="w-4 h-4" /> },
+  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.min(i + 1, Math.max(students.length - 1, 0)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const s = students[activeIndex];
+      if (s) payOne(s);
+    } else if (e.key === "Escape") {
+      setSearch("");
+    }
+  };
+
+  // Keep the highlighted row visible while arrowing through a long page.
+  useEffect(() => {
+    document.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, students]);
+
+  const methodButtons = (
+    <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+      {PAY_METHODS.map((m) => (
+        <button
+          key={m.id}
+          onClick={() => {
+            setPayMethod(m.id);
+            writeStored("qp_method", m.id);
+            searchRef.current?.focus();
+          }}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+            payMethod === m.id
+              ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+              : "text-slate-500 dark:text-slate-400 hover:text-slate-700"
+          )}
+        >
+          {m.icon} {t(m.labelKey)}
+        </button>
+      ))}
+    </div>
+  );
+
+  const statusChips: { id: StatusFilter; label: string; count: number; tone: string }[] = [
+    { id: "due", label: t("qpDue"), count: counts.notPaid + counts.partial, tone: "red" },
+    { id: "paid", label: t("paid"), count: counts.paid, tone: "emerald" },
+    { id: "all", label: t("qpAll"), count: counts.notPaid + counts.partial + counts.paid, tone: "slate" },
   ];
 
-  const paidCount   = students.filter((s) => s.paymentStatus === "paid").length;
-  const unpaidCount = students.length - paidCount;
+  const tabs: { id: TabId; label: string; icon: React.ReactNode }[] = [
+    { id: "collect", label: t("collectMode"), icon: <Zap className="w-4 h-4" /> },
+    { id: "scan", label: t("scanMode"), icon: <QrCode className="w-4 h-4" /> },
+  ];
 
   return (
     <>
-    <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
-
+      <div className="max-w-6xl mx-auto px-4 py-4 space-y-4">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {showHeader ? (
@@ -698,205 +855,281 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
           ) : (
             <p className="text-sm text-slate-400">{branchName} · {currentMonthLabel()}</p>
           )}
-          {/* Payment method selector */}
-          <div className="flex gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-            {PAY_METHODS.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setPayMethod(m.id)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                  payMethod === m.id
-                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700"
-                )}
-              >
-                {m.icon} {t(m.labelKey)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Tab bar */}
-        <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 gap-1">
-          {tabs.map((tb) => (
-            <button
-              key={tb.id}
-              onClick={() => setTab(tb.id)}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all",
-                tab === tb.id
-                  ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-              )}
-            >
-              {tb.icon} {tb.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Filters row (collect + bulk) */}
-        {(tab === "collect" || tab === "bulk") && (
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder={t("students") + "..."}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9 text-sm"
-              />
-            </div>
-            <Select value={classFilter} onValueChange={setClassFilter}>
-              <SelectTrigger className="w-44 h-9 text-sm">
-                <SelectValue placeholder={t("classes")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t("allClasses") || t("classes")}</SelectItem>
-                {classes.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        {/* Stats bar (collect + bulk) */}
-        {(tab === "collect" || tab === "bulk") && students.length > 0 && (
-          <div className="flex gap-3 text-sm">
-            <div className="flex items-center gap-1.5 bg-red-50 dark:bg-red-950 px-3 py-1.5 rounded-lg">
-              <AlertCircle className="w-3.5 h-3.5 text-red-500" />
-              <span className="font-semibold text-red-700 dark:text-red-300">{unpaidCount} {t("unpaid")}</span>
-            </div>
-            <div className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950 px-3 py-1.5 rounded-lg">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="font-semibold text-emerald-700 dark:text-emerald-300">{paidCount} {t("paid")}</span>
-            </div>
-          </div>
-        )}
-
-        {/* ── COLLECT tab ── */}
-        {tab === "collect" && (
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-            {loading ? (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="flex items-center gap-4 p-4">
-                    <Skeleton className="h-5 w-5 rounded flex-shrink-0" />
-                    <div className="flex-1 space-y-1.5">
-                      <Skeleton className="h-4 w-40" />
-                      <Skeleton className="h-3 w-24" />
-                    </div>
-                    <div className="text-right space-y-1.5">
-                      <Skeleton className="h-5 w-20 ml-auto" />
-                      <Skeleton className="h-3 w-12 ml-auto" />
-                    </div>
-                    <Skeleton className="h-9 w-24 rounded-lg flex-shrink-0" />
-                  </div>
-                ))}
-              </div>
-            ) : students.length === 0 ? (
-              <div className="py-12 text-center text-slate-400">
-                <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-400" />
-                <p className="text-sm font-medium text-emerald-600">{t("allPaid")}</p>
-              </div>
-            ) : (
-              students.map((s) => (
-                <StudentCard
-                  key={s.id}
-                  student={s}
-                  selected={selected.has(s.id)}
-                  paying={payingIds.has(s.id)}
-                  onToggle={() => toggleSelect(s.id)}
-                  onPayNow={() => payOne(s)}
-                  payMethod={payMethod}
-                  t={t}
-                />
-              ))
-            )}
-          </div>
-        )}
-
-        {/* ── BULK tab ── */}
-        {tab === "bulk" && (
-          <div className="space-y-3">
-            {/* Bulk action bar */}
-            <div className="flex items-center justify-between bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3">
-              <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex bg-slate-100 dark:bg-slate-800 rounded-xl p-1 gap-1">
+              {tabs.map((tb) => (
                 <button
-                  onClick={selected.size === unpaid.length ? clearAll : selectAll}
-                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+                  key={tb.id}
+                  onClick={() => setTab(tb.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                    tab === tb.id
+                      ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  )}
                 >
-                  {selected.size === unpaid.length ? (t("deselectAll")) : (t("selectAll"))}
+                  {tb.icon} {tb.label}
                 </button>
-                {selected.size > 0 && (
-                  <span className="text-sm text-slate-500">
-                    {selected.size} {t("selected")}
-                  </span>
-                )}
-              </div>
-              <Button
-                disabled={selected.size === 0 || bulkPaying}
-                onClick={payBulk}
-                className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white h-8 text-sm"
-              >
-                <Zap className="w-3.5 h-3.5" />
-                {bulkPaying ? "..." : `${t("paySelected")} (${unpaidSelected.length})`}
-              </Button>
+              ))}
             </div>
+            {methodButtons}
+          </div>
+        </div>
 
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-              {loading ? (
-                <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="flex items-center gap-4 p-4">
-                      <Skeleton className="h-5 w-5 rounded flex-shrink-0" />
-                      <div className="flex-1 space-y-1.5">
-                        <Skeleton className="h-4 w-40" />
-                        <Skeleton className="h-3 w-24" />
-                      </div>
-                      <div className="text-right space-y-1.5">
-                        <Skeleton className="h-5 w-20 ml-auto" />
-                        <Skeleton className="h-3 w-12 ml-auto" />
-                      </div>
-                      <Skeleton className="h-9 w-24 rounded-lg flex-shrink-0" />
-                    </div>
+        {tab === "collect" && (
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px] items-start">
+            {/* ── List ── */}
+            <div className="space-y-3 min-w-0">
+              <div className="flex flex-wrap gap-2">
+                <div className="relative flex-1 min-w-[220px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    ref={searchRef}
+                    autoFocus
+                    placeholder={t("qpSearchPlaceholder")}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onKeyDown={onSearchKeyDown}
+                    className="pl-9 h-10"
+                  />
+                </div>
+                <Select value={classFilter} onValueChange={setClassFilter}>
+                  <SelectTrigger className="w-44 h-10 text-sm">
+                    <SelectValue placeholder={t("classes")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t("allClasses") || t("classes")}</SelectItem>
+                    {classes.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex gap-2">
+                  {statusChips.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => setStatusFilter(c.id)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors",
+                        statusFilter === c.id
+                          ? c.tone === "red"
+                            ? "bg-red-50 border-red-200 text-red-700 dark:bg-red-950 dark:border-red-900 dark:text-red-300"
+                            : c.tone === "emerald"
+                            ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950 dark:border-emerald-900 dark:text-emerald-300"
+                            : "bg-slate-100 border-slate-300 text-slate-800 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100"
+                          : "border-transparent text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      )}
+                    >
+                      {c.label} <span className="tabular-nums opacity-80">{c.count}</span>
+                    </button>
                   ))}
                 </div>
-              ) : students.length === 0 ? (
-                <div className="py-12 text-center text-slate-400">
-                  <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-400" />
-                  <p className="text-sm font-medium text-emerald-600">{t("allPaid")}</p>
+                <p className="text-xs text-slate-400 hidden md:block">{t("qpShortcutHint")}</p>
+              </div>
+
+              {/* Bulk bar */}
+              {selectedList.length > 0 && (
+                <div className="flex items-center justify-between gap-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 rounded-xl px-4 py-2.5">
+                  <div className="text-sm text-indigo-900 dark:text-indigo-200">
+                    <span className="font-semibold">{selectedList.length}</span> {t("selected")} ·{" "}
+                    <span className="font-semibold tabular-nums">{fmtMoney(selectedSum)} UZS</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setSelected(new Map())}>
+                      {t("clear")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={bulkPaying}
+                      onClick={payBulk}
+                      className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      {bulkPaying ? "..." : `${t("paySelected")} (${selectedList.length})`}
+                    </Button>
+                  </div>
                 </div>
-              ) : (
-                students.map((s) => (
-                  <StudentCard
-                    key={s.id}
-                    student={s}
-                    selected={selected.has(s.id)}
-                    paying={payingIds.has(s.id)}
-                    onToggle={() => toggleSelect(s.id)}
-                    onPayNow={() => payOne(s)}
-                    payMethod={payMethod}
-                    t={t}
-                  />
-                ))
               )}
+
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                {/* Column header */}
+                <div
+                  className={cn(
+                    ROW_GRID,
+                    "py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-700 text-xs font-medium uppercase tracking-wide text-slate-500"
+                  )}
+                >
+                  <Checkbox
+                    checked={allPageSelected}
+                    disabled={payable.length === 0}
+                    onCheckedChange={togglePage}
+                    aria-label={t("selectAll")}
+                  />
+                  <span>{t("fullName")}</span>
+                  <span>{t("class")}</span>
+                  <span className="text-right">{t("remaining")}</span>
+                  <span />
+                </div>
+
+                <div className="max-h-[calc(100vh-24rem)] min-h-[16rem] overflow-y-auto">
+                  {loading && students.length === 0 ? (
+                    [1, 2, 3, 4, 5, 6].map((i) => (
+                      <div key={i} className={cn(ROW_GRID, "py-3 border-b border-slate-100 dark:border-slate-800")}>
+                        <Skeleton className="h-4 w-4 rounded" />
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-4 w-16" />
+                        <Skeleton className="h-4 w-20 ml-auto" />
+                        <Skeleton className="h-8 w-full rounded-md" />
+                      </div>
+                    ))
+                  ) : students.length === 0 ? (
+                    <div className="py-14 text-center text-slate-400">
+                      <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-400" />
+                      <p className="text-sm font-medium text-emerald-600">
+                        {statusFilter === "due" && !debouncedSearch && classFilter === "all"
+                          ? t("allPaid")
+                          : t("qpNothingFound")}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={cn(loading && "opacity-60 transition-opacity")}>
+                      {students.map((s, i) => (
+                        <StudentRow
+                          key={s.id}
+                          student={s}
+                          className={classNames.get(s.classId) ?? ""}
+                          selected={selected.has(s.id)}
+                          active={i === activeIndex}
+                          paying={payingIds.has(s.id)}
+                          onToggle={() => toggleSelect(s)}
+                          onPayNow={() => payOne(s)}
+                          t={t}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Pagination */}
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-t border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 text-sm">
+                  <div className="flex items-center gap-2 text-slate-500">
+                    <span>{t("qpRowsPerPage")}</span>
+                    <Select
+                      value={String(pageSize)}
+                      onValueChange={(v) => {
+                        setPageSize(Number(v));
+                        writeStored("qp_page_size", v);
+                      }}
+                    >
+                      <SelectTrigger className="h-8 w-[76px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAGE_SIZES.map((n) => (
+                          <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-500 tabular-nums">
+                      {rangeFrom}–{rangeTo} / {total}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label={t("qpPrev")}
+                      disabled={page <= 1 || loading}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="tabular-nums text-slate-600 dark:text-slate-300 min-w-[3.5rem] text-center">
+                      {page} / {totalPages}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label={t("qpNext")}
+                      disabled={page >= totalPages || loading}
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </div>
+
+            {/* ── Session column ── */}
+            <aside className="space-y-3 lg:sticky lg:top-4">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+                <p className="text-xs uppercase tracking-wide text-slate-400">{t("qpSessionTotal")}</p>
+                <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-600">
+                  {fmtMoney(sessionTotal)} <span className="text-sm font-medium text-slate-400">UZS</span>
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">{recent.length} {t("qpPaymentsCount")}</p>
+                <label className="mt-3 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">
+                  <Checkbox
+                    checked={autoReceipt}
+                    onCheckedChange={(v) => {
+                      setAutoReceipt(v === true);
+                      writeStored("qp_auto_receipt", v === true ? "1" : "0");
+                    }}
+                  />
+                  {t("qpAutoReceipt")}
+                </label>
+              </div>
+
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 text-sm font-medium text-slate-700 dark:text-slate-200">
+                  <History className="w-4 h-4 text-slate-400" /> {t("qpRecent")}
+                </div>
+                {recent.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-xs text-slate-400">{t("qpRecentEmpty")}</p>
+                ) : (
+                  <ul className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                    {recent.map((r) => (
+                      <li key={r.key} className="flex items-center gap-2 px-4 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate text-slate-800 dark:text-slate-100">{r.receipt.studentName}</p>
+                          <p className="text-xs text-slate-400 tabular-nums">{r.time} · {fmtMoney(r.receipt.amount)}</p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 flex-shrink-0"
+                          aria-label={t("print")}
+                          title={t("print")}
+                          onClick={() => setReceipt(r.receipt)}
+                        >
+                          <Printer className="w-4 h-4" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </aside>
           </div>
         )}
 
-        {/* ── SCAN tab ── */}
         {tab === "scan" && (
-          <QRScanTab
-            branchId={branchId}
-            payMethod={payMethod}
-            branchName={branchName}
-            t={t}
-            onPaid={(r) => setReceipt(r)}
-          />
+          <div className="max-w-xl mx-auto">
+            <QRScanTab
+              branchId={branchId}
+              payMethod={payMethod}
+              branchName={branchName}
+              t={t}
+              onPaid={(r) => setReceipt(r)}
+            />
+          </div>
         )}
-    </div>
-    {/* Receipt modal */}
-    <ReceiptModal data={receipt} onClose={() => setReceipt(null)} />
+      </div>
+      <ReceiptModal data={receipt} onClose={() => { setReceipt(null); searchRef.current?.focus(); }} />
     </>
   );
 }

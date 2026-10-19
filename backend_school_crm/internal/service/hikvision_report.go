@@ -108,53 +108,54 @@ func (s *HikvisionService) AttendanceReport(ctx context.Context, branchID, month
 		return nil, err
 	}
 
-	// One row per (person, school-local day): first and last scan and the count.
-	dayRows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT a.device_id, a.employee_no,
-		       ((a.event_time AT TIME ZONE 'UTC') AT TIME ZONE $4)::date AS day,
-		       MIN(a.event_time), MAX(a.event_time), COUNT(*)
+	// Raw scans, oldest first; grouped per person and school-local day in Go
+	// so the pairing rules live in one testable function (summariseDay).
+	scanRows, err := s.db.GetConn().QueryContext(ctx, `
+		SELECT a.device_id, a.employee_no, a.event_time
 		FROM attendance_records a
 		JOIN hikvision_devices d ON d.id = a.device_id
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 		WHERE d.branch_id = $1 AND a.event_time >= $2 AND a.event_time < $3
-		GROUP BY a.device_id, a.employee_no, day
-		ORDER BY day`, branchID, from, to, reportTimezone)
+		ORDER BY a.event_time`, branchID, from, to)
 	if err != nil {
 		return nil, err
 	}
-	defer dayRows.Close()
+	defer scanRows.Close()
 
-	arrivalSum := map[string]int{}
-	for dayRows.Next() {
+	type dayKey struct{ person, date string }
+	scans := map[dayKey][]time.Time{}
+	for scanRows.Next() {
 		var deviceID, employeeNo string
-		var day time.Time
-		var first, last time.Time
-		var n int
-		if err := dayRows.Scan(&deviceID, &employeeNo, &day, &first, &last, &n); err != nil {
+		var at time.Time
+		if err := scanRows.Scan(&deviceID, &employeeNo, &at); err != nil {
 			return nil, err
 		}
-		r := byKey[deviceID+"|"+employeeNo]
-		if r == nil {
+		person := deviceID + "|" + employeeNo
+		if byKey[person] == nil {
 			continue // scans of someone since removed from the device
 		}
-		firstUTC, lastUTC := first.UTC(), last.UTC()
-		d := ReportDay{Date: day.Format("2006-01-02"), FirstIn: firstUTC, LastOut: lastUTC, Events: n}
-		if n >= 2 {
-			d.Minutes = int(lastUTC.Sub(firstUTC).Minutes())
-		}
-		fl := firstUTC.In(loc)
-		arrival := fl.Hour()*60 + fl.Minute()
-		d.Late = arrival > lateAfterMinute
+		k := dayKey{person, at.In(loc).Format("2006-01-02")}
+		scans[k] = append(scans[k], at.UTC())
+	}
+	if err := scanRows.Err(); err != nil {
+		return nil, err
+	}
+
+	arrivalSum := map[string]int{}
+	for k, times := range scans {
+		r := byKey[k.person]
+		d := summariseDay(k.date, times, lateAfterMinute, loc)
 		r.Days = append(r.Days, d)
 		r.DaysPresent++
 		r.TotalMinutes += d.Minutes
-		arrivalSum[deviceID+"|"+employeeNo] += arrival
+		fl := d.FirstIn.In(loc)
+		arrivalSum[k.person] += fl.Hour()*60 + fl.Minute()
 		if d.Late {
 			r.LateDays++
 		}
 	}
-	if err := dayRows.Err(); err != nil {
-		return nil, err
+	for _, r := range byKey {
+		sort.Slice(r.Days, func(i, j int) bool { return r.Days[i].Date < r.Days[j].Date })
 	}
 
 	out := make([]EmployeeReport, 0, len(order))
@@ -175,6 +176,32 @@ func (s *HikvisionService) AttendanceReport(ctx context.Context, branchID, month
 		return strings.ToLower(out[i].FullName) < strings.ToLower(out[j].FullName)
 	})
 	return out, nil
+}
+
+// scanDebounce: a second scan this soon after the previous one is the same
+// visit (the person lingered in front of the terminal), not an exit.
+const scanDebounce = time.Minute
+
+// summariseDay turns one person's scans of one day (any order) into a
+// ReportDay. Scans alternate in/out: 1st = in, 2nd = out, 3rd = in, ... Worked
+// time is the sum of the completed in→out pairs, so a break between an "out"
+// and the next "in" is not counted; a trailing unpaired "in" adds nothing.
+func summariseDay(date string, times []time.Time, lateAfterMinute int, loc *time.Location) ReportDay {
+	sort.Slice(times, func(i, j int) bool { return times[i].Before(times[j]) })
+	kept := make([]time.Time, 0, len(times))
+	for _, t := range times {
+		if len(kept) > 0 && t.Sub(kept[len(kept)-1]) < scanDebounce {
+			continue
+		}
+		kept = append(kept, t)
+	}
+	d := ReportDay{Date: date, FirstIn: kept[0], LastOut: kept[len(kept)-1], Events: len(kept)}
+	for i := 0; i+1 < len(kept); i += 2 {
+		d.Minutes += int(kept[i+1].Sub(kept[i]).Minutes())
+	}
+	fl := kept[0].In(loc)
+	d.Late = fl.Hour()*60+fl.Minute() > lateAfterMinute
+	return d
 }
 
 // FormatMinutes renders 95 as "1:35" (used in exports and logs).

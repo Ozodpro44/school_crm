@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { useRouter } from "next/router";
+import { hasPageAccess } from "@/lib/auth";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { useNotify } from "@/hooks/use-notify";
@@ -35,6 +38,12 @@ const TEMPLATES = [
 
 export default function MessagingPage() {
   const language = useLanguage();
+  // Hidden from the sidebar without canSendMessages; this also stops a typed-in URL.
+  const router = useRouter();
+  useEffect(() => {
+    if (!hasPageAccess("canSendMessages")) router.replace("/");
+  }, [router]);
+
   const { currentBranch, isLoading: branchLoading } = useBranch();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -46,7 +55,7 @@ export default function MessagingPage() {
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [classFilter, setClassFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState<"compose" | "history">("compose");
+  const [activeTab, setActiveTab] = useUrlTab(["compose", "history"] as const, "compose");
 
   const t = (key: string) => getTranslation(key, language);
   const notify = useNotify();

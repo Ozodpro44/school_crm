@@ -39,6 +39,10 @@ export interface Permission {
   canViewReports: boolean;
   canViewSettings: boolean;
   canEditSettings: boolean;
+  /** Page access for Attendance / Tasks / Messaging (managers); absent on older sessions = allowed. */
+  canViewAttendance: boolean;
+  canViewAssignments: boolean;
+  canSendMessages: boolean;
 }
 
 export interface FinancialMonth {

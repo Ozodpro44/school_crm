@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { useNotify } from "@/hooks/use-notify";
@@ -50,7 +51,8 @@ import { formatCurrency } from "@/lib/exportUtils";
 import { formatPhoneNumber, toTitleCase } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
 
-type Tab = "classes" | "students" | "attendance" | "salary" | "profile";
+const TEACHER_TABS = ["classes", "students", "attendance", "salary", "profile"] as const;
+type Tab = (typeof TEACHER_TABS)[number];
 
 export default function TeacherPortalPage() {
   const router = useRouter();
@@ -65,7 +67,7 @@ export default function TeacherPortalPage() {
 
   const { data, isLoading, isError, refetch: refetchPortal } = useTeacherPortalQuery();
   const attendanceMutation = useAttendanceMutation();
-  const [activeTab, setActiveTab] = useState<Tab>("classes");
+  const [activeTab, setActiveTab] = useUrlTab(TEACHER_TABS, "classes");
 
   // Student list filters
   const [classFilter, setClassFilter] = useState("all");

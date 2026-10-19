@@ -1000,7 +1000,7 @@ export async function searchStudentsWithPaymentStatus(filters?: {
   search?: string;
   classId?: string;
   status?: "active" | "left" | "suspended";
-  paymentStatus?: "paid" | "partial" | "not_paid";
+  paymentStatus?: "paid" | "partial" | "not_paid" | "due";
   limit?: number;
   offset?: number;
 }): Promise<{
@@ -1008,6 +1008,7 @@ export async function searchStudentsWithPaymentStatus(filters?: {
   total: number;
   limit: number;
   offset: number;
+  counts?: { paid: number; partial: number; notPaid: number };
 }> {
   let query = "";
   if (filters?.branchId) query += `branchId=${filters.branchId}`;
@@ -1026,6 +1027,7 @@ export async function searchStudentsWithPaymentStatus(filters?: {
     total: number;
     limit: number;
     offset: number;
+    counts?: { paid: number; partial: number; notPaid: number };
   }>(`/payments/search/students${query ? "?" + query : ""}`);
 }
 

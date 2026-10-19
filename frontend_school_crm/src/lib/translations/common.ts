@@ -236,6 +236,7 @@ export const commonTranslations: Partial<Translation> = {
     en: "Permissions",
   },
   canView: { "uz-cyrl": "Кўриш", "uz-latn": "Ko'rish", en: "View" },
+  canSendMessages: { "uz-cyrl": "Хабар юбориш", "uz-latn": "Xabar yuborish", en: "Send messages" },
   canCreate: { "uz-cyrl": "Яратиш", "uz-latn": "Yaratish", en: "Create" },
   canEdit: { "uz-cyrl": "Таҳрирлаш", "uz-latn": "Tahrirlash", en: "Edit" },
   canDelete: { "uz-cyrl": "Ўчириш", "uz-latn": "O'chirish", en: "Delete" },

@@ -19,6 +19,7 @@ import { FilterBar, FilterSearch, FilterReset, filterSelectClass } from "@/compo
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { TrashPanel } from "@/components/panels/TrashPanel";
 import { useRouter } from "next/router";
+import { useUrlTab } from "@/hooks/use-url-tab";
 
 const RESOURCES = [
   "payment",
@@ -67,10 +68,7 @@ export default function AuditLogPage() {
   // Former standalone /trash page is now the "trash" tab here — ?tab=trash
   // keeps the old URL's bookmarks/links working via pages/trash.tsx's
   // redirect.
-  const [tab, setTab] = useState<"log" | "trash">("log");
-  useEffect(() => {
-    if (router.query.tab === "trash") setTab("trash");
-  }, [router.query.tab]);
+  const [tab, setTab] = useUrlTab(["log", "trash"] as const, "log");
 
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [total, setTotal] = useState(0);

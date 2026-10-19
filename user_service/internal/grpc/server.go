@@ -208,6 +208,12 @@ func checkField(p *service.Permission, action string) bool {
 		return p.CanViewSubscriptions
 	case "canManageSubscriptions":
 		return p.CanManageSubscriptions
+	case "canViewAttendance":
+		return p.CanViewAttendance
+	case "canViewAssignments":
+		return p.CanViewAssignments
+	case "canSendMessages":
+		return p.CanSendMessages
 	}
 	return false
 }

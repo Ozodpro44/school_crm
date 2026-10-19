@@ -31,6 +31,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: true,
     canViewSettings: true,
     canEditSettings: true,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   branch_admin: {
     canViewStudents: true,
@@ -60,6 +63,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: true,
     canViewSettings: true,
     canEditSettings: true,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   manager: {
     canViewStudents: true,
@@ -89,6 +95,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: true,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   accountant: {
     canViewStudents: true,
@@ -118,6 +127,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: true,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   teacher: {
     canViewStudents: true,
@@ -147,6 +159,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: false,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   student: {
     canViewStudents: false,
@@ -176,6 +191,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: false,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
   parent: {
     canViewStudents: true,
@@ -205,6 +223,9 @@ const DEFAULT_PERMISSIONS: Record<UserRole, Permission> = {
     canViewReports: false,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   },
 };
 
@@ -246,6 +267,20 @@ export function hasPermission(permission: keyof Permission): boolean {
   if (user.role === "admin") return true;
   
   return Boolean(user.permissions?.[permission]) || false;
+}
+
+/**
+ * Page-level access for sections every branch member used to get
+ * (Attendance, Tasks, Messaging). Only managers/accountants are restricted by
+ * the saved flags; a flag missing from an older stored session counts as
+ * allowed, so nobody is locked out before their permissions are refreshed.
+ */
+export function hasPageAccess(permission: "canViewAttendance" | "canViewAssignments" | "canSendMessages"): boolean {
+  const user = getCurrentUser();
+  if (!user) return false;
+  if (user.role !== "manager" && user.role !== "accountant") return true;
+  const value = user.permissions?.[permission];
+  return value === undefined ? true : Boolean(value);
 }
 
 export function isAuthenticated(): boolean {

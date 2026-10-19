@@ -31,7 +31,8 @@ func (s *PermissionService) GetByUserID(ctx context.Context, userID string) (*mo
 		       can_view_salaries, can_create_salaries, can_edit_salaries,
 		       can_view_expenses, can_create_expenses, can_edit_expenses, can_delete_expenses,
 		       can_view_reports, can_view_settings, can_edit_settings,
-		       COALESCE(can_view_subscriptions, true), COALESCE(can_manage_subscriptions, false)
+		       COALESCE(can_view_subscriptions, true), COALESCE(can_manage_subscriptions, false),
+		       COALESCE(can_view_attendance, true), COALESCE(can_view_assignments, true), COALESCE(can_send_messages, true)
 		FROM permissions WHERE user_id = $1
 	`
 
@@ -45,6 +46,7 @@ func (s *PermissionService) GetByUserID(ctx context.Context, userID string) (*mo
 		&permission.CanViewExpenses, &permission.CanCreateExpenses, &permission.CanEditExpenses, &permission.CanDeleteExpenses,
 		&permission.CanViewReports, &permission.CanViewSettings, &permission.CanEditSettings,
 		&permission.CanViewSubscriptions, &permission.CanManageSubscriptions,
+		&permission.CanViewAttendance, &permission.CanViewAssignments, &permission.CanSendMessages,
 	)
 
 	if err == sql.ErrNoRows {
@@ -213,6 +215,9 @@ func (s *PermissionService) getDefaultPermissions(role string) *models.Permissio
 			CanViewReports:    true,
 			CanViewSettings:   true,
 			CanEditSettings:   true,
+			CanViewAttendance:  true,
+			CanViewAssignments: true,
+			CanSendMessages:    true,
 		}
 	case "branch_admin":
 		return &models.Permission{
@@ -235,6 +240,9 @@ func (s *PermissionService) getDefaultPermissions(role string) *models.Permissio
 			CanViewReports:    true,
 			CanViewSettings:   true,
 			CanEditSettings:   true,
+			CanViewAttendance:  true,
+			CanViewAssignments: true,
+			CanSendMessages:    true,
 		}
 	case "manager":
 		return &models.Permission{
@@ -257,6 +265,9 @@ func (s *PermissionService) getDefaultPermissions(role string) *models.Permissio
 			CanViewReports:    true,
 			CanViewSettings:   false,
 			CanEditSettings:   false,
+			CanViewAttendance:  true,
+			CanViewAssignments: true,
+			CanSendMessages:    true,
 		}
 	case "accountant":
 		return &models.Permission{
@@ -279,6 +290,9 @@ func (s *PermissionService) getDefaultPermissions(role string) *models.Permissio
 			CanViewReports:    true,
 			CanViewSettings:   false,
 			CanEditSettings:   false,
+			CanViewAttendance:  true,
+			CanViewAssignments: true,
+			CanSendMessages:    true,
 		}
 	default:
 		// Default to minimal permissions
