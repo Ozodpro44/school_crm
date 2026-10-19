@@ -705,9 +705,10 @@ export default function PaymentsPage() {
 
         <TabsContent value="list" className="space-y-6">
 
-      {/* Compact tiles, six across on wide screens (two rows of three below that),
-          so the figures stay visible without pushing the table off the screen. */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+      {/* Compact tiles. Each needs ~215px so a figure like "1 250 000 000 so'm"
+          fits whole; the grid packs as many per row as the width allows (six on
+          a wide monitor, fewer on a laptop) instead of squeezing six into any width. */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(215px,1fr))] gap-3">
         <StatCard
           compact
           icon={CheckCircle}
