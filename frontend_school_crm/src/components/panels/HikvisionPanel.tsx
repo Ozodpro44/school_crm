@@ -1,6 +1,6 @@
 // Hikvision Face ID terminals: devices, enrolled staff, and the check-in/out log.
 // Embedded as a tab on the Attendance page (admin only).
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useUrlTab } from "@/hooks/use-url-tab";
 import {
   Card,
@@ -57,7 +57,6 @@ import {
   getHikvisionHCTStatus,
   configureHikvisionPush,
   listHikvisionEmployees,
-  addHikvisionEmployee,
   uploadHikvisionEmployeeFace,
   removeHikvisionEmployee,
   listHikvisionAttendancePage,
@@ -65,7 +64,6 @@ import {
 } from "@/lib/api";
 import { HikvisionReport } from "@/components/panels/HikvisionReport";
 import { HikvisionEmployeeEditDialog } from "@/components/panels/HikvisionEmployeeEditDialog";
-import { validateFacePhoto } from "@/lib/face-photo";
 import { HikvisionDevice, HikvisionEmployee, HikvisionAttendanceRecord, Teacher } from "@/types";
 
 export function HikvisionPanel() {
@@ -116,24 +114,8 @@ export function HikvisionPanel() {
     useHttps: true,
   });
 
-  // Add employee dialog
-  const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false);
-  const [isSubmittingEmployee, setIsSubmittingEmployee] = useState(false);
-  const [employeeForm, setEmployeeForm] = useState({
-    fullName: "",
-    teacherId: "",
-  });
-  const [newEmployeePhoto, setNewEmployeePhoto] = useState<File | null>(null);
-  const [photoError, setPhotoError] = useState<string>("");
-  const photoPreviewUrl = useMemo(
-    () => (newEmployeePhoto ? URL.createObjectURL(newEmployeePhoto) : ""),
-    [newEmployeePhoto]
-  );
-  useEffect(() => {
-    return () => {
-      if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
-    };
-  }, [photoPreviewUrl]);
+  // Add employee dialog (shared with editing, see HikvisionEmployeeEditDialog)
+  const [createDeviceId, setCreateDeviceId] = useState<string | null>(null);
 
   // Upload face dialog
   const [editEmployee, setEditEmployee] = useState<HikvisionEmployee | null>(null);
@@ -333,52 +315,6 @@ export function HikvisionPanel() {
       });
     } finally {
       setIsSubmittingPush(false);
-    }
-  };
-
-  const resetEmployeeForm = () => {
-    setEmployeeForm({ fullName: "", teacherId: "" });
-    setNewEmployeePhoto(null);
-    setPhotoError("");
-  };
-
-  // Checks the picked photo (type, size, dimensions) and stores it for the preview.
-  const handlePickPhoto = async (file: File | null) => {
-    setNewEmployeePhoto(null);
-    setPhotoError("");
-    if (!file) return;
-    const problem = await validateFacePhoto(file);
-    if (problem) setPhotoError(t(problem));
-    else setNewEmployeePhoto(file);
-  };
-
-  const handleAddEmployee = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedDeviceId) return;
-    if (!newEmployeePhoto) {
-      setPhotoError(t("facePhotoRequiredError"));
-      return;
-    }
-    setIsSubmittingEmployee(true);
-    try {
-      await addHikvisionEmployee({
-        deviceId: selectedDeviceId,
-        fullName: employeeForm.fullName,
-        teacherId: employeeForm.teacherId || null,
-        photo: newEmployeePhoto,
-      });
-      toast({ title: t("success"), description: t("employeeAdded"), variant: "success" });
-      resetEmployeeForm();
-      setIsEmployeeDialogOpen(false);
-      await loadEmployees(selectedDeviceId);
-    } catch (error) {
-      toast({
-        title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToAddEmployee"),
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmittingEmployee(false);
     }
   };
 
@@ -763,108 +699,15 @@ export function HikvisionPanel() {
                 </Select>
               </div>
 
-              <Dialog open={isEmployeeDialogOpen} onOpenChange={setIsEmployeeDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-                    onClick={resetEmployeeForm}
-                    disabled={!selectedDeviceId}
-                    title={!selectedDeviceId ? t("addEmployeeToDevice") : ""}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    {t("addEmployee")}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-lg">
-                  <DialogHeader>
-                    <DialogTitle>{t("addNewEmployee")}</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleAddEmployee} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="employeeFullName">{t("fullName")} *</Label>
-                      <Input
-                        id="employeeFullName"
-                        value={employeeForm.fullName}
-                        onChange={(e) =>
-                          setEmployeeForm({ ...employeeForm, fullName: e.target.value })
-                        }
-                        required
-                      />
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      {t("employeeNoAuto")}
-                    </p>
-                    <div className="space-y-2">
-                      <Label>{t("linkedTeacherOptional")}</Label>
-                      <Select
-                        value={employeeForm.teacherId || "none"}
-                        onValueChange={(value) =>
-                          setEmployeeForm({
-                            ...employeeForm,
-                            teacherId: value === "none" ? "" : value,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">{t("noneOption")}</SelectItem>
-                          {teachers.map((teacher) => (
-                            <SelectItem key={teacher.id} value={teacher.id}>
-                              {teacher.fullName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="newEmployeePhoto">{t("facePhotoRequired")}</Label>
-                      <Input
-                        id="newEmployeePhoto"
-                        type="file"
-                        accept="image/jpeg,image/png"
-                        onChange={(e) => handlePickPhoto(e.target.files?.[0] ?? null)}
-                      />
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {t("facePhotoRequiredHint")}
-                      </p>
-                      {photoError && (
-                        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
-                          {photoError}
-                        </p>
-                      )}
-                      {photoPreviewUrl && (
-                        <div className="flex items-center gap-3 rounded-md border border-slate-200 dark:border-slate-800 p-2">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={photoPreviewUrl}
-                            alt={t("facePhotoPreview")}
-                            className="h-28 w-28 rounded-md object-cover"
-                          />
-                          <div className="text-xs text-slate-500 dark:text-slate-400 break-all">
-                            {newEmployeePhoto?.name}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex justify-end gap-3 pt-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setIsEmployeeDialogOpen(false)}
-                        disabled={isSubmittingEmployee}
-                      >
-                        {t("cancel")}
-                      </Button>
-                      <Button type="submit" disabled={isSubmittingEmployee || !newEmployeePhoto}>
-                        {isSubmittingEmployee && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        {t("create")}
-                      </Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
+              <Button
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                onClick={() => setCreateDeviceId(selectedDeviceId)}
+                disabled={!selectedDeviceId}
+                title={!selectedDeviceId ? t("addEmployeeToDevice") : ""}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {t("addEmployee")}
+              </Button>
             </div>
 
             <Card>
@@ -968,9 +811,10 @@ export function HikvisionPanel() {
 
             <HikvisionEmployeeEditDialog
               employee={editEmployee}
+              createDeviceId={createDeviceId}
               teachers={teachers}
               t={t}
-              onClose={() => setEditEmployee(null)}
+              onClose={() => { setEditEmployee(null); setCreateDeviceId(null); }}
               onSaved={() => loadEmployees(selectedDeviceId)}
             />
             <Dialog

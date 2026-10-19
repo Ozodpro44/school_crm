@@ -1,4 +1,6 @@
-// Edit a Face ID employee: display name, linked teacher and (optionally) a new face photo.
+// Add or edit a Face ID employee — one dialog for both, so they look the same:
+// photo with live preview, display name, linked teacher. Adding requires a photo
+// (the terminal recognises people by face); editing makes it optional.
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,19 +21,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { updateHikvisionEmployee, uploadHikvisionEmployeeFace } from "@/lib/api";
+import { addHikvisionEmployee, updateHikvisionEmployee, uploadHikvisionEmployeeFace } from "@/lib/api";
 import { validateFacePhoto } from "@/lib/face-photo";
 import { HikvisionEmployee, Teacher } from "@/types";
 
 interface Props {
+  /** Editing this employee… */
   employee: HikvisionEmployee | null;
+  /** …or, when set (and employee is null), adding a new one to this device. */
+  createDeviceId?: string | null;
   teachers: Teacher[];
   t: (key: string) => string;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function HikvisionEmployeeEditDialog({ employee, teachers, t, onClose, onSaved }: Props) {
+export function HikvisionEmployeeEditDialog({ employee, createDeviceId, teachers, t, onClose, onSaved }: Props) {
+  const creating = !employee && !!createDeviceId;
   const { toast } = useToast();
   const [fullName, setFullName] = useState("");
   const [teacherId, setTeacherId] = useState("none");
@@ -40,12 +46,11 @@ export function HikvisionEmployeeEditDialog({ employee, teachers, t, onClose, on
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!employee) return;
-    setFullName(employee.fullName);
-    setTeacherId(employee.teacherId || "none");
+    setFullName(employee?.fullName ?? "");
+    setTeacherId(employee?.teacherId || "none");
     setPhoto(null);
     setPhotoError("");
-  }, [employee]);
+  }, [employee, createDeviceId]);
 
   const previewUrl = useMemo(() => (photo ? URL.createObjectURL(photo) : ""), [photo]);
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
@@ -61,6 +66,7 @@ export function HikvisionEmployeeEditDialog({ employee, teachers, t, onClose, on
 
   const shownPhoto = previewUrl || employee?.photoUrl || "";
   const unchanged =
+    !creating &&
     !!employee &&
     fullName.trim() === employee.fullName &&
     (teacherId === "none" ? "" : teacherId) === (employee.teacherId || "") &&
@@ -68,22 +74,35 @@ export function HikvisionEmployeeEditDialog({ employee, teachers, t, onClose, on
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!employee) return;
     if (!fullName.trim()) return;
+    if (creating && !photo) {
+      setPhotoError(t("facePhotoRequiredError"));
+      return;
+    }
     setSaving(true);
     try {
-      await updateHikvisionEmployee(employee.id, {
-        fullName: fullName.trim(),
-        teacherId: teacherId === "none" ? null : teacherId,
-      });
-      if (photo) await uploadHikvisionEmployeeFace(employee.id, photo);
-      toast({ title: t("success"), description: t("employeeUpdated"), variant: "success" });
+      if (creating && createDeviceId && photo) {
+        await addHikvisionEmployee({
+          deviceId: createDeviceId,
+          fullName: fullName.trim(),
+          teacherId: teacherId === "none" ? null : teacherId,
+          photo,
+        });
+        toast({ title: t("success"), description: t("employeeAdded"), variant: "success" });
+      } else if (employee) {
+        await updateHikvisionEmployee(employee.id, {
+          fullName: fullName.trim(),
+          teacherId: teacherId === "none" ? null : teacherId,
+        });
+        if (photo) await uploadHikvisionEmployeeFace(employee.id, photo);
+        toast({ title: t("success"), description: t("employeeUpdated"), variant: "success" });
+      }
       onSaved();
       onClose();
     } catch (error) {
       toast({
         title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToUpdateEmployee"),
+        description: error instanceof Error ? error.message : t(creating ? "failedToAddEmployee" : "failedToUpdateEmployee"),
         variant: "destructive",
       });
     } finally {
@@ -92,10 +111,10 @@ export function HikvisionEmployeeEditDialog({ employee, teachers, t, onClose, on
   };
 
   return (
-    <Dialog open={!!employee} onOpenChange={(open) => !open && !saving && onClose()}>
+    <Dialog open={!!employee || creating} onOpenChange={(open) => !open && !saving && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{t("editEmployee")}</DialogTitle>
+          <DialogTitle>{creating ? t("addNewEmployee") : t("editEmployee")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           <div className="flex items-center gap-4">
@@ -106,7 +125,7 @@ export function HikvisionEmployeeEditDialog({ employee, teachers, t, onClose, on
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 space-y-1">
-              <Label htmlFor="editEmployeePhoto">{t("changePhotoOptional")}</Label>
+              <Label htmlFor="editEmployeePhoto">{creating ? t("facePhotoRequired") : t("changePhotoOptional")}</Label>
               <Input
                 id="editEmployeePhoto"
                 type="file"
@@ -117,7 +136,7 @@ export function HikvisionEmployeeEditDialog({ employee, teachers, t, onClose, on
                 <p className="text-sm text-red-600 dark:text-red-400" role="alert">{photoError}</p>
               ) : (
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {employee?.photoUrl ? t("facePhotoRequiredHint") : t("noPhotoYetHint")}
+                  {creating || employee?.photoUrl ? t("facePhotoRequiredHint") : t("noPhotoYetHint")}
                 </p>
               )}
             </div>
@@ -132,7 +151,7 @@ export function HikvisionEmployeeEditDialog({ employee, teachers, t, onClose, on
               required
             />
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {t("employeeNo")}: {employee?.employeeNo}
+              {creating ? t("employeeNoAuto") : `${t("employeeNo")}: ${employee?.employeeNo}`}
             </p>
           </div>
 
@@ -157,9 +176,9 @@ export function HikvisionEmployeeEditDialog({ employee, teachers, t, onClose, on
             <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
               {t("cancel")}
             </Button>
-            <Button type="submit" disabled={saving || unchanged || !fullName.trim()}>
+            <Button type="submit" disabled={saving || unchanged || !fullName.trim() || (creating && !photo)}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              {t("save")}
+              {creating ? t("create") : t("save")}
             </Button>
           </div>
         </form>
