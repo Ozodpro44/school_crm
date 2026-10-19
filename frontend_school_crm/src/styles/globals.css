@@ -184,8 +184,10 @@
   /* Single source of truth for the brand mark — Indigo + Slate palette
      (#4F46E5 base → #818CF8 accent), no purple. Replaces the repeated
      `bg-gradient-to-r from-indigo-600 to-purple-600 hover:…` chains. */
+  /* Buttons are a single flat brand colour (no two-tone gradient). */
   .bg-brand {
-    background-image: linear-gradient(to right, rgb(79 70 229), rgb(129 140 248));
+    background-color: rgb(79 70 229);
+    background-image: none;
   }
   .hover\:bg-brand-hover:hover {
     background-color: rgb(99 102 241);

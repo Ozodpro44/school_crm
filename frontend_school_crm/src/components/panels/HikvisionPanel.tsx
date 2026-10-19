@@ -422,7 +422,7 @@ export function HikvisionPanel() {
               <Dialog open={isDeviceDialogOpen} onOpenChange={setIsDeviceDialogOpen}>
                 <DialogTrigger asChild>
                   <Button
-                    className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                    className="bg-brand hover:bg-brand-hover"
                     onClick={resetDeviceForm}
                   >
                     <Plus className="w-4 h-4 mr-2" />
@@ -700,7 +700,7 @@ export function HikvisionPanel() {
               </div>
 
               <Button
-                className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                className="bg-brand hover:bg-brand-hover"
                 onClick={() => setCreateDeviceId(selectedDeviceId)}
                 disabled={!selectedDeviceId}
                 title={!selectedDeviceId ? t("addEmployeeToDevice") : ""}
