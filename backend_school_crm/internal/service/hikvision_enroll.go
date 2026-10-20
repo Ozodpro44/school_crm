@@ -19,7 +19,8 @@ import (
 const minFacePhotoSide = 200
 
 // NormalizeFacePhoto validates an uploaded face photo and returns JPEG bytes
-// (PNG is converted; JPEG passes through untouched).
+// (PNG is converted; an upright JPEG passes through untouched; a JPEG whose EXIF
+// orientation says it is sideways is rotated upright).
 func NormalizeFacePhoto(data []byte) ([]byte, error) {
 	if len(data) == 0 {
 		return nil, errors.New("a face photo is required")
@@ -31,13 +32,17 @@ func NormalizeFacePhoto(data []byte) ([]byte, error) {
 	if cfg.Width < minFacePhotoSide || cfg.Height < minFacePhotoSide {
 		return nil, fmt.Errorf("the photo is too small (%dx%d): at least %dx%d pixels are needed", cfg.Width, cfg.Height, minFacePhotoSide, minFacePhotoSide)
 	}
+	orientation := 1
 	if format == "jpeg" {
-		return data, nil
+		if orientation = jpegOrientation(data); orientation == 1 {
+			return data, nil // upright already: keep the original bytes
+		}
 	}
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, errors.New("the photo could not be read")
 	}
+	img = applyOrientation(img, orientation)
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90}); err != nil {
 		return nil, errors.New("the photo could not be converted to JPEG")

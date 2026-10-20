@@ -39,6 +39,10 @@ export function StaffPanel() {
   const [editEmployee, setEditEmployee] = useState<HikvisionEmployee | null>(null);
   const [createDeviceId, setCreateDeviceId] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  // Which device's list has finished loading: a device switch (or the first
+  // load) shows skeleton rows instead of a blank card that pops into place.
+  const [loadedFor, setLoadedFor] = useState("");
+  const employeesLoading = deviceId !== "" && loadedFor !== deviceId;
 
   const getBranchId = () =>
     typeof window !== "undefined" ? localStorage.getItem("selectedBranchId") : null;
@@ -79,6 +83,8 @@ export function StaffPanel() {
         description: error instanceof Error ? error.message : t("failedToLoadEmployees"),
         variant: "destructive",
       });
+    } finally {
+      setLoadedFor(id);
     }
   };
 
@@ -86,6 +92,7 @@ export function StaffPanel() {
     loadAll();
     const onBranch = () => {
       setDeviceId("");
+      setLoadedFor("");
       setEmployees([]);
       loadAll();
     };
@@ -95,8 +102,10 @@ export function StaffPanel() {
   }, []);
 
   useEffect(() => {
-    if (deviceId) loadEmployees(deviceId);
-    else setEmployees([]);
+    if (deviceId) {
+      setEmployees([]);
+      loadEmployees(deviceId);
+    } else setEmployees([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId]);
 
@@ -187,7 +196,18 @@ export function StaffPanel() {
 
       <Card>
         <CardContent className="pt-6">
-          {employees.length === 0 ? (
+          {employeesLoading ? (
+            <div className="space-y-3" aria-busy="true">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-4 py-2">
+                  <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+                  <Skeleton className="h-4 flex-1 max-w-[220px]" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-24 ml-auto" />
+                </div>
+              ))}
+            </div>
+          ) : employees.length === 0 ? (
             <div className="text-center py-12 text-slate-500 dark:text-slate-400">{t("noEmployeesYet")}</div>
           ) : (
             <div className="overflow-x-auto">

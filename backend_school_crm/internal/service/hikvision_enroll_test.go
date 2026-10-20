@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"image/png"
 	"testing"
@@ -117,5 +118,58 @@ func TestMakeThumbnail(t *testing.T) {
 	}
 	if _, err := MakeThumbnail([]byte("nope")); err == nil {
 		t.Fatal("expected an error for non-image data")
+	}
+}
+
+// jpegWithOrientation inserts an EXIF APP1 segment carrying the orientation tag.
+func jpegWithOrientation(t *testing.T, jpg []byte, o int) []byte {
+	t.Helper()
+	tiff := []byte{'M', 'M', 0, 0x2A, 0, 0, 0, 8, 0, 1, 0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, byte(o), 0, 0, 0, 0, 0, 0}
+	seg := append([]byte("Exif\x00\x00"), tiff...)
+	l := len(seg) + 2
+	app1 := append([]byte{0xFF, 0xE1, byte(l >> 8), byte(l)}, seg...)
+	out := append([]byte{}, jpg[:2]...)
+	out = append(out, app1...)
+	return append(out, jpg[2:]...)
+}
+
+func TestNormalizeFacePhotoAppliesExifOrientation(t *testing.T) {
+	base := encode(t, 300, 200, false) // landscape
+	if got := jpegOrientation(jpegWithOrientation(t, base, 6)); got != 6 {
+		t.Fatalf("orientation read as %d, want 6", got)
+	}
+	out, err := NormalizeFacePhoto(jpegWithOrientation(t, base, 6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, _, _ := image.DecodeConfig(bytes.NewReader(out))
+	if cfg.Width != 200 || cfg.Height != 300 {
+		t.Fatalf("a sideways photo must come out upright (200x300), got %dx%d", cfg.Width, cfg.Height)
+	}
+	// Orientation 1 / no tag: original bytes untouched.
+	if kept, _ := NormalizeFacePhoto(base); !bytes.Equal(kept, base) {
+		t.Fatal("an upright JPEG must pass through unchanged")
+	}
+	if kept, _ := NormalizeFacePhoto(jpegWithOrientation(t, base, 1)); cfgW(kept) != 300 {
+		t.Fatal("orientation 1 must not rotate")
+	}
+}
+
+func cfgW(b []byte) int {
+	c, _, _ := image.DecodeConfig(bytes.NewReader(b))
+	return c.Width
+}
+
+func TestApplyOrientationMovesPixels(t *testing.T) {
+	// 2x1 image: left red, right blue. Rotating 90° CW puts red on top.
+	src := image.NewRGBA(image.Rect(0, 0, 2, 1))
+	src.Set(0, 0, color.RGBA{255, 0, 0, 255})
+	src.Set(1, 0, color.RGBA{0, 0, 255, 255})
+	out := applyOrientation(src, 6)
+	if out.Bounds().Dx() != 1 || out.Bounds().Dy() != 2 {
+		t.Fatalf("bounds %v", out.Bounds())
+	}
+	if r, _, _, _ := out.At(0, 0).RGBA(); r == 0 {
+		t.Fatal("red should be on top after a 90° clockwise turn")
 	}
 }
