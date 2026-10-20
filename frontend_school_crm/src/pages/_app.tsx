@@ -1,3 +1,4 @@
+import Head from "next/head";
 import { Toaster } from "@/components/ui/toaster";
 import { ConfirmHost } from "@/components/ConfirmHost";
 import { ThemeProvider } from "@/contexts/ThemeProvider";
@@ -163,6 +164,9 @@ export default function App({ Component, pageProps }: AppProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <Head>
+        <title>School CRM</title>
+      </Head>
       <ThemeProvider
         attribute="class"
         defaultTheme="system"

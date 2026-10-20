@@ -1,4 +1,5 @@
 import { Fragment, ReactNode, useState, useEffect, useCallback, useRef } from "react";
+import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { Button } from "@/components/ui/button";
@@ -543,12 +544,15 @@ function SubscriptionBadge({ status, daysLeft, planName, collapsed }: SubInfo) {
 
   if (collapsed) {
     return (
-      <Link href="/billing">
+      <Link href="/billing" aria-label={`${titleText} – ${subtitleText}`}>
         <div
-          className={`flex items-center justify-center p-2 rounded-lg border transition-all hover:opacity-80 ${containerClass}`}
+          className={`flex items-center justify-center gap-1.5 p-2 rounded-lg border transition-all hover:opacity-80 ${containerClass}`}
           title={`${titleText} – ${subtitleText}`}
         >
           <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotClass}`} />
+          {/* The icon-rail on desktop only has room for the dot; the phone header
+              has no hover, so it spells out the plan name instead of a bare dot. */}
+          <span className={`md:hidden text-[10px] font-bold uppercase tracking-wide ${textClass}`}>{titleText}</span>
         </div>
       </Link>
     );
@@ -958,9 +962,19 @@ export function Layout({ children }: LayoutProps) {
   // plain text instead of the switcher.
   const branchDisplayName = currentBranch?.name || t("schoolName");
 
+  // Browser-tab title: "Page · School" so several open tabs can be told apart.
+  const currentNavItem = navigationGroups
+    .flatMap((g) => g.items)
+    .find((i) => (i.href === "/" ? router.pathname === "/" : router.pathname.startsWith(i.href)));
+  const pageTitle = [currentNavItem?.name, schoolDisplayName].filter(Boolean).join(" · ") || "School CRM";
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
+    <>
+      <Head>
+        <title>{pageTitle}</title>
+      </Head>
     <SidebarProvider
       open={sidebarOpen}
       onOpenChange={(open) => {
@@ -973,7 +987,7 @@ export function Layout({ children }: LayoutProps) {
 
         {/* ────────────────────────────────── SIDEBAR ── */}
         <Sidebar
-          variant="inset"
+          variant="sidebar"
           collapsible="icon"
           className="hidden md:flex border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
         >
@@ -1359,5 +1373,6 @@ export function Layout({ children }: LayoutProps) {
       </Dialog>
       </div>
     </SidebarProvider>
+    </>
   );
 }

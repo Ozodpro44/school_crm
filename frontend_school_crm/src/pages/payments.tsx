@@ -706,10 +706,10 @@ export default function PaymentsPage() {
         <TabsContent value="list" className="space-y-6">
 
       {/* Compact tiles. Each needs ~215px so a figure like "1 250 000 000 so'm"
-          fits whole; from the sm breakpoint the grid packs as many per row as the
-          width allows (six on a wide monitor, fewer on a laptop). On a phone they
-          form one swipeable row instead of six full-width cards stacked. */}
-      <div className="-mx-3 px-3 scroll-pl-3 flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0 sm:scroll-pl-0 sm:pb-0 sm:grid sm:grid-cols-[repeat(auto-fill,minmax(215px,1fr))] sm:overflow-visible [&>*]:min-w-[220px] [&>*]:shrink-0 [&>*]:snap-start sm:[&>*]:min-w-0 sm:[&>*]:shrink">
+          fits whole, so three per row (two tidy rows) until the screen is wide enough
+          for all six in one row. On a phone they form one swipeable row instead of
+          six full-width cards stacked. */}
+      <div className="-mx-3 px-3 scroll-pl-3 flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0 sm:scroll-pl-0 sm:pb-0 sm:grid sm:grid-cols-3 min-[1700px]:grid-cols-6 sm:overflow-visible [&>*]:min-w-[220px] [&>*]:shrink-0 [&>*]:snap-start sm:[&>*]:min-w-0 sm:[&>*]:shrink">
         <StatCard
           compact
           icon={CheckCircle}

@@ -316,7 +316,7 @@ export default function AttendancePage() {
                   className={cn(
                     "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors",
                     activeTab === tab.id
-                      ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                      ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
                       : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                   )}
                 >
