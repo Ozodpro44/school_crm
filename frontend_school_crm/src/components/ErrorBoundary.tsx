@@ -1,5 +1,18 @@
 import React from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { getTranslation } from "@/lib/translations";
+import type { Language } from "@/types";
+
+// Class component: no hooks, so the stored interface language is read directly.
+function tr(key: string): string {
+  let lang: string = "uz-latn";
+  try {
+    lang = window.localStorage.getItem("language") || lang;
+  } catch {
+    /* storage unavailable: keep the default */
+  }
+  return getTranslation(key, lang as Language);
+}
 
 interface Props {
   children: React.ReactNode;
@@ -40,8 +53,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
             <div className="bg-red-600 px-6 py-4 flex items-center gap-3">
               <AlertTriangle className="w-6 h-6 text-white flex-shrink-0" />
               <div>
-                <h1 className="text-white font-bold text-lg">Something went wrong</h1>
-                <p className="text-red-100 text-sm">An unexpected error occurred in this page.</p>
+                <h1 className="text-white font-bold text-lg">{tr("errorBoundaryTitle")}</h1>
+                <p className="text-red-100 text-sm">{tr("errorBoundaryBody")}</p>
               </div>
             </div>
             <div className="p-6 space-y-4">
@@ -57,14 +70,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
                   onClick={this.handleReset}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
                 >
-                  Try again
+                  {tr("tryAgain")}
                 </button>
                 <button
                   onClick={this.handleReload}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  Reload page
+                  {tr("reloadPage")}
                 </button>
               </div>
             </div>

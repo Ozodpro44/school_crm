@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { confirmAction } from "@/lib/confirm";
 import { useRouter } from "next/router";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Teacher } from "@/types";
 import { Plus, Search, Edit2, Trash2, BookOpen, Loader2, Users } from "lucide-react";
-import { hasPermission } from "@/lib/auth";
+import { hasPermission, getCurrentUser } from "@/lib/auth";
+import { TeacherFaceIdField, FaceIdSelection } from "@/components/TeacherFaceIdField";
+import { addHikvisionEmployee } from "@/lib/api";
 import { useNotify } from "@/hooks/use-notify";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
@@ -97,6 +100,9 @@ export default function TeachersPage() {
     email: "",
     password: "",
   });
+  // Optional Face ID enrolment that rides along with creating a teacher (admins only).
+  const [faceId, setFaceId] = useState<FaceIdSelection | null>(null);
+  const isAdmin = getCurrentUser()?.role === "admin";
   const [formErrors, setFormErrors] = useState<{
     fullName?: string;
     phone?: string;
@@ -113,6 +119,7 @@ export default function TeachersPage() {
     setFormData({ fullName: "", subjects: "", monthlySalary: "", phone: "", email: "", password: "" });
     setFormErrors({});
     setEditingTeacher(null);
+    setFaceId(null);
   };
 
   // teacher_service's Teacher struct has no assignedClasses field — the
@@ -169,12 +176,27 @@ export default function TeachersPage() {
         onError: () => notify.error(t("error"), t("failedToUpdateTeacher")),
       });
     } else {
+      const enrol = faceId;
       createMutation.mutate({ ...payload, password: formData.password, branchId }, {
-        onSuccess: () => {
+        onSuccess: async (created) => {
           notify.success(t("success"), t("teacherAddedSuccess"));
           resetForm(); setIsDialogOpen(false);
+          if (enrol) {
+            try {
+              await addHikvisionEmployee({
+                deviceId: enrol.deviceId,
+                fullName: payload.fullName,
+                teacherId: created.id,
+                photo: enrol.photo,
+              });
+              notify.success(t("success"), t("teacherFaceIdAdded"));
+            } catch (err) {
+              // The teacher exists; only the terminal enrolment failed, so say exactly that.
+              notify.error(t("teacherFaceIdFailed"), err instanceof Error ? err.message : undefined);
+            }
+          }
         },
-        onError: () => notify.error(t("error"), t("failedToCreateTeacher")),
+        onError: (err) => notify.error(t("failedToCreateTeacher"), err instanceof Error ? err.message : undefined),
       });
     }
   };
@@ -193,9 +215,9 @@ export default function TeachersPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!canDeleteTeachers) { notify.error(t("permissionDenied")); return; }
-    if (!confirm(t("confirmDelete"))) return;
+    if (!(await confirmAction({ description: t("confirmDelete"), destructive: true }))) return;
     setDeletingTeacherId(id);
     deleteMutation.mutate(id, {
       onSuccess: () => { notify.success(t("deleted"), t("teacherDeleted")); setDeletingTeacherId(null); },
@@ -206,7 +228,8 @@ export default function TeachersPage() {
   const handleBulkDelete = async () => {
     if (!canDeleteTeachers) { notify.error(t("permissionDenied")); return; }
     const ids = getSelectedIds();
-    if (!ids.length || !confirm(t("confirmDeleteTeachers").replace("{n}", String(ids.length)))) return;
+    if (!ids.length) return;
+    if (!(await confirmAction({ description: t("confirmDeleteTeachers").replace("{n}", String(ids.length)), destructive: true }))) return;
     // allSettled, not all: a single rejection in Promise.all jumped straight
     // to catch with one generic toast and skipped clearSelection() — rows
     // that HAD deleted successfully stayed marked "selected" in the UI.
@@ -307,7 +330,7 @@ export default function TeachersPage() {
             size="icon" variant="ghost"
             onClick={(e) => { e.stopPropagation(); handleEdit(teacher); }}
             disabled={!canEditTeachers}
-          >
+           aria-label={t("edit")} title={t("edit")}>
             <Edit2 className="w-4 h-4" />
           </Button>
           {canDeleteTeachers && (
@@ -315,7 +338,7 @@ export default function TeachersPage() {
             size="icon" variant="ghost"
             onClick={(e) => { e.stopPropagation(); handleDelete(teacher.id); }}
             disabled={(deleteMutation.isPending && deletingTeacherId === teacher.id)}
-          >
+           aria-label={t("delete")} title={t("delete")}>
             {deleteMutation.isPending && deletingTeacherId === teacher.id ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
@@ -367,11 +390,11 @@ export default function TeachersPage() {
               <div>
                 <Field id="password" label={t("password")} type="password" required
                   value={formData.password} error={formErrors.password}
-                  autoComplete="new-password" placeholder="Minimum 6 characters"
+                  autoComplete="new-password" placeholder={t("passwordPlaceholderShort")}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, password: e.target.value }); clearFieldError("password"); }}
                 />
                 {!formErrors.password && (
-                  <p className="text-xs text-slate-400 mt-1">Login will be created with this email and password.</p>
+                  <p className="text-xs text-slate-400 mt-1">{t("teacherLoginHint")}</p>
                 )}
               </div>
             )}
@@ -385,11 +408,14 @@ export default function TeachersPage() {
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, monthlySalary: removeNumberFormatting(e.target.value) }); clearFieldError("monthlySalary"); }}
             />
             <Field id="subjects" as="textarea"
-              label={`${t("subjects")} (${t("commaSeparated")}) *`}
+              label={`${t("subjects")} (${t("commaSeparated")}, ${t("optional")})`}
               value={formData.subjects} placeholder={t("subjectsPlaceholder")}
               className="md:col-span-2"
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({ ...formData, subjects: e.target.value })}
             />
+            {isAdmin && !editingTeacher && isDialogOpen && branchId && (
+              <TeacherFaceIdField key={branchId} branchId={branchId} t={t} onChange={setFaceId} />
+            )}
           </div>
         </FormDialog>
       </div>
@@ -451,12 +477,12 @@ export default function TeachersPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button size="icon" variant="ghost" onClick={() => handleEdit(teacher)} disabled={!canEditTeachers}>
+                    <Button size="icon" variant="ghost" onClick={() => handleEdit(teacher)} disabled={!canEditTeachers} aria-label={t("edit")} title={t("edit")}>
                       <Edit2 className="w-4 h-4" />
                     </Button>
                     {canDeleteTeachers && (
                     <Button size="icon" variant="ghost" onClick={() => handleDelete(teacher.id)}
-                      disabled={(deleteMutation.isPending && deletingTeacherId === teacher.id)}>
+                      disabled={(deleteMutation.isPending && deletingTeacherId === teacher.id)} aria-label={t("delete")} title={t("delete")}>
                       {deleteMutation.isPending && deletingTeacherId === teacher.id
                         ? <Loader2 className="w-4 h-4 animate-spin" />
                         : <Trash2 className="w-4 h-4 text-red-500" />}

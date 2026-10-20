@@ -1,11 +1,13 @@
+import { useRouter } from "next/router";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { apiRequest, listClasses, listStudents } from "@/lib/api";
 import type { Class, Student } from "@/lib/api";
 import { useBranch } from "@/context/BranchContext";
 import { useNotify } from "@/hooks/use-notify";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentUser, hasPageAccess } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -30,11 +32,13 @@ import {
   Bell,
   Lock,
   Fingerprint,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { localDateString, parseLocalDate } from "@/lib/timezone";
 import { EmptyState } from "@/components/EmptyState";
 import { HikvisionPanel } from "@/components/panels/HikvisionPanel";
+import { HikvisionReport } from "@/components/panels/HikvisionReport";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -106,6 +110,12 @@ function toDateString(d: Date): string {
 
 export default function AttendancePage() {
   const language = useLanguage();
+  // Hidden from the sidebar without canViewAttendance; this also stops a typed-in URL.
+  const router = useRouter();
+  useEffect(() => {
+    if (!hasPageAccess("canViewAttendance")) router.replace("/");
+  }, [router]);
+
   const t = (key: string) => getTranslation(key, language);
   const notify = useNotify();
   const { currentBranch } = useBranch();
@@ -122,7 +132,13 @@ export default function AttendancePage() {
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<"mark" | "summary" | "alerts" | "faceid">("mark");
+  // The Face ID tab is admin-only; a pasted ?tab=faceid falls back to "mark" for everyone else.
+  const [activeTab, setActiveTab] = useUrlTab(
+    getCurrentUser()?.role === "admin"
+      ? (["mark", "summary", "alerts", "staff", "faceid"] as const)
+      : (["mark", "summary", "alerts"] as const),
+    "mark"
+  );
 
   const currentUser = useMemo(() => getCurrentUser(), []);
   const canEdit = currentUser?.role === "admin" || currentUser?.role === "branch_admin";
@@ -270,7 +286,10 @@ export default function AttendancePage() {
     // Staff Face ID terminals (Hikvision). Admin-only: the backend enforces
     // the same restriction on every /hikvision endpoint.
     ...(currentUser?.role === "admin"
-      ? [{ id: "faceid" as const, label: t("faceIdTab"), icon: Fingerprint, badge: undefined }]
+      ? [
+          { id: "staff" as const, label: t("staffAttendance"), icon: UserCheck, badge: undefined },
+          { id: "faceid" as const, label: t("faceIdTab"), icon: Fingerprint, badge: undefined },
+        ]
       : []),
   ];
 
@@ -297,7 +316,7 @@ export default function AttendancePage() {
                   className={cn(
                     "flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors",
                     activeTab === tab.id
-                      ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                      ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
                       : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
                   )}
                 >
@@ -315,7 +334,7 @@ export default function AttendancePage() {
         </div>
 
         {/* ── Controls: class + date (class attendance only, not the Face ID tab) ── */}
-        {activeTab !== "faceid" && (
+        {activeTab !== "faceid" && activeTab !== "staff" && (
         <div className="flex flex-wrap gap-3 items-center">
           <div className="w-52">
             {loadingClasses ? (
@@ -637,6 +656,7 @@ export default function AttendancePage() {
         )}
 
         {/* ══════════ TAB: Face ID (staff terminals) ══════════ */}
+        {activeTab === "staff" && currentUser?.role === "admin" && <HikvisionReport />}
         {activeTab === "faceid" && currentUser?.role === "admin" && <HikvisionPanel />}
       </div>
   );

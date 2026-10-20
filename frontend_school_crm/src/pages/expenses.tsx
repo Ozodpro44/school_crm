@@ -128,8 +128,9 @@ export default function ExpensesPage() {
     areSomeSelected,
   } = useMultiSelect<Expense>();
 
+  // The first category is pre-selected so a new expense can be saved without an extra click.
   const [formData, setFormData] = useState({
-    category: "",
+    category: "Utilities",
     description: "",
     amount: "",
     paymentMethod: "cash" as PaymentMethod,
@@ -695,7 +696,7 @@ export default function ExpensesPage() {
   const resetForm = () => {
     const today = new Date().toISOString().split("T")[0];
     setFormData({
-      category: "",
+      category: categories[0] ?? "",
       description: "",
       amount: "",
       paymentMethod: "cash",

@@ -22,6 +22,12 @@ type FormDialogProps = {
   /** Label shown on the cancel button */
   cancelLabel?: string;
   isPending?: boolean;
+  /**
+   * Disable the submit button WITHOUT the spinner or locking Cancel — for
+   * "nothing to save yet" states. (isPending means a request is in flight; using
+   * it for this made an unchanged form look stuck on "Updating…".)
+   */
+  submitDisabled?: boolean;
   /** Extra width class, defaults to max-w-lg */
   maxWidth?: string;
   children: React.ReactNode;
@@ -50,6 +56,7 @@ export function FormDialog({
   submittingLabel = "Saving…",
   cancelLabel = "Cancel",
   isPending = false,
+  submitDisabled = false,
   maxWidth = "max-w-lg",
   children,
   extraActions,
@@ -88,7 +95,7 @@ export function FormDialog({
               >
                 {cancelLabel}
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" disabled={isPending || submitDisabled}>
                 {isPending ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />

@@ -123,6 +123,7 @@ var (
 			"can_view_salaries", "can_create_salaries", "can_edit_salaries",
 			"can_view_expenses", "can_create_expenses", "can_edit_expenses", "can_delete_expenses",
 			"can_view_reports", "can_view_settings", "can_edit_settings",
-			"can_view_subscriptions", "can_manage_subscriptions"),
+			"can_view_subscriptions", "can_manage_subscriptions",
+			"can_view_attendance", "can_view_assignments", "can_send_messages"),
 	}
 )

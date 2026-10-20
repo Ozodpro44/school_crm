@@ -243,6 +243,9 @@ type Permission struct {
 	CanEditSettings        bool   `json:"canEditSettings" db:"can_edit_settings"`
 	CanViewSubscriptions   bool   `json:"canViewSubscriptions" db:"can_view_subscriptions"`
 	CanManageSubscriptions bool   `json:"canManageSubscriptions" db:"can_manage_subscriptions"`
+	CanViewAttendance      bool   `json:"canViewAttendance" db:"can_view_attendance"`
+	CanViewAssignments     bool   `json:"canViewAssignments" db:"can_view_assignments"`
+	CanSendMessages        bool   `json:"canSendMessages" db:"can_send_messages"`
 }
 
 type MonthStatus string

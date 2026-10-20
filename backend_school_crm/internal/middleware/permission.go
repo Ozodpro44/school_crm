@@ -147,6 +147,12 @@ func checkPermission(perms *models.Permission, permission string) bool {
 		return perms.CanViewSettings
 	case "canEditSettings":
 		return perms.CanEditSettings
+	case "canViewAttendance":
+		return perms.CanViewAttendance
+	case "canViewAssignments":
+		return perms.CanViewAssignments
+	case "canSendMessages":
+		return perms.CanSendMessages
 	default:
 		return false
 	}
@@ -238,6 +244,9 @@ func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 			CanViewReports:    true,
 			CanViewSettings:   true,
 			CanEditSettings:   true,
+			CanViewAttendance:  true,
+			CanViewAssignments: true,
+			CanSendMessages:    true,
 		}
 	case models.RoleBranchAdmin:
 		// branch_admin mirrors admin (frontend_school_crm's DEFAULT_PERMISSIONS
@@ -269,6 +278,9 @@ func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 			CanViewReports:    true,
 			CanViewSettings:   true,
 			CanEditSettings:   true,
+			CanViewAttendance:  true,
+			CanViewAssignments: true,
+			CanSendMessages:    true,
 		}
 	case models.RoleManager:
 		// This fallback table (used when a user's Permissions row is nil —
@@ -305,6 +317,9 @@ func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 			CanViewReports:    true,
 			CanViewSettings:   false,
 			CanEditSettings:   false,
+			CanViewAttendance:  true,
+			CanViewAssignments: true,
+			CanSendMessages:    true,
 		}
 	case models.RoleAccountant:
 		return &models.Permission{
@@ -333,6 +348,9 @@ func getDefaultPermissionsByRole(role models.UserRole) *models.Permission {
 			CanViewReports:    true,
 			CanViewSettings:   false,
 			CanEditSettings:   false,
+			CanViewAttendance:  true,
+			CanViewAssignments: true,
+			CanSendMessages:    true,
 		}
 	default:
 		// Default to minimal permissions

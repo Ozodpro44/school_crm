@@ -21,37 +21,37 @@ export const teacherTranslations: Partial<Translation> = {
 
   addTeacher: {
     "uz-cyrl": "Ўқитувчи қўшиш",
-    "uz-latn": "O‘qituvchi qo‘shish",
+    "uz-latn": "O'qituvchi qo'shish",
     en: "Add Teacher",
   },
 
   editTeacher: {
     "uz-cyrl": "Ўқитувчини таҳрирлаш",
-    "uz-latn": "O‘qituvchini tahrirlash",
+    "uz-latn": "O'qituvchini tahrirlash",
     en: "Edit Teacher",
   },
 
   teacherDetails: {
     "uz-cyrl": "Ўқитувчи маълумотлари",
-    "uz-latn": "O‘qituvchi ma’lumotlari",
+    "uz-latn": "O'qituvchi ma'lumotlari",
     en: "Teacher Details",
   },
 
   teachersList: {
     "uz-cyrl": "Ўқитувчилар рўйхати",
-    "uz-latn": "O‘qituvchilar ro‘yxati",
+    "uz-latn": "O'qituvchilar ro'yxati",
     en: "Teachers List",
   },
 
   totalTeachers: {
     "uz-cyrl": "Жами ўқитувчилар",
-    "uz-latn": "Jami o‘qituvchilar",
+    "uz-latn": "Jami o'qituvchilar",
     en: "Total Teachers",
   },
 
   noTeachersYet: {
     "uz-cyrl": "Ҳали ўқитувчилар йўқ",
-    "uz-latn": "Hali o‘qituvchilar yo‘q",
+    "uz-latn": "Hali o'qituvchilar yo'q",
     en: "No teachers yet",
   },
 

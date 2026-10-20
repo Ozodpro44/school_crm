@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useLanguage } from "@/hooks/use-language";
 import { getTranslation } from "@/lib/translations";
 import { useNotify } from "@/hooks/use-notify";
@@ -50,7 +51,8 @@ import { formatCurrency } from "@/lib/exportUtils";
 import { formatPhoneNumber, toTitleCase } from "@/lib/utils";
 import { EmptyState } from "@/components/EmptyState";
 
-type Tab = "classes" | "students" | "attendance" | "salary" | "profile";
+const TEACHER_TABS = ["classes", "students", "attendance", "salary", "profile"] as const;
+type Tab = (typeof TEACHER_TABS)[number];
 
 export default function TeacherPortalPage() {
   const router = useRouter();
@@ -65,7 +67,7 @@ export default function TeacherPortalPage() {
 
   const { data, isLoading, isError, refetch: refetchPortal } = useTeacherPortalQuery();
   const attendanceMutation = useAttendanceMutation();
-  const [activeTab, setActiveTab] = useState<Tab>("classes");
+  const [activeTab, setActiveTab] = useUrlTab(TEACHER_TABS, "classes");
 
   // Student list filters
   const [classFilter, setClassFilter] = useState("all");
@@ -334,7 +336,7 @@ export default function TeacherPortalPage() {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                 activeTab === tab.key
-                  ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                  ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
                   : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
               }`}
             >

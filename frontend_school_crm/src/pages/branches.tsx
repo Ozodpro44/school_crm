@@ -1,4 +1,5 @@
 
+import { confirmAction } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { getTranslation } from "@/lib/translations";
 import { Plus, Building2, MapPin, Phone, Edit, Users, DollarSign, Trash2, Loader2, List, BarChart2 } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth";
 import { useRouter } from "next/router";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { Badge } from "@/components/ui/badge";
 import { formatPhoneNumber } from "@/lib/utils";
 import { formatCurrency } from "@/lib/exportUtils";
@@ -64,10 +66,7 @@ export default function BranchesPage() {
   // Former standalone /branches-overview page is now the "overview" tab
   // here — ?tab=overview keeps the old URL's bookmarks/links working via
   // pages/branches-overview.tsx's redirect.
-  const [tab, setTab] = useState<"list" | "overview">("list");
-  useEffect(() => {
-    if (router.query.tab === "overview") setTab("overview");
-  }, [router.query.tab]);
+  const [tab, setTab] = useUrlTab(["list", "overview"] as const, "list");
 
   useEffect(() => {
     if (!hasCheckedAuth) {
@@ -216,7 +215,7 @@ export default function BranchesPage() {
   // viewing someone else's branch (canDelete's server-side check is
   // owner-only, narrower than what this page's list otherwise includes).
   const handleDelete = async (branch: Branch) => {
-    if (!confirm(t("branchDeleteConfirmation"))) return;
+    if (!(await confirmAction({ description: t("branchDeleteConfirmation"), destructive: true }))) return;
     setDeletingBranchId(branch.id);
     try {
       await api.deleteBranch(branch.id);

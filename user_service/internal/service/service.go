@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -91,6 +92,9 @@ type Permission struct {
 	CanEditSettings        bool   `json:"canEditSettings"`
 	CanViewSubscriptions   bool   `json:"canViewSubscriptions"`
 	CanManageSubscriptions bool   `json:"canManageSubscriptions"`
+	CanViewAttendance      bool   `json:"canViewAttendance"`
+	CanViewAssignments     bool   `json:"canViewAssignments"`
+	CanSendMessages        bool   `json:"canSendMessages"`
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────────
@@ -235,8 +239,8 @@ func (s *UserService) Create(ctx context.Context, email, password, fullName, rol
 		// address (there is no signup OTP for it); the column defaults to false
 		// and auth_service refuses to log in unverified accounts.
 		`INSERT INTO users (id, email, password_hash, full_name, role, branch_id, language, email_verified, email_verified_at, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, 'en', true, $7, $7, $7)`,
-		id, email, string(hash), fullName, role, branchID, now,
+		 VALUES ($1, $2, $3, $4, $5, $6, 'en', true, $7, $8, $8)`,
+		id, email, string(hash), fullName, role, branchID, now, now,
 	)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok && pqErr.Code == "23505" {
@@ -268,26 +272,11 @@ func (s *UserService) Update(ctx context.Context, id string, fields map[string]i
 		"organization_name": true,
 	}
 
-	parts := []string{}
-	args := []interface{}{}
-	n := 1
-	// The frontend sends camelCase keys (canDeleteStudents) while columns are
-	// snake_case; before this, every key from the Managers page failed the
-	// allowlist and the edit was silently dropped. Accept both spellings and
-	// require real booleans.
-	for rawKey, v := range fields {
-		k := permissionColumn(rawKey)
-		if !allowed[k] {
-			continue
-		}
-		b, ok := v.(bool)
-		if !ok {
-			return nil, fmt.Errorf("permission %q must be a boolean", rawKey)
-		}
-		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
-		args = append(args, b)
-		n++
+	parts, args, err := buildSetClauses(fields, allowed, nil, false)
+	if err != nil {
+		return nil, err
 	}
+	n := len(args) + 1
 	if len(parts) == 0 {
 		return s.GetByID(ctx, id)
 	}
@@ -299,7 +288,7 @@ func (s *UserService) Update(ctx context.Context, id string, fields map[string]i
 	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
 	defer cancel()
 
-	_, err := s.db.Conn().ExecContext(ctx,
+	_, err = s.db.Conn().ExecContext(ctx,
 		"UPDATE users SET "+strings.Join(parts, ", ")+" WHERE id = $"+fmt.Sprintf("%d", n), args...)
 	if err != nil {
 		return nil, err
@@ -1040,7 +1029,8 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		       can_view_salaries, can_create_salaries, can_edit_salaries, can_delete_salaries,
 		       can_view_expenses, can_create_expenses, can_edit_expenses, can_delete_expenses,
 		       can_view_reports, can_view_settings, can_edit_settings,
-		       COALESCE(can_view_subscriptions, true), COALESCE(can_manage_subscriptions, false)
+		       COALESCE(can_view_subscriptions, true), COALESCE(can_manage_subscriptions, false),
+		       COALESCE(can_view_attendance, true), COALESCE(can_view_assignments, true), COALESCE(can_send_messages, true)
 		FROM permissions WHERE user_id = $1`, userID,
 	).Scan(
 		&p.ID, &p.UserID,
@@ -1052,6 +1042,7 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		&p.CanViewExpenses, &p.CanCreateExpenses, &p.CanEditExpenses, &p.CanDeleteExpenses,
 		&p.CanViewReports, &p.CanViewSettings, &p.CanEditSettings,
 		&p.CanViewSubscriptions, &p.CanManageSubscriptions,
+		&p.CanViewAttendance, &p.CanViewAssignments, &p.CanSendMessages,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil // no row = no custom permissions (use defaults)
@@ -1060,6 +1051,42 @@ func (s *PermissionService) getByUserIDUncached(ctx context.Context, userID stri
 		return nil, err
 	}
 	return &p, nil
+}
+
+// buildSetClauses turns a client-supplied field map into "col = $n" fragments
+// and their arguments. Only keys present in allowed (after normalize, when
+// given) are used, in sorted order so the SQL is deterministic; the column
+// name therefore never comes straight from the request. boolOnly rejects
+// non-boolean values (permission flags).
+func buildSetClauses(fields map[string]interface{}, allowed map[string]bool, normalize func(string) string, boolOnly bool) ([]string, []interface{}, error) {
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	parts := []string{}
+	args := []interface{}{}
+	for _, raw := range keys {
+		col := raw
+		if normalize != nil {
+			col = normalize(raw)
+		}
+		if !allowed[col] {
+			continue
+		}
+		v := fields[raw]
+		if boolOnly {
+			b, ok := v.(bool)
+			if !ok {
+				return nil, nil, fmt.Errorf("%q must be a boolean", raw)
+			}
+			v = b
+		}
+		args = append(args, v)
+		parts = append(parts, fmt.Sprintf("%s = $%d", col, len(args)))
+	}
+	return parts, args, nil
 }
 
 // permissionColumn maps "canDeleteStudents" or "can_delete_students" to the
@@ -1110,18 +1137,16 @@ func (s *PermissionService) Upsert(ctx context.Context, userID string, fields ma
 		"can_view_expenses": true, "can_create_expenses": true, "can_edit_expenses": true, "can_delete_expenses": true,
 		"can_view_reports": true, "can_view_settings": true, "can_edit_settings": true,
 		"can_view_subscriptions": true, "can_manage_subscriptions": true,
+		"can_view_attendance": true, "can_view_assignments": true, "can_send_messages": true,
 	}
-	parts := []string{}
-	args := []interface{}{}
-	n := 1
-	for k, v := range fields {
-		if !allowed[k] {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s = $%d", k, n))
-		args = append(args, v)
-		n++
+	// The Managers UI sends camelCase keys (canViewStudents) while the columns
+	// and allowlist are snake_case; buildSetClauses normalises them, rejects
+	// anything that is not a boolean and ignores unknown keys (id, userId, ...).
+	parts, args, err := buildSetClauses(fields, allowed, permissionColumn, true)
+	if err != nil {
+		return nil, err
 	}
+	n := len(args) + 1
 	if len(parts) == 0 {
 		return s.GetByUserID(ctx, userID)
 	}

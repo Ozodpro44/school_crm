@@ -1,4 +1,5 @@
 import { Fragment, ReactNode, useState, useEffect, useCallback, useRef } from "react";
+import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ import {
   CheckCheck,
   Shield,
   ClipboardList,
+  Fingerprint,
   GraduationCap as PortalIcon,
   Calendar,
   MessageSquare,
@@ -85,7 +87,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { getCurrentUser, logout, hasPermission, refreshPermissions } from "@/lib/auth";
+import { getCurrentUser, logout, hasPermission, hasPageAccess, refreshPermissions } from "@/lib/auth";
 import { getStoredBranchId, getAuthToken } from "@/lib/storage";
 import { isTokenExpired } from "@/lib/jwt";
 import { User } from "@/types";
@@ -210,7 +212,7 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
         <button
           ref={btnRef}
           className="relative h-8 w-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          aria-label="Notifications"
+          aria-label={bt("notifications")}
         >
           {unread > 0 ? (
             <BellDot className="w-[18px] h-[18px] text-indigo-500" />
@@ -542,12 +544,15 @@ function SubscriptionBadge({ status, daysLeft, planName, collapsed }: SubInfo) {
 
   if (collapsed) {
     return (
-      <Link href="/billing">
+      <Link href="/billing" aria-label={`${titleText} – ${subtitleText}`}>
         <div
-          className={`flex items-center justify-center p-2 rounded-lg border transition-all hover:opacity-80 ${containerClass}`}
+          className={`flex items-center justify-center gap-1.5 p-2 rounded-lg border transition-all hover:opacity-80 ${containerClass}`}
           title={`${titleText} – ${subtitleText}`}
         >
           <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotClass}`} />
+          {/* The icon-rail on desktop only has room for the dot; the phone header
+              has no hover, so it spells out the plan name instead of a bare dot. */}
+          <span className={`md:hidden text-[10px] font-bold uppercase tracking-wide ${textClass}`}>{titleText}</span>
         </div>
       </Link>
     );
@@ -885,15 +890,17 @@ export function Layout({ children }: LayoutProps) {
             // Permission model (see @/types), same as canViewReports below —
             // but these were hardcoded `show: true` regardless, so a manager
             // whose permissions explicitly withheld view access still saw
-            // and could navigate into these pages. Attendance/schedule/
-            // assignments/messaging have no such flag in the model (every
-            // branch member gets them) — that's unchanged.
+            // and could navigate into these pages. Attendance/assignments/
+            // messaging follow canViewAttendance/canViewAssignments/
+            // canSendMessages (managers only; see hasPageAccess).
             { name: t("students"), href: "/students", icon: Users, show: hasPermission("canViewStudents") },
             { name: t("teachers"), href: "/teachers", icon: GraduationCap, show: hasPermission("canViewTeachers") },
             { name: t("classes"), href: "/classes", icon: BookOpen, show: hasPermission("canViewClasses") },
-            { name: t("attendance"), href: "/attendance", icon: ClipboardList, show: true },
-            { name: t("assignments"), href: "/assignments", icon: ClipboardCheck, show: true },
-            { name: t("messaging"), href: "/messaging", icon: MessageSquare, show: true },
+            { name: t("attendance"), href: "/attendance", icon: ClipboardList, show: hasPageAccess("canViewAttendance") },
+            // Face ID staff: admin-only, like every /hikvision endpoint.
+            { name: t("staffPage"), href: "/staff", icon: Fingerprint, show: user?.role === "admin" },
+            { name: t("assignments"), href: "/assignments", icon: ClipboardCheck, show: hasPageAccess("canViewAssignments") },
+            { name: t("messaging"), href: "/messaging", icon: MessageSquare, show: hasPageAccess("canSendMessages") },
           ],
         },
         {
@@ -955,9 +962,19 @@ export function Layout({ children }: LayoutProps) {
   // plain text instead of the switcher.
   const branchDisplayName = currentBranch?.name || t("schoolName");
 
+  // Browser-tab title: "Page · School" so several open tabs can be told apart.
+  const currentNavItem = navigationGroups
+    .flatMap((g) => g.items)
+    .find((i) => (i.href === "/" ? router.pathname === "/" : router.pathname.startsWith(i.href)));
+  const pageTitle = [currentNavItem?.name, schoolDisplayName].filter(Boolean).join(" · ") || "School CRM";
+
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
+    <>
+      <Head>
+        <title>{pageTitle}</title>
+      </Head>
     <SidebarProvider
       open={sidebarOpen}
       onOpenChange={(open) => {
@@ -970,7 +987,7 @@ export function Layout({ children }: LayoutProps) {
 
         {/* ────────────────────────────────── SIDEBAR ── */}
         <Sidebar
-          variant="inset"
+          variant="sidebar"
           collapsible="icon"
           className="hidden md:flex border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
         >
@@ -1356,5 +1373,6 @@ export function Layout({ children }: LayoutProps) {
       </Dialog>
       </div>
     </SidebarProvider>
+    </>
   );
 }

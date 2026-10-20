@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -181,6 +182,7 @@ func (h *Handler) ListTeachers(c *gin.Context) {
 func (h *Handler) CreateTeacher(c *gin.Context) {
 	var req service.CreateTeacherRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		slog.Warn("create teacher: invalid request body", "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -196,6 +198,7 @@ func (h *Handler) CreateTeacher(c *gin.Context) {
 			})
 			return
 		}
+		slog.Warn("create teacher failed", "branch_id", req.BranchID, "error", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

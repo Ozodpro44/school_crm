@@ -1,4 +1,6 @@
+import Head from "next/head";
 import { Toaster } from "@/components/ui/toaster";
+import { ConfirmHost } from "@/components/ConfirmHost";
 import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { BranchProvider } from "@/context/BranchContext";
@@ -162,6 +164,9 @@ export default function App({ Component, pageProps }: AppProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <Head>
+        <title>School CRM</title>
+      </Head>
       <ThemeProvider
         attribute="class"
         defaultTheme="system"
@@ -171,6 +176,7 @@ export default function App({ Component, pageProps }: AppProps) {
         <LanguageProvider>
           <BranchProvider>
             <OfflineBanner />
+            <ConfirmHost />
             <ErrorBoundary>
               {isAuthPage ? (
                 <>

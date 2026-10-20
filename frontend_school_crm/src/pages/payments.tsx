@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useRouter } from "next/router";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,10 +74,7 @@ export default function PaymentsPage() {
   // Former standalone /quick-pay page is now the "quick" tab here —
   // ?tab=quick keeps the old URL's bookmarks/links working via
   // pages/quick-pay.tsx's standalone render of the same panel.
-  const [tab, setTab] = useState<"list" | "quick">("list");
-  useEffect(() => {
-    if (router.query.tab === "quick") setTab("quick");
-  }, [router.query.tab]);
+  const [tab, setTab] = useUrlTab(["list", "quick"] as const, "list");
 
   // Derived payment list state (populated from query result via useEffect)
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -220,7 +218,12 @@ export default function PaymentsPage() {
   // Sync URL params when filters/page change
   useEffect(() => {
     if (!router.isReady || !selectedMonth) return;
+    // Keep params this effect doesn't manage (e.g. ?tab=quick).
     const params = new URLSearchParams();
+    const managed = new Set(["search", "status", "paymentMethod", "classId", "month", "year", "page", "limit"]);
+    Object.entries(router.query).forEach(([k, v]) => {
+      if (!managed.has(k) && typeof v === "string") params.set(k, v);
+    });
     if (searchTerm) params.set("search", searchTerm);
     if (filterStatus !== "all") params.set("status", filterStatus);
     if (filterPaymentMethod !== "all") params.set("paymentMethod", filterPaymentMethod);
@@ -229,7 +232,7 @@ export default function PaymentsPage() {
     params.set("year", selectedYear.toString());
     params.set("page", currentPage.toString());
     params.set("limit", itemsPerPage.toString());
-    router.push(`/payments?${params.toString()}`, undefined, { shallow: true });
+    router.replace(`/payments?${params.toString()}`, undefined, { shallow: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, filterStatus, filterPaymentMethod, filterClassId, currentPage, itemsPerPage, selectedMonth, selectedYear]);
 
@@ -702,12 +705,13 @@ export default function PaymentsPage() {
 
         <TabsContent value="list" className="space-y-6">
 
-      {/* Six across left each tile ~105px at 1440px, so the longer labels
-          wrapped to two lines while the others stayed on one — pushing those
-          tiles' values out of line with their neighbours. Three per row gives
-          each label room to sit on a single line. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/* Compact tiles. Each needs ~215px so a figure like "1 250 000 000 so'm"
+          fits whole, so three per row (two tidy rows) until the screen is wide enough
+          for all six in one row. On a phone they form one swipeable row instead of
+          six full-width cards stacked. */}
+      <div className="-mx-3 px-3 scroll-pl-3 flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0 sm:scroll-pl-0 sm:pb-0 sm:grid sm:grid-cols-3 min-[1700px]:grid-cols-6 sm:overflow-visible [&>*]:min-w-[220px] [&>*]:shrink-0 [&>*]:snap-start sm:[&>*]:min-w-0 sm:[&>*]:shrink">
         <StatCard
+          compact
           icon={CheckCircle}
           tone="green"
           label={t("totalIncome")}
@@ -716,6 +720,7 @@ export default function PaymentsPage() {
           loading={isLoading && !indicators}
         />
         <StatCard
+          compact
           icon={AlertCircle}
           tone="orange"
           label={t("pendingPayments")}
@@ -724,13 +729,7 @@ export default function PaymentsPage() {
           loading={isLoading && !indicators}
         />
         <StatCard
-          icon={CreditCard}
-          tone="blue"
-          label={t("click")}
-          value={formatCurrency(totalByMethod.click)}
-          loading={isLoading && !indicators}
-        />
-        <StatCard
+          compact
           icon={Banknote}
           tone="indigo"
           label={t("cash")}
@@ -738,6 +737,15 @@ export default function PaymentsPage() {
           loading={isLoading && !indicators}
         />
         <StatCard
+          compact
+          icon={CreditCard}
+          tone="blue"
+          label={t("click")}
+          value={formatCurrency(totalByMethod.click)}
+          loading={isLoading && !indicators}
+        />
+        <StatCard
+          compact
           icon={Printer}
           tone="slate"
           label={t("terminal")}
@@ -745,6 +753,7 @@ export default function PaymentsPage() {
           loading={isLoading && !indicators}
         />
         <StatCard
+          compact
           icon={Building2}
           tone="purple"
           label={t("bank")}
@@ -913,13 +922,13 @@ export default function PaymentsPage() {
                         const studentInfo = studentInfoMap.get(p.studentId);
                         const selectedBranchId = currentBranch?.id || "";
                         setPosPreviewData({ payment: p, student: { id: p.studentId, fullName: studentInfo?.fullName ?? "Unknown", phone: studentInfo?.phone ?? "", classId: studentInfo?.classId ?? "", monthlyPayment: studentInfo?.monthlyPayment ?? 0, branchId: selectedBranchId, status: "active", parentPhone: "", enrollmentDate: undefined, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, className: studentInfo?.className ?? "N/A" });
-                      }}><Printer className="w-3.5 h-3.5" /></Button>
+                      }} aria-label={t("print")} title={t("print")}><Printer className="w-3.5 h-3.5" /></Button>
                     <Button size="icon" variant="ghost" className="h-7 w-7"
-                      onClick={() => handleEdit(p)} disabled={!canEditPayments || processingPaymentId === p.id}>
+                      onClick={() => handleEdit(p)} disabled={!canEditPayments || processingPaymentId === p.id} aria-label={t("edit")} title={t("edit")}>
                       <Edit2 className="w-3.5 h-3.5" /></Button>
                     {canDeletePayments && (
                     <Button size="icon" variant="ghost" className="h-7 w-7"
-                      onClick={() => handleDelete(p.id)} disabled={processingPaymentId === p.id}>
+                      onClick={() => handleDelete(p.id)} disabled={processingPaymentId === p.id} aria-label={t("delete")} title={t("delete")}>
                       <Trash2 className="w-3.5 h-3.5 text-red-500" /></Button>
                     )}
                   </div>

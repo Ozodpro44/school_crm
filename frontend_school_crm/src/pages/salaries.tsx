@@ -868,11 +868,11 @@ export default function SalariesPage() {
                         {t("markPaid")}
                       </Button>
                     )}
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(salary)} disabled={!canEditSalaries}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(salary)} disabled={!canEditSalaries} aria-label={t("edit")} title={t("edit")}>
                       <Edit2 className="w-3.5 h-3.5" />
                     </Button>
                     {canDeleteSalaries && (
-                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(salary.id)}>
+                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(salary.id)} aria-label={t("delete")} title={t("delete")}>
                       <Trash2 className="w-3.5 h-3.5 text-red-500" />
                     </Button>
                     )}

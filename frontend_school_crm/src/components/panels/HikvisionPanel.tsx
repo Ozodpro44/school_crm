@@ -1,6 +1,7 @@
-// Hikvision Face ID terminals: devices, enrolled staff, and the check-in/out log.
+// Hikvision Face ID terminals: the devices and the raw check-in/out log.
 // Embedded as a tab on the Attendance page (admin only).
 import { useEffect, useRef, useState } from "react";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import {
   Card,
   CardContent,
@@ -13,7 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -32,15 +32,13 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Plus,
-  Trash2,
-  Upload,
+  ChevronLeft,
+  ChevronRight,
   Wifi,
   Loader2,
-  Fingerprint,
   LogIn,
   LogOut as LogOutIcon,
   Search,
-  User,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/hooks/use-language";
@@ -49,15 +47,12 @@ import { formatDateTimeInTashkent } from "@/lib/timezone";
 import {
   listHikvisionDevices,
   createHikvisionDevice,
+  createHikvisionHCTDevice,
+  getHikvisionHCTStatus,
   configureHikvisionPush,
-  listHikvisionEmployees,
-  addHikvisionEmployee,
-  uploadHikvisionEmployeeFace,
-  removeHikvisionEmployee,
-  listHikvisionAttendance,
-  listTeachers,
+  listHikvisionAttendancePage,
 } from "@/lib/api";
-import { HikvisionDevice, HikvisionEmployee, HikvisionAttendanceRecord, Teacher } from "@/types";
+import { HikvisionDevice, HikvisionAttendanceRecord } from "@/types";
 
 export function HikvisionPanel() {
   const { toast } = useToast();
@@ -65,16 +60,16 @@ export function HikvisionPanel() {
   const t = (key: string) => getTranslation(key, language);
 
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("devices");
+  const [activeTab, setActiveTab] = useUrlTab(["devices", "records"] as const, "devices", "ftab");
 
   const [devices, setDevices] = useState<HikvisionDevice[]>([]);
-  const [employees, setEmployees] = useState<HikvisionEmployee[]>([]);
-  const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [records, setRecords] = useState<HikvisionAttendanceRecord[]>([]);
   const [recordsLoaded, setRecordsLoaded] = useState(false);
+  const [recordsPage, setRecordsPage] = useState(1);
+  const [recordsPageSize, setRecordsPageSize] = useState(50);
+  const [recordsTotal, setRecordsTotal] = useState(0);
   const [recordsLoading, setRecordsLoading] = useState(false);
 
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
 
   // Attendance log filters
   const [filterDeviceId, setFilterDeviceId] = useState<string>("all");
@@ -90,6 +85,10 @@ export function HikvisionPanel() {
     username: "admin",
     password: "",
   });
+  // Hik-Connect (cloud) devices: only offered when the server has credentials.
+  const [hctEnabled, setHctEnabled] = useState(false);
+  const [connType, setConnType] = useState<"hct" | "isapi">("isapi");
+  const [hctForm, setHctForm] = useState({ serial: "", verifyCode: "" });
 
   // Configure push dialog
   const [pushDialogDevice, setPushDialogDevice] = useState<HikvisionDevice | null>(null);
@@ -99,23 +98,6 @@ export function HikvisionPanel() {
     publicPort: "443",
     useHttps: true,
   });
-
-  // Add employee dialog
-  const [isEmployeeDialogOpen, setIsEmployeeDialogOpen] = useState(false);
-  const [isSubmittingEmployee, setIsSubmittingEmployee] = useState(false);
-  const [employeeForm, setEmployeeForm] = useState({
-    employeeNo: "",
-    fullName: "",
-    teacherId: "",
-  });
-  const [newEmployeePhoto, setNewEmployeePhoto] = useState<File | null>(null);
-
-  // Upload face dialog
-  const [faceDialogEmployee, setFaceDialogEmployee] = useState<HikvisionEmployee | null>(null);
-  const [facePhoto, setFacePhoto] = useState<File | null>(null);
-  const [isUploadingFace, setIsUploadingFace] = useState(false);
-
-  const [removingEmployeeId, setRemovingEmployeeId] = useState<string | null>(null);
 
   const recordsRequestIdRef = useRef(0);
   const activeTabRef = useRef<string>("");
@@ -129,8 +111,6 @@ export function HikvisionPanel() {
 
   useEffect(() => {
     const handleBranchChange = () => {
-      setSelectedDeviceId("");
-      setEmployees([]);
       setRecords([]);
       setRecordsLoaded(false);
       setFilterDeviceId("all");
@@ -141,15 +121,6 @@ export function HikvisionPanel() {
     return () => window.removeEventListener("branchChange", handleBranchChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (selectedDeviceId) {
-      loadEmployees(selectedDeviceId);
-    } else {
-      setEmployees([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDeviceId]);
 
   useEffect(() => {
     activeTabRef.current = activeTab;
@@ -171,13 +142,12 @@ export function HikvisionPanel() {
     }
     try {
       setLoading(true);
-      const [deviceList, teacherList] = await Promise.all([
+      const [deviceList, hct] = await Promise.all([
         listHikvisionDevices(branchId),
-        listTeachers(branchId).catch(() => []),
+        getHikvisionHCTStatus().catch(() => false),
       ]);
+      setHctEnabled(hct);
       setDevices(deviceList);
-      setTeachers(teacherList);
-      setSelectedDeviceId((prev) => prev || (deviceList[0]?.id ?? ""));
     } catch (error) {
       toast({
         title: t("error"),
@@ -189,31 +159,22 @@ export function HikvisionPanel() {
     }
   };
 
-  const loadEmployees = async (deviceId: string) => {
-    try {
-      const list = await listHikvisionEmployees(deviceId);
-      setEmployees(list);
-    } catch (error) {
-      toast({
-        title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToLoadEmployees"),
-        variant: "destructive",
-      });
-    }
-  };
-
-  const loadRecords = async (deviceOverride?: string) => {
+  const loadRecords = async (deviceOverride?: string, page = 1, pageSize = recordsPageSize) => {
     const myId = ++recordsRequestIdRef.current;
     const deviceFilter = deviceOverride ?? filterDeviceId;
     try {
       setRecordsLoading(true);
-      const list = await listHikvisionAttendance({
+      const res = await listHikvisionAttendancePage({
         deviceId: deviceFilter !== "all" ? deviceFilter : undefined,
         from: filterFrom || undefined,
         to: filterTo || undefined,
+        page,
+        limit: pageSize,
       });
       if (myId !== recordsRequestIdRef.current) return;
-      setRecords(list);
+      setRecords(res.items);
+      setRecordsTotal(res.total);
+      setRecordsPage(res.page);
       setRecordsLoaded(true);
     } catch (error) {
       if (myId !== recordsRequestIdRef.current) return;
@@ -227,8 +188,11 @@ export function HikvisionPanel() {
     }
   };
 
-  const resetDeviceForm = () =>
+  const resetDeviceForm = () => {
     setDeviceForm({ name: "", host: "", username: "admin", password: "" });
+    setHctForm({ serial: "", verifyCode: "" });
+    setConnType(hctEnabled ? "hct" : "isapi");
+  };
 
   const handleAddDevice = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -239,22 +203,32 @@ export function HikvisionPanel() {
     }
     setIsSubmittingDevice(true);
     try {
-      const device = await createHikvisionDevice({
-        branchId,
-        name: deviceForm.name,
-        host: deviceForm.host,
-        username: deviceForm.username || undefined,
-        password: deviceForm.password,
-      });
+      const device =
+        connType === "hct"
+          ? await createHikvisionHCTDevice({
+              branchId,
+              name: deviceForm.name,
+              serial: hctForm.serial.trim(),
+              verifyCode: hctForm.verifyCode,
+            })
+          : await createHikvisionDevice({
+              branchId,
+              name: deviceForm.name,
+              host: deviceForm.host,
+              username: deviceForm.username || undefined,
+              password: deviceForm.password,
+            });
       toast({ title: t("success"), description: t("deviceAdded"), variant: "success" });
       resetDeviceForm();
       setIsDeviceDialogOpen(false);
       setDevices((prev) => [...prev, device]);
-      setSelectedDeviceId(device.id);
     } catch (error) {
       toast({
         title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToAddDevice"),
+        description:
+          error instanceof Error
+            ? error.message
+            : t(connType === "hct" ? "failedToAddCloudDevice" : "failedToAddDevice"),
         variant: "destructive",
       });
     } finally {
@@ -288,100 +262,6 @@ export function HikvisionPanel() {
     } finally {
       setIsSubmittingPush(false);
     }
-  };
-
-  const resetEmployeeForm = () => {
-    setEmployeeForm({ employeeNo: "", fullName: "", teacherId: "" });
-    setNewEmployeePhoto(null);
-  };
-
-  const handleAddEmployee = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedDeviceId) return;
-    setIsSubmittingEmployee(true);
-    try {
-      const employee = await addHikvisionEmployee({
-        deviceId: selectedDeviceId,
-        employeeNo: employeeForm.employeeNo,
-        fullName: employeeForm.fullName,
-        teacherId: employeeForm.teacherId || null,
-      });
-
-      if (newEmployeePhoto) {
-        try {
-          await uploadHikvisionEmployeeFace(employee.id, newEmployeePhoto);
-          toast({ title: t("success"), description: t("employeeAdded"), variant: "success" });
-        } catch (photoError) {
-          toast({
-            title: t("warning"),
-            description: `${t("employeeAdded")}. ${t("photoUploadFailedNote")}${
-              photoError instanceof Error ? ` (${photoError.message})` : ""
-            }`,
-          });
-        }
-      } else {
-        toast({ title: t("success"), description: t("employeeAdded"), variant: "success" });
-      }
-
-      resetEmployeeForm();
-      setIsEmployeeDialogOpen(false);
-      await loadEmployees(selectedDeviceId);
-    } catch (error) {
-      toast({
-        title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToAddEmployee"),
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmittingEmployee(false);
-    }
-  };
-
-  const handleUploadFace = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!faceDialogEmployee) return;
-    if (!facePhoto) {
-      toast({ title: t("error"), description: t("photoRequired"), variant: "destructive" });
-      return;
-    }
-    setIsUploadingFace(true);
-    try {
-      await uploadHikvisionEmployeeFace(faceDialogEmployee.id, facePhoto);
-      toast({ title: t("success"), description: t("faceUploaded"), variant: "success" });
-      setFaceDialogEmployee(null);
-      setFacePhoto(null);
-    } catch (error) {
-      toast({
-        title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToUploadFace"),
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploadingFace(false);
-    }
-  };
-
-  const handleRemoveEmployee = async (employee: HikvisionEmployee) => {
-    if (!confirm(t("confirmRemoveEmployee"))) return;
-    setRemovingEmployeeId(employee.id);
-    try {
-      await removeHikvisionEmployee(employee.id);
-      toast({ title: t("success"), description: t("employeeRemoved"), variant: "success" });
-      await loadEmployees(selectedDeviceId);
-    } catch (error) {
-      toast({
-        title: t("error"),
-        description: error instanceof Error ? error.message : t("failedToRemoveEmployee"),
-        variant: "destructive",
-      });
-    } finally {
-      setRemovingEmployeeId(null);
-    }
-  };
-
-  const getTeacherName = (teacherId?: string | null) => {
-    if (!teacherId) return null;
-    return teachers.find((tc) => tc.id === teacherId)?.fullName || null;
   };
 
   const getDeviceName = (deviceId: string) =>
@@ -423,10 +303,9 @@ export function HikvisionPanel() {
           </CardContent>
         </Card>
       ) : (
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
           <TabsList>
             <TabsTrigger value="devices">{t("tabDevices")}</TabsTrigger>
-            <TabsTrigger value="employees">{t("tabEmployees")}</TabsTrigger>
             <TabsTrigger value="records">{t("tabRecords")}</TabsTrigger>
           </TabsList>
 
@@ -440,7 +319,7 @@ export function HikvisionPanel() {
               <Dialog open={isDeviceDialogOpen} onOpenChange={setIsDeviceDialogOpen}>
                 <DialogTrigger asChild>
                   <Button
-                    className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
+                    className="bg-brand hover:bg-brand-hover"
                     onClick={resetDeviceForm}
                   >
                     <Plus className="w-4 h-4 mr-2" />
@@ -452,6 +331,20 @@ export function HikvisionPanel() {
                     <DialogTitle>{t("addNewDevice")}</DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleAddDevice} className="space-y-4">
+                    {hctEnabled && (
+                      <div className="space-y-2">
+                        <Label>{t("connectionType")}</Label>
+                        <Select value={connType} onValueChange={(v) => setConnType(v as "hct" | "isapi")}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="hct">{t("connHikConnect")}</SelectItem>
+                            <SelectItem value="isapi">{t("connLocal")}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <Label htmlFor="deviceName">{t("deviceName")} *</Label>
                       <Input
@@ -462,43 +355,78 @@ export function HikvisionPanel() {
                         required
                       />
                     </div>
+                    {connType === "hct" ? (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="deviceSerial">{t("deviceSerial")} *</Label>
+                          <Input
+                            id="deviceSerial"
+                            value={hctForm.serial}
+                            onChange={(e) => setHctForm({ ...hctForm, serial: e.target.value })}
+                            placeholder="FF7999936"
+                            autoComplete="off"
+                            required
+                          />
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {t("deviceSerialHint")}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="verifyCode">{t("verifyCode")} *</Label>
+                          <Input
+                            id="verifyCode"
+                            type="password"
+                            value={hctForm.verifyCode}
+                            onChange={(e) => setHctForm({ ...hctForm, verifyCode: e.target.value })}
+                            autoComplete="off"
+                            required
+                          />
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {t("verifyCodeHint")}
+                          </p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
                     <div className="space-y-2">
-                      <Label htmlFor="deviceHost">{t("deviceHost")} *</Label>
-                      <Input
-                        id="deviceHost"
-                        value={deviceForm.host}
-                        onChange={(e) => setDeviceForm({ ...deviceForm, host: e.target.value })}
-                        placeholder="192.168.0.115"
-                        required
-                      />
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {t("deviceHostHint")}
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="deviceUsername">{t("deviceUsername")}</Label>
-                        <Input
-                          id="deviceUsername"
-                          value={deviceForm.username}
-                          onChange={(e) =>
-                            setDeviceForm({ ...deviceForm, username: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="devicePassword">{t("password")} *</Label>
-                        <Input
-                          id="devicePassword"
-                          type="password"
-                          value={deviceForm.password}
-                          onChange={(e) =>
-                            setDeviceForm({ ...deviceForm, password: e.target.value })
-                          }
-                          required
-                        />
-                      </div>
-                    </div>
+                          <Label htmlFor="deviceHost">{t("deviceHost")} *</Label>
+                          <Input
+                            id="deviceHost"
+                            value={deviceForm.host}
+                            onChange={(e) => setDeviceForm({ ...deviceForm, host: e.target.value })}
+                            placeholder="192.168.0.115"
+                            required
+                          />
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {t("deviceHostHint")}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="deviceUsername">{t("deviceUsername")}</Label>
+                            <Input
+                              id="deviceUsername"
+                              value={deviceForm.username}
+                              onChange={(e) =>
+                                setDeviceForm({ ...deviceForm, username: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="devicePassword">{t("password")} *</Label>
+                            <Input
+                              id="devicePassword"
+                              type="password"
+                              value={deviceForm.password}
+                              onChange={(e) =>
+                                setDeviceForm({ ...deviceForm, password: e.target.value })
+                              }
+                              required
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
                     <div className="flex justify-end gap-3 pt-2">
                       <Button
                         type="button"
@@ -557,7 +485,9 @@ export function HikvisionPanel() {
                               {device.name}
                             </td>
                             <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                              {device.host}
+                              {device.protocol === "hct"
+                                ? `${t("cloudDevice")} · ${device.hctSerial ?? ""}`
+                                : device.host}
                             </td>
                             <td className="py-3 px-4">
                               <Badge
@@ -572,10 +502,12 @@ export function HikvisionPanel() {
                               </Badge>
                             </td>
                             <td className="py-3 px-4 text-right">
-                              <Button size="sm" variant="outline" onClick={() => openPushDialog(device)}>
-                                <Wifi className="w-4 h-4 mr-2" />
-                                {t("configurePush")}
-                              </Button>
+                              {(device.protocol ?? "isapi") === "isapi" && (
+                                <Button size="sm" variant="outline" onClick={() => openPushDialog(device)}>
+                                  <Wifi className="w-4 h-4 mr-2" />
+                                  {t("configurePush")}
+                                </Button>
+                              )}
                             </td>
                           </tr>
                         ))}
@@ -639,258 +571,6 @@ export function HikvisionPanel() {
                     <Button type="submit" disabled={isSubmittingPush}>
                       {isSubmittingPush && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                       {t("configurePush")}
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
-          </TabsContent>
-
-          {/* ============================= EMPLOYEES ============================= */}
-          <TabsContent value="employees" className="space-y-4 pt-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="w-full sm:w-72">
-                <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={t("selectDevice")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {devices.map((device) => (
-                      <SelectItem key={device.id} value={device.id}>
-                        {device.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Dialog open={isEmployeeDialogOpen} onOpenChange={setIsEmployeeDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-                    onClick={resetEmployeeForm}
-                    disabled={!selectedDeviceId}
-                    title={!selectedDeviceId ? t("addEmployeeToDevice") : ""}
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    {t("addEmployee")}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-lg">
-                  <DialogHeader>
-                    <DialogTitle>{t("addNewEmployee")}</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={handleAddEmployee} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="employeeFullName">{t("fullName")} *</Label>
-                      <Input
-                        id="employeeFullName"
-                        value={employeeForm.fullName}
-                        onChange={(e) =>
-                          setEmployeeForm({ ...employeeForm, fullName: e.target.value })
-                        }
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="employeeNo">{t("employeeNo")} *</Label>
-                      <Input
-                        id="employeeNo"
-                        value={employeeForm.employeeNo}
-                        onChange={(e) =>
-                          setEmployeeForm({ ...employeeForm, employeeNo: e.target.value })
-                        }
-                        placeholder="1001"
-                        required
-                      />
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {t("employeeNoHint")}
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{t("linkedTeacherOptional")}</Label>
-                      <Select
-                        value={employeeForm.teacherId || "none"}
-                        onValueChange={(value) =>
-                          setEmployeeForm({
-                            ...employeeForm,
-                            teacherId: value === "none" ? "" : value,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">{t("noneOption")}</SelectItem>
-                          {teachers.map((teacher) => (
-                            <SelectItem key={teacher.id} value={teacher.id}>
-                              {teacher.fullName}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="newEmployeePhoto">{t("facePhotoOptional")}</Label>
-                      <Input
-                        id="newEmployeePhoto"
-                        type="file"
-                        accept="image/jpeg,image/jpg"
-                        onChange={(e) => setNewEmployeePhoto(e.target.files?.[0] ?? null)}
-                      />
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {t("facePhotoOptionalHint")}
-                      </p>
-                    </div>
-                    <div className="flex justify-end gap-3 pt-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => setIsEmployeeDialogOpen(false)}
-                        disabled={isSubmittingEmployee}
-                      >
-                        {t("cancel")}
-                      </Button>
-                      <Button type="submit" disabled={isSubmittingEmployee}>
-                        {isSubmittingEmployee && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        {t("create")}
-                      </Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            <Card>
-              <CardContent className="pt-6">
-                {!selectedDeviceId ? (
-                  <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-                    {t("addEmployeeToDevice")}
-                  </div>
-                ) : employees.length === 0 ? (
-                  <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-                    {t("noEmployeesYet")}
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-800">
-                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                            {t("fullName")}
-                          </th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                            {t("employeeNo")}
-                          </th>
-                          <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                            {t("teacher")}
-                          </th>
-                          <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">
-                            {t("actions")}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {employees.map((employee) => (
-                          <tr
-                            key={employee.id}
-                            className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50"
-                          >
-                            <td className="py-3 px-4 font-medium text-slate-900 dark:text-slate-100">
-                              <div className="flex items-center gap-3">
-                                <Avatar className="h-8 w-8">
-                                  {employee.photoUrl && (
-                                    <AvatarImage src={employee.photoUrl} alt={employee.fullName} />
-                                  )}
-                                  <AvatarFallback>
-                                    <User className="w-4 h-4 text-slate-400" />
-                                  </AvatarFallback>
-                                </Avatar>
-                                {employee.fullName}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                              {employee.employeeNo}
-                            </td>
-                            <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                              {getTeacherName(employee.teacherId) || "—"}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setFaceDialogEmployee(employee);
-                                    setFacePhoto(null);
-                                  }}
-                                >
-                                  <Upload className="w-4 h-4 mr-2" />
-                                  {t("uploadFace")}
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => handleRemoveEmployee(employee)}
-                                  disabled={removingEmployeeId === employee.id}
-                                >
-                                  {removingEmployeeId === employee.id ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="w-4 h-4 text-red-500" />
-                                  )}
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Dialog
-              open={!!faceDialogEmployee}
-              onOpenChange={(open) => {
-                if (!open) {
-                  setFaceDialogEmployee(null);
-                  setFacePhoto(null);
-                }
-              }}
-            >
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>{t("uploadFace")}</DialogTitle>
-                  <DialogDescription>{t("uploadFaceDescription")}</DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleUploadFace} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="facePhoto">{t("choosePhoto")}</Label>
-                    <Input
-                      id="facePhoto"
-                      type="file"
-                      accept="image/jpeg,image/jpg"
-                      onChange={(e) => setFacePhoto(e.target.files?.[0] ?? null)}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-3 pt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        setFaceDialogEmployee(null);
-                        setFacePhoto(null);
-                      }}
-                      disabled={isUploadingFace}
-                    >
-                      {t("cancel")}
-                    </Button>
-                    <Button type="submit" disabled={isUploadingFace}>
-                      {isUploadingFace && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                      {t("uploadFace")}
                     </Button>
                   </div>
                 </form>
@@ -1028,9 +708,58 @@ export function HikvisionPanel() {
                     </table>
                   </div>
                 )}
+                {recordsTotal > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-4 mt-2 border-t border-slate-100 dark:border-slate-800 text-sm">
+                    <div className="flex items-center gap-2 text-slate-500">
+                      <span>{t("qpRowsPerPage")}</span>
+                      <Select
+                        value={String(recordsPageSize)}
+                        onValueChange={(v) => {
+                          setRecordsPageSize(Number(v));
+                          loadRecords(undefined, 1, Number(v));
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-[76px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[25, 50, 100, 200].map((n) => (
+                            <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500 tabular-nums">
+                        {(recordsPage - 1) * recordsPageSize + 1}–{Math.min(recordsPage * recordsPageSize, recordsTotal)} / {recordsTotal}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={t("qpPrev")}
+                        disabled={recordsPage <= 1 || recordsLoading}
+                        onClick={() => loadRecords(undefined, recordsPage - 1)}
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8"
+                        aria-label={t("qpNext")}
+                        disabled={recordsPage * recordsPageSize >= recordsTotal || recordsLoading}
+                        onClick={() => loadRecords(undefined, recordsPage + 1)}
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
+
         </Tabs>
       )}
     </div>

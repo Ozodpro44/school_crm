@@ -1,4 +1,5 @@
 import { useRouter } from "next/router";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -70,7 +71,8 @@ import { AttendanceDonut } from "@/components/AttendanceDonut";
 import { PageBreadcrumbs } from "@/components/PageBreadcrumbs";
 import { SectionErrorBoundary } from "@/components/SectionErrorBoundary";
 
-type Tab = "overview" | "payments" | "attendance" | "notes" | "contact";
+const STUDENT_TABS = ["overview", "payments", "attendance", "notes", "contact"] as const;
+type Tab = (typeof STUDENT_TABS)[number];
 
 // Short 3-letter month labels pulled from translations, or numeric fallbacks.
 const MONTH_LABELS_SHORT = (t: (k: string) => string): Record<number, string> => {
@@ -102,7 +104,7 @@ export default function StudentDetailsPage() {
   const router = useRouter();
   const { id, from } = router.query;
   const { currentBranch, isLoading: branchLoading } = useBranch();
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [activeTab, setActiveTab] = useUrlTab(STUDENT_TABS, "overview");
   const [isLoading, setIsLoading] = useState(true);
   const [student, setStudent] = useState<Student | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -580,7 +582,7 @@ export default function StudentDetailsPage() {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                 activeTab === tab.key
-                  ? "border-blue-500 text-blue-600 dark:text-blue-400"
+                  ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
                   : "border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100"
               }`}
             >

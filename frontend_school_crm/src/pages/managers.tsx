@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { confirmAction } from "@/lib/confirm";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -97,6 +98,9 @@ export default function ManagersPage() {
     canViewReports: true,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   });
 
   const [originalPermissions, setOriginalPermissions] = useState<Permission | null>(null);
@@ -207,7 +211,7 @@ export default function ManagersPage() {
       setFormErrors({});
 
       try {
-        await apiRequest("/users", {
+        const createdManager = await apiRequest<User>("/users", {
           method: "POST",
           body: JSON.stringify({
             full_name: formData.fullName,
@@ -217,6 +221,10 @@ export default function ManagersPage() {
             branchId: formData.branchId,
           }),
         });
+        // The user endpoint creates the account, while permissions are stored
+        // separately. Persist the choices from this form immediately so the
+        // manager doesn't silently receive role defaults instead.
+        await updateUserPermissions(createdManager.id, permissions);
         notify.success(t("success"), t("managerCreatedSuccess"));
         await loadData();
         resetForm();
@@ -255,7 +263,7 @@ export default function ManagersPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm(t("confirmDelete"))) {
+    if (await confirmAction({ description: t("confirmDelete"), destructive: true })) {
       setDeletingManagerId(id);
       setIsDeleteLoading(true);
       try {
@@ -275,7 +283,7 @@ export default function ManagersPage() {
     const selectedIds = getSelectedIds();
     if (selectedIds.length === 0) return;
 
-    if (confirm(`${t("confirmDelete")} (${selectedIds.length} ${t("items")})`)) {
+    if (await confirmAction({ description: `${t("confirmDelete")} (${selectedIds.length} ${t("items")})`, destructive: true })) {
       setIsBulkDeleteLoading(true);
       try {
         await Promise.all(selectedIds.map((id) => deleteUserAPI(id)));
@@ -370,6 +378,9 @@ export default function ManagersPage() {
     canViewReports: true,
     canViewSettings: false,
     canEditSettings: false,
+    canViewAttendance: true,
+    canViewAssignments: true,
+    canSendMessages: true,
   });
 
   const hasPermissionsChanged = (): boolean => {
@@ -449,6 +460,24 @@ export default function ManagersPage() {
       title: t("reports"),
       permissions: [
         { key: "canViewReports" as keyof Permission, label: t("canView") },
+      ],
+    },
+    {
+      title: t("attendance"),
+      permissions: [
+        { key: "canViewAttendance" as keyof Permission, label: t("canView") },
+      ],
+    },
+    {
+      title: t("assignments"),
+      permissions: [
+        { key: "canViewAssignments" as keyof Permission, label: t("canView") },
+      ],
+    },
+    {
+      title: t("messaging"),
+      permissions: [
+        { key: "canSendMessages" as keyof Permission, label: t("canSendMessages") },
       ],
     },
     {
@@ -574,7 +603,8 @@ export default function ManagersPage() {
           submitLabel={editingManager ? t("update") : t("create")}
           submittingLabel={editingManager ? t("updating") : t("creating")}
           cancelLabel={t("cancel")}
-          isPending={isSubmitting || !!(editingManager && !hasPermissionsChanged())}
+          isPending={isSubmitting}
+          submitDisabled={!!(editingManager && !hasPermissionsChanged())}
           maxWidth="max-w-4xl"
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

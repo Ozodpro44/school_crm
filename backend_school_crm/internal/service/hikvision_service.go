@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +28,12 @@ const photoURLTTL = 24 * time.Hour
 type HikvisionService struct {
 	db      *db.Database
 	storage *StorageService // nil when no bucket is configured — photos then only live on the device
+
+	hct      *HCTClient // nil when Hik-Connect credentials are not configured
+	hctMu    sync.Mutex
+	hctGroup string // cached root person group id
+
+	hctVerifyUntil time.Time // while in the future, the webhook URL-verification GET is answered
 }
 
 func NewHikvisionService(database *db.Database, storage *StorageService) *HikvisionService {
@@ -37,6 +44,11 @@ func NewHikvisionService(database *db.Database, storage *StorageService) *Hikvis
 // configured. Failures are logged, not returned — a broken photo link should
 // never take down the employee list.
 func (s *HikvisionService) resolvePhotoURL(e *models.HikvisionEmployee) {
+	if len(e.PhotoThumb) > 0 {
+		url := thumbDataURL(e.PhotoThumb)
+		e.PhotoURL = &url
+		return
+	}
 	if s.storage == nil || e.PhotoKey == nil || *e.PhotoKey == "" {
 		return
 	}
@@ -101,11 +113,11 @@ func (s *HikvisionService) CreateDevice(ctx context.Context, req *CreateDeviceRe
 func (s *HikvisionService) GetDevice(ctx context.Context, id string) (*models.HikvisionDevice, error) {
 	d := &models.HikvisionDevice{}
 	err := s.db.GetConn().QueryRowContext(ctx, `
-		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at
+		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at, d.hct_serial, COALESCE(d.hct_access_level_id, '')
 		FROM hikvision_devices d
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 		WHERE d.id = $1`, id).Scan(
-		&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt)
+		&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt, &d.HCTSerial, &d.HCTAccessLevelID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("device not found")
 	}
@@ -125,7 +137,7 @@ func (s *HikvisionService) UpdateDeviceHost(ctx context.Context, deviceID, newHo
 	if err != nil {
 		return err
 	}
-	if device.Protocol == "push" {
+	if device.Protocol != "isapi" {
 		return ErrPushDeviceUnsupported
 	}
 
@@ -158,7 +170,7 @@ func (s *HikvisionService) UpdateDeviceCredentials(ctx context.Context, deviceID
 	if err != nil {
 		return err
 	}
-	if device.Protocol == "push" {
+	if device.Protocol != "isapi" {
 		return ErrPushDeviceUnsupported
 	}
 	if host == "" {
@@ -185,7 +197,7 @@ func (s *HikvisionService) UpdateDeviceCredentials(ctx context.Context, deviceID
 // polling from right here works just as well and needs no local machine).
 func (s *HikvisionService) ListActiveDevices(ctx context.Context) ([]models.HikvisionDevice, error) {
 	rows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at
+		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at, d.hct_serial, COALESCE(d.hct_access_level_id, '')
 		FROM hikvision_devices d
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 		WHERE d.is_active = true AND d.protocol = 'isapi'`)
@@ -197,7 +209,7 @@ func (s *HikvisionService) ListActiveDevices(ctx context.Context) ([]models.Hikv
 	var out []models.HikvisionDevice
 	for rows.Next() {
 		var d models.HikvisionDevice
-		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt, &d.HCTSerial, &d.HCTAccessLevelID); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -207,7 +219,7 @@ func (s *HikvisionService) ListActiveDevices(ctx context.Context) ([]models.Hikv
 
 func (s *HikvisionService) ListDevicesByBranch(ctx context.Context, branchID string) ([]models.HikvisionDevice, error) {
 	rows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at
+		SELECT d.id, d.branch_id, d.name, d.host, d.username, d.password, d.webhook_token, d.is_active, d.created_at, d.updated_at, d.protocol, d.push_device_id, d.last_seen_at, d.hct_serial, COALESCE(d.hct_access_level_id, '')
 		FROM hikvision_devices d
 		JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 		WHERE d.branch_id = $1 ORDER BY d.created_at`, branchID)
@@ -219,7 +231,7 @@ func (s *HikvisionService) ListDevicesByBranch(ctx context.Context, branchID str
 	var out []models.HikvisionDevice
 	for rows.Next() {
 		var d models.HikvisionDevice
-		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.BranchID, &d.Name, &d.Host, &d.Username, &d.Password, &d.WebhookToken, &d.IsActive, &d.CreatedAt, &d.UpdatedAt, &d.Protocol, &d.PushDeviceID, &d.LastSeenAt, &d.HCTSerial, &d.HCTAccessLevelID); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -235,7 +247,7 @@ func (s *HikvisionService) ConfigurePush(ctx context.Context, deviceID, publicHo
 	if err != nil {
 		return err
 	}
-	if device.Protocol == "push" {
+	if device.Protocol != "isapi" {
 		return ErrPushDeviceUnsupported
 	}
 
@@ -252,7 +264,7 @@ func (s *HikvisionService) ConfigurePush(ctx context.Context, deviceID, publicHo
 
 type AddEmployeeRequest struct {
 	DeviceID   string  `json:"deviceId" binding:"required"`
-	EmployeeNo string  `json:"employeeNo" binding:"required"`
+	EmployeeNo string  `json:"employeeNo"` // generated by EnrollEmployee; the CLI still passes one
 	FullName   string  `json:"fullName" binding:"required"`
 	TeacherID  *string `json:"teacherId"`
 }
@@ -284,6 +296,10 @@ func (s *HikvisionService) AddEmployee(ctx context.Context, req *AddEmployeeRequ
 		if !ok {
 			return nil, errors.New("teacher not found in this branch")
 		}
+	}
+
+	if device.Protocol == "hct" {
+		return s.addEmployeeHCT(ctx, device, req)
 	}
 
 	client := NewHikvisionClient(device.Host, device.Username, device.Password)
@@ -329,12 +345,29 @@ func (s *HikvisionService) UploadEmployeeFace(ctx context.Context, employeeID st
 	if err != nil {
 		return err
 	}
-	if device.Protocol == "push" {
+	switch device.Protocol {
+	case "hct":
+		if err := s.uploadFaceHCT(ctx, emp, jpegData); err != nil {
+			return err
+		}
+	case "push":
 		return ErrPushDeviceUnsupported
+	default:
+		client := NewHikvisionClient(device.Host, device.Username, device.Password)
+		if err := client.UploadFace(emp.EmployeeNo, jpegData); err != nil {
+			return err
+		}
 	}
-	client := NewHikvisionClient(device.Host, device.Username, device.Password)
-	if err := client.UploadFace(emp.EmployeeNo, jpegData); err != nil {
-		return err
+
+	// The profile thumbnail lives in the database, so the CRM can show the face
+	// for every connection type and without any bucket. Best-effort like the
+	// bucket copy: the face is already on the device.
+	if thumb, err := MakeThumbnail(jpegData); err != nil {
+		log.Printf("warning: could not build employee thumbnail: %v", err)
+	} else if _, err := s.db.GetConn().ExecContext(ctx,
+		`UPDATE hikvision_employees SET photo_thumb = $1, updated_at = $2 WHERE id = $3`,
+		thumb, time.Now().UTC(), emp.ID); err != nil {
+		log.Printf("warning: could not save employee thumbnail: %v", err)
 	}
 
 	// Storing the photo in the bucket is best-effort: the face is already
@@ -365,6 +398,9 @@ func (s *HikvisionService) RemoveEmployee(ctx context.Context, employeeID string
 	if err != nil {
 		return err
 	}
+	if device.Protocol == "hct" {
+		return s.removeEmployeeHCT(ctx, emp)
+	}
 	if device.Protocol == "push" {
 		return ErrPushDeviceUnsupported
 	}
@@ -381,9 +417,9 @@ func (s *HikvisionService) RemoveEmployee(ctx context.Context, employeeID string
 func (s *HikvisionService) GetEmployee(ctx context.Context, id string) (*models.HikvisionEmployee, error) {
 	e := &models.HikvisionEmployee{}
 	err := s.db.GetConn().QueryRowContext(ctx, `
-		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, is_active, created_at, updated_at
+		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, photo_thumb, hct_person_id, is_active, created_at, updated_at
 		FROM hikvision_employees WHERE id = $1`, id).Scan(
-		&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.IsActive, &e.CreatedAt, &e.UpdatedAt)
+		&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.PhotoThumb, &e.HCTPersonID, &e.IsActive, &e.CreatedAt, &e.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("employee not found")
 	}
@@ -396,7 +432,7 @@ func (s *HikvisionService) GetEmployee(ctx context.Context, id string) (*models.
 
 func (s *HikvisionService) ListEmployeesByDevice(ctx context.Context, deviceID string) ([]models.HikvisionEmployee, error) {
 	rows, err := s.db.GetConn().QueryContext(ctx, `
-		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, is_active, created_at, updated_at
+		SELECT id, device_id, employee_no, full_name, teacher_id, photo_key, photo_thumb, is_active, created_at, updated_at
 		FROM hikvision_employees WHERE device_id = $1 ORDER BY full_name`, deviceID)
 	if err != nil {
 		return nil, err
@@ -406,7 +442,7 @@ func (s *HikvisionService) ListEmployeesByDevice(ctx context.Context, deviceID s
 	var out []models.HikvisionEmployee
 	for rows.Next() {
 		var e models.HikvisionEmployee
-		if err := rows.Scan(&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.IsActive, &e.CreatedAt, &e.UpdatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.DeviceID, &e.EmployeeNo, &e.FullName, &e.TeacherID, &e.PhotoKey, &e.PhotoThumb, &e.IsActive, &e.CreatedAt, &e.UpdatedAt); err != nil {
 			return nil, err
 		}
 		s.resolvePhotoURL(&e)
@@ -544,7 +580,7 @@ func (s *HikvisionService) PollAndRecordEvents(ctx context.Context, deviceID str
 	if err != nil {
 		return 0, err
 	}
-	if device.Protocol == "push" {
+	if device.Protocol != "isapi" {
 		return 0, ErrPushDeviceUnsupported
 	}
 
@@ -626,7 +662,14 @@ func (s *HikvisionService) pollAllDevicesOnce(ctx context.Context) {
 // configured with its own attendance shift rules: the first scan of the day
 // is a check-in, the next is a check-out, and so on.
 func (s *HikvisionService) nextEventType(ctx context.Context, deviceID, employeeNo string, eventTime time.Time) (models.AttendanceEventType, error) {
-	dayStart := time.Date(eventTime.Year(), eventTime.Month(), eventTime.Day(), 0, 0, 0, 0, eventTime.Location())
+	// "The first scan of the day" means the school's day (Tashkent), not the
+	// UTC day or whatever zone the event happened to be parsed in.
+	loc, lerr := time.LoadLocation(reportTimezone)
+	if lerr != nil {
+		loc = time.FixedZone("UTC+5", 5*3600)
+	}
+	local := eventTime.In(loc)
+	dayStart := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
 	dayEnd := dayStart.Add(24 * time.Hour)
 
 	var count int
@@ -663,20 +706,19 @@ type AttendanceFilter struct {
 	EmployeeID string
 	From       *time.Time
 	To         *time.Time
+	Limit      int
+	Offset     int
 }
 
-func (s *HikvisionService) ListAttendance(ctx context.Context, filter AttendanceFilter) ([]models.AttendanceRecord, error) {
-	query := `
-		SELECT a.id, a.device_id, a.employee_id, a.employee_no, a.event_time, a.event_type, a.minor_event, a.source, a.created_at,
-		       COALESCE(e.full_name, '')
-		FROM attendance_records a
-		LEFT JOIN hikvision_employees e ON e.id = a.employee_id
-		WHERE 1=1`
+// attendanceWhere builds the shared WHERE clause (after "WHERE 1=1") and args
+// for ListAttendance and CountAttendance.
+func attendanceWhere(filter AttendanceFilter) (string, []interface{}) {
+	where := ""
 	args := []interface{}{}
 	argN := 1
 
 	if filter.BranchID != "" {
-		query += fmt.Sprintf(` AND a.device_id IN (
+		where += fmt.Sprintf(` AND a.device_id IN (
 			SELECT d.id FROM hikvision_devices d
 			JOIN branches b ON b.id = d.branch_id AND b.deleted_at IS NULL
 			WHERE d.branch_id = $%d)`, argN)
@@ -684,26 +726,55 @@ func (s *HikvisionService) ListAttendance(ctx context.Context, filter Attendance
 		argN++
 	}
 	if filter.DeviceID != "" {
-		query += fmt.Sprintf(" AND a.device_id = $%d", argN)
+		where += fmt.Sprintf(" AND a.device_id = $%d", argN)
 		args = append(args, filter.DeviceID)
 		argN++
 	}
 	if filter.EmployeeID != "" {
-		query += fmt.Sprintf(" AND a.employee_id = $%d", argN)
+		where += fmt.Sprintf(" AND a.employee_id = $%d", argN)
 		args = append(args, filter.EmployeeID)
 		argN++
 	}
 	if filter.From != nil {
-		query += fmt.Sprintf(" AND a.event_time >= $%d", argN)
+		where += fmt.Sprintf(" AND a.event_time >= $%d", argN)
 		args = append(args, *filter.From)
 		argN++
 	}
 	if filter.To != nil {
-		query += fmt.Sprintf(" AND a.event_time < $%d", argN)
+		where += fmt.Sprintf(" AND a.event_time < $%d", argN)
 		args = append(args, *filter.To)
-		argN++
 	}
-	query += " ORDER BY a.event_time DESC LIMIT 500"
+	return where, args
+}
+
+// CountAttendance returns how many records match the filter (for paging).
+func (s *HikvisionService) CountAttendance(ctx context.Context, filter AttendanceFilter) (int, error) {
+	where, args := attendanceWhere(filter)
+	var n int
+	err := s.db.GetConn().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM attendance_records a WHERE 1=1`+where, args...).Scan(&n)
+	return n, err
+}
+
+// ListAttendance returns newest-first records. Limit/Offset page through the
+// result; with Limit unset it returns at most 500 (the historical cap).
+func (s *HikvisionService) ListAttendance(ctx context.Context, filter AttendanceFilter) ([]models.AttendanceRecord, error) {
+	where, args := attendanceWhere(filter)
+	limit := filter.Limit
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	query := `
+		SELECT a.id, a.device_id, a.employee_id, a.employee_no, a.event_time, a.event_type, a.minor_event, a.source, a.created_at,
+		       COALESCE(e.full_name, '')
+		FROM attendance_records a
+		LEFT JOIN hikvision_employees e ON e.id = a.employee_id
+		WHERE 1=1` + where + fmt.Sprintf(" ORDER BY a.event_time DESC, a.id LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	args = append(args, limit, offset)
 
 	rows, err := s.db.GetConn().QueryContext(ctx, query, args...)
 	if err != nil {

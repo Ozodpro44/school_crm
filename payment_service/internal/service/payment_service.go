@@ -1239,11 +1239,21 @@ type SearchStudentsFilter struct {
 	Offset        int
 }
 
+// PaymentStatusCounts is the paid/partial/not-paid split of the filtered
+// students (search and class applied, the paymentStatus filter not), so a
+// paginated list can still show whole-branch totals.
+type PaymentStatusCounts struct {
+	Paid    int `json:"paid"`
+	Partial int `json:"partial"`
+	NotPaid int `json:"notPaid"`
+}
+
 type SearchStudentsResponse struct {
 	Data   []StudentPaymentInfo `json:"data"`
 	Total  int                  `json:"total"`
 	Limit  int                  `json:"limit"`
 	Offset int                  `json:"offset"`
+	Counts PaymentStatusCounts  `json:"counts"`
 }
 
 // SearchStudents returns students enriched with their payment status for the
@@ -1296,6 +1306,9 @@ func (s *PaymentService) SearchStudents(ctx context.Context, f SearchStudentsFil
 		outerWhere = fmt.Sprintf(" WHERE payment_status = $%d", n)
 		args = append(args, "not_paid")
 		n++
+	case "due":
+		// everyone who still owes something: not paid at all or partly paid
+		outerWhere = " WHERE payment_status IN ('not_paid','partial')"
 	}
 
 	base := fmt.Sprintf(`
@@ -1330,6 +1343,40 @@ func (s *PaymentService) SearchStudents(ctx context.Context, f SearchStudentsFil
 		return nil, err
 	}
 
+	// Split by status over the same students but WITHOUT the status filter. The
+	// args slice carries the status value (when set) as its last element; the
+	// CTE does not reference it, so it is trimmed for this statement.
+	countArgs := args
+	if f.PaymentStatus == "paid" || f.PaymentStatus == "partial" || f.PaymentStatus == "not_paid" || f.PaymentStatus == "unpaid" {
+		countArgs = args[:len(args)-1]
+	}
+	var counts PaymentStatusCounts
+	crows, err := s.db.Conn().QueryContext(ctx,
+		base+" SELECT payment_status, COUNT(*) FROM base GROUP BY payment_status", countArgs...)
+	if err != nil {
+		return nil, err
+	}
+	for crows.Next() {
+		var st string
+		var c int
+		if err := crows.Scan(&st, &c); err != nil {
+			crows.Close()
+			return nil, err
+		}
+		switch st {
+		case "paid":
+			counts.Paid = c
+		case "partial":
+			counts.Partial = c
+		default:
+			counts.NotPaid += c
+		}
+	}
+	crows.Close()
+	if err := crows.Err(); err != nil {
+		return nil, err
+	}
+
 	dataArgs := append(append([]interface{}{}, args...), f.Limit, f.Offset)
 	rows, err := s.db.Conn().QueryContext(ctx, fmt.Sprintf(
 		base+` SELECT id, full_name, class_id, phone, monthly_payment, status,
@@ -1355,7 +1402,7 @@ func (s *PaymentService) SearchStudents(ctx context.Context, f SearchStudentsFil
 		return nil, err
 	}
 
-	return &SearchStudentsResponse{Data: data, Total: total, Limit: f.Limit, Offset: f.Offset}, nil
+	return &SearchStudentsResponse{Data: data, Total: total, Limit: f.Limit, Offset: f.Offset, Counts: counts}, nil
 }
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────

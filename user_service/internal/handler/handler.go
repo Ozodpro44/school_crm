@@ -361,6 +361,31 @@ func stringFieldPtr(v interface{}, present bool) (*string, error) {
 
 // canResetOthersPassword reports whether a caller with this role may set
 // another user's password (still subject to canAccessUser).
+// canDeleteUser reports whether the caller may delete target. Branch access is
+// checked separately (canAccessUser).
+//   - nobody deletes themselves through this endpoint;
+//   - platform roles may delete anyone;
+//   - a tenant admin may delete manager, branch_admin and accountant accounts
+//     (teachers go through teacher_service, which also removes the teacher row;
+//     other admins and platform accounts are never deletable by a tenant admin);
+//   - a branch_admin may delete managers only.
+func canDeleteUser(callerID, callerRole string, target *service.User) bool {
+	if callerID == "" || callerID == target.ID {
+		return false
+	}
+	if isSuperRole(callerRole) {
+		return true
+	}
+	switch callerRole {
+	case "admin":
+		return target.Role == "manager" || target.Role == "branch_admin" || target.Role == "accountant"
+	case "branch_admin":
+		return target.Role == "manager"
+	default:
+		return false
+	}
+}
+
 func canResetOthersPassword(role string) bool {
 	return role == "admin" || role == "branch_admin" || isSuperRole(role)
 }
@@ -435,11 +460,15 @@ func (h *Handler) DeleteUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	// Deleting a user is more sensitive than reading/updating one — restrict
-	// it to platform-level roles rather than extending it to same-branch
-	// staff via canAccessUser (and never allow self-delete through this
-	// generic admin endpoint).
-	if !isSuperRole(c.GetHeader("X-User-Role")) {
+	// Deleting a user is more sensitive than reading/updating one, so the
+	// caller must pass canDeleteUser (never self, never a platform account,
+	// tenant admin/branch_admin only within their own branches and only for
+	// the account types they manage) AND have access to the user's branch.
+	// It used to be platform-only, which left the Managers page unable to
+	// delete anyone (403).
+	callerID, callerRole := c.GetHeader("X-User-ID"), c.GetHeader("X-User-Role")
+	if !canDeleteUser(callerID, callerRole, existing) ||
+		!h.canAccessUser(c.Request.Context(), callerID, callerRole, existing) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to delete users"})
 		return
 	}
@@ -496,6 +525,12 @@ func (h *Handler) ListUserTrash(c *gin.Context) {
 
 // isSuperRole reports whether callerRole is a platform-level role that
 // operates across every branch/tenant, rather than being scoped to one.
+// canSeeOwnerActivity: only owners (admin, branch admin) and platform staff
+// may read the audit entries written by owners.
+func canSeeOwnerActivity(role string) bool {
+	return role == "admin" || role == "branch_admin" || isSuperRole(role)
+}
+
 func isSuperRole(role string) bool {
 	return role == "developer" || role == "super_admin"
 }
@@ -765,7 +800,7 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 	callerID := c.GetHeader("X-User-ID")
 	callerRole := c.GetHeader("X-User-Role")
 	if callerID != targetID {
-		if !canReassignRole(callerRole) {
+		if !canReassignRole(callerRole) && callerRole != "branch_admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to view these permissions"})
 			return
 		}
@@ -780,6 +815,10 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 				return
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if callerRole == "branch_admin" && target.Role != "manager" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 			return
 		}
 		if !h.canAccessUser(c.Request.Context(), callerID, callerRole, target) {
@@ -804,7 +843,7 @@ func (h *Handler) GetPermissions(c *gin.Context) {
 // closes, matching canReassignRole's restriction on role changes.
 func (h *Handler) UpdatePermissions(c *gin.Context) {
 	callerRole := c.GetHeader("X-User-Role")
-	if !canReassignRole(callerRole) {
+	if !canReassignRole(callerRole) && callerRole != "branch_admin" {
 		c.JSON(http.StatusForbidden, gin.H{"error": "not authorized to change permissions"})
 		return
 	}
@@ -816,6 +855,10 @@ func (h *Handler) UpdatePermissions(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if callerRole == "branch_admin" && target.Role != "manager" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
 	// See GetPermissions: canReassignRole alone doesn't confirm target is in
@@ -1069,8 +1112,15 @@ func (h *Handler) ListAuditLogs(c *gin.Context) {
 		idx++
 	}
 
+	// Managers and other non-owner staff must not see what the owners did
+	// (admins, branch admins, platform staff): entries whose actor holds one of
+	// those roles are left out. System rows with no actor stay visible.
+	if !canSeeOwnerActivity(c.GetHeader("X-User-Role")) {
+		where += " AND (u.role IS NULL OR u.role NOT IN ('admin','branch_admin','developer','super_admin')) "
+	}
+
 	var total int
-	if err := h.db.QueryRowContext(c.Request.Context(), "SELECT COUNT(*) FROM audit_logs al"+where, args...).Scan(&total); err != nil {
+	if err := h.db.QueryRowContext(c.Request.Context(), "SELECT COUNT(*) FROM audit_logs al LEFT JOIN users u ON u.id = al.user_id"+where, args...).Scan(&total); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

@@ -32,7 +32,7 @@ export function LanguageSwitch({ align = "end" }: { align?: "start" | "end" }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" aria-label="Change language">
+        <Button variant="outline" size="icon" aria-label="Til / Language">
           <Languages className="h-[1.2rem] w-[1.2rem]" />
         </Button>
       </DropdownMenuTrigger>

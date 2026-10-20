@@ -8,13 +8,13 @@ export const authTranslations: Partial<Translation> = {
 
   invalidCredentials: {
     "uz-cyrl": "Нотўғри маълумотлар",
-    "uz-latn": "Noto‘g‘ri ma’lumotlar",
+    "uz-latn": "Noto'g'ri ma'lumotlar",
     en: "Invalid credentials"
   },
 
   demoCredentials: {
     "uz-cyrl": "Демо маълумотлари:",
-    "uz-latn": "Demo ma’lumotlari:",
+    "uz-latn": "Demo ma'lumotlari:",
     en: "Demo Credentials:"
   },
 
@@ -38,7 +38,7 @@ export const authTranslations: Partial<Translation> = {
 
   forgotPasswordTitle: {
     "uz-cyrl": "Паролни қайта ўрнатиш",
-    "uz-latn": "Parolni qayta o‘rnatish",
+    "uz-latn": "Parolni qayta o'rnatish",
     en: "Reset Password"
   },
 
@@ -50,13 +50,13 @@ export const authTranslations: Partial<Translation> = {
 
   sendOTP: {
     "uz-cyrl": "OTP жўнатиш",
-    "uz-latn": "OTP jo‘natish",
+    "uz-latn": "OTP jo'natish",
     en: "Send OTP"
   },
 
   otpSent: {
     "uz-cyrl": "OTP электрон почтангизга жўнатилди",
-    "uz-latn": "OTP elektron pochtangizga jo‘natildi",
+    "uz-latn": "OTP elektron pochtangizga jo'natildi",
     en: "OTP sent to your email"
   },
 
@@ -100,31 +100,31 @@ export const authTranslations: Partial<Translation> = {
 
   resetPassword: {
     "uz-cyrl": "Паролни ўзгартириш",
-    "uz-latn": "Parolni o‘zgartirish",
+    "uz-latn": "Parolni o'zgartirish",
     en: "Reset Password"
   },
 
   passwordReset: {
     "uz-cyrl": "Парол муваффақиятли ўзгартирилди",
-    "uz-latn": "Parol muvaffaqiyatli o‘zgartirildi",
+    "uz-latn": "Parol muvaffaqiyatli o'zgartirildi",
     en: "Password reset successfully"
   },
 
   otpExpired: {
     "uz-cyrl": "OTP муддати тугади. Қайта жўнатинг",
-    "uz-latn": "OTP muddati tugadi. Qayta jo‘nating",
+    "uz-latn": "OTP muddati tugadi. Qayta jo'nating",
     en: "OTP expired. Please resend"
   },
 
   resendOTP: {
     "uz-cyrl": "OTPни қайта жўнатиш",
-    "uz-latn": "OTPni qayta jo‘natish",
+    "uz-latn": "OTPni qayta jo'natish",
     en: "Resend OTP"
   },
 
   resendIn: {
     "uz-cyrl": "Қайта жўнатиш: {seconds}с",
-    "uz-latn": "Qayta jo‘natish: {seconds}s",
+    "uz-latn": "Qayta jo'natish: {seconds}s",
     en: "Resend in {seconds}s"
   },
 
@@ -142,7 +142,7 @@ export const authTranslations: Partial<Translation> = {
 
   invalidEmailOrPassword: {
     "uz-cyrl": "Нотўғри электрон почта ёки парол",
-    "uz-latn": "Noto‘g‘ri elektron pochta yoki parol",
+    "uz-latn": "Noto'g'ri elektron pochta yoki parol",
     en: "Invalid email or password"
   },
 

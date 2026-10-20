@@ -283,7 +283,6 @@ export function BulkPaymentDialog({
     >
       <DialogTrigger asChild>
         <Button
-          variant="outline"
           className="bg-brand hover:bg-brand-hover text-white border-0"
         >
           <UserPlus className="w-4 h-4 mr-2" />

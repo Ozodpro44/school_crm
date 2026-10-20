@@ -284,7 +284,7 @@ export default function ProfilePage() {
         size="icon"
         onClick={() => router.back()}
         className="hover:bg-slate-100 dark:hover:bg-slate-800"
-      >
+       aria-label={t("back")} title={t("back")}>
         <ArrowLeft className="w-5 h-5" />
       </Button>
       <div>

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { confirmAction } from "@/lib/confirm";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -240,8 +241,8 @@ export function TrashPanel() {
           variant="outline"
           size="sm"
           disabled={restoringId === row.id}
-          onClick={() => {
-            if (confirm(t("restoreConfirm"))) handleRestore(row);
+          onClick={async () => {
+            if (await confirmAction({ description: t("restoreConfirm") })) handleRestore(row);
           }}
         >
           {restoringId === row.id ? (

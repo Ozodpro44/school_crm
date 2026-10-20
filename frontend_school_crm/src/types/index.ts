@@ -39,6 +39,10 @@ export interface Permission {
   canViewReports: boolean;
   canViewSettings: boolean;
   canEditSettings: boolean;
+  /** Page access for Attendance / Tasks / Messaging (managers); absent on older sessions = allowed. */
+  canViewAttendance: boolean;
+  canViewAssignments: boolean;
+  canSendMessages: boolean;
 }
 
 export interface FinancialMonth {
@@ -305,6 +309,10 @@ export interface HikvisionDevice {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /** "isapi" (we dial the device), "push" or "hct" (Hik-Connect cloud). Absent on old rows = isapi. */
+  protocol?: "isapi" | "push" | "hct";
+  /** Serial number of a Hik-Connect (hct) device. */
+  hctSerial?: string;
 }
 
 export interface HikvisionEmployee {
@@ -317,6 +325,31 @@ export interface HikvisionEmployee {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface HikvisionReportDay {
+  date: string; // YYYY-MM-DD, school-local
+  firstIn: string;
+  lastOut: string;
+  events: number;
+  minutes: number;
+  late: boolean;
+}
+
+export interface HikvisionEmployeeReport {
+  employeeId: string;
+  employeeNo: string;
+  fullName: string;
+  teacherId: string | null;
+  teacherName: string | null;
+  photoUrl?: string;
+  deviceId: string;
+  deviceName: string;
+  daysPresent: number;
+  lateDays: number;
+  totalMinutes: number;
+  avgInMinute: number | null; // minutes after local midnight
+  days: HikvisionReportDay[];
 }
 
 export interface HikvisionAttendanceRecord {

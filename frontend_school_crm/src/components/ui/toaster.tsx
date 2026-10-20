@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 
 import {
@@ -22,6 +24,11 @@ const variantStyle = {
 
 export function Toaster() {
   const { toasts } = useToast();
+  // The viewport is mounted straight on <body>: rendered inside the page layout it
+  // could be trapped in a lower stacking context and end up behind the fixed
+  // mobile header (seen on iOS Safari).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   return (
     <ToastProvider swipeDirection="up">
@@ -47,7 +54,7 @@ export function Toaster() {
           </Toast>
         );
       })}
-      <ToastViewport />
+      {mounted ? createPortal(<ToastViewport />, document.body) : null}
     </ToastProvider>
   );
 }

@@ -16,7 +16,7 @@ export const paymentTranslations: Partial<Translation> = {
 
   paymentMethod: {
     "uz-cyrl": "Тўлов усули",
-    "uz-latn": "To‘lov usuli",
+    "uz-latn": "To'lov usuli",
     en: "Payment Method"
   },
 
@@ -27,51 +27,51 @@ export const paymentTranslations: Partial<Translation> = {
 
   addPayment: {
     "uz-cyrl": "Тўлов қўшиш",
-    "uz-latn": "To‘lov qo‘shish",
+    "uz-latn": "To'lov qo'shish",
     en: "Add Payment"
   },
 
   recordPayment: {
     "uz-cyrl": "Тўловни қайд қилиш",
-    "uz-latn": "To‘lovni qayd qilish",
+    "uz-latn": "To'lovni qayd qilish",
     en: "Record Payment"
   },
 
   paymentHistory: {
     "uz-cyrl": "Тўлов тарихи",
-    "uz-latn": "To‘lov tarixi",
+    "uz-latn": "To'lov tarixi",
     en: "Payment History"
   },
 
   paymentsList: {
     "uz-cyrl": "Тўловлар рўйхати",
-    "uz-latn": "To‘lovlar ro‘yxati",
+    "uz-latn": "To'lovlar ro'yxati",
     en: "Payments List"
   },
 
   totalPayments: {
     "uz-cyrl": "Жами тўловлар",
-    "uz-latn": "Jami to‘lovlar",
+    "uz-latn": "Jami to'lovlar",
     en: "Total Payments"
   },
 
   pendingPayments: {
     "uz-cyrl": "Кутилаётган тўловлар",
-    "uz-latn": "Kutilayotgan to‘lovlar",
+    "uz-latn": "Kutilayotgan to'lovlar",
     en: "Pending Payments"
   },
 
   noPaymentsYet: {
     "uz-cyrl": "Ҳали тўловлар йўқ",
-    "uz-latn": "Hali to‘lovlar yo‘q",
+    "uz-latn": "Hali to'lovlar yo'q",
     en: "No payments yet"
   },
 
-  student: { "uz-cyrl": "Ўқувчи", "uz-latn": "O‘quvchi", en: "Student" },
+  student: { "uz-cyrl": "Ўқувчи", "uz-latn": "O'quvchi", en: "Student" },
 
   paidOn: {
     "uz-cyrl": "Тўланган сана",
-    "uz-latn": "To‘langan sana",
+    "uz-latn": "To'langan sana",
     en: "Paid On"
   },
 
@@ -84,25 +84,25 @@ export const paymentTranslations: Partial<Translation> = {
   // Page specific
   trackStudentFees: {
     "uz-cyrl": "Ўқувчилар тўловларини кузатиш ва даромад",
-    "uz-latn": "O‘quvchilar to‘lovlarini kuzatish va daromad",
+    "uz-latn": "O'quvchilar to'lovlarini kuzatish va daromad",
     en: "Track student fees and income"
   },
 
   bulkPayment: {
     "uz-cyrl": "Гуруҳли тўлов",
-    "uz-latn": "Guruhli to‘lov",
+    "uz-latn": "Guruhli to'lov",
     en: "Bulk Payment"
   },
 
   markMultipleStudentsAsPaid: {
     "uz-cyrl": "Бир нечта ўқувчини тўланган деб белгилаш",
-    "uz-latn": "Bir nechta o‘quvchini to‘langan deb belgilash",
+    "uz-latn": "Bir nechta o'quvchini to'langan deb belgilash",
     en: "Mark multiple students as paid"
   },
 
   selectStudent: {
     "uz-cyrl": "Ўқувчини танланг",
-    "uz-latn": "O‘quvchini tanlang",
+    "uz-latn": "O'quvchini tanlang",
     en: "Select student"
   },
 
@@ -114,19 +114,19 @@ export const paymentTranslations: Partial<Translation> = {
 
   selectAllActiveStudents: {
     "uz-cyrl": "Барча фаол ўқувчиларни танлаш",
-    "uz-latn": "Barcha faol o‘quvchilarni tanlash",
+    "uz-latn": "Barcha faol o'quvchilarni tanlash",
     en: "Select All Active Students"
   },
 
   noActiveStudentsFound: {
     "uz-cyrl": "Ҳеч қандай фаол ўқувчи топилмади",
-    "uz-latn": "Hech qanday faol o‘quvchi topilmadi",
+    "uz-latn": "Hech qanday faol o'quvchi topilmadi",
     en: "No active students found"
   },
 
   studentsSelected: {
     "uz-cyrl": "ўқувчи(лар) танланди",
-    "uz-latn": "o‘quvchi(lar) tanlandi",
+    "uz-latn": "o'quvchi(lar) tanlandi",
     en: "student(s) selected"
   },
 
@@ -138,25 +138,25 @@ export const paymentTranslations: Partial<Translation> = {
 
   markAsPaid: {
     "uz-cyrl": "Тўланди",
-    "uz-latn": "To‘landi",
+    "uz-latn": "To'landi",
     en: "Mark as Paid"
   },
 
   recordNewPayment: {
     "uz-cyrl": "Янги тўловни қайд қилиш",
-    "uz-latn": "Yangi to‘lovni qayd qilish",
+    "uz-latn": "Yangi to'lovni qayd qilish",
     en: "Record Payment"
   },
 
   selectStudentPlaceholder: {
     "uz-cyrl": "Ўқувчини танланг",
-    "uz-latn": "O‘quvchini tanlang",
+    "uz-latn": "O'quvchini tanlang",
     en: "Select student"
   },
 
   searchPayments: {
     "uz-cyrl": "Тўловлар бўйича қидириш...",
-    "uz-latn": "To‘lovlar bo‘yicha qidirish...",
+    "uz-latn": "To'lovlar bo'yicha qidirish...",
     en: "Search payments..."
   },
 
@@ -168,7 +168,7 @@ export const paymentTranslations: Partial<Translation> = {
 
   noPaymentsFound: {
     "uz-cyrl": "Ҳеч қандай тўлов топилмади",
-    "uz-latn": "Hech qanday to‘lov topilmadi",
+    "uz-latn": "Hech qanday to'lov topilmadi",
     en: "No payments found"
   },
 
@@ -180,43 +180,43 @@ export const paymentTranslations: Partial<Translation> = {
 
   deletePayment: {
     "uz-cyrl": "Тўловни ўчириш",
-    "uz-latn": "To‘lovni o‘chirish",
+    "uz-latn": "To'lovni o'chirish",
     en: "Delete Payment"
   },
 
   deletePaymentConfirmation: {
     "uz-cyrl": "Бу тўловни ўчирмоқчимисиз?",
-    "uz-latn": "Bu to‘lovni o‘chirmoqchimisiz?",
+    "uz-latn": "Bu to'lovni o'chirmoqchimisiz?",
     en: "Are you sure you want to delete this payment?"
   },
 
   paymentDeleted: {
     "uz-cyrl": "Тўлов ўчирилди",
-    "uz-latn": "To‘lov o‘chirildi",
+    "uz-latn": "To'lov o'chirildi",
     en: "Payment deleted"
   },
 
   partialPayment: {
     "uz-cyrl": "Қисман тўлов",
-    "uz-latn": "Qisman to‘lov",
+    "uz-latn": "Qisman to'lov",
     en: "Partial Payment"
   },
 
   searchStudent: {
     "uz-cyrl": "Ўқувчи номи, синф ёки телефон бўйича қидириш...",
-    "uz-latn": "O‘quvchi nomi, sinf yoki telefon bo‘yicha qidirish...",
+    "uz-latn": "O'quvchi nomi, sinf yoki telefon bo'yicha qidirish...",
     en: "Search student name, class, or phone..."
   },
 
   studentRequired: {
     "uz-cyrl": "Ўқувчи танланиши керак",
-    "uz-latn": "O‘quvchi tanlanishi kerak",
+    "uz-latn": "O'quvchi tanlanishi kerak",
     en: "Student is required"
   },
 
   noStudentsFound: {
     "uz-cyrl": "Ўқувчилар топилмади",
-    "uz-latn": "O‘quvchilar topilmadi",
+    "uz-latn": "O'quvchilar topilmadi",
     en: "No students found"
   },
 

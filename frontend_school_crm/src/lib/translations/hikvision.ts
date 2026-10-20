@@ -12,6 +12,7 @@ export const hikvisionTranslations: Partial<Translation> = {
   tabDevices: { "uz-cyrl": "Қурилмалар", "uz-latn": "Qurilmalar", en: "Devices" },
   tabEmployees: { "uz-cyrl": "Ходимлар", "uz-latn": "Xodimlar", en: "Employees" },
   tabRecords: { "uz-cyrl": "Давомат ёзувлари", "uz-latn": "Davomat yozuvlari", en: "Attendance log" },
+  tabReport: { "uz-cyrl": "Ҳисобот", "uz-latn": "Hisobot", en: "Report" },
 
   hikvisionCliNote: {
     "uz-cyrl": "Эслатма: агар қурилма мактабнинг ички тармоғида бўлса (роутерга кириш йўқ бўлса), уни бу ердан эмас, ноутбукдаги hikvision-cli буйруғи орқали қўшинг — иккаласи ҳам битта базага ёзади.",
@@ -108,15 +109,42 @@ export const hikvisionTranslations: Partial<Translation> = {
     "uz-latn": "Xodimni qo'shib bo'lmadi",
     en: "Failed to add employee",
   },
-  facePhotoOptional: {
-    "uz-cyrl": "Юз расми (ихтиёрий)",
-    "uz-latn": "Yuz rasmi (ixtiyoriy)",
-    en: "Face photo (optional)",
+  facePhotoRequired: {
+    "uz-cyrl": "Юз расми *",
+    "uz-latn": "Yuz rasmi *",
+    en: "Face photo *",
   },
-  facePhotoOptionalHint: {
-    "uz-cyrl": "Танишни дарҳол ёқиш учун аниқ, олдиндан олинган JPEG расм танланг. Буни кейинроқ ҳам қўшишингиз мумкин.",
-    "uz-latn": "Tanishni darhol yoqish uchun aniq, oldindan olingan JPEG rasm tanlang. Buni keyinroq ham qo'shishingiz mumkin.",
-    en: "Choose a clear, front-facing JPEG to enable recognition right away. You can also add it later.",
+  facePhotoRequiredHint: {
+    "uz-cyrl": "Аниқ, олдиндан олинган расм (JPEG ёки PNG, камида 200×200, 5 МБ гача). Қурилма шу расм орқали танийди.",
+    "uz-latn": "Aniq, oldindan olingan rasm (JPEG yoki PNG, kamida 200×200, 5 MB gacha). Qurilma shu rasm orqali taniydi.",
+    en: "A clear, front-facing photo (JPEG or PNG, at least 200×200, up to 5 MB). The terminal recognises the person from it.",
+  },
+  facePhotoRequiredError: {
+    "uz-cyrl": "Юз расмини танланг",
+    "uz-latn": "Yuz rasmini tanlang",
+    en: "Choose a face photo",
+  },
+  facePhotoBadType: {
+    "uz-cyrl": "Расм JPEG ёки PNG бўлиши керак",
+    "uz-latn": "Rasm JPEG yoki PNG bo'lishi kerak",
+    en: "The photo must be a JPEG or PNG image",
+  },
+  facePhotoTooBig: {
+    "uz-cyrl": "Расм 5 МБ дан катта",
+    "uz-latn": "Rasm 5 MB dan katta",
+    en: "The photo is larger than 5 MB",
+  },
+  facePhotoTooSmall: {
+    "uz-cyrl": "Расм жуда кичик (камида 200×200 пиксел керак)",
+    "uz-latn": "Rasm juda kichik (kamida 200×200 piksel kerak)",
+    en: "The photo is too small (at least 200×200 pixels)",
+  },
+  facePhotoPreview: { "uz-cyrl": "Расм кўриниши", "uz-latn": "Rasm ko'rinishi", en: "Photo preview" },
+  facePhotoChange: { "uz-cyrl": "Расмни алмаштириш", "uz-latn": "Rasmni almashtirish", en: "Change photo" },
+  employeeNoAuto: {
+    "uz-cyrl": "Ходим рақами (ID) тизим томонидан автоматик берилади.",
+    "uz-latn": "Xodim raqami (ID) tizim tomonidan avtomatik beriladi.",
+    en: "The employee number (ID) is assigned automatically.",
   },
   photoUploadFailedNote: {
     "uz-cyrl": "Ходим қўшилди, лекин расмни юклаб бўлмади — рўйхатдаги «Юклаш» тугмаси орқали қайта уриниб кўринг",
@@ -177,5 +205,108 @@ export const hikvisionTranslations: Partial<Translation> = {
     "uz-cyrl": "Бу даврда давомат ёзувлари топилмади",
     "uz-latn": "Bu davrda davomat yozuvlari topilmadi",
     en: "No attendance records for this period",
+  },
+  connectionType: { "uz-cyrl": "Уланиш тури", "uz-latn": "Ulanish turi", en: "Connection type" },
+  connHikConnect: { "uz-cyrl": "Hik-Connect (булут, IP керак эмас)", "uz-latn": "Hik-Connect (bulut, IP kerak emas)", en: "Hik-Connect (cloud, no IP needed)" },
+  connLocal: { "uz-cyrl": "Локал тармоқ (IP орқали)", "uz-latn": "Lokal tarmoq (IP orqali)", en: "Local network (by IP)" },
+  deviceSerial: { "uz-cyrl": "Серия рақами", "uz-latn": "Seriya raqami", en: "Serial number" },
+  deviceSerialHint: {
+    "uz-cyrl": "Қурилма ёрлиғидаги қисқа серия, масалан FF7999936.",
+    "uz-latn": "Qurilma yorlig'idagi qisqa seriya, masalan FF7999936.",
+    en: "The short serial printed on the terminal, e.g. FF7999936.",
+  },
+  verifyCode: { "uz-cyrl": "Тасдиқлаш коди", "uz-latn": "Tasdiqlash kodi", en: "Verification code" },
+  verifyCodeHint: {
+    "uz-cyrl": "Қурилмада Hik-Connect ёқилганда ўрнатилган код. Уни Hikvision текширади.",
+    "uz-latn": "Qurilmada Hik-Connect yoqilganda o'rnatilgan kod. Uni Hikvision tekshiradi.",
+    en: "The code set when Hik-Connect was enabled on the terminal. Hikvision verifies it.",
+  },
+  cloudDevice: { "uz-cyrl": "Hik-Connect булут", "uz-latn": "Hik-Connect bulut", en: "Hik-Connect cloud" },
+  failedToAddCloudDevice: { "uz-cyrl": "Қурилмани қўшиб бўлмади", "uz-latn": "Qurilmani qo'shib bo'lmadi", en: "Could not add the device" },
+
+  // Monthly report
+  failedToLoadReport: {
+    "uz-cyrl": "Ҳисоботни юклаб бўлмади",
+    "uz-latn": "Hisobotni yuklab bo'lmadi",
+    en: "Failed to load the report",
+  },
+  reportMonth: { "uz-cyrl": "Ой", "uz-latn": "Oy", en: "Month" },
+  reportLateAfter: { "uz-cyrl": "Кечикиш вақти (шундан кейин)", "uz-latn": "Kechikish vaqti (shundan keyin)", en: "Late after" },
+  reportTeachersOnly: { "uz-cyrl": "Фақат ўқитувчилар", "uz-latn": "Faqat o'qituvchilar", en: "Teachers only" },
+  reportExport: { "uz-cyrl": "CSV юклаш", "uz-latn": "CSV yuklash", en: "Export CSV" },
+  reportDaysPresent: { "uz-cyrl": "Келган кунлар", "uz-latn": "Kelgan kunlar", en: "Days present" },
+  reportLateDays: { "uz-cyrl": "Кечикишлар", "uz-latn": "Kechikishlar", en: "Late days" },
+  reportTotalHours: { "uz-cyrl": "Жами соат", "uz-latn": "Jami soat", en: "Total hours" },
+  reportAvgIn: { "uz-cyrl": "Ўртача келиш вақти", "uz-latn": "O'rtacha kelish vaqti", en: "Avg. arrival" },
+  reportFirstIn: { "uz-cyrl": "Келди", "uz-latn": "Keldi", en: "In" },
+  reportLastOut: { "uz-cyrl": "Кетди", "uz-latn": "Ketdi", en: "Out" },
+  reportHours: { "uz-cyrl": "Соат", "uz-latn": "Soat", en: "Hours" },
+  reportHourShort: { "uz-cyrl": "соат", "uz-latn": "soat", en: "h" },
+  reportMinuteShort: { "uz-cyrl": "дақ", "uz-latn": "daq", en: "min" },
+  reportLate: { "uz-cyrl": "Кечикди", "uz-latn": "Kechikdi", en: "Late" },
+  reportNoDays: { "uz-cyrl": "Бу ойда ёзув йўқ", "uz-latn": "Bu oyda yozuv yo'q", en: "No scans this month" },
+  reportEmpty: {
+    "uz-cyrl": "Ходимлар ҳали қўшилмаган",
+    "uz-latn": "Xodimlar hali qo'shilmagan",
+    en: "No employees enrolled yet",
+  },
+  reportNoTeachers: {
+    "uz-cyrl": "Ўқитувчига боғланган ходим йўқ — «Фақат ўқитувчилар»ни ўчиринг ёки ходимни ўқитувчига боғланг",
+    "uz-latn": "O'qituvchiga bog'langan xodim yo'q — «Faqat o'qituvchilar»ni o'chiring yoki xodimni o'qituvchiga bog'lang",
+    en: "No employee is linked to a teacher — switch off “Teachers only” or link an employee to a teacher",
+  },
+
+  // Edit employee
+  editEmployee: { "uz-cyrl": "Ходимни таҳрирлаш", "uz-latn": "Xodimni tahrirlash", en: "Edit employee" },
+  changePhotoOptional: { "uz-cyrl": "Расмни алмаштириш (ихтиёрий)", "uz-latn": "Rasmni almashtirish (ixtiyoriy)", en: "Change photo (optional)" },
+  noPhotoYetHint: {
+    "uz-cyrl": "Бу ходимнинг расми ҳали сақланмаган — юклаб қўйинг, шунда профилда кўринади.",
+    "uz-latn": "Bu xodimning rasmi hali saqlanmagan — yuklab qo'ying, shunda profilda ko'rinadi.",
+    en: "No photo is stored for this employee yet — upload one and it will show on the profile.",
+  },
+  employeeUpdated: { "uz-cyrl": "Ходим янгиланди", "uz-latn": "Xodim yangilandi", en: "Employee updated" },
+  failedToUpdateEmployee: {
+    "uz-cyrl": "Ходимни янгилаб бўлмади",
+    "uz-latn": "Xodimni yangilab bo'lmadi",
+    en: "Failed to update the employee",
+  },
+
+  // Staff page / attendance tabs
+  staffPage: { "uz-cyrl": "Ходимлар", "uz-latn": "Xodimlar", en: "Staff" },
+  staffPageSubtitle: {
+    "uz-cyrl": "Face ID қурилмасига қўшилган ходимлар",
+    "uz-latn": "Face ID qurilmasiga qo'shilgan xodimlar",
+    en: "People enrolled on the Face ID terminals",
+  },
+  staffAttendance: { "uz-cyrl": "Ходимлар давомати", "uz-latn": "Xodimlar davomati", en: "Staff attendance" },
+  staffNoDevices: {
+    "uz-cyrl": "Ходим қўшиш учун аввал Face ID қурилмасини улаш керак.",
+    "uz-latn": "Xodim qo'shish uchun avval Face ID qurilmasini ulash kerak.",
+    en: "Connect a Face ID terminal first to add staff.",
+  },
+  staffGoToDevices: { "uz-cyrl": "Қурилмаларга ўтиш", "uz-latn": "Qurilmalarga o'tish", en: "Go to devices" },
+
+  teacherFaceIdTitle: { "uz-cyrl": "Face ID", "uz-latn": "Face ID", en: "Face ID" },
+  teacherFaceIdHint: {
+    "uz-cyrl": "Расм танланса, ўқитувчи Face ID қурилмасига ҳам бирданига қўшилади.",
+    "uz-latn": "Rasm tanlansa, o'qituvchi Face ID qurilmasiga ham birdaniga qo'shiladi.",
+    en: "Choose a photo and the teacher is enrolled on the Face ID terminal in the same step.",
+  },
+  facePhotoOptional: { "uz-cyrl": "Юз расми (ихтиёрий)", "uz-latn": "Yuz rasmi (ixtiyoriy)", en: "Face photo (optional)" },
+  teacherFaceIdAdded: {
+    "uz-cyrl": "Ўқитувчи Face ID қурилмасига ҳам қўшилди",
+    "uz-latn": "O'qituvchi Face ID qurilmasiga ham qo'shildi",
+    en: "The teacher was also enrolled on the Face ID terminal",
+  },
+  teacherFaceIdFailed: {
+    "uz-cyrl": "Ўқитувчи қўшилди, лекин Face ID га қўшиб бўлмади",
+    "uz-latn": "O'qituvchi qo'shildi, lekin Face ID ga qo'shib bo'lmadi",
+    en: "Teacher added, but enrolling on Face ID failed",
+  },
+
+  teacherLoginHint: {
+    "uz-cyrl": "Шу электрон почта ва парол билан кириш ҳисоби яратилади.",
+    "uz-latn": "Shu elektron pochta va parol bilan kirish hisobi yaratiladi.",
+    en: "A login will be created with this email and password.",
   },
 };
