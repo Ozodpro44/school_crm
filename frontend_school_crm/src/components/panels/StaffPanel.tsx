@@ -26,6 +26,21 @@ import {
 import { HikvisionEmployeeEditDialog } from "@/components/panels/HikvisionEmployeeEditDialog";
 import { HikvisionDevice, HikvisionEmployee, Teacher } from "@/types";
 
+function SkeletonRows() {
+  return (
+    <div className="space-y-3" aria-busy="true">
+      {[...Array(5)].map((_, i) => (
+        <div key={i} className="flex items-center gap-4 py-2">
+          <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+          <Skeleton className="h-4 flex-1 max-w-[220px]" />
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-4 w-24 ml-auto" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function StaffPanel() {
   const { toast } = useToast();
   const language = useLanguage();
@@ -130,15 +145,21 @@ export function StaffPanel() {
   const teacherName = (id?: string | null) =>
     id ? teachers.find((tc) => tc.id === id)?.fullName ?? "—" : "—";
 
-  if (loading) {
+  // One continuous loader for the whole first load (devices, then the list):
+  // two different skeletons in a row read as the page loading twice.
+  if (loading || (devices.length > 0 && loadedFor === "")) {
     return (
-      <Card>
-        <CardContent className="space-y-4 pt-6">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="h-9 w-36" />
+        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <SkeletonRows />
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -197,16 +218,7 @@ export function StaffPanel() {
       <Card>
         <CardContent className="pt-6">
           {employeesLoading ? (
-            <div className="space-y-3" aria-busy="true">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="flex items-center gap-4 py-2">
-                  <Skeleton className="h-10 w-10 rounded-full shrink-0" />
-                  <Skeleton className="h-4 flex-1 max-w-[220px]" />
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-4 w-24 ml-auto" />
-                </div>
-              ))}
-            </div>
+            <SkeletonRows />
           ) : employees.length === 0 ? (
             <div className="text-center py-12 text-slate-500 dark:text-slate-400">{t("noEmployeesYet")}</div>
           ) : (
