@@ -11,6 +11,7 @@ import {
   type Class,
 } from "@/lib/api";
 import { useBranch } from "@/context/BranchContext";
+import { formatCurrency } from "@/lib/exportUtils";
 import { useNotify } from "@/hooks/use-notify";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -101,9 +102,8 @@ function esc(v: unknown): string {
     .replace(/'/g, "&#39;");
 }
 
-function fmtMoney(n: number) {
-  return new Intl.NumberFormat("ru-RU").format(Math.round(n));
-}
+// Same money format as the rest of the app (amount + currency word).
+const fmtMoney = (n: number) => formatCurrency(n);
 
 function currentMonthLabel() {
   return new Date().toLocaleString("default", { month: "long", year: "numeric" });
@@ -145,7 +145,7 @@ function ReceiptModal({ data, onClose }: { data: ReceiptData | null; onClose: ()
       <div class="row"><span>${esc(t("receiptInvoice"))}:</span><span>${esc(data.invoiceNumber)}</span></div>
       <div class="row"><span>${esc(t("receiptDate"))}:</span><span>${esc(data.paidAt)}</span></div>
       <hr/>
-      <div class="big">${esc(fmtMoney(data.amount))} UZS</div>
+      <div class="big">${esc(fmtMoney(data.amount))}</div>
       <hr/>
       <div class="center" style="font-size:11px;color:#666;">${esc(t("receiptThankYou"))}</div>
       </body></html>
@@ -174,7 +174,7 @@ function ReceiptModal({ data, onClose }: { data: ReceiptData | null; onClose: ()
           <div className="flex justify-between"><span className="text-slate-500">{t("receiptInvoice")}</span><span>{data.invoiceNumber}</span></div>
           <div className="flex justify-between"><span className="text-slate-500">{t("receiptDate")}</span><span>{data.paidAt}</span></div>
           <hr className="border-dashed border-slate-300 dark:border-slate-600" />
-          <div className="text-center text-2xl font-bold text-emerald-600">{fmtMoney(data.amount)} UZS</div>
+          <div className="text-center text-2xl font-bold text-emerald-600">{fmtMoney(data.amount)}</div>
         </div>
         <div className="flex gap-2 pt-1">
           <Button variant="outline" className="flex-1" onClick={onClose}>{t("close")}</Button>
@@ -191,7 +191,7 @@ function ReceiptModal({ data, onClose }: { data: ReceiptData | null; onClose: ()
 // ─── Student row (desktop table row) ──────────────────────────────────────────
 
 // One grid template shared by the header and every row keeps columns aligned.
-const ROW_GRID = "grid grid-cols-[28px_minmax(0,1fr)_110px_150px_132px] items-center gap-3 px-4";
+const ROW_GRID = "grid grid-cols-[28px_minmax(0,1fr)_100px_175px_120px] items-center gap-3 px-4";
 
 function StudentRow({
   student,
@@ -485,11 +485,11 @@ function QRScanTab({
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
               <p className="text-slate-400 text-xs mb-0.5">{t("remaining")}</p>
-              <p className="font-bold text-lg text-slate-900 dark:text-white">{fmtMoney(student.remaining)} UZS</p>
+              <p className="font-bold text-lg text-slate-900 dark:text-white">{fmtMoney(student.remaining)}</p>
             </div>
             <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3">
               <p className="text-slate-400 text-xs mb-0.5">{t("amountPaid")}</p>
-              <p className="font-bold text-lg text-emerald-600">{fmtMoney(student.amountPaid)} UZS</p>
+              <p className="font-bold text-lg text-emerald-600">{fmtMoney(student.amountPaid)}</p>
             </div>
           </div>
           {student.paymentStatus === "paid" ? (
@@ -503,7 +503,7 @@ function QRScanTab({
               onClick={handlePay}
             >
               <Zap className="w-4 h-4" />
-              {paying ? "..." : `${t("markAsPaid")} — ${fmtMoney(student.remaining)} UZS`}
+              {paying ? "..." : `${t("markAsPaid")} — ${fmtMoney(student.remaining)}`}
             </Button>
           )}
         </div>
@@ -725,7 +725,7 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
         return;
       }
       const rc = recordPaid(student, r);
-      notify.success(student.fullName, `${fmtMoney(student.remaining)} UZS`);
+      notify.success(student.fullName, `${fmtMoney(student.remaining)}`);
       if (autoReceipt) setReceipt(rc);
       setSelected((prev) => {
         if (!prev.has(student.id)) return prev;
@@ -967,7 +967,7 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
                 <div className="flex items-center justify-between gap-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 rounded-xl px-4 py-2.5">
                   <div className="text-sm text-indigo-900 dark:text-indigo-200">
                     <span className="font-semibold">{selectedList.length}</span> {t("selected")} ·{" "}
-                    <span className="font-semibold tabular-nums">{fmtMoney(selectedSum)} UZS</span>
+                    <span className="font-semibold tabular-nums">{fmtMoney(selectedSum)}</span>
                   </div>
                   <div className="flex gap-2">
                     <Button variant="ghost" size="sm" onClick={() => setSelected(new Map())}>
@@ -1103,7 +1103,7 @@ export function QuickPayPanel({ showHeader = true }: { showHeader?: boolean }) {
               <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
                 <p className="text-xs uppercase tracking-wide text-slate-400">{t("qpSessionTotal")}</p>
                 <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-600">
-                  {fmtMoney(sessionTotal)} <span className="text-sm font-medium text-slate-400">UZS</span>
+                  {fmtMoney(sessionTotal)}
                 </p>
                 <p className="text-xs text-slate-400 mt-0.5">{recent.length} {t("qpPaymentsCount")}</p>
                 <label className="mt-3 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer">

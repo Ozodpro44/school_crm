@@ -45,7 +45,7 @@ export const reportTranslations: Partial<Translation> = {
 
   dateRange: {
     "uz-cyrl": "Сана оралиғи",
-    "uz-latn": "Sana oralig‘i",
+    "uz-latn": "Sana oralig'i",
     en: "Date Range",
   },
 
@@ -84,7 +84,7 @@ export const reportTranslations: Partial<Translation> = {
 
   overview: {
     "uz-cyrl": "Умумий кўриниш",
-    "uz-latn": "Umumiy ko‘rinish",
+    "uz-latn": "Umumiy ko'rinish",
     en: "Overview",
   },
 
@@ -114,13 +114,13 @@ export const reportTranslations: Partial<Translation> = {
 
   unpaidFees: {
     "uz-cyrl": "Тўланмаган тўловлар",
-    "uz-latn": "To‘lanmagan to‘lovlar",
+    "uz-latn": "To'lanmagan to'lovlar",
     en: "Unpaid Fees",
   },
 
   paymentStatistics: {
     "uz-cyrl": "Тўловлар статистикаси",
-    "uz-latn": "To‘lovlar statistikasi",
+    "uz-latn": "To'lovlar statistikasi",
     en: "Payment Statistics",
   },
 
@@ -138,13 +138,13 @@ export const reportTranslations: Partial<Translation> = {
 
   studentDebtors: {
     "uz-cyrl": "Ўқувчилар қарздорлари",
-    "uz-latn": "O‘quvchilar qarzdorlari",
+    "uz-latn": "O'quvchilar qarzdorlari",
     en: "Student Debtors",
   },
 
   noDataFound: {
     "uz-cyrl": "Маълумот топилмади",
-    "uz-latn": "Ma’lumot topilmadi",
+    "uz-latn": "Ma'lumot topilmadi",
     en: "No Data Found",
   },
 
@@ -156,13 +156,13 @@ export const reportTranslations: Partial<Translation> = {
 
   paid: {
     "uz-cyrl": "Тўланди",
-    "uz-latn": "To‘landi",
+    "uz-latn": "To'landi",
     en: "Paid",
   },
 
   unpaid: {
     "uz-cyrl": "Тўланмади",
-    "uz-latn": "To‘lanmadi",
+    "uz-latn": "To'lanmadi",
     en: "Unpaid",
   },
 
@@ -186,13 +186,13 @@ export const reportTranslations: Partial<Translation> = {
 
   studentPayments: {
     "uz-cyrl": "Ўқувчи тўловлари",
-    "uz-latn": "O‘quvchi to‘lovlari",
+    "uz-latn": "O'quvchi to'lovlari",
     en: "Student Payments",
   },
 
   teacherSalaries: {
     "uz-cyrl": "Ўқитувчи маошлари",
-    "uz-latn": "O‘qituvchi maoshlari",
+    "uz-latn": "O'qituvchi maoshlari",
     en: "Teacher Salaries",
   },
 
@@ -210,13 +210,13 @@ export const reportTranslations: Partial<Translation> = {
 
   average: {
     "uz-cyrl": "Ўртача қиймат",
-    "uz-latn": "O‘rtacha qiymat",
+    "uz-latn": "O'rtacha qiymat",
     en: "Average",
   },
 
   reportDetails: {
     "uz-cyrl": "Ҳисобот бўйича маълумотлар",
-    "uz-latn": "Hisobot bo‘yicha ma’lumotlar",
+    "uz-latn": "Hisobot bo'yicha ma'lumotlar",
     en: "Report Details",
   },
 

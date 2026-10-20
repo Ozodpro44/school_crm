@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { confirmAction } from "@/lib/confirm";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -262,7 +263,7 @@ export default function ManagersPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm(t("confirmDelete"))) {
+    if (await confirmAction({ description: t("confirmDelete"), destructive: true })) {
       setDeletingManagerId(id);
       setIsDeleteLoading(true);
       try {
@@ -282,7 +283,7 @@ export default function ManagersPage() {
     const selectedIds = getSelectedIds();
     if (selectedIds.length === 0) return;
 
-    if (confirm(`${t("confirmDelete")} (${selectedIds.length} ${t("items")})`)) {
+    if (await confirmAction({ description: `${t("confirmDelete")} (${selectedIds.length} ${t("items")})`, destructive: true })) {
       setIsBulkDeleteLoading(true);
       try {
         await Promise.all(selectedIds.map((id) => deleteUserAPI(id)));

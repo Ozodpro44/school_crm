@@ -189,6 +189,15 @@
     background-color: rgb(79 70 229);
     background-image: none;
   }
+  /* The default button variant paints its label with --primary-foreground, which is
+     dark in the dark theme: dark text on this indigo is ~2:1 (fails WCAG). Brand
+     buttons always carry white text. The element selector outranks the variant's
+     single-class text colour. */
+  button.bg-brand,
+  a.bg-brand,
+  [role="button"].bg-brand {
+    color: rgb(255 255 255);
+  }
   .hover\:bg-brand-hover:hover {
     background-color: rgb(99 102 241);
     background-image: none;

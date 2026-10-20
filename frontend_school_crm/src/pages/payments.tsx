@@ -706,9 +706,10 @@ export default function PaymentsPage() {
         <TabsContent value="list" className="space-y-6">
 
       {/* Compact tiles. Each needs ~215px so a figure like "1 250 000 000 so'm"
-          fits whole; the grid packs as many per row as the width allows (six on
-          a wide monitor, fewer on a laptop) instead of squeezing six into any width. */}
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(215px,1fr))] gap-3">
+          fits whole; from the sm breakpoint the grid packs as many per row as the
+          width allows (six on a wide monitor, fewer on a laptop). On a phone they
+          form one swipeable row instead of six full-width cards stacked. */}
+      <div className="-mx-3 px-3 scroll-pl-3 flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:px-0 sm:scroll-pl-0 sm:pb-0 sm:grid sm:grid-cols-[repeat(auto-fill,minmax(215px,1fr))] sm:overflow-visible [&>*]:min-w-[220px] [&>*]:shrink-0 [&>*]:snap-start sm:[&>*]:min-w-0 sm:[&>*]:shrink">
         <StatCard
           compact
           icon={CheckCircle}
@@ -921,13 +922,13 @@ export default function PaymentsPage() {
                         const studentInfo = studentInfoMap.get(p.studentId);
                         const selectedBranchId = currentBranch?.id || "";
                         setPosPreviewData({ payment: p, student: { id: p.studentId, fullName: studentInfo?.fullName ?? "Unknown", phone: studentInfo?.phone ?? "", classId: studentInfo?.classId ?? "", monthlyPayment: studentInfo?.monthlyPayment ?? 0, branchId: selectedBranchId, status: "active", parentPhone: "", enrollmentDate: undefined, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, className: studentInfo?.className ?? "N/A" });
-                      }}><Printer className="w-3.5 h-3.5" /></Button>
+                      }} aria-label={t("print")} title={t("print")}><Printer className="w-3.5 h-3.5" /></Button>
                     <Button size="icon" variant="ghost" className="h-7 w-7"
-                      onClick={() => handleEdit(p)} disabled={!canEditPayments || processingPaymentId === p.id}>
+                      onClick={() => handleEdit(p)} disabled={!canEditPayments || processingPaymentId === p.id} aria-label={t("edit")} title={t("edit")}>
                       <Edit2 className="w-3.5 h-3.5" /></Button>
                     {canDeletePayments && (
                     <Button size="icon" variant="ghost" className="h-7 w-7"
-                      onClick={() => handleDelete(p.id)} disabled={processingPaymentId === p.id}>
+                      onClick={() => handleDelete(p.id)} disabled={processingPaymentId === p.id} aria-label={t("delete")} title={t("delete")}>
                       <Trash2 className="w-3.5 h-3.5 text-red-500" /></Button>
                     )}
                   </div>

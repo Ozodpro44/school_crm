@@ -19,7 +19,7 @@ export const settingsTranslations: Partial<Translation> = {
 
   schoolNameAndBasicInfo: {
     "uz-cyrl": "Мактаб номи ва асосий маълумотлар",
-    "uz-latn": "Maktab nomi va asosiy ma’lumotlar",
+    "uz-latn": "Maktab nomi va asosiy ma'lumotlar",
     en: "School name and basic information",
   },
 
@@ -57,19 +57,19 @@ export const settingsTranslations: Partial<Translation> = {
 
   defaultAmountsDescription: {
     "uz-cyrl": "Стандарт тўлов ва маош миқдорлари",
-    "uz-latn": "Standart to‘lov va maosh miqdorlari",
+    "uz-latn": "Standart to'lov va maosh miqdorlari",
     en: "Default payment and salary amounts",
   },
 
   defaultMonthlyPayment: {
     "uz-cyrl": "Стандарт ойлик тўлов",
-    "uz-latn": "Standart oylik to‘lov",
+    "uz-latn": "Standart oylik to'lov",
     en: "Default Monthly Payment",
   },
 
   defaultTeacherSalary: {
     "uz-cyrl": "Стандарт ўқитувчи маоши",
-    "uz-latn": "Standart o‘qituvchi maoshi",
+    "uz-latn": "Standart o'qituvchi maoshi",
     en: "Default Teacher Salary",
   },
 
@@ -77,13 +77,13 @@ export const settingsTranslations: Partial<Translation> = {
 
   systemInformation: {
     "uz-cyrl": "Тизим маълумотлари",
-    "uz-latn": "Tizim ma’lumotlari",
+    "uz-latn": "Tizim ma'lumotlari",
     en: "System Information",
   },
 
   systemVersionInfo: {
     "uz-cyrl": "Тизим версияси ва маълумотлар",
-    "uz-latn": "Tizim versiyasi va ma’lumotlar",
+    "uz-latn": "Tizim versiyasi va ma'lumotlar",
     en: "System version and information",
   },
 
@@ -117,9 +117,9 @@ export const settingsTranslations: Partial<Translation> = {
 
   theme: { "uz-cyrl": "Мавзу", "uz-latn": "Mavzu", en: "Theme" },
 
-  light: { "uz-cyrl": "Ёруғ", "uz-latn": "Yorug‘", en: "Light" },
+  light: { "uz-cyrl": "Ёруғ", "uz-latn": "Yorug'", en: "Light" },
 
-  dark: { "uz-cyrl": "Қоронғи", "uz-latn": "Qorong‘i", en: "Dark" },
+  dark: { "uz-cyrl": "Қоронғи", "uz-latn": "Qorong'i", en: "Dark" },
 
   system: { "uz-cyrl": "Тизим", "uz-latn": "Tizim", en: "System" },
 
@@ -131,7 +131,7 @@ export const settingsTranslations: Partial<Translation> = {
 
   noPermissionEditSettings: {
     "uz-cyrl": "Сизда созламаларни ўзгартириш ҳуқуқи йўқ",
-    "uz-latn": "Sizda sozlamalarni o‘zgartirish huquqi yo‘q",
+    "uz-latn": "Sizda sozlamalarni o'zgartirish huquqi yo'q",
     en: "You don't have permission to edit settings",
   },
 
@@ -161,61 +161,61 @@ export const settingsTranslations: Partial<Translation> = {
 
   currentMonthDescription: {
     "uz-cyrl": "Барча тўловлар, харажатлар ва маошлар ушбу ойга қайд этилади",
-    "uz-latn": "Barcha to‘lovlar, xarajatlar va maoshlar ushbu oyga qayd etiladi",
+    "uz-latn": "Barcha to'lovlar, xarajatlar va maoshlar ushbu oyga qayd etiladi",
     en: "All payments, expenses and salaries are recorded in this month",
   },
 
   activeMonth: {
     "uz-cyrl": "Ма’лумот киритиш учун фаол давр",
-    "uz-latn": "Ma’lumot kiritish uchun faol davr",
+    "uz-latn": "Ma'lumot kiritish uchun faol davr",
     en: "Active period for data entry",
   },
 
   switchToNextMonth: {
     "uz-cyrl": "Кейинги ойга ўтиш",
-    "uz-latn": "Keyingi oyga o‘tish",
+    "uz-latn": "Keyingi oyga o'tish",
     en: "Next Month",
   },
 
   monthSwitched: {
     "uz-cyrl": "Ой ўзгартирилди",
-    "uz-latn": "Oy o‘zgartirildi",
+    "uz-latn": "Oy o'zgartirildi",
     en: "Month switched",
   },
 
   failedToSwitchMonth: {
     "uz-cyrl": "Ойни ўзгартириб бўлмади",
-    "uz-latn": "Oyni o‘zgartirib bo‘lmadi",
+    "uz-latn": "Oyni o'zgartirib bo'lmadi",
     en: "Failed to switch month",
   },
 
   confirmSwitchMonth: {
     "uz-cyrl": "Ойни ўзгартиришни тасдиқланг",
-    "uz-latn": "Oyni o‘zgartirishni tasdiqlang",
+    "uz-latn": "Oyni o'zgartirishni tasdiqlang",
     en: "Confirm switch month",
   },
 
   switchMonthWarning: {
     "uz-cyrl": "Ойни ўзгартириш барча маълумотларни қулфлайди",
-    "uz-latn": "Oyni o‘zgartirish barcha ma’lumotlarni qulflaydi",
+    "uz-latn": "Oyni o'zgartirish barcha ma'lumotlarni qulflaydi",
     en: "Switching months will lock all data",
   },
 
   switchMonthNote: {
     "uz-cyrl": "Ойни ўзгартириш барча операцияларни якунлайди",
-    "uz-latn": "Oyni o‘zgartirish barcha operatsiyalarni yakunlaydi",
+    "uz-latn": "Oyni o'zgartirish barcha operatsiyalarni yakunlaydi",
     en: "Switching month will finalize all transactions",
   },
 
   switchMonthNoteManager: {
     "uz-cyrl": "Ойни ўзгартириш учун админ рухсати керак",
-    "uz-latn": "Oyni o‘zgartirish uchun admin ruxsati kerak",
+    "uz-latn": "Oyni o'zgartirish uchun admin ruxsati kerak",
     en: "Admin permission required to switch month",
   },
 
   confirmSwitch: {
     "uz-cyrl": "Ўзгартиришни тасдиқланг",
-    "uz-latn": "O‘zgartirishni tasdiqlang",
+    "uz-latn": "O'zgartirishni tasdiqlang",
     en: "Confirm switch",
   },
 
@@ -243,13 +243,13 @@ export const settingsTranslations: Partial<Translation> = {
 
   branchPaymentSettings: {
     "uz-cyrl": "Филиал тўлов созламалари",
-    "uz-latn": "Filial to‘lov sozlamalari",
+    "uz-latn": "Filial to'lov sozlamalari",
     en: "Branch payment settings",
   },
 
   branchInformationTimestamps: {
     "uz-cyrl": "Филиал маълумотлари ва вақт белгилари",
-    "uz-latn": "Filial ma’lumotlari va vaqt belgilari",
+    "uz-latn": "Filial ma'lumotlari va vaqt belgilari",
     en: "Branch information and timestamps",
   },
 

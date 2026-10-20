@@ -211,7 +211,7 @@ function NotificationBell({ direction = "up", align = "right" }: { direction?: "
         <button
           ref={btnRef}
           className="relative h-8 w-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          aria-label="Notifications"
+          aria-label={bt("notifications")}
         >
           {unread > 0 ? (
             <BellDot className="w-[18px] h-[18px] text-indigo-500" />

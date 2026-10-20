@@ -74,7 +74,7 @@ export default function MonthYearSelector({
         size="icon"
         onClick={handlePrevMonth}
         className="h-8 w-8"
-      >
+       aria-label={t("previous")} title={t("previous")}>
         <ChevronLeft className="h-4 w-4" />
       </Button>
       
@@ -99,7 +99,7 @@ export default function MonthYearSelector({
         size="icon"
         onClick={handleNextMonth}
         className="h-8 w-8"
-      >
+       aria-label={t("next")} title={t("next")}>
         <ChevronRight className="h-4 w-4" />
       </Button>
 

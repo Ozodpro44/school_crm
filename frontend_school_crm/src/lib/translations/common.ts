@@ -177,7 +177,7 @@ export const commonTranslations: Partial<Translation> = {
   bulkSkippedFullyPaid: {
     "uz-cyrl": "Бир неча ўқувчилар аллақачон тўлиқ тўланган, улар ўтилдирилди",
     "uz-latn":
-      "Bir necha oʻquvchilar allaqachon toʻliq toʻlangan, ular o'tkazib yuborildi",
+      "Bir necha o'quvchilar allaqachon to'liq to'langan, ular o'tkazib yuborildi",
     en: "Some students were already fully paid and were skipped",
   },
   save: { "uz-cyrl": "Сақлаш", "uz-latn": "Saqlash", en: "Save" },
@@ -208,7 +208,7 @@ export const commonTranslations: Partial<Translation> = {
   // Drag and drop
   dragToMove: {
     "uz-cyrl": "Суриб кўчириш",
-    "uz-latn": "Sudrab ko‘chirish",
+    "uz-latn": "Sudrab ko'chirish",
     en: "Drag to move",
   },
 
@@ -299,7 +299,7 @@ export const commonTranslations: Partial<Translation> = {
   },
   confirmDelete: {
     "uz-cyrl": "Ростдан ҳам ўчирмоқчимисиз?",
-    "uz-latn": "Rostdan ham o‘chirmoqchimisiz?",
+    "uz-latn": "Rostdan ham o'chirmoqchimisiz?",
     en: "Are you sure you want to delete?",
   },
   deleted: { "uz-cyrl": "Ўчирилди", "uz-latn": "O'chirildi", en: "Deleted" },
@@ -401,7 +401,7 @@ export const commonTranslations: Partial<Translation> = {
   },
   pleaseKeepReceipt: {
     "uz-cyrl": "Квитанцияни сақлаб қўйинг",
-    "uz-latn": "Kvitansiyani saqlab qo‘ying",
+    "uz-latn": "Kvitansiyani saqlab qo'ying",
     en: "Please keep this receipt",
   },
 
@@ -485,7 +485,7 @@ export const commonTranslations: Partial<Translation> = {
   },
   errorOccurred: {
     "uz-cyrl": "Хатолик юзага келди. Қайта уриниб кўринг",
-    "uz-latn": "Xatolik yuz berdi. Qayta urinib ko‘ring",
+    "uz-latn": "Xatolik yuz berdi. Qayta urinib ko'ring",
     en: "An error occurred. Please try again.",
   },
 
@@ -883,9 +883,10 @@ export const commonTranslations: Partial<Translation> = {
     "uz-latn": "Summa noldan katta bo'lishi kerak",
     en: "Amount must be greater than zero",
   },
+  passwordPlaceholderShort: { "uz-cyrl": "Камида 6 та белги", "uz-latn": "Kamida 6 ta belgi", en: "At least 6 characters" },
   passwordMinLength: {
     "uz-cyrl": "Пароль камида 6 та белгидан иборат бўлиши керак",
-    "uz-latn": "Parol kamida 6 ta belgidan iborat bolishi kerak",
+    "uz-latn": "Parol kamida 6 ta belgidan iborat bo'lishi kerak",
     en: "Password must be at least 6 characters",
   },
 
@@ -1310,7 +1311,7 @@ export const commonTranslations: Partial<Translation> = {
   },
   confirm: {
     "uz-cyrl": "Тасдиқлаш",
-    "uz-latn": "Tasdiqlaš",
+    "uz-latn": "Tasdiqlash",
     en: "Confirm",
   },
   back: {
@@ -1453,7 +1454,7 @@ export const commonTranslations: Partial<Translation> = {
   },
   moveToClass: {
     "uz-cyrl": "Синфга кўчирилади",
-    "uz-latn": "Sinfga ko‘chiriladi",
+    "uz-latn": "Sinfga ko'chiriladi",
     en: "Will be moved to this class",
   },
   movedAndSigned: {
@@ -2046,7 +2047,7 @@ export const commonTranslations: Partial<Translation> = {
   // Actions
   change: {
     "uz-cyrl": "Ўзгартириш",
-    "uz-latn": "O‘zgartirish",
+    "uz-latn": "O'zgartirish",
     en: "Change",
   },
 
@@ -2107,6 +2108,13 @@ export const commonTranslations: Partial<Translation> = {
   // Quick-pay (new keys — selectAll already exists above)
   cameraPermissionDenied: { "uz-cyrl": "Камера рухсати рад этилди", "uz-latn": "Kamera ruxsati rad etildi", en: "Camera permission denied" },
   deselectAll:      { "uz-cyrl": "Барчасини бекор қилиш", "uz-latn": "Barchasini bekor qilish", en: "Deselect all" },
+  errorBoundaryTitle: { "uz-cyrl": "Нимадир хато кетди", "uz-latn": "Nimadir xato ketdi", en: "Something went wrong" },
+  errorBoundaryBody: {
+    "uz-cyrl": "Бу саҳифада кутилмаган хатолик юз берди.",
+    "uz-latn": "Bu sahifada kutilmagan xatolik yuz berdi.",
+    en: "An unexpected error occurred in this page.",
+  },
+  reloadPage: { "uz-cyrl": "Саҳифани янгилаш", "uz-latn": "Sahifani yangilash", en: "Reload page" },
   tryAgain:         { "uz-cyrl": "Қайта уриниш",      "uz-latn": "Qayta urinish",    en: "Try again" },
 
   // Reports

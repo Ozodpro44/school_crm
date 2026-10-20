@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { confirmAction } from "@/lib/confirm";
 import { useRouter } from "next/router";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -214,9 +215,9 @@ export default function TeachersPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!canDeleteTeachers) { notify.error(t("permissionDenied")); return; }
-    if (!confirm(t("confirmDelete"))) return;
+    if (!(await confirmAction({ description: t("confirmDelete"), destructive: true }))) return;
     setDeletingTeacherId(id);
     deleteMutation.mutate(id, {
       onSuccess: () => { notify.success(t("deleted"), t("teacherDeleted")); setDeletingTeacherId(null); },
@@ -227,7 +228,8 @@ export default function TeachersPage() {
   const handleBulkDelete = async () => {
     if (!canDeleteTeachers) { notify.error(t("permissionDenied")); return; }
     const ids = getSelectedIds();
-    if (!ids.length || !confirm(t("confirmDeleteTeachers").replace("{n}", String(ids.length)))) return;
+    if (!ids.length) return;
+    if (!(await confirmAction({ description: t("confirmDeleteTeachers").replace("{n}", String(ids.length)), destructive: true }))) return;
     // allSettled, not all: a single rejection in Promise.all jumped straight
     // to catch with one generic toast and skipped clearSelection() — rows
     // that HAD deleted successfully stayed marked "selected" in the UI.
@@ -328,7 +330,7 @@ export default function TeachersPage() {
             size="icon" variant="ghost"
             onClick={(e) => { e.stopPropagation(); handleEdit(teacher); }}
             disabled={!canEditTeachers}
-          >
+           aria-label={t("edit")} title={t("edit")}>
             <Edit2 className="w-4 h-4" />
           </Button>
           {canDeleteTeachers && (
@@ -336,7 +338,7 @@ export default function TeachersPage() {
             size="icon" variant="ghost"
             onClick={(e) => { e.stopPropagation(); handleDelete(teacher.id); }}
             disabled={(deleteMutation.isPending && deletingTeacherId === teacher.id)}
-          >
+           aria-label={t("delete")} title={t("delete")}>
             {deleteMutation.isPending && deletingTeacherId === teacher.id ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
@@ -388,11 +390,11 @@ export default function TeachersPage() {
               <div>
                 <Field id="password" label={t("password")} type="password" required
                   value={formData.password} error={formErrors.password}
-                  autoComplete="new-password" placeholder="Minimum 6 characters"
+                  autoComplete="new-password" placeholder={t("passwordPlaceholderShort")}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => { setFormData({ ...formData, password: e.target.value }); clearFieldError("password"); }}
                 />
                 {!formErrors.password && (
-                  <p className="text-xs text-slate-400 mt-1">Login will be created with this email and password.</p>
+                  <p className="text-xs text-slate-400 mt-1">{t("teacherLoginHint")}</p>
                 )}
               </div>
             )}
@@ -475,12 +477,12 @@ export default function TeachersPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
-                    <Button size="icon" variant="ghost" onClick={() => handleEdit(teacher)} disabled={!canEditTeachers}>
+                    <Button size="icon" variant="ghost" onClick={() => handleEdit(teacher)} disabled={!canEditTeachers} aria-label={t("edit")} title={t("edit")}>
                       <Edit2 className="w-4 h-4" />
                     </Button>
                     {canDeleteTeachers && (
                     <Button size="icon" variant="ghost" onClick={() => handleDelete(teacher.id)}
-                      disabled={(deleteMutation.isPending && deletingTeacherId === teacher.id)}>
+                      disabled={(deleteMutation.isPending && deletingTeacherId === teacher.id)} aria-label={t("delete")} title={t("delete")}>
                       {deleteMutation.isPending && deletingTeacherId === teacher.id
                         ? <Loader2 className="w-4 h-4 animate-spin" />
                         : <Trash2 className="w-4 h-4 text-red-500" />}

@@ -3,7 +3,7 @@ import { Translation } from "@/types";
 export const salaryTranslations: Partial<Translation> = {
   paySalary: {
     "uz-cyrl": "Маош тўлаш",
-    "uz-latn": "Maosh to‘lash",
+    "uz-latn": "Maosh to'lash",
     en: "Pay Salary",
   },
 
@@ -21,7 +21,7 @@ export const salaryTranslations: Partial<Translation> = {
 
   salariesList: {
     "uz-cyrl": "Маошлар рўйхати",
-    "uz-latn": "Maoshlar ro‘yxati",
+    "uz-latn": "Maoshlar ro'yxati",
     en: "Salaries List",
   },
 
@@ -39,13 +39,13 @@ export const salaryTranslations: Partial<Translation> = {
 
   noSalariesYet: {
     "uz-cyrl": "Ҳали маошлар йўқ",
-    "uz-latn": "Hali maoshlar yo‘q",
+    "uz-latn": "Hali maoshlar yo'q",
     en: "No salaries yet",
   },
 
   teacher: {
     "uz-cyrl": "Ўқитувчи",
-    "uz-latn": "O‘qituvchi",
+    "uz-latn": "O'qituvchi",
     en: "Teacher",
   },
 
@@ -69,7 +69,7 @@ export const salaryTranslations: Partial<Translation> = {
 
   selectTeacher: {
     "uz-cyrl": "Ўқитувчини танланг",
-    "uz-latn": "O‘qituvchini tanlang",
+    "uz-latn": "O'qituvchini tanlang",
     en: "Select teacher",
   },
 
@@ -87,31 +87,31 @@ export const salaryTranslations: Partial<Translation> = {
 
   paymentStatusLabel: {
     "uz-cyrl": "Тўлов ҳолати",
-    "uz-latn": "To‘lov holati",
+    "uz-latn": "To'lov holati",
     en: "Payment Status",
   },
 
   paymentMethodLabel: {
     "uz-cyrl": "Тўлов усули",
-    "uz-latn": "To‘lov usuli",
+    "uz-latn": "To'lov usuli",
     en: "Payment Method",
   },
 
   notesPlaceholder: {
     "uz-cyrl": "Қўшимча эслатмалар...",
-    "uz-latn": "Qo‘shimcha eslatmalar...",
+    "uz-latn": "Qo'shimcha eslatmalar...",
     en: "Additional notes...",
   },
 
   totalPaid: {
     "uz-cyrl": "Жами тўланган",
-    "uz-latn": "Jami to‘langan",
+    "uz-latn": "Jami to'langan",
     en: "Total Paid",
   },
 
   salariesPaidOut: {
     "uz-cyrl": "Тўланган маошлар",
-    "uz-latn": "To‘langan maoshlar",
+    "uz-latn": "To'langan maoshlar",
     en: "Salaries paid out",
   },
 
@@ -123,7 +123,7 @@ export const salaryTranslations: Partial<Translation> = {
 
   unpaidSalariesLabel: {
     "uz-cyrl": "Тўланмаган маошлар",
-    "uz-latn": "To‘lanmagan maoshlar",
+    "uz-latn": "To'lanmagan maoshlar",
     en: "Unpaid salaries",
   },
 
@@ -153,13 +153,13 @@ export const salaryTranslations: Partial<Translation> = {
 
   paidDate: {
     "uz-cyrl": "Тўланган сана",
-    "uz-latn": "To‘langan sana",
+    "uz-latn": "To'langan sana",
     en: "Paid Date",
   },
 
   markPaid: {
     "uz-cyrl": "Тўланди",
-    "uz-latn": "To‘landi",
+    "uz-latn": "To'landi",
     en: "Mark Paid",
   },
 

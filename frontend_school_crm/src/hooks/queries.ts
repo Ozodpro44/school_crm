@@ -20,6 +20,7 @@ import {
   useQueryClient,
   UseQueryOptions,
 } from "@tanstack/react-query";
+import { useBranch } from "@/context/BranchContext";
 import {
   listTeachers,
   createTeacher,
@@ -83,6 +84,20 @@ const STALE = {
   SETTINGS: 10 * 60_000,
 };
 
+/**
+ * A query that is disabled only because the branch is still being resolved is
+ * not "empty" — it is about to load. Without this the page showed its
+ * "no teachers / no students yet" empty state for the first moments of every
+ * visit, then swapped to the data.
+ */
+function useBranchPending<T extends { isLoading: boolean }>(
+  query: T,
+  branchId: string | null | undefined
+): T {
+  const { isLoading: branchLoading } = useBranch();
+  return branchLoading && !branchId ? { ...query, isLoading: true } : query;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Teachers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,13 +106,16 @@ export function useTeachersQuery(
   branchId: string | null | undefined,
   options?: Partial<UseQueryOptions<Teacher[]>>
 ) {
-  return useQuery<Teacher[]>({
-    queryKey: ["teachers", branchId],
-    queryFn: () => listTeachers(branchId!),
-    enabled: !!branchId,
-    staleTime: STALE.REFERENCE,
-    ...options,
-  });
+  return useBranchPending(
+    useQuery<Teacher[]>({
+      queryKey: ["teachers", branchId],
+      queryFn: () => listTeachers(branchId!),
+      enabled: !!branchId,
+      staleTime: STALE.REFERENCE,
+      ...options,
+    }),
+    branchId
+  );
 }
 
 export function useCreateTeacherMutation() {
@@ -139,13 +157,16 @@ export function useClassesQuery(
   branchId: string | null | undefined,
   options?: Partial<UseQueryOptions<Class[]>>
 ) {
-  return useQuery<Class[]>({
-    queryKey: ["classes", branchId],
-    queryFn: () => listClasses(branchId!),
-    enabled: !!branchId,
-    staleTime: STALE.REFERENCE,
-    ...options,
-  });
+  return useBranchPending(
+    useQuery<Class[]>({
+      queryKey: ["classes", branchId],
+      queryFn: () => listClasses(branchId!),
+      enabled: !!branchId,
+      staleTime: STALE.REFERENCE,
+      ...options,
+    }),
+    branchId
+  );
 }
 
 export function useCreateClassMutation() {
@@ -247,13 +268,16 @@ export function useSalariesQuery(
   params?: { month?: string; year?: number },
   options?: Partial<UseQueryOptions<Salary[]>>
 ) {
-  return useQuery<Salary[]>({
-    queryKey: ["salaries", branchId, params],
-    queryFn: () => listSalaries(branchId!, params?.month, params?.year),
-    enabled: !!branchId,
-    staleTime: STALE.TRANSACTIONAL,
-    ...options,
-  });
+  return useBranchPending(
+    useQuery<Salary[]>({
+      queryKey: ["salaries", branchId, params],
+      queryFn: () => listSalaries(branchId!, params?.month, params?.year),
+      enabled: !!branchId,
+      staleTime: STALE.TRANSACTIONAL,
+      ...options,
+    }),
+    branchId
+  );
 }
 
 export function useCreateSalaryMutation() {
@@ -295,13 +319,16 @@ export function useExpensesQuery(
   params?: { month?: string; year?: number },
   options?: Partial<UseQueryOptions<Expense[]>>
 ) {
-  return useQuery<Expense[]>({
-    queryKey: ["expenses", branchId, params],
-    queryFn: () => listExpenses(branchId!, params?.month, params?.year),
-    enabled: !!branchId,
-    staleTime: STALE.TRANSACTIONAL,
-    ...options,
-  });
+  return useBranchPending(
+    useQuery<Expense[]>({
+      queryKey: ["expenses", branchId, params],
+      queryFn: () => listExpenses(branchId!, params?.month, params?.year),
+      enabled: !!branchId,
+      staleTime: STALE.TRANSACTIONAL,
+      ...options,
+    }),
+    branchId
+  );
 }
 
 export function useCreateExpenseMutation() {
@@ -352,14 +379,17 @@ export function useStudentsConsolidatedQuery(
   },
   options?: Partial<UseQueryOptions<StudentsConsolidatedData>>
 ) {
-  return useQuery<StudentsConsolidatedData>({
-    queryKey: ["students", branchId, page, limit, filters],
-    queryFn: () => getStudentsConsolidatedData(branchId!, page, limit, filters),
-    enabled: !!branchId,
-    staleTime: STALE.TRANSACTIONAL,
-    placeholderData: (prev) => prev, // keep previous data visible during refetch
-    ...options,
-  });
+  return useBranchPending(
+    useQuery<StudentsConsolidatedData>({
+      queryKey: ["students", branchId, page, limit, filters],
+      queryFn: () => getStudentsConsolidatedData(branchId!, page, limit, filters),
+      enabled: !!branchId,
+      staleTime: STALE.TRANSACTIONAL,
+      placeholderData: (prev) => prev, // keep previous data visible during refetch
+      ...options,
+    }),
+    branchId
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -380,14 +410,17 @@ export function usePaymentsConsolidatedQuery(
   },
   options?: Partial<UseQueryOptions<PaymentsConsolidatedData>>
 ) {
-  return useQuery<PaymentsConsolidatedData>({
-    queryKey: ["payments", branchId, page, limit, filters],
-    queryFn: () => getPaymentsConsolidatedData(branchId!, page, limit, filters),
-    enabled: !!branchId,
-    staleTime: STALE.TRANSACTIONAL,
-    placeholderData: (prev) => prev,
-    ...options,
-  });
+  return useBranchPending(
+    useQuery<PaymentsConsolidatedData>({
+      queryKey: ["payments", branchId, page, limit, filters],
+      queryFn: () => getPaymentsConsolidatedData(branchId!, page, limit, filters),
+      enabled: !!branchId,
+      staleTime: STALE.TRANSACTIONAL,
+      placeholderData: (prev) => prev,
+      ...options,
+    }),
+    branchId
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -398,13 +431,16 @@ export function useSettingsQuery(
   branchId: string | null | undefined,
   options?: Partial<UseQueryOptions<Settings>>
 ) {
-  return useQuery<Settings>({
-    queryKey: ["settings", branchId],
-    queryFn: () => getSettings(branchId ?? undefined),
-    enabled: !!branchId,
-    staleTime: STALE.SETTINGS,
-    ...options,
-  });
+  return useBranchPending(
+    useQuery<Settings>({
+      queryKey: ["settings", branchId],
+      queryFn: () => getSettings(branchId ?? undefined),
+      enabled: !!branchId,
+      staleTime: STALE.SETTINGS,
+      ...options,
+    }),
+    branchId
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -415,14 +451,17 @@ export function useNotificationsQuery(
   branchId: string | null | undefined,
   options?: Partial<UseQueryOptions<AppNotification[]>>
 ) {
-  return useQuery<AppNotification[]>({
-    queryKey: ["notifications", branchId],
-    queryFn: () => getNotifications(),
-    enabled: !!branchId,
-    staleTime: STALE.LIVE,
-    refetchInterval: 60_000, // poll every 60 s for new notifications
-    ...options,
-  });
+  return useBranchPending(
+    useQuery<AppNotification[]>({
+      queryKey: ["notifications", branchId],
+      queryFn: () => getNotifications(),
+      enabled: !!branchId,
+      staleTime: STALE.LIVE,
+      refetchInterval: 60_000, // poll every 60 s for new notifications
+      ...options,
+    }),
+    branchId
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

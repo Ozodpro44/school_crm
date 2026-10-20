@@ -1,4 +1,5 @@
 
+import { confirmAction } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -214,7 +215,7 @@ export default function BranchesPage() {
   // viewing someone else's branch (canDelete's server-side check is
   // owner-only, narrower than what this page's list otherwise includes).
   const handleDelete = async (branch: Branch) => {
-    if (!confirm(t("branchDeleteConfirmation"))) return;
+    if (!(await confirmAction({ description: t("branchDeleteConfirmation"), destructive: true }))) return;
     setDeletingBranchId(branch.id);
     try {
       await api.deleteBranch(branch.id);

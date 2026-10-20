@@ -493,7 +493,6 @@ export default function ClassesPage() {
           <Dialog open={isBulkAddOpen} onOpenChange={setIsBulkAddOpen}>
             <DialogTrigger asChild>
               <Button
-                variant="outline"
                 className="bg-brand hover:bg-brand-hover text-white border-0 w-full sm:w-auto"
                 disabled={unassignedStudents.length === 0}
               >

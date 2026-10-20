@@ -331,7 +331,7 @@ export default function AssignmentsPage() {
                         variant="ghost"
                         className="text-red-400"
                         onClick={() => handleDelete(assignment.id)}
-                      >
+                       aria-label={t("delete")} title={t("delete")}>
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     </div>

@@ -303,4 +303,10 @@ export const hikvisionTranslations: Partial<Translation> = {
     "uz-latn": "O'qituvchi qo'shildi, lekin Face ID ga qo'shib bo'lmadi",
     en: "Teacher added, but enrolling on Face ID failed",
   },
+
+  teacherLoginHint: {
+    "uz-cyrl": "Шу электрон почта ва парол билан кириш ҳисоби яратилади.",
+    "uz-latn": "Shu elektron pochta va parol bilan kirish hisobi yaratiladi.",
+    en: "A login will be created with this email and password.",
+  },
 };

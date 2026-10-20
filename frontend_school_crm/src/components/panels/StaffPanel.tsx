@@ -1,5 +1,6 @@
 // Staff (Face ID employees): who is enrolled on the branch's terminals. Add, edit
 // (name, teacher link, photo) and remove. Devices are managed on the Attendance page.
+import { confirmAction } from "@/lib/confirm";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, Pencil, Plus, Trash2, User } from "lucide-react";
@@ -125,7 +126,7 @@ export function StaffPanel() {
   }, [deviceId]);
 
   const handleRemove = async (employee: HikvisionEmployee) => {
-    if (!confirm(t("confirmRemoveEmployee"))) return;
+    if (!(await confirmAction({ description: t("confirmRemoveEmployee"), destructive: true }))) return;
     setRemovingId(employee.id);
     try {
       await removeHikvisionEmployee(employee.id);

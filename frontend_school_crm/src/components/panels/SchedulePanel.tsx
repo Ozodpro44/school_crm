@@ -283,7 +283,7 @@ export function SchedulePanel({ showHeader = true }: { showHeader?: boolean }) {
                         size="icon"
                         className="w-5 h-5 text-red-400 hover:text-red-600"
                         onClick={() => handleDelete(slot)}
-                      >
+                       aria-label={t("delete")} title={t("delete")}>
                         <Trash2 className="w-3 h-3" />
                       </Button>
                     </div>

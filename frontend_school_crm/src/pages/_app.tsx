@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/toaster";
+import { ConfirmHost } from "@/components/ConfirmHost";
 import { ThemeProvider } from "@/contexts/ThemeProvider";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { BranchProvider } from "@/context/BranchContext";
@@ -171,6 +172,7 @@ export default function App({ Component, pageProps }: AppProps) {
         <LanguageProvider>
           <BranchProvider>
             <OfflineBanner />
+            <ConfirmHost />
             <ErrorBoundary>
               {isAuthPage ? (
                 <>

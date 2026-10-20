@@ -174,6 +174,7 @@ function TablePagination({
             className="h-8 w-8"
             disabled={page <= 1}
             onClick={() => onPageChange?.(page - 1)}
+            aria-label={t("previous")} title={t("previous")}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -186,6 +187,7 @@ function TablePagination({
             className="h-8 w-8"
             disabled={page >= totalPages}
             onClick={() => onPageChange?.(page + 1)}
+            aria-label={t("next")} title={t("next")}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>

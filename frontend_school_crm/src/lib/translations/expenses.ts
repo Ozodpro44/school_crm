@@ -15,7 +15,7 @@ export const expenseTranslations: Partial<Translation> = {
 
   addExpense: {
     "uz-cyrl": "Харажат қўшиш",
-    "uz-latn": "Xarajat qo‘shish",
+    "uz-latn": "Xarajat qo'shish",
     en: "Add Expense"
   },
 
@@ -27,19 +27,19 @@ export const expenseTranslations: Partial<Translation> = {
 
   expenseDetails: {
     "uz-cyrl": "Харажат маълумотлари",
-    "uz-latn": "Xarajat ma’lumotlari",
+    "uz-latn": "Xarajat ma'lumotlari",
     en: "Expense Details"
   },
 
   expensesList: {
     "uz-cyrl": "Харажатлар рўйхати",
-    "uz-latn": "Xarajatlar ro‘yxati",
+    "uz-latn": "Xarajatlar ro'yxati",
     en: "Expenses List"
   },
 
   noExpensesYet: {
     "uz-cyrl": "Ҳали харажатлар йўқ",
-    "uz-latn": "Hali xarajatlar yo‘q",
+    "uz-latn": "Hali xarajatlar yo'q",
     en: "No expenses yet"
   },
 
@@ -58,13 +58,13 @@ export const expenseTranslations: Partial<Translation> = {
 
   supplies: {
     "uz-cyrl": "Таъминот",
-    "uz-latn": "Ta’minot",
+    "uz-latn": "Ta'minot",
     en: "Supplies"
   },
 
   maintenance: {
     "uz-cyrl": "Таъмирлаш",
-    "uz-latn": "Ta’mirlash",
+    "uz-latn": "Ta'mirlash",
     en: "Maintenance"
   },
 
@@ -88,7 +88,7 @@ export const expenseTranslations: Partial<Translation> = {
 
   insurance: {
     "uz-cyrl": "Суғурта",
-    "uz-latn": "Sug‘urta",
+    "uz-latn": "Sug'urta",
     en: "Insurance"
   },
 
@@ -113,19 +113,19 @@ export const expenseTranslations: Partial<Translation> = {
 
   cardPayments: {
     "uz-cyrl": "Карта тўловлари",
-    "uz-latn": "Karta to‘lovlari",
+    "uz-latn": "Karta to'lovlari",
     en: "Card Payments"
   },
 
   cashPayments: {
     "uz-cyrl": "Нақд тўловлар",
-    "uz-latn": "Naqd to‘lovlar",
+    "uz-latn": "Naqd to'lovlar",
     en: "Cash Payments"
   },
 
   bankTransfers: {
     "uz-cyrl": "Банк ўтказмалари",
-    "uz-latn": "Bank o‘tkazmalari",
+    "uz-latn": "Bank o'tkazmalari",
     en: "Bank Transfers"
   },
 

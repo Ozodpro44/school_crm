@@ -1356,68 +1356,44 @@ Jane Smith,Class 8B,+998901234569,+998901234570,550000`;
                       : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
                   }`}
                 >
-                  <div className="flex items-start gap-3 mb-3">
+                  <div className="flex items-start gap-3">
                     <Checkbox
                       checked={isSelected}
                       onCheckedChange={onToggle}
                       className="mt-1"
+                      aria-label={student.fullName}
                     />
                     <div
-                      className="flex-1 cursor-pointer hover:opacity-70 transition-opacity"
+                      className="flex-1 min-w-0 cursor-pointer"
                       onClick={() =>
                         router.push(`/student-details?id=${student.id}&from=students`)
                       }
                     >
-                      <p className="font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                      <p className="font-semibold text-blue-600 dark:text-blue-400 truncate">
                         {toTitleCase(student.fullName)}
                       </p>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {formatPhoneNumber(student.parentPhone)}
+                        {student.class?.name || "—"} · <span className="tabular-nums">{formatCurrency(student.monthlyPayment)}</span>
                       </p>
                     </div>
+                    <Badge className={getStatusColor(student.status)}>{t(student.status)}</Badge>
                   </div>
 
-                  <div className="space-y-2 mb-3">
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-slate-600 dark:text-slate-400">{t("class")}:</span>
-                      <span className="font-medium text-slate-900 dark:text-slate-100">
-                        {student.class?.name || "—"}
-                      </span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-slate-600 dark:text-slate-400 text-sm">{t("phone")}:</span>
-                      <ul className="list-disc list-inside space-y-1">
-                        <li className="font-medium text-slate-900 dark:text-slate-100 text-sm">
-                          {formatPhoneNumber(student.phone)}
-                        </li>
-                        {student.parentPhone && (
-                          <li className="font-medium text-slate-900 dark:text-slate-100 text-sm">
-                            {formatPhoneNumber(student.parentPhone)}
-                          </li>
-                        )}
-                      </ul>
-                    </div>
-
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-slate-600 dark:text-slate-400">{t("monthlyPayment")}:</span>
-                      <span className="font-medium text-slate-900 dark:text-slate-100 tabular-nums">
-                        {formatCurrency(student.monthlyPayment)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm gap-2">
-                      <span className="text-slate-600 dark:text-slate-400">{t("status")}:</span>
-                      <Badge className={getStatusColor(student.status)}>
-                        {t(student.status)}
-                      </Badge>
-                    </div>
-                    <div className="flex justify-between items-center text-sm gap-2">
-                      <span className="text-slate-600 dark:text-slate-400">{t("payment")}:</span>
-                      <PaymentStatusBadge status={paymentStatus} label={t(paymentStatus)} />
-                    </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <PaymentStatusBadge status={paymentStatus} label={t(paymentStatus)} />
+                    {student.phone && (
+                      <a href={`tel:${student.phone}`} className="text-slate-700 dark:text-slate-300 tabular-nums hover:underline">
+                        {formatPhoneNumber(student.phone)}
+                      </a>
+                    )}
+                    {student.parentPhone && student.parentPhone !== student.phone && (
+                      <a href={`tel:${student.parentPhone}`} className="text-slate-500 dark:text-slate-400 tabular-nums hover:underline">
+                        {t("parentPhone")}: {formatPhoneNumber(student.parentPhone)}
+                      </a>
+                    )}
                   </div>
 
-                  <div className="flex gap-2 justify-start">
+                  <div className="mt-3 flex gap-2 justify-start">
                     <Button
                       size="sm"
                       variant="outline"
